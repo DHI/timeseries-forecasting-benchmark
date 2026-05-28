@@ -1,0 +1,12 @@
+cff-version: 1.2.0
+title: "timeseries-forecasting-benchmark: ML time series forecasting for water and environment"
+message: "If you use this benchmark, please cite it."
+type: software
+authors:
+  - name: "DHI A/S"
+abstract: >-
+  A reproducible benchmark comparing forecasting methods, from naive baselines to time
+  series foundation models, across open water and environment datasets spanning DHI's
+  domains (hydrology, urban drainage, water distribution, wastewater, storm surge, waves,
+  coastal ocean). Developed under research outcome RK2026 / KER 5 (next-generation modelling).
+license: MIT

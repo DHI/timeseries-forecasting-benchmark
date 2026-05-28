@@ -1,0 +1,30 @@
+id = "wwtp_influent"
+domain = "wastewater_treatment"
+notes = "Influent flow rate at a 350,000 PE WWTP (Mendeley N2O dataset, 2 yrs, 2-min sampling resampled to hourly). Exogenous (rain at plant, temperature, control signals) to be added after inspecting columns via --list; starts univariate."
+
+target = "influent_flow"
+target_unit = "m3/h"
+
+freq = "1h"
+horizon_primary = "24h"
+horizons_eval = ["6h", "24h"]
+input_window = "14D"
+
+exogenous = []
+exogenous_known_future = []
+static_attrs = []
+data_type = "observed"
+split_mode = "fraction"
+split_fraction = [0.7, 0.85]
+
+[splits]
+train_end = 2023-06-30
+val_end = 2023-12-31
+test_end = 2024-06-30
+
+[source]
+name = "Mendeley N2O WWTP"
+doi = "10.17632/xmbxhscgpr.1"
+url = "https://data.mendeley.com/datasets/xmbxhscgpr/1"
+license = "CC BY 4.0"
+citation = "Time Series Dataset for Modeling and Forecasting of N2O in Wastewater Treatment (2024)"

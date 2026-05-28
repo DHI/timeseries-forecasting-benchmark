@@ -1,0 +1,27 @@
+{
+  "bellinge_sewer_level": {
+    "parquet": "data\\processed\\bellinge_sewer_level.parquet",
+    "rows": 330721,
+    "sha256": "da1ed89a5ca028435057f55cc3dd921292767d6fd4375fae616c9f75ddd18b01"
+  },
+  "camels_dk_discharge": {
+    "parquet": "data\\processed\\camels_dk_discharge.parquet",
+    "rows": 12782,
+    "sha256": "ca895af8c6aaa5f076fb35e4d596e0155004f9b1aa28114877327312990e7f77"
+  },
+  "ndbc_waves": {
+    "parquet": "data\\processed\\ndbc_waves.parquet",
+    "rows": 78889,
+    "sha256": "c4d0a9e6c62d4f707bf01a4ffd2467a3feb3b067498734e69a34b05038c784db"
+  },
+  "wd_battledim": {
+    "parquet": "data\\processed\\wd_battledim.parquet",
+    "rows": 17520,
+    "sha256": "d30b4e340554e6dd03cea9535017d1efdb88945ead01f53c54dc644d2ac5a82b"
+  },
+  "wwtp_influent": {
+    "parquet": "data\\processed\\wwtp_influent.parquet",
+    "rows": 17544,
+    "sha256": "59c471aa69a4ce2a759d7a890e17ee3548e4efa61affadea3c289c497c5ca0a8"
+  }
+}

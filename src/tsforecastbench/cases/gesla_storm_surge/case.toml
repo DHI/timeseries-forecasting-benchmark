@@ -1,0 +1,28 @@
+id = "gesla_storm_surge"
+domain = "storm_surge"
+notes = "Hourly non-tidal residual (observed sea level minus tide prediction) at one NW European GESLA-3 tide gauge. Exogenous: ERA5 mean sea-level pressure and 10-m wind components. Pilot uses synthetic data; real-data setup needs station selection + ERA5 extraction."
+
+target = "residual_m"
+target_unit = "m"
+
+freq = "1h"
+horizon_primary = "48h"
+horizons_eval = ["6h", "24h", "48h"]
+input_window = "14D"
+
+exogenous = ["mslp", "u10", "v10"]
+exogenous_known_future = ["mslp_forecast", "u10_forecast", "v10_forecast"]
+static_attrs = ["lat", "lon"]
+data_type = "mixed"
+
+[splits]
+train_end = 2018-12-31
+val_end = 2019-12-31
+test_end = 2020-12-31
+
+[source]
+name = "GESLA-3"
+doi = "10.1002/gdj3.174"
+url = "https://gesla787883612.wordpress.com/downloads/"
+license = "Open, see GESLA terms"
+citation = "Haigh et al. (2023) Geoscience Data Journal"
