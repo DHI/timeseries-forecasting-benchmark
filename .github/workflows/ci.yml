@@ -13,13 +13,18 @@ jobs:
         python-version: ["3.11", "3.12"]
     steps:
       - uses: actions/checkout@v4
+
+      # astral-sh/setup-uv v5 - pinned to the SHA whitelisted by DHI (May 2026)
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Sync (core deps only)
-        run: uv sync
+
+      - name: Sync (core + dev deps; dev brings ruff + pytest)
+        run: uv sync --extra dev
+
       - name: Lint
         run: uv run ruff check .
-      - name: Test (runs entirely on synthetic data, no network)
+
+      - name: Test (synth + committed processed data, no network)
         run: uv run pytest -q
