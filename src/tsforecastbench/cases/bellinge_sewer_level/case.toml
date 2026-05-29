@@ -1,6 +1,6 @@
 id = "bellinge_sewer_level"
 domain = "urban_drainage"
-notes = "Sewer water level at one level meter in the Bellinge combined drainage system (Odense, DK). Native sampling is 1-min; resampled to 15-min for the pilot. Rain gauge + X-band radar nowcast as exogenous."
+notes = "Sewer water level at sensor G71F05R LevelInlet (the original F04R Level1 instance was only 20% active over 2010-2020 per --scan; G71F05R LevelInlet is 100% active over the same span). Bellinge combined drainage system, Odense DK. Native sampling 1-min, resampled to 15-min. Rain gauge + X-band radar nowcast as exogenous."
 
 target = "level_m"
 target_unit = "m"

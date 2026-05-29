@@ -3,11 +3,14 @@
 Zenodo record 4017659 contains 2018 historical + 2019 evaluation SCADA CSVs
 (pressures, flows, demands, levels), plus the EPANET model.
 
-We pull the flows CSVs for both years, find an inlet column, concatenate,
-resample 5-min -> hourly, and write canonical Parquet.
+Target is the *total system demand* = sum of all PUMP_* inlet flow columns. L-Town
+has multiple inlet pumps; any single one alternates with the others (operational
+pump scheduling), so the single-pump signal is intermittent and not what you want
+to forecast. The sum of pumps is the real demand signal at hourly resolution.
 
 Run:
     uv run python -m tsforecastbench.cases.wd_battledim.download --list
+    uv run python -m tsforecastbench.cases.wd_battledim.download --columns   # print flow columns
     uv run python -m tsforecastbench.cases.wd_battledim.download
 """
 
@@ -25,8 +28,10 @@ ZENODO_RECORD = 4017659
 ZENODO_API = f"https://zenodo.org/api/records/{ZENODO_RECORD}"
 
 CONFIG = {
-    "flow_file_match": "Flows",       # picks 2018_SCADA_Flows.csv / 2019_SCADA_Flows.csv
-    "inlet_col_candidates": ["n1", "n54", "n105", "inlet", "PUMP", "Pump"],
+    "flow_file_match": "Flows",
+    # Sum all columns whose name matches one of these prefixes. PUMP_1 + PUMP_2 + ...
+    # captures total network demand even when pumps alternate.
+    "pump_col_prefixes": ["PUMP", "Pump"],
 }
 
 
@@ -48,13 +53,15 @@ def _list_files() -> list[dict]:
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--list", action="store_true")
+    p.add_argument("--list", action="store_true", help="List Zenodo files")
+    p.add_argument("--columns", action="store_true",
+                   help="Print flow CSV column names after download")
     args = p.parse_args(argv)
 
     case = get_case("wd_battledim")
     try:
         files = _list_files()
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         print(f"[wd_battledim] Zenodo API error: {exc}")
         return 1
 
@@ -78,19 +85,28 @@ def main(argv: list[str] | None = None) -> int:
         frames.append(_io.read_table(dest))
     raw = pd.concat(frames, ignore_index=True)
 
+    if args.columns:
+        for c in raw.columns:
+            print(f"  {c}")
+        return 0
+
     dcol = next((c for c in raw.columns if c.lower() in {"timestamp", "datetime", "time", "date"}),
                 raw.columns[0])
-    inlet = next((c for c in raw.columns for cand in CONFIG["inlet_col_candidates"]
-                  if cand.lower() in c.lower()), None)
-    if inlet is None:
-        print(f"[wd_battledim] no inlet column auto-detected. Columns: {list(raw.columns)}")
+    pump_cols = [c for c in raw.columns
+                 if any(c.upper().startswith(p.upper()) for p in CONFIG["pump_col_prefixes"])]
+    if not pump_cols:
+        print(f"[wd_battledim] no pump columns found (prefixes "
+              f"{CONFIG['pump_col_prefixes']}). Columns: {list(raw.columns)}")
         return 1
+    print(f"[wd_battledim] summing pumps: {pump_cols}")
+
+    flow_total = sum(pd.to_numeric(raw[c], errors="coerce").fillna(0.0) for c in pump_cols)
 
     out = pd.DataFrame(
         {
             "unique_id": case.id,
             "ds": pd.to_datetime(raw[dcol], utc=True, errors="coerce"),
-            "y": pd.to_numeric(raw[inlet], errors="coerce"),
+            "y": flow_total,
         }
     )
     out["inlet_flow"] = out["y"]
@@ -98,7 +114,8 @@ def main(argv: list[str] | None = None) -> int:
     out = _io.resample_regular(out, case.freq)
 
     path = _io.write_canonical(case, out)
-    print(f"[wd_battledim] wrote {path} ({len(out)} rows) inlet={inlet}")
+    print(f"[wd_battledim] wrote {path} ({len(out)} rows) - total inlet flow = "
+          f"sum({', '.join(pump_cols)})")
     return 0
 
 

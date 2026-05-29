@@ -14,6 +14,10 @@ Pipeline:
 Run:
     uv run python -m tsforecastbench.cases.bellinge_sewer_level.download
     uv run python -m tsforecastbench.cases.bellinge_sewer_level.download --list-zip
+    uv run python -m tsforecastbench.cases.bellinge_sewer_level.download --scan
+        --scan reads every CSV member, reports time span and observed fraction per
+        sensor instance, so we can pick a continuously-active sensor on evidence
+        instead of by guessing the filename.
 """
 
 from __future__ import annotations
@@ -31,12 +35,16 @@ SENSOR_ARTICLE = 12509249
 RAIN_ARTICLE = 12509774
 
 CONFIG = {
-    "sensor_id": "G71F04R",  # paper F04 location, combined sewer
+    # G71F05R LevelInlet System2000: top of the --scan ranking with 100% active over
+    # 10 years (Aug 2010 - Oct 2020). The original choice G71F04R_Level1_System2000p1
+    # was only 20% active over the same span (sensor dormant most of the time under
+    # the System2000 SCADA system).
+    "sensor_id": "G71F05R",
     "sensor_zip_match": "cleaned_data",
     "rain_zip_match": "Raingauges",
-    "level_member_match": "G71F04R_Level1_System2000p1",  # continuous in-sewer level
+    "level_member_match": "G71F05R_LevelInlet_System2000p1",
     "rain_member_match": "",     # take first member if empty
-    "level_col_candidates": ["F4", "level", "water_level", "value", "depth"],
+    "level_col_candidates": ["level", "water_level", "value", "depth"],
     "rain_col_candidates": ["rain", "intensity", "precip", "value"],
 }
 
@@ -72,9 +80,47 @@ def _pick_col(df, candidates):
     return None
 
 
+def _scan_coverage(sensor_zip, members):
+    """Read every CSV member and report sensor-instance coverage stats."""
+    rows = []
+    for m in members:
+        if not m.lower().endswith(".csv"):
+            continue
+        try:
+            lp = _io.extract_member(sensor_zip, m, _io.DATA_RAW / "_scan_tmp")
+            df = _io.read_table(lp)
+        except Exception as exc:  # noqa: BLE001
+            rows.append((m, f"read error: {exc}", 0, 0, 0.0))
+            continue
+        dcol = next((c for c in df.columns if c.lower() in
+                     {"time", "datetime", "date", "ds", "timestamp"}), df.columns[0])
+        lcol = _pick_col(df, ["level", "value", "depth"])
+        if lcol is None:
+            rows.append((m, "no level col", 0, 0, 0.0))
+            continue
+        ds = pd.to_datetime(df[dcol], errors="coerce")
+        v = pd.to_numeric(df[lcol], errors="coerce")
+        valid = ds.notna() & v.notna()
+        if valid.sum() == 0:
+            rows.append((m, "no valid rows", 0, 0, 0.0))
+            continue
+        ds_v = ds[valid]
+        # "active" = non-zero value (sensor returning a real reading, not a sentinel zero)
+        active = (v[valid].abs() > 1e-6).sum()
+        span_days = (ds_v.max() - ds_v.min()).days
+        rows.append((m, f"{ds_v.min().date()}..{ds_v.max().date()}",
+                     int(valid.sum()), int(active), float(active / max(1, valid.sum()))))
+    rows.sort(key=lambda r: r[3], reverse=True)  # by active rows desc
+    print(f"\n{'member':<60s} {'span':<25s} {'rows':>10s} {'active':>10s}  active_frac")
+    for m, span, total, active, frac in rows:
+        print(f"  {m[-58:]:<58s} {span:<25s} {total:>10d} {active:>10d}  {frac:>6.0%}")
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--list-zip", action="store_true")
+    p.add_argument("--scan", action="store_true",
+                   help="Scan every CSV member: time span + active (non-zero) row count")
     args = p.parse_args(argv)
 
     case = get_case("bellinge_sewer_level")
@@ -91,6 +137,10 @@ def main(argv: list[str] | None = None) -> int:
         for m in members[:80]:
             print(f"  {m}")
         print(f"\n{len(members)} members in {sensor_zip.name}")
+        return 0
+
+    if args.scan:
+        _scan_coverage(sensor_zip, members)
         return 0
 
     level_member = next((m for m in members if CONFIG["level_member_match"].lower() in m.lower()), None)
