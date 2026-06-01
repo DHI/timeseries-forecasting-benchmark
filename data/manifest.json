@@ -9,6 +9,11 @@
     "rows": 12782,
     "sha256": "ca895af8c6aaa5f076fb35e4d596e0155004f9b1aa28114877327312990e7f77"
   },
+  "gesla_storm_surge": {
+    "parquet": "data\\processed\\gesla_storm_surge.parquet",
+    "rows": 933349,
+    "sha256": "f62467d1031c4d93f30ac93ea076e8ec167510739a97670975d2f788b6b5eda2"
+  },
   "ndbc_waves": {
     "parquet": "data\\processed\\ndbc_waves.parquet",
     "rows": 78889,
@@ -17,7 +22,7 @@
   "wd_battledim": {
     "parquet": "data\\processed\\wd_battledim.parquet",
     "rows": 17520,
-    "sha256": "103ad96501259d087b0b0c3541ad009ade8b4d0396878e101b9183ce913c0d12"
+    "sha256": "cf3363712d70804f9d78cb096d5c999947c162ba9d7bc06648d372064000a498"
   },
   "wwtp_influent": {
     "parquet": "data\\processed\\wwtp_influent.parquet",

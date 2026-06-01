@@ -1,28 +1,32 @@
-"""Build the GESLA-3 storm-surge (non-tidal residual) case for one tide gauge.
+"""Build the GESLA storm-surge (non-tidal residual) case for one tide gauge.
 
-GESLA-3 (Haigh et al. 2023) is distributed as a large bundle of per-station files
-from https://gesla787883612.wordpress.com/downloads/ (the bulk archive is behind a
-manual download link, so we don't automate the full fetch). This script expects the
-single station file to already be present under data/raw/gesla_storm_surge/.
+The GESLA bulk archive (~6.8 GB zip, ~50 GB unzipped) holds one record file per station.
+We use the published metadata CSV to pick a station, extract just that station's record
+from the zip (no full unpack), remove the astronomical tide via UTide harmonic analysis,
+and write canonical Parquet.
 
-Pipeline:
-  1. Read the GESLA-3 station file (header + whitespace-delimited records).
-  2. Remove the tide with UTide harmonic analysis -> non-tidal residual (the target).
-  3. (Optional) Merge ERA5 MSLP + 10 m winds if an ERA5 extract is present; otherwise
-     write the residual alone and fill exogenous with NaN (add ERA5 in a later step).
-  4. Write canonical Parquet.
+Setup
+-----
+Download from https://gesla787883612.wordpress.com/downloads/ :
+  - GESLA*_ALL.zip   (the bulk record archive)
+  - GESLA*_ALL.csv   (station metadata: name, code, lat, lon, span)
+Save both under data/raw/gesla_storm_surge/.
 
-ERA5 forcing needs a CDS account + the `cdsapi` package and a ~/.cdsapirc key; see
-fetch_era5() below. Tide removal needs `utide` (pip install utide).
-
-Run (after placing the station file in data/raw/gesla_storm_surge/):
-    uv run python -m tsforecastbench.cases.gesla_storm_surge.download --station-file <name>
+Then:
+    uv run python -m tsforecastbench.cases.gesla_storm_surge.download --scan
+        # prints the metadata columns and ranks Danish + North Sea candidates
+        # by record length
+    uv run python -m tsforecastbench.cases.gesla_storm_surge.download \\
+        --station-code <code>
+        # extracts that station's record file from the zip, parses it,
+        # subtracts the astronomical tide, writes data/processed/gesla_storm_surge.parquet
 """
 
 from __future__ import annotations
 
 import argparse
 import sys
+import zipfile
 from pathlib import Path
 
 import numpy as np
@@ -31,13 +35,157 @@ import pandas as pd
 from tsforecastbench.cases import _io
 from tsforecastbench.registry import get_case
 
-GESLA_DOWNLOADS = "https://gesla787883612.wordpress.com/downloads/"
+CONFIG = {
+    # Cuxhaven_Steubenhoft (German Bight). Picked by --scan over the UK + Atlantic NW
+    # Europe bounding box: 108 years (1917-2024), shallow North Sea shelf, surge-rich
+    # operational climate (the 1962 Hamburg flood site). Alternative pin candidates:
+    # 'NEW' (Newlyn, GBR, 110 yrs, Atlantic) or 'TRG' (Tregde, NOR, 99 yrs, Skagerrak).
+    "station_code": "Cux",
+    # UK + Ireland + Atlantic-facing NW Europe (incl. Danish North Sea coast through
+    # Hirtshals). Deliberately stops at lon 11 E to exclude the Baltic / Kattegat,
+    # whose long-period oscillations and freshwater forcing are different dynamics.
+    "scan_bbox": {"lat": (49.0, 60.0), "lon": (-11.0, 11.0)},
+    "scan_top_n": 25,
+}
 
 
-def _read_gesla3(path: Path) -> pd.DataFrame:
-    """Parse a GESLA-3 station file: ~41 header lines starting with '#', then records.
+def _find_metadata_csv() -> Path | None:
+    raw_dir = _io.DATA_RAW / "gesla_storm_surge"
+    for p in raw_dir.glob("*.csv"):
+        return p
+    return None
 
-    Record columns: date time sea_level qc_flag use_flag
+
+def _find_bulk_zip() -> Path | None:
+    raw_dir = _io.DATA_RAW / "gesla_storm_surge"
+    for p in raw_dir.glob("*.zip"):
+        return p
+    return None
+
+
+def _col(cols_lookup, *keys):
+    for k in keys:
+        if k in cols_lookup:
+            return cols_lookup[k]
+    return None
+
+
+def _scan(meta_csv: Path) -> int:
+    df = pd.read_csv(meta_csv)
+    print(f"\n[scan] {meta_csv.name}: {len(df)} stations, {len(df.columns)} columns")
+    print(f"[scan] columns: {list(df.columns)}\n")
+
+    cols = {c.lower(): c for c in df.columns}
+    c_lat = _col(cols, "latitude", "lat")
+    c_lon = _col(cols, "longitude", "lon", "lng")
+    c_name = _col(cols, "site name", "site_name", "station_name", "name")
+    c_code = _col(cols, "site code", "site_code", "station_code", "code",
+                  "file name", "file_name", "filename")
+    c_country = _col(cols, "country")
+    c_start = _col(cols, "start date/time", "start_date", "start date", "start", "earliest")
+    c_end = _col(cols, "end date/time", "end_date", "end date", "end", "latest")
+    c_years = _col(cols, "number of years", "number_of_years", "n_years", "years",
+                   "record_length", "length_years")
+
+    if c_lat is None or c_lon is None:
+        print("[scan] could not auto-detect lat/lon columns; printing the first 5 rows so "
+              "you can edit the scan code to match the actual schema:")
+        print(df.head(5).to_string())
+        return 0
+
+    box = CONFIG["scan_bbox"]
+    sel = df[df[c_lat].between(*box["lat"]) & df[c_lon].between(*box["lon"])].copy()
+    print(f"[scan] {len(sel)} stations in box lat {box['lat']} lon {box['lon']}")
+
+    rank_col = None
+    if c_years and pd.api.types.is_numeric_dtype(sel[c_years]):
+        sel = sel.sort_values(c_years, ascending=False)
+        rank_col = c_years
+    elif c_start and c_end:
+        sel["__span_days"] = (
+            pd.to_datetime(sel[c_end], errors="coerce")
+            - pd.to_datetime(sel[c_start], errors="coerce")
+        ).dt.days
+        sel = sel.sort_values("__span_days", ascending=False)
+        rank_col = "__span_days"
+
+    # GESLA keeps both historic ("294") and real-time ("294A") series for the same
+    # gauge - dedupe by site name, keeping the longest-record version.
+    if c_name and rank_col:
+        sel = sel.drop_duplicates(subset=c_name, keep="first")
+
+    show = [c for c in (c_code, c_name, c_country, c_lat, c_lon,
+                        c_start, c_end, c_years, rank_col) if c is not None]
+    show = list(dict.fromkeys(show))
+    n = min(CONFIG["scan_top_n"], len(sel))
+    print(f"\n[scan] top {n} ranked by {rank_col!r}:")
+    with pd.option_context("display.max_colwidth", 60, "display.width", 220):
+        print(sel[show].head(n).to_string(index=False))
+    if c_code:
+        print(f"\n[scan] pick one and re-run with --station-code <{c_code}>")
+    return 0
+
+
+def _filename_from_metadata(meta_csv: Path, station_code: str) -> str | None:
+    """Look up the FILE NAME for the given SITE CODE in the metadata CSV."""
+    meta = pd.read_csv(meta_csv)
+    cols = {c.lower(): c for c in meta.columns}
+    c_code = _col(cols, "site code", "site_code", "station_code", "code")
+    c_file = _col(cols, "file name", "file_name", "filename")
+    if not c_code or not c_file:
+        return None
+    hit = meta[meta[c_code].astype(str).str.strip() == station_code.strip()]
+    if hit.empty:
+        # case-insensitive fall-back
+        hit = meta[meta[c_code].astype(str).str.lower() == station_code.lower()]
+    if hit.empty:
+        return None
+    return str(hit[c_file].iloc[0]).strip()
+
+
+def _find_station_in_zip(bulk_zip: Path, station_code: str,
+                         meta_csv: Path | None = None) -> str | None:
+    """Find the member in the bulk zip for the given station code.
+
+    Strategy:
+      1. If we have metadata, look up the exact FILE NAME for this SITE CODE and
+         match a member by that filename (most reliable).
+      2. Otherwise fall back to exact basename match on the code.
+      3. Finally a case-insensitive substring search (last resort; can be ambiguous
+         when multiple GESLA series exist for the same physical gauge).
+    """
+    with zipfile.ZipFile(bulk_zip) as zf:
+        members = zf.namelist()
+
+    if meta_csv is not None:
+        wanted = _filename_from_metadata(meta_csv, station_code)
+        if wanted:
+            wl = wanted.lower()
+            for m in members:
+                if Path(m).name.lower() == wl:
+                    return m
+            for m in members:
+                if Path(m).name.lower().endswith(wl):
+                    return m
+            print(f"[gesla_storm_surge] metadata FILE NAME {wanted!r} not found in zip; "
+                  "falling back to code substring search.")
+
+    code_l = station_code.lower()
+    for m in members:
+        if Path(m).name.lower() == code_l:
+            return m
+    for m in members:
+        if code_l in Path(m).name.lower():
+            return m
+    return None
+
+
+def _read_gesla_record(path: Path) -> pd.DataFrame:
+    """Parse a GESLA-3/4 text record file.
+
+    Format: ~40 header lines starting with '#', then whitespace-delimited records of
+        date  time  sea_level  qc_flag  use_flag
+    Sentinels (-99.9999) become NaN.
     """
     rows = []
     with path.open() as f:
@@ -50,94 +198,112 @@ def _read_gesla3(path: Path) -> pd.DataFrame:
             ts = pd.to_datetime(parts[0] + " " + parts[1], utc=True, errors="coerce")
             if pd.isna(ts):
                 continue
-            rows.append((ts, float(parts[2])))
+            try:
+                sl = float(parts[2])
+            except ValueError:
+                continue
+            rows.append((ts, sl))
     df = pd.DataFrame(rows, columns=["ds", "sea_level"])
-    # GESLA uses -99.9999 as a null sentinel
     df.loc[df["sea_level"] < -99, "sea_level"] = np.nan
     return df
 
 
 def _tidal_residual(df: pd.DataFrame, lat: float) -> pd.DataFrame:
-    """Subtract the astronomical tide via UTide; return non-tidal residual."""
-    import utide
+    try:
+        import utide
+    except ImportError as e:
+        raise RuntimeError(
+            "utide is required for GESLA tide removal. Install via: "
+            "uv sync --extra data"
+        ) from e
 
     t = df["ds"].dt.tz_convert("UTC").dt.tz_localize(None)
-    coef = utide.solve(t.to_numpy(), df["sea_level"].to_numpy(), lat=lat,
-                       method="ols", conf_int="none", verbose=False)
+    coef = utide.solve(
+        t.to_numpy(), df["sea_level"].to_numpy(), lat=lat,
+        method="ols", conf_int="none", verbose=False,
+    )
     tide = utide.reconstruct(t.to_numpy(), coef, verbose=False)
     out = df.copy()
     out["residual_m"] = df["sea_level"].to_numpy() - tide.h
     return out
 
 
-def fetch_era5(case, years: list[int], bbox: tuple[float, float, float, float]) -> Path | None:
-    """Download ERA5 hourly MSLP + 10m winds for the station neighbourhood via cdsapi.
-
-    Requires a CDS account and ~/.cdsapirc. Returns the NetCDF path, or None if cdsapi
-    is unavailable. Wire the extracted point series into the canonical frame as
-    mslp/u10/v10 (+ *_forecast for the known-future tier).
-    """
-    try:
-        import cdsapi
-    except ImportError:
-        print("[gesla_storm_surge] cdsapi not installed; skipping ERA5 (exogenous=NaN).")
+def _lat_from_metadata(meta_csv: Path, station_code: str) -> float | None:
+    meta = pd.read_csv(meta_csv)
+    cols = {c.lower(): c for c in meta.columns}
+    c_code = _col(cols, "site_code", "site code", "station_code", "code",
+                  "file_name", "filename")
+    c_lat = _col(cols, "latitude", "lat")
+    if not c_code or not c_lat:
         return None
-    dest = _io.DATA_RAW / case.id / "era5_mslp_wind.nc"
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    c = cdsapi.Client()
-    c.retrieve(
-        "reanalysis-era5-single-levels",
-        {
-            "product_type": "reanalysis",
-            "variable": ["mean_sea_level_pressure", "10m_u_component_of_wind",
-                         "10m_v_component_of_wind"],
-            "year": [str(y) for y in years],
-            "month": [f"{m:02d}" for m in range(1, 13)],
-            "day": [f"{d:02d}" for d in range(1, 32)],
-            "time": [f"{h:02d}:00" for h in range(24)],
-            "area": list(bbox),  # N, W, S, E
-            "format": "netcdf",
-        },
-        str(dest),
-    )
-    return dest
+    hit = meta[meta[c_code].astype(str).str.lower() == station_code.lower()]
+    if hit.empty:
+        return None
+    return float(hit[c_lat].iloc[0])
 
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--station-file", help="GESLA-3 station filename under data/raw/<case>/")
-    p.add_argument("--lat", type=float, default=55.46, help="Station latitude (for UTide)")
+    p.add_argument("--scan", action="store_true",
+                   help="Read the metadata CSV, print Danish/North Sea candidates")
+    p.add_argument("--station-code", default=CONFIG["station_code"])
+    p.add_argument("--lat", type=float, default=None,
+                   help="Station latitude for UTide (auto-detected from metadata if absent)")
     args = p.parse_args(argv)
 
     case = get_case("gesla_storm_surge")
     raw_dir = _io.DATA_RAW / case.id
+    raw_dir.mkdir(parents=True, exist_ok=True)
 
-    if not args.station_file:
-        print(f"[gesla_storm_surge] download the bulk archive from {GESLA_DOWNLOADS},")
-        print(f"place a station file under {raw_dir}/ and re-run with --station-file <name>.")
+    meta_csv = _find_metadata_csv()
+    if meta_csv is None:
+        print(f"[gesla_storm_surge] no metadata CSV in {raw_dir}/. "
+              "Place GESLA*_ALL.csv there.")
         return 1
 
-    station = raw_dir / args.station_file
-    if not station.exists():
-        print(f"[gesla_storm_surge] {station} not found.")
+    if args.scan:
+        return _scan(meta_csv)
+
+    if not args.station_code:
+        print("[gesla_storm_surge] --station-code <code> is required "
+              "(run --scan first to see candidates).")
         return 1
 
-    df = _read_gesla3(station)
-    print(f"[gesla_storm_surge] read {len(df)} records; removing tide via UTide...")
-    df = _tidal_residual(df, lat=args.lat)
+    bulk_zip = _find_bulk_zip()
+    if bulk_zip is None:
+        print(f"[gesla_storm_surge] no bulk zip in {raw_dir}/. Place GESLA*_ALL.zip there.")
+        return 1
+
+    member = _find_station_in_zip(bulk_zip, args.station_code, meta_csv)
+    if member is None:
+        print(f"[gesla_storm_surge] no member matching {args.station_code!r} in {bulk_zip.name}.")
+        return 1
+
+    extracted = _io.extract_member(bulk_zip, member, raw_dir / "extracted")
+    print(f"[gesla_storm_surge] extracted {member}")
+
+    lat = args.lat if args.lat is not None else _lat_from_metadata(meta_csv, args.station_code)
+    if lat is None:
+        print("[gesla_storm_surge] no latitude (pass --lat); UTide cannot run without it.")
+        return 1
+    print(f"[gesla_storm_surge] using latitude {lat:.3f} for UTide")
+
+    df = _read_gesla_record(extracted)
+    print(f"[gesla_storm_surge] read {len(df)} records; removing tide via UTide ...")
+    df = _tidal_residual(df, lat=lat)
 
     out = pd.DataFrame(
-        {"unique_id": case.id, "ds": df["ds"], "y": df["residual_m"], "residual_m": df["residual_m"]}
+        {"unique_id": case.id, "ds": df["ds"], "y": df["residual_m"],
+         "residual_m": df["residual_m"]}
     )
     out = _io.resample_regular(out, case.freq)
 
-    # exogenous placeholders until ERA5 is merged (see fetch_era5)
     for col in ["mslp", "u10", "v10", "mslp_forecast", "u10_forecast", "v10_forecast"]:
-        out[col] = float("nan")
+        out[col] = float("nan")  # ERA5 forcing added in a later step
 
     path = _io.write_canonical(case, out)
     print(f"[gesla_storm_surge] wrote {path} ({len(out)} rows). "
-          "ERA5 exogenous still NaN — run fetch_era5() to fill.")
+          "ERA5 exogenous still NaN.")
     return 0
 
 

@@ -13,8 +13,12 @@ Run:
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
+
+# Force non-interactive backend BEFORE pyplot import; we only save PNGs.
+os.environ.setdefault("MPLBACKEND", "Agg")
 
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
@@ -30,13 +34,29 @@ FIG_DIR = REPO_ROOT / "docs" / "figures" / "cases"
 
 # Per-case visualisation hints: which exogenous to overlay, zoom window length.
 CASE_HINTS = {
-    "camels_dk_discharge":  {"overlay": "precip",            "zoom": "365D", "target_label": "Discharge (mm/d)"},
-    "bellinge_sewer_level": {"overlay": "rain_gauge",        "zoom": "14D",  "target_label": "Sewer level (m)"},
-    "wd_battledim":         {"overlay": None,                "zoom": "14D",  "target_label": "Inlet flow (L/s)"},
-    "wwtp_influent":        {"overlay": None,                "zoom": "14D",  "target_label": "Influent flow"},
-    "gesla_storm_surge":    {"overlay": "mslp",              "zoom": "30D",  "target_label": "Residual (m)"},
-    "ndbc_waves":           {"overlay": "wspd",              "zoom": "30D",  "target_label": "H_s (m)"},
+    "camels_dk_discharge":  {"overlay": "precip",            "overlay_kind": "rain",  "zoom": "365D", "target_label": "Discharge (mm/d)"},
+    "bellinge_sewer_level": {"overlay": "rain_gauge",        "overlay_kind": "rain",  "zoom": "14D",  "target_label": "Sewer level (m)"},
+    "wd_battledim":         {"overlay": None,                "overlay_kind": None,    "zoom": "14D",  "target_label": "Inlet flow (L/s)"},
+    "wwtp_influent":        {"overlay": None,                "overlay_kind": None,    "zoom": "14D",  "target_label": "Influent flow"},
+    "gesla_storm_surge":    {"overlay": "mslp",              "overlay_kind": "line",  "zoom": "30D",  "target_label": "Residual (m)"},
+    "ndbc_waves":           {"overlay": "wspd",              "overlay_kind": "line",  "zoom": "30D",  "target_label": "H_s (m)"},
 }
+
+
+def _overlay(ax, ds, values, label, kind):
+    """Plot an exogenous overlay on a twin-y axis. Rain uses a filled hyetograph for
+    visibility (mostly-zero series with occasional spikes); other variables use a line."""
+    ax2 = ax.twinx()
+    v = pd.to_numeric(values, errors="coerce")
+    if kind == "rain":
+        # filled bars from 0; the strong colour + alpha makes spikes pop
+        ax2.fill_between(ds, 0, v, step="mid", color="#cb181d", alpha=0.55, linewidth=0)
+        ax2.set_ylim(bottom=0)
+    else:
+        ax2.plot(ds, v, color="#cb181d", linewidth=0.4, alpha=0.6)
+    ax2.set_ylabel(label, color="#cb181d")
+    ax2.tick_params(axis="y", labelcolor="#cb181d")
+    return ax2
 
 
 def _pick_zoom_window(ds: pd.Series, y: pd.Series, mask: np.ndarray, length: pd.Timedelta):
@@ -109,12 +129,31 @@ def make_eda(case_id: str) -> Path:
     ax_long.set_ylabel(hint.get("target_label", "y"))
     ax_long.grid(True, alpha=0.25)
     ovl = hint.get("overlay")
+    overlay_drawn = False
     if ovl and ovl in df.columns:
-        ax2 = ax_long.twinx()
-        ax2.plot(df["ds"], pd.to_numeric(df[ovl], errors="coerce"),
-                 color="#cb181d", linewidth=0.3, alpha=0.5)
-        ax2.set_ylabel(ovl, color="#cb181d")
-        ax2.tick_params(axis="y", labelcolor="#cb181d")
+        # diagnostic: how much overlay data actually exists?
+        vo = pd.to_numeric(df[ovl], errors="coerce")
+        ovl_finite = int(vo.notna().sum())
+        ovl_nonzero = int((vo.abs() > 1e-9).sum())
+        ovl_max = float(vo.max()) if ovl_finite else float("nan")
+        print(f"[{case_id}]   overlay {ovl}: finite={ovl_finite:,} "
+              f"nonzero={ovl_nonzero:,} max={ovl_max:.4g}")
+        if ovl_nonzero > 0:
+            _overlay(ax_long, df["ds"], df[ovl], ovl, hint.get("overlay_kind", "line"))
+            overlay_drawn = True
+    elif ovl:
+        print(f"[{case_id}]   overlay {ovl}: NOT in columns {list(df.columns)}")
+
+    # If no useful overlay, add a weekly-scale rolling mean of the target as a
+    # secondary trend line so the long view always shows some auxiliary structure.
+    if not overlay_drawn:
+        # window = ~7 days expressed in samples; safe lower bound for short series
+        seven_days_steps = int(pd.Timedelta("7D") / pd.Timedelta(pd.tseries.frequencies.to_offset(case.freq)))
+        window_n = max(seven_days_steps, 7)
+        rolling = y.rolling(window_n, min_periods=max(2, window_n // 4), center=True).mean()
+        ax_long.plot(df["ds"], rolling, color="#cb181d", linewidth=1.2, alpha=0.75,
+                     label="7-day rolling mean")
+        ax_long.legend(loc="upper right", fontsize=8, framealpha=0.85)
 
     # mark splits
     splits = case.split_frame(df)
@@ -136,11 +175,9 @@ def make_eda(case_id: str) -> Path:
     ax_zoom.set_title(f"Zoom: {t0.strftime('%Y-%m-%d')} → {t1.strftime('%Y-%m-%d')}",
                       loc="left", fontsize=9, color="#555")
     if ovl and ovl in sub.columns:
-        ax3 = ax_zoom.twinx()
-        ax3.plot(sub["ds"], pd.to_numeric(sub[ovl], errors="coerce"),
-                 color="#cb181d", linewidth=0.6, alpha=0.7)
-        ax3.set_ylabel(ovl, color="#cb181d")
-        ax3.tick_params(axis="y", labelcolor="#cb181d")
+        sub_v = pd.to_numeric(sub[ovl], errors="coerce")
+        if (sub_v.abs() > 1e-9).sum() > 0:
+            _overlay(ax_zoom, sub["ds"], sub[ovl], ovl, hint.get("overlay_kind", "line"))
     ax_zoom.grid(True, alpha=0.25)
 
     # nicer date ticks
