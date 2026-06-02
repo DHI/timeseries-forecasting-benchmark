@@ -43,7 +43,9 @@ CONFIG = {
     "sensor_zip_match": "cleaned_data",
     "rain_zip_match": "Raingauges",
     "level_member_match": "G71F05R_LevelInlet_System2000p1",
-    "rain_member_match": "",     # take first member if empty
+    # Aabakken (Bellinge waterworks) - local gauge for the catchment. Alternative SVK
+    # gauges near Bellinge: 5425, 5427 (Danish standard gauges).
+    "rain_member_match": "Aabakken_bellinge",
     "level_col_candidates": ["level", "water_level", "value", "depth"],
     "rain_col_candidates": ["rain", "intensity", "precip", "value"],
 }
@@ -80,6 +82,44 @@ def _pick_col(df, candidates):
     return None
 
 
+def _parse_svk_rain(path) -> pd.DataFrame:
+    """Parse a Bellinge SVK-style rain text file.
+
+    These files have an unstructured header (station info, dashes), then data lines of
+    ``date time value`` or ``datetime value``. Pandas read_csv can't handle the header,
+    so we walk the file ourselves: skip any line that doesn't start with a digit, then
+    parse the remainder as datetime + value with flexible separators.
+
+    Returns columns: ``ds`` (UTC, tz-aware), ``rain_gauge``.
+    """
+    rows = []
+    with open(path, encoding="latin-1") as f:
+        for line in f:
+            line = line.strip()
+            if not line or not line[0].isdigit():
+                continue
+            # Normalise separators: semicolon, comma, tab, multiple spaces -> single space
+            parts = line.replace(";", " ").replace("\t", " ").split()
+            if len(parts) < 2:
+                continue
+            # Try "date time value" (n=2 date tokens) then "datetime value" (n=1)
+            for n in (2, 1):
+                if len(parts) < n + 1:
+                    continue
+                try:
+                    ts = pd.to_datetime(" ".join(parts[:n]), utc=True, errors="raise")
+                    val = float(parts[n].replace(",", "."))
+                    rows.append((ts, val))
+                    break
+                except (ValueError, TypeError):
+                    continue
+    df = pd.DataFrame(rows, columns=["ds", "rain_gauge"])
+    # Filter sentinel missing values (typical: -9999 / 999)
+    df.loc[df["rain_gauge"] < 0, "rain_gauge"] = float("nan")
+    df.loc[df["rain_gauge"] > 500, "rain_gauge"] = float("nan")
+    return df
+
+
 def _scan_coverage(sensor_zip, members):
     """Read every CSV member and report sensor-instance coverage stats."""
     rows = []
@@ -89,7 +129,7 @@ def _scan_coverage(sensor_zip, members):
         try:
             lp = _io.extract_member(sensor_zip, m, _io.DATA_RAW / "_scan_tmp")
             df = _io.read_table(lp)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             rows.append((m, f"read error: {exc}", 0, 0, 0.0))
             continue
         dcol = next((c for c in df.columns if c.lower() in
@@ -107,7 +147,6 @@ def _scan_coverage(sensor_zip, members):
         ds_v = ds[valid]
         # "active" = non-zero value (sensor returning a real reading, not a sentinel zero)
         active = (v[valid].abs() > 1e-6).sum()
-        span_days = (ds_v.max() - ds_v.min()).days
         rows.append((m, f"{ds_v.min().date()}..{ds_v.max().date()}",
                      int(valid.sum()), int(active), float(active / max(1, valid.sum()))))
     rows.sort(key=lambda r: r[3], reverse=True)  # by active rows desc
@@ -174,27 +213,49 @@ def main(argv: list[str] | None = None) -> int:
     except Exception:
         rain_zip = None
     if rain_zip is not None:
-        rmembers = [m for m in _io.list_zip(rain_zip)
-                    if m.lower().endswith(".csv") and "readme" not in m.lower()]
-        rm = next((m for m in rmembers if CONFIG["rain_member_match"].lower() in m.lower()),
-                  rmembers[0] if rmembers else None)
+        all_members = _io.list_zip(rain_zip)
+        # Data-looking files only; exclude QC / metadata / event files
+        skip_substrings = ("readme", "event", "summary", "missing", "closing",
+                           "accepted", "coordinate")
+        rmembers = [m for m in all_members
+                    if m.lower().endswith((".csv", ".txt", ".dat"))
+                    and not any(s in m.lower() for s in skip_substrings)]
+        print(f"[bellinge_sewer_level] rain zip: {len(all_members)} members total, "
+              f"{len(rmembers)} data-series candidates")
+        print("[bellinge_sewer_level] candidates:")
+        for m in rmembers[:15]:
+            print(f"    {m}")
+        # Prefer time-series files (`_ts.`) > minute > hour > other
+        priority = ["_ts.", "minute", "1m", "min", "hour", "1h"]
+        def _rank(name):
+            low = name.lower()
+            for i, key in enumerate(priority):
+                if key in low:
+                    return i
+            return len(priority)
+        rmembers_sorted = sorted(rmembers, key=_rank)
+        rm = next(
+            (m for m in rmembers_sorted if CONFIG["rain_member_match"].lower() in m.lower()),
+            rmembers_sorted[0] if rmembers_sorted else None,
+        )
         if rm:
+            print(f"[bellinge_sewer_level] picked rain member: {rm}")
             rp = _io.extract_member(rain_zip, rm, _io.DATA_RAW / case.id / "extracted")
-            rain_raw = _io.read_table(rp)
-            rdcol = next((c for c in rain_raw.columns if c.lower() in
-                          {"time", "datetime", "date", "ds", "timestamp"}), rain_raw.columns[0])
-            rcol = _pick_col(rain_raw, CONFIG["rain_col_candidates"])
-            if rcol:
-                rain = pd.DataFrame(
-                    {
-                        "unique_id": case.id,
-                        "ds": pd.to_datetime(rain_raw[rdcol], utc=True),
-                        "rain_gauge": pd.to_numeric(rain_raw[rcol], errors="coerce"),
-                    }
-                )
-                rain = _io.resample_regular(rain, case.freq, agg={"rain_gauge": "sum"})
-                base = base.merge(rain, on=["unique_id", "ds"], how="left")
-                base["rain_radar_nowcast"] = base["rain_gauge"]  # placeholder until X-band added
+            rain = _parse_svk_rain(rp)
+            print(f"[bellinge_sewer_level] rain parsed: {len(rain)} rows, "
+                  f"{int(rain['rain_gauge'].notna().sum())} non-NaN, "
+                  f"{int((rain['rain_gauge'] > 0).sum())} non-zero, "
+                  f"span {rain['ds'].min()} .. {rain['ds'].max()}")
+            rain.insert(0, "unique_id", case.id)
+            rain = _io.resample_regular(rain, case.freq, agg={"rain_gauge": "sum"})
+            print(f"[bellinge_sewer_level] rain resampled: {len(rain)} rows, "
+                  f"{int(rain['rain_gauge'].notna().sum())} non-NaN, "
+                  f"{int((rain['rain_gauge'] > 0).sum())} non-zero")
+            base = base.merge(rain, on=["unique_id", "ds"], how="left")
+            print(f"[bellinge_sewer_level] after merge: rain_gauge "
+                  f"{int(base['rain_gauge'].notna().sum())} non-NaN of {len(base)}, "
+                  f"{int((base['rain_gauge'] > 0).sum())} non-zero")
+            base["rain_radar_nowcast"] = base["rain_gauge"]  # placeholder until X-band added
 
     for col in ["rain_gauge", "rain_radar_nowcast", "temp_air"]:
         if col not in base.columns:

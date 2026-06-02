@@ -18,11 +18,11 @@ flowchart LR
 
 ![EDA](../figures/cases/gesla_storm_surge_eda.png)
 
-*(EDA panel appears once a GESLA station file is downloaded.)*
-
 ## The forecasting problem
 
-Forecast the **non-tidal residual** at one tide gauge, **hourly**, **48 hours** ahead. The horizon matches operational coastal-flood-warning lead times (DMI, Met Office, NOAA). Station not yet pinned — candidates are Esbjerg (rich North Sea surge climate, Danish relevance), Hirtshals (Skagerrak/Kattegat), or Sheerness (long record, North Sea).
+Forecast the **non-tidal residual** at one tide gauge, **hourly**, **48 hours** ahead. The horizon matches operational coastal-flood-warning lead times (DMI, Met Office, NOAA).
+
+Station pinned to **Cuxhaven_Steubenhoft (`Cux`)** by `--scan` over the UK + Atlantic NW Europe bounding box: 108 years (1917–2024), shallow German Bight shelf, surge-rich climate (the 1962 Hamburg flood site), operational benchmark for the Elbe estuary and Hamburg port. Long-record + recent + active makes it the highest-leverage single station in the open data.
 
 ## Dynamics and drivers
 
