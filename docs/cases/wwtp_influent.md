@@ -10,13 +10,13 @@ The Mendeley N₂O WWTP dataset (Cembrowicz et al., 2024) is **two years of high
 
 ```mermaid
 flowchart LR
-    S([Sewer catchment]) --> I[Influent<br/>INLET.Q]
+    S([Sewer catchment]) --> I[Influent INLET.Q]
     R([Storm water]) -.->|RDII| I
     I --> PC[Primary clarifier]
     PC --> AT[Aeration tanks]
     AT --> SC[Secondary clarifier]
     SC --> E([Effluent])
-    AT --> N2O([N₂O])
+    AT --> X([N2O emissions])
     BL([Blowers]) -.->|air| AT
 ```
 

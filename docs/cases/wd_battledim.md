@@ -10,20 +10,20 @@ A water distribution network delivers treated drinking water from sources throug
 
 ```mermaid
 flowchart LR
-    R1[Reservoir 1] --> P1[PUMP_1 inlet]
-    R2[Reservoir 2] --> P2[PUMP_2 inlet]
-    P1 --> N[Distribution network<br/>782 nodes]
-    P2 --> N
+    R1[Reservoir 1] --> N[Distribution network]
+    R2[Reservoir 2] --> N
     N --> T[Tanks]
-    N --> C([~10,000 consumers])
-    L([Leaks 2019]) -.->|added| N
+    N --> C([10000 consumers])
+    L([Leaks in 2019]) -.->|added| N
 ```
 
 ![EDA](../figures/cases/wd_battledim_eda.png)
 
 ## The forecasting problem
 
-Forecast **total inlet flow** (sum of all PUMP_* columns) at **hourly** resolution, **24 hours** ahead. The hourly cadence matches operational pump scheduling; 24 h spans a full diurnal cycle. We deliberately sum across pumps because **the individual pumps alternate** (operational scheduling): forecasting one pump alone is forecasting a pump-on/off switch rather than network demand.
+Forecast **total network demand** (sum of consumer demand across all nodes from `SCADA_Demands.csv`) at **hourly** resolution, **24 hours** ahead. The hourly cadence matches operational pump scheduling; 24 h spans a full diurnal cycle.
+
+We deliberately do **not** use `SCADA_Flows.csv`: its three channels are `PUMP_1` (refill schedule, ON/OFF on tank setpoint — not demand) plus two internal pipe flowmeters at sub-zone boundaries. Demand flows from the *consumer side*, smoothed by the tank.
 
 The data being simulated is a feature: ground truth is exact, no sensor noise, demand drivers are clean. The case is also the standard reference for leak-detection research, so methods have an obvious downstream application.
 

@@ -14,6 +14,21 @@ uv run pytest           # tests run entirely on synthetic data (no network, no G
 uv run ruff check .
 ```
 
+## Before pushing
+
+CI runs both `ruff check` and `pytest`. **Run the same locally first** so a failing CI
+isn't a surprise:
+
+```bash
+git add -A                              # stage everything; don't try to be selective
+uv run python scripts/precheck.py       # ruff + pytest, plus prints uncommitted files
+git commit -m "..."
+git push
+```
+
+`scripts/precheck.py` also prints `git status` so any unstaged changes are visible
+before you push — easier than chasing a failing CI on a file that didn't get added.
+
 ## Adding a case
 
 Create `src/tsforecastbench/cases/<case_id>/` with:
