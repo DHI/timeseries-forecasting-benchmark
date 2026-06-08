@@ -43,9 +43,11 @@ CONFIG = {
     "sensor_zip_match": "cleaned_data",
     "rain_zip_match": "Raingauges",
     "level_member_match": "G71F05R_LevelInlet_System2000p1",
-    # Aabakken (Bellinge waterworks) - local gauge for the catchment. Alternative SVK
-    # gauges near Bellinge: 5425, 5427 (Danish standard gauges).
-    "rain_member_match": "Aabakken_bellinge",
+    # SVK 5425 (DMI standard gauge near Bellinge). Aabakken (the local Bellinge
+    # waterworks gauge) only covers 2017-2018; 5425/5427 typically cover the full
+    # Bellinge level-series period 2010-2020. If 5425 has gaps, try "5427"; if both
+    # are short, concatenating multiple gauges is the next step.
+    "rain_member_match": "5425",
     "level_col_candidates": ["level", "water_level", "value", "depth"],
     "rain_col_candidates": ["rain", "intensity", "precip", "value"],
 }
@@ -102,12 +104,15 @@ def _parse_svk_rain(path) -> pd.DataFrame:
             parts = line.replace(";", " ").replace("\t", " ").split()
             if len(parts) < 2:
                 continue
-            # Try "date time value" (n=2 date tokens) then "datetime value" (n=1)
+            # Try "date time value" (n=2 date tokens) then "datetime value" (n=1).
+            # dayfirst=True because SVK / DMI Danish files use dd-mm-yyyy.
             for n in (2, 1):
                 if len(parts) < n + 1:
                     continue
                 try:
-                    ts = pd.to_datetime(" ".join(parts[:n]), utc=True, errors="raise")
+                    ts = pd.to_datetime(
+                        " ".join(parts[:n]), utc=True, dayfirst=True, errors="raise"
+                    )
                     val = float(parts[n].replace(",", "."))
                     rows.append((ts, val))
                     break
