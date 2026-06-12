@@ -5,7 +5,7 @@
 ## What this is
 
 A WWTP receives the urban sewer catchment's output and removes pollutants before discharging to a river or the sea. **Influent flow** is the most important driver of plant operation: underloads waste energy, overloads cause biomass washout and permit excursions. Short-range influent forecasts feed energy-intensive aeration control (~50 % of plant electricity).
-
+I wouldn't call it mendeley, seems it just seems to be the name of the platform hosting the data; better refer to plant name or something else
 The Mendeley N₂O WWTP dataset (Cembrowicz et al., 2024) is **two years of high-resolution data from a single line of a 350,000-PE municipal plant** (June 2022 — June 2024). Native sampling is 2-minute; **49 columns** cover the influent, biological-tank measurements (NH₄, NO₃, PO₄, DO, suspended solids, temperature, N₂O), aeration airflows, valves, and process phase.
 
 ```mermaid
@@ -23,7 +23,7 @@ flowchart LR
 ![EDA](../figures/cases/wwtp_influent_eda.png)
 
 ## The forecasting problem
-
+I agree with the resolution. Maybe the horizon can be limited to 6 hours, or both 6 and 24 hours.
 Forecast **`INLET.Q value`** (total raw influent flow) resampled to **hourly**, **24 hours** ahead. The 24 h horizon matches aeration scheduling and wet-weather response decisions. Pilot is univariate; the dataset's richness makes an exogenous-aware version the highest-leverage Phase B follow-up.
 
 ## Dynamics and drivers
@@ -38,7 +38,7 @@ Structurally identical to urban water demand but inverted in time and amplified 
 - **Plant internals** for control-aware variants (NH₄, DO, temperature).
 
 Two **secondary targets** trivially share this source: **effluent NH₄** (compliance) and **N₂O** (the dataset's published focus, climate-relevant). Both should become their own cases once the framework supports multi-target sources.
-
+I would limit to inflows and not outflows, as that's a completely different task and where usually we promote the use of WEST for mechanistic predictions. To differentiate from bellinge case there could be a focus on influent concentrations (if that is actually provided as a measurement in the dataset)
 ## Operational relevance
 
 Aeration energy optimisation (5–15 % savings = six-figure annual on a 350k-PE plant). Wet-weather process protection (clarifier washout prevention, bypass timing, first-flush storage). Sludge processing planning, permit compliance, energy-market bidding. Most WWTPs today run no quantitative influent forecast or only a seasonal-naive operator overlay.
