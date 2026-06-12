@@ -4,7 +4,7 @@
 
 ## What this is
 
-A water distribution network delivers treated drinking water from sources through a pressurised pipe system to consumers. There's almost no storage *inside* the network, so total inlet flow equals total consumer **demand** in near-real-time. Forecasting demand 24 hours ahead drives pump scheduling, energy contracts, and is the baseline against which leaks are detected.
+A water distribution network delivers treated drinking water from sources through a pressurised pipe system to consumers. There's almost no storage *inside* the network, so total inlet flow equals total consumer **demand** plus leakage in near-real-time. Forecasting demand 24 hours ahead drives pump scheduling, energy contracts, and is the baseline against which leaks are detected.
 
 **BattLeDIM 2020** (Vrachimis et al., 2020) models **L-Town**, a real Cyprus network with 2 reservoirs, 782 nodes, 905 pipes, ~10,000 consumers. The data is **EPANET-simulated SCADA at 5-min**, covering 2018 (training) and 2019 (evaluation with introduced leak events).
 
@@ -16,11 +16,11 @@ flowchart LR
     N --> C([10000 consumers])
     L([Leaks in 2019]) -.->|added| N
 ```
-
+Which data is visualized here?
 ![EDA](../figures/cases/wd_battledim_eda.png)
 
 ## The forecasting problem
-
+Good to check this also with CRCO who has experience with WD
 Forecast **total network demand** (sum of consumer demand across all nodes from `SCADA_Demands.csv`) at **hourly** resolution, **24 hours** ahead. The hourly cadence matches operational pump scheduling; 24 h spans a full diurnal cycle.
 
 We deliberately do **not** use `SCADA_Flows.csv`: its three channels are `PUMP_1` (refill schedule, ON/OFF on tank setpoint — not demand) plus two internal pipe flowmeters at sub-zone boundaries. Demand flows from the *consumer side*, smoothed by the tank.
