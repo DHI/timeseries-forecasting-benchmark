@@ -21,6 +21,7 @@ from tsforecastbench.bench.methods import (
     AutoARIMAForecaster,
     AutoETSForecaster,
     Climatology,
+    DLinearForecaster,
     LightGBMExoForecaster,
     LightGBMForecaster,
     LinearLagsExoForecaster,
@@ -29,6 +30,7 @@ from tsforecastbench.bench.methods import (
     MLPForecaster,
     Persistence,
     SeasonalNaive,
+    ThetaForecaster,
 )
 from tsforecastbench.bench.viz import render_matrix
 from tsforecastbench.data.registry import discover_cases
@@ -47,9 +49,11 @@ def build_methods():
         Climatology(),
         AutoARIMAForecaster(),
         AutoETSForecaster(),
+        ThetaForecaster(),
         LinearLagsForecaster(),
         LightGBMForecaster(),
         MLPForecaster(),
+        DLinearForecaster(),
         LinearLagsExoForecaster(),
         LightGBMExoForecaster(),
     ]

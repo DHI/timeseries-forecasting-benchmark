@@ -95,3 +95,38 @@ class AutoETSForecaster(Forecaster):
         y_hat = fcst["AutoETS"].to_numpy().astype(np.float64)
         future = self._future_index(case, history["ds"].max(), horizon)
         return pd.DataFrame({"ds": future, "y_hat": y_hat})
+
+
+class ThetaForecaster(Forecaster):
+    """Theta method (auto-optimized) via statsforecast — a strong, cheap classical
+    benchmark, often the one to beat among non-ML methods. Non-seasonal by default."""
+
+    name = "Theta"
+
+    def __init__(self, season_length: int = 1, max_train_steps: int = 8000):
+        self.season_length = season_length
+        self.max_train_steps = max_train_steps
+
+    def fit(self, case: Case, train: pd.DataFrame) -> None:
+        from statsforecast import StatsForecast
+        from statsforecast.models import AutoTheta
+
+        df = train[["unique_id", "ds", "y"]].copy()
+        if len(df) > self.max_train_steps:
+            df = df.iloc[-self.max_train_steps :]
+        ds = pd.to_datetime(df["ds"])
+        if ds.dt.tz is not None:
+            ds = ds.dt.tz_convert("UTC").dt.tz_localize(None)
+        df["ds"] = ds
+        self._sf = StatsForecast(
+            models=[AutoTheta(season_length=self.season_length)], freq=case.freq, n_jobs=1,
+        )
+        self._sf.fit(df)
+        self._col = "AutoTheta"
+
+    def predict(self, case: Case, history: pd.DataFrame, horizon: int,
+                future_exog: pd.DataFrame | None = None) -> pd.DataFrame:
+        fcst = self._sf.predict(h=horizon)
+        y_hat = fcst[self._col].to_numpy().astype(np.float64)
+        future = self._future_index(case, history["ds"].max(), horizon)
+        return pd.DataFrame({"ds": future, "y_hat": y_hat})

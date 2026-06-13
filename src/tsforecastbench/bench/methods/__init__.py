@@ -1,7 +1,12 @@
 """Method wrappers - every method exposes the same fit/predict interface."""
 
 from tsforecastbench.bench.methods.base import Forecaster
-from tsforecastbench.bench.methods.classical import AutoARIMAForecaster, AutoETSForecaster
+from tsforecastbench.bench.methods.classical import (
+    AutoARIMAForecaster,
+    AutoETSForecaster,
+    ThetaForecaster,
+)
+from tsforecastbench.bench.methods.dl import DLinearForecaster
 from tsforecastbench.bench.methods.ml import (
     LightGBMExoForecaster,
     LightGBMForecaster,
@@ -20,6 +25,7 @@ __all__ = [
     "AutoARIMAForecaster",
     "AutoETSForecaster",
     "Climatology",
+    "DLinearForecaster",
     "Forecaster",
     "LightGBMExoForecaster",
     "LightGBMForecaster",
@@ -29,4 +35,5 @@ __all__ = [
     "MeanBaseline",
     "Persistence",
     "SeasonalNaive",
+    "ThetaForecaster",
 ]

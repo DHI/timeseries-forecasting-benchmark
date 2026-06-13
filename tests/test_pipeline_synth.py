@@ -98,6 +98,14 @@ def test_exogenous_method_on_univariate_case():
     assert (res["status"] == "ok").all()
 
 
+def test_dlinear_and_theta_run():
+    from tsforecastbench.bench.methods import DLinearForecaster, ThetaForecaster
+
+    res = run_case(get_case("usgs_river_discharge"),
+                   [DLinearForecaster(), ThetaForecaster()], prefer_synth=True)
+    assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
+
+
 def test_fraction_split_handles_truncated_obs():
     """CAMELS uses fraction splits; even if obs end early the test window is scorable."""
     case = get_case("camels_dk_discharge")
