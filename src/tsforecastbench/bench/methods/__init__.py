@@ -7,6 +7,7 @@ from tsforecastbench.bench.methods.classical import (
     ThetaForecaster,
 )
 from tsforecastbench.bench.methods.dl import DLinearForecaster
+from tsforecastbench.bench.methods.fm import ChronosForecaster
 from tsforecastbench.bench.methods.ml import (
     LightGBMExoForecaster,
     LightGBMForecaster,
@@ -24,6 +25,7 @@ from tsforecastbench.bench.methods.naive import (
 __all__ = [
     "AutoARIMAForecaster",
     "AutoETSForecaster",
+    "ChronosForecaster",
     "Climatology",
     "DLinearForecaster",
     "Forecaster",

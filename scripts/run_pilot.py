@@ -67,6 +67,8 @@ def main() -> int:
     p.add_argument("--fast", action="store_true",
                    help="Single hold-out instead of rolling-origin (faster, noisier).")
     p.add_argument("--origins", type=int, default=16, help="Rolling origins per cell.")
+    p.add_argument("--with-fm", action="store_true",
+                   help="Add the zero-shot foundation model (Chronos-Bolt; needs the 'fm' extra).")
     args = p.parse_args()
 
     all_cases = discover_cases()
@@ -77,6 +79,10 @@ def main() -> int:
         return 1
 
     methods = build_methods()
+    if args.with_fm:
+        from tsforecastbench.bench.methods import ChronosForecaster
+
+        methods.append(ChronosForecaster())
     method_order = [m.name for m in methods]
 
     mode = "single hold-out" if args.fast else f"rolling-origin ({args.origins} origins)"

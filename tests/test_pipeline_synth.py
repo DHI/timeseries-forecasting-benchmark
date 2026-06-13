@@ -106,6 +106,21 @@ def test_dlinear_and_theta_run():
     assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
 
 
+def test_methods_package_imports_without_fm_deps():
+    """The methods package (incl. the FM wrapper) must import without torch/chronos."""
+    import tsforecastbench.bench.methods as m
+
+    assert hasattr(m, "ChronosForecaster")
+
+
+def test_chronos_runs_if_installed():
+    pytest.importorskip("chronos")
+    from tsforecastbench.bench.methods import ChronosForecaster
+
+    res = run_case(get_case("ndbc_waves"), [ChronosForecaster()], prefer_synth=True)
+    assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
+
+
 def test_fraction_split_handles_truncated_obs():
     """CAMELS uses fraction splits; even if obs end early the test window is scorable."""
     case = get_case("camels_dk_discharge")
