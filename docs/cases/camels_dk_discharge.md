@@ -19,9 +19,13 @@ flowchart LR
 
 ![EDA](../figures/cases/camels_dk_discharge_eda.png)
 
+*EDA panel for catchment `37470707`. **To regenerate (Rocco, PR #2):** check the y-axis
+units — discharge should read in mm/day or m³/s with the unit on the axis label; the
+current panel looks off. The schematic above is also a candidate for a clearer redraw.*
+
 ## The forecasting problem
 
-Forecast **`q_obs`** for the next **7 days** at one gauged catchment. The 7-day horizon is the operational window for reservoir release, environmental-flow compliance, and short-range flood warnings on slow-responding catchments.
+Forecast **`q_obs`** for the next **7 days** at one gauged catchment. *(Rocco, PR #2: agrees the 7-day horizon is appropriate.)* The 7-day horizon is the operational window for reservoir release, environmental-flow compliance, and short-range flood warnings on slow-responding catchments.
 
 We use catchment **`37470707`**, picked from `CAMELS_DK_signature_obs_based.csv` for **BFI 0.97** (very groundwater-dominated) and **slope 0.88** (lowland). That makes this catchment a regime where persistence is a hard baseline to beat — the deliberate worked example.
 
@@ -37,7 +41,7 @@ The signal is dominated by slow baseflow recession from the aquifer, modulated b
 
 ## Operational relevance
 
-Water-resource planning (utilities, reservoir scheduling), regulatory minimum-flow compliance (EU WFD), short-range flood warnings for slow-responding catchments, and short-range bias correction of the operational DK-model. The realistic operational pipeline is **NWP precipitation → DK-model → ML post-processing against recent obs**; the benchmark question is whether pure ML beats that, or whether the hybrid is the right answer.
+Water-resource planning (utilities, reservoir scheduling), regulatory minimum-flow compliance (EU WFD), short-range flood warnings for slow-responding catchments, and short-range bias correction of the operational DK-model. The aspirational operational pipeline is **NWP precipitation → DK-model → ML post-processing against recent obs**; the benchmark question is whether pure ML beats that, or whether the hybrid is the right answer. *(Rocco, PR #2, questioned exactly how the ML post-processing step would work here — so we frame it as an open hybrid question, not an established pipeline. Note it also depends on the process-model-reference scope decision still open with Jesper — see [`review_responses_pr2.md`](../review_responses_pr2.md) E4.)*
 
 ## References
 
