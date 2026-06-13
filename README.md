@@ -46,6 +46,7 @@ point via the Open-Meteo archive API — no CDS account needed. See
 |---|---|---|---|---|---|
 | `camels_dk_discharge` | hydrology (groundwater) | river discharge | daily | 7 d | CAMELS-DK |
 | `usgs_river_discharge` | hydrology (flashy) | river discharge | daily | 7 d | USGS NWIS |
+| `usgs_snowmelt_discharge` | hydrology (snowmelt) | river discharge | daily | 7 d | USGS NWIS |
 | `usgs_groundwater` | groundwater | water-table depth | daily | 30 d | USGS NWIS |
 | `usgs_stream_temp` | water quality | river temperature | daily | 7 d | USGS NWIS |
 | `bellinge_sewer_level` | urban drainage | sewer level | 15 min | 6 h | Bellinge (DTU) |

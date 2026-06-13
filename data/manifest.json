@@ -34,6 +34,11 @@
     "rows": 4749,
     "sha256": "3e8d508145b82bdedc3db89222203aa2b45fe5a5768e9436d70a7d46b1be4ba5"
   },
+  "usgs_snowmelt_discharge": {
+    "parquet": "data\\processed\\usgs_snowmelt_discharge.parquet",
+    "rows": 4749,
+    "sha256": "c9caefff3cacd024175d6d0e2fc97fee4f6863f41987477285110990c5e836e8"
+  },
   "usgs_stream_temp": {
     "parquet": "data\\processed\\usgs_stream_temp.parquet",
     "rows": 3653,

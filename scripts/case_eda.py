@@ -37,6 +37,7 @@ CASE_HINTS = {
     "camels_dk_discharge":  {"overlay": "precip",            "overlay_kind": "rain",  "zoom": "365D", "target_label": "Discharge (mm/d)"},
     "usgs_river_discharge": {"overlay": "precip",            "overlay_kind": "rain",  "zoom": "365D", "target_label": "Discharge (m3/s)"},
     "usgs_groundwater":     {"overlay": "precip",            "overlay_kind": "rain",  "zoom": "365D", "target_label": "Depth to water (m)"},
+    "usgs_snowmelt_discharge": {"overlay": "temp_air",       "overlay_kind": "line",  "zoom": "365D", "target_label": "Discharge (m3/s)"},
     "usgs_stream_temp":     {"overlay": "temp_air",          "overlay_kind": "line",  "zoom": "365D", "target_label": "Water temp (C)"},
     "bellinge_sewer_level": {"overlay": "rain_gauge",        "overlay_kind": "rain",  "zoom": "14D",  "target_label": "Sewer level (m)"},
     "wd_battledim":         {"overlay": None,                "overlay_kind": None,    "zoom": "14D",  "target_label": "Inlet flow (L/s)"},
