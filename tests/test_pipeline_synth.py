@@ -69,6 +69,19 @@ def test_lightgbm_runs_on_one_case():
     assert (res["status"] == "ok").all()
 
 
+def test_rolling_matrix_runs():
+    from tsforecastbench.bench.eval import run_case_rolling
+
+    case = get_case("usgs_river_discharge")
+    methods = [Persistence(), LightGBMExoForecaster()]
+    res = run_case_rolling(case, methods, n_origins=6, prefer_synth=True)
+    assert len(res) == len(methods) * 5
+    assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
+    # pooled rolling score is finite and persistence skill-vs-itself is ~0
+    pers = res[(res.method == "Persistence") & (res.metric == "Skill_vs_Persistence")]["value"]
+    assert abs(float(pers.iloc[0])) < 1e-6
+
+
 @pytest.mark.parametrize("cid", ["gesla_storm_surge", "ndbc_waves", "camels_dk_discharge"])
 def test_exogenous_methods_run(cid):
     """Exogenous-aware windowed ML runs on every case that declares covariates."""
