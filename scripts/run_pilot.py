@@ -107,18 +107,29 @@ def main() -> int:
     print(f"Running pilot: {len(cases)} case(s) x {len(methods)} method(s) - {mode}")
     print(f"Data mode: {'synthetic' if args.synth else 'real-or-synth fallback'}\n")
 
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     all_results = []
     for case in cases:
         print(f"=== {case.id} ({case.domain}, freq={case.freq}, horizon={case.horizon_primary}) ===")
-        if args.fast:
-            res = run_case(case, methods, prefer_synth=args.synth)
-        else:
-            res = run_case_rolling(case, methods, n_origins=args.origins, prefer_synth=args.synth)
+        try:
+            if args.fast:
+                res = run_case(case, methods, prefer_synth=args.synth)
+            else:
+                res = run_case_rolling(case, methods, n_origins=args.origins, prefer_synth=args.synth)
+        except Exception as exc:  # keep a long unattended run going if one case fails
+            print(f"  [case-error] {case.id}: {type(exc).__name__}: {exc}")
+            continue
         all_results.append(res)
+        # incremental save so a multi-hour run is never all-or-nothing
+        pd.concat(all_results, ignore_index=True).to_parquet(
+            RESULTS_DIR / "pilot_metrics.parquet", index=False
+        )
         print()
 
+    if not all_results:
+        print("No case produced results.")
+        return 1
     results = pd.concat(all_results, ignore_index=True)
-    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     results.to_parquet(RESULTS_DIR / "pilot_metrics.parquet", index=False)
 
     render_matrix(
