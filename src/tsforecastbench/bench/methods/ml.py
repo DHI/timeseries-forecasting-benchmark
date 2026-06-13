@@ -1,9 +1,13 @@
 """Windowed ML methods - Nixtla mlforecast with three sklearn-style estimators.
 
-LinearLagsForecaster, MLPForecaster, LightGBMForecaster all share the same lag +
-calendar feature pipeline; they differ only in the underlying regressor. Univariate
-for the pilot (mlforecast wants all dynamic exogenous at predict time; the rolling
-evaluator will supply them in Phase B).
+LinearLags (Ridge), LightGBM and MLP share one lag + calendar feature pipeline; they
+differ only in the underlying regressor. Each comes in two flavours:
+
+  * univariate (target lags + calendar features only) — the Tier-1 column;
+  * exogenous-aware (``use_exogenous=True``) — additionally feeds the case's declared
+    covariates as dynamic features. At predict time their future values come from
+    `future_exog` (a perfect-forecast proxy supplied by the eval loop), which is the
+    Tier-2 column. The univariate/exogenous pair exposes how much the covariates help.
 """
 
 from __future__ import annotations
@@ -37,6 +41,24 @@ def _lags_for(freq: str) -> list[int]:
     return [1, 2, 3]
 
 
+def _exo_cols(case: Case) -> list[str]:
+    """Declared covariates, de-duplicated (a column may be both historical and known-future)."""
+    return list(dict.fromkeys([*case.exogenous, *case.exogenous_known_future]))
+
+
+def _naive_ds(ds) -> pd.Series:
+    ds = pd.to_datetime(pd.Series(ds) if not isinstance(ds, pd.Series) else ds, utc=True)
+    return ds.dt.tz_convert("UTC").dt.tz_localize(None)
+
+
+def _fit_len(vals: np.ndarray, n: int, fill: float) -> np.ndarray:
+    if len(vals) >= n:
+        return vals[:n]
+    out = np.full(n, fill, dtype=float)
+    out[: len(vals)] = vals
+    return out
+
+
 class _WindowedMLBase(Forecaster):
     """Shared lag-feature pipeline; subclasses provide the sklearn regressor.
 
@@ -47,6 +69,11 @@ class _WindowedMLBase(Forecaster):
 
     name = "WindowedML"
     max_train_steps: int | None = None
+    use_exogenous: bool = False
+
+    def __init__(self):
+        self.uses_exogenous = self.use_exogenous
+        self._exo: list[str] = []
 
     def _make_model(self):
         raise NotImplementedError
@@ -54,13 +81,21 @@ class _WindowedMLBase(Forecaster):
     def fit(self, case: Case, train: pd.DataFrame) -> None:
         from mlforecast import MLForecast
 
-        df = train[["unique_id", "ds", "y"]].copy()
+        self._exo = _exo_cols(case) if self.use_exogenous else []
+        cols = ["unique_id", "ds", "y", *self._exo]
+        df = train[[c for c in cols if c in train.columns]].copy()
         if self.max_train_steps and len(df) > self.max_train_steps:
             df = df.iloc[-self.max_train_steps :]
-        ds = pd.to_datetime(df["ds"])
-        if ds.dt.tz is not None:
-            ds = ds.dt.tz_convert("UTC").dt.tz_localize(None)
-        df["ds"] = ds
+        df["ds"] = _naive_ds(df["ds"]).to_numpy()
+        for c in self._exo:
+            df[c] = pd.to_numeric(df[c], errors="coerce")
+        # last known covariate value, used to fill any future gaps at predict time
+        self._last_exo = {
+            c: float(df[c].ffill().iloc[-1]) if c in df and df[c].notna().any() else 0.0
+            for c in self._exo
+        }
+        if self._exo:
+            df[self._exo] = df[self._exo].ffill().fillna(0.0)
 
         self._fcst = MLForecast(
             models=[self._make_model()],
@@ -71,11 +106,31 @@ class _WindowedMLBase(Forecaster):
         self._fcst.fit(df, static_features=[])
         self._model_col = type(next(iter(self._fcst.models.values()))).__name__
 
-    def predict(self, case: Case, history: pd.DataFrame, horizon: int) -> pd.DataFrame:
-        preds = self._fcst.predict(h=horizon)
+    def predict(self, case: Case, history: pd.DataFrame, horizon: int,
+                future_exog: pd.DataFrame | None = None) -> pd.DataFrame:
+        if self._exo:
+            x_df = self._future_X(case, history, horizon, future_exog)
+            preds = self._fcst.predict(h=horizon, X_df=x_df)
+        else:
+            preds = self._fcst.predict(h=horizon)
         y_hat = preds[self._model_col].to_numpy().astype(np.float64)
         future = self._future_index(case, history["ds"].max(), horizon)
         return pd.DataFrame({"ds": future, "y_hat": y_hat})
+
+    def _future_X(self, case: Case, history: pd.DataFrame, horizon: int,
+                  future_exog: pd.DataFrame | None) -> pd.DataFrame:
+        """Build the mlforecast X_df of future covariate values for the horizon."""
+        last = _naive_ds(history["ds"].max()).iloc[0]
+        fidx = pd.date_range(start=last, periods=horizon + 1, freq=case.freq)[1:]
+        data: dict = {"unique_id": case.id, "ds": fidx}
+        for c in self._exo:
+            fill = self._last_exo.get(c, 0.0)
+            if future_exog is not None and c in future_exog.columns:
+                vals = _fit_len(pd.to_numeric(future_exog[c], errors="coerce").to_numpy(), horizon, fill)
+            else:
+                vals = np.full(horizon, fill)
+            data[c] = np.where(np.isfinite(vals), vals, fill)
+        return pd.DataFrame(data)
 
 
 class LightGBMForecaster(_WindowedMLBase):
@@ -111,3 +166,13 @@ class MLPForecaster(_WindowedMLBase):
             early_stopping=True,
             random_state=0,
         )
+
+
+class LightGBMExoForecaster(LightGBMForecaster):
+    name = "LightGBM+exo"
+    use_exogenous = True
+
+
+class LinearLagsExoForecaster(LinearLagsForecaster):
+    name = "LinearLags+exo"
+    use_exogenous = True

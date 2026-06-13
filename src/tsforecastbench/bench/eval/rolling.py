@@ -41,8 +41,10 @@ def run_leadtime_curve(
         raise ValueError(f"Case {case.id}: empty test split")
 
     H = _horizon_to_steps(max_horizon or case.horizon_primary, case.freq)
-    fit_cols = ["y", *case.exogenous, *case.exogenous_known_future]
+    exo_cols = list(dict.fromkeys([*case.exogenous, *case.exogenous_known_future]))
+    fit_cols = ["y", *exo_cols]
     full_fit = _complete_for_fit(full, fit_cols)
+    exo_present = [c for c in exo_cols if c in full_fit.columns]
 
     test_start = len(train_val)
     last_origin = len(full) - H - 1
@@ -60,9 +62,14 @@ def run_leadtime_curve(
         n_ok = 0
         for o in origins:
             history = full_fit.iloc[: o + 1]
+            future_exog = (
+                full_fit.iloc[o + 1 : o + 1 + H][["ds", *exo_present]] if exo_present else None
+            )
             try:
                 method.fit(case, history)
-                y_hat = method.predict(case, history, H)["y_hat"].to_numpy(dtype=float)
+                y_hat = method.predict(case, history, H, future_exog=future_exog)["y_hat"].to_numpy(
+                    dtype=float
+                )
             except Exception:
                 continue
             actual = raw_y[o + 1 : o + 1 + H]

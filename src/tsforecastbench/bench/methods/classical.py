@@ -48,7 +48,8 @@ class AutoARIMAForecaster(Forecaster):
         )
         self._sf.fit(df)
 
-    def predict(self, case: Case, history: pd.DataFrame, horizon: int) -> pd.DataFrame:
+    def predict(self, case: Case, history: pd.DataFrame, horizon: int,
+                future_exog: pd.DataFrame | None = None) -> pd.DataFrame:
         fcst = self._sf.predict(h=horizon)
         y_hat = fcst["AutoARIMA"].to_numpy().astype(np.float64)
         last_ds = history["ds"].max()
@@ -88,7 +89,8 @@ class AutoETSForecaster(Forecaster):
         )
         self._sf.fit(df)
 
-    def predict(self, case: Case, history: pd.DataFrame, horizon: int) -> pd.DataFrame:
+    def predict(self, case: Case, history: pd.DataFrame, horizon: int,
+                future_exog: pd.DataFrame | None = None) -> pd.DataFrame:
         fcst = self._sf.predict(h=horizon)
         y_hat = fcst["AutoETS"].to_numpy().astype(np.float64)
         future = self._future_index(case, history["ds"].max(), horizon)

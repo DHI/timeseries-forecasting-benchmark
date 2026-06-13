@@ -55,8 +55,16 @@ def run_case(case: Case, methods: list[Forecaster], prefer_synth: bool = False) 
     horizon_steps = min(horizon_steps, len(test))
 
     # Impute training gaps for methods that need a complete target/covariates.
-    fit_cols = ["y", *case.exogenous, *case.exogenous_known_future]
+    exo_cols = list(dict.fromkeys([*case.exogenous, *case.exogenous_known_future]))
+    fit_cols = ["y", *exo_cols]
     train_fit = _complete_for_fit(train_val, fit_cols)
+
+    # Future covariates over the horizon (a perfect-forecast proxy), imputed and passed to
+    # exogenous-aware methods. Univariate methods receive but ignore it.
+    future_exog = None
+    if exo_cols:
+        fe = _complete_for_fit(test.head(horizon_steps), exo_cols)
+        future_exog = fe[["ds", *[c for c in exo_cols if c in fe.columns]]]
 
     # Test target kept raw; we score only on finite (observed) points.
     y_true_raw = test["y"].head(horizon_steps).to_numpy(dtype=float)
@@ -66,29 +74,32 @@ def run_case(case: Case, methods: list[Forecaster], prefer_synth: bool = False) 
     y_train = train_fit["y"].to_numpy(dtype=float)
     season = _default_season_length(case.freq)
     ref_persistence = np.full(horizon_steps, float(train_fit["y"].iloc[-1]))
+    ref_mean = np.full(horizon_steps, float(np.nanmean(y_train)))
 
+    metric_names = ("MAE", "RMSE", "MASE", "Skill_vs_Persistence", "Skill_vs_Mean")
     records: list[dict] = []
     for method in methods:
         t0 = time.perf_counter()
         try:
             method.fit(case, train_fit)
-            preds = method.predict(case, train_fit, horizon_steps)
+            preds = method.predict(case, train_fit, horizon_steps, future_exog=future_exog)
             y_hat = preds["y_hat"].to_numpy(dtype=float)
             assert len(y_hat) == horizon_steps, (
                 f"{method.name} returned {len(y_hat)} predictions, expected {horizon_steps}"
             )
             if finite.sum() == 0:
                 raise ValueError("no finite test points to score")
-            yt, yh, yr = y_true_raw[finite], y_hat[finite], ref_persistence[finite]
+            yt, yh = y_true_raw[finite], y_hat[finite]
             metrics = {
                 "MAE": mae(yt, yh),
                 "RMSE": rmse(yt, yh),
                 "MASE": mase(yt, yh, y_train, season=min(season, len(y_train) // 2)),
-                "Skill_vs_Persistence": skill_score(yt, yh, yr),
+                "Skill_vs_Persistence": skill_score(yt, yh, ref_persistence[finite]),
+                "Skill_vs_Mean": skill_score(yt, yh, ref_mean[finite]),
             }
             status = "ok"
         except Exception as exc:
-            metrics = {k: float("nan") for k in ("MAE", "RMSE", "MASE", "Skill_vs_Persistence")}
+            metrics = {k: float("nan") for k in metric_names}
             status = f"error: {type(exc).__name__}: {str(exc)[:70]}"
         seconds = time.perf_counter() - t0
         for metric_name, value in metrics.items():

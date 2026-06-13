@@ -17,7 +17,9 @@ from tsforecastbench.bench.eval.metrics import mae, mase, rmse, skill_score  # n
 from tsforecastbench.bench.eval.rolling import run_leadtime_curve  # noqa: E402
 from tsforecastbench.bench.methods import (  # noqa: E402
     Climatology,
+    LightGBMExoForecaster,
     LightGBMForecaster,
+    LinearLagsExoForecaster,
     MeanBaseline,
     Persistence,
     SeasonalNaive,
@@ -58,12 +60,28 @@ def test_baselines_run(cid):
     case = get_case(cid)
     methods = [MeanBaseline(), Persistence(), SeasonalNaive(), Climatology()]
     res = run_case(case, methods, prefer_synth=True)
-    assert len(res) == len(methods) * 4  # 4 metrics each
+    assert len(res) == len(methods) * 5  # MAE, RMSE, MASE, Skill_vs_Persistence, Skill_vs_Mean
     assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
 
 
 def test_lightgbm_runs_on_one_case():
     res = run_case(get_case("ndbc_waves"), [LightGBMForecaster()], prefer_synth=True)
+    assert (res["status"] == "ok").all()
+
+
+@pytest.mark.parametrize("cid", ["gesla_storm_surge", "ndbc_waves", "camels_dk_discharge"])
+def test_exogenous_methods_run(cid):
+    """Exogenous-aware windowed ML runs on every case that declares covariates."""
+    case = get_case(cid)
+    methods = [LinearLagsExoForecaster(), LightGBMExoForecaster()]
+    res = run_case(case, methods, prefer_synth=True)
+    assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
+    assert all(m.uses_exogenous for m in methods)
+
+
+def test_exogenous_method_on_univariate_case():
+    """+exo variants reduce to univariate (no crash) on a case with no covariates."""
+    res = run_case(get_case("wd_battledim"), [LightGBMExoForecaster()], prefer_synth=True)
     assert (res["status"] == "ok").all()
 
 

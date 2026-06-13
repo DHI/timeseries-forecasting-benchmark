@@ -13,14 +13,28 @@ class Forecaster(ABC):
     name: str = "Forecaster"
     requires_gpu: bool = False
     is_probabilistic: bool = False
+    # Methods that consume covariates set this True; the eval loop then passes the
+    # horizon's exogenous values (a perfect-forecast proxy) to predict via future_exog.
+    uses_exogenous: bool = False
 
     @abstractmethod
     def fit(self, case: Case, train: pd.DataFrame) -> None:
         """Fit on the train split. May store any state on self."""
 
     @abstractmethod
-    def predict(self, case: Case, history: pd.DataFrame, horizon: int) -> pd.DataFrame:
-        """Forecast `horizon` steps ahead. Returns columns: ds (UTC), y_hat (float64)."""
+    def predict(
+        self,
+        case: Case,
+        history: pd.DataFrame,
+        horizon: int,
+        future_exog: pd.DataFrame | None = None,
+    ) -> pd.DataFrame:
+        """Forecast `horizon` steps ahead. Returns columns: ds (UTC), y_hat (float64).
+
+        `future_exog`, when given, holds the exogenous columns for the `horizon` future
+        timestamps (ds + each declared covariate). Univariate methods ignore it;
+        exogenous-aware methods use it as a perfect-forecast proxy for the covariates.
+        """
 
     @staticmethod
     def _future_index(case: Case, last_ds, horizon: int) -> pd.DatetimeIndex:

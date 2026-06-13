@@ -22,6 +22,7 @@ from tsforecastbench.bench.methods import (
     AutoARIMAForecaster,
     AutoETSForecaster,
     Climatology,
+    LightGBMExoForecaster,
     LightGBMForecaster,
     LinearLagsForecaster,
     MeanBaseline,
@@ -50,6 +51,8 @@ def main() -> int:
     case = get_case(args.case)
     methods = [MeanBaseline(), Persistence(), SeasonalNaive(), Climatology(),
                LinearLagsForecaster(), LightGBMForecaster()]
+    if case.exogenous or case.exogenous_known_future:
+        methods.append(LightGBMExoForecaster())  # Tier-2 covariate-aware comparison
     if args.with_arima:
         methods.append(AutoARIMAForecaster())
         methods.append(AutoETSForecaster())
