@@ -29,34 +29,44 @@ git push
 `scripts/precheck.py` also prints `git status` so any unstaged changes are visible
 before you push — easier than chasing a failing CI on a file that didn't get added.
 
-## Adding a case
+The package is split into two concerns: **`tsforecastbench.data`** (case-building:
+schema, registry, downloads) and **`tsforecastbench.bench`** (model comparison: methods,
+eval, viz). `bench` depends on `data` only through the public `Case` interface.
 
-Create `src/tsforecastbench/cases/<case_id>/` with:
+## Adding a case (data side)
 
-- `case.toml` — metadata validated into a `Case` (see `schema.py`): `id`, `domain`,
+Create `src/tsforecastbench/data/cases/<case_id>/` with:
+
+- `case.toml` — metadata validated into a `Case` (see `data/schema.py`): `id`, `domain`,
   `target`, `freq`, `horizon_primary`, `exogenous`, `splits` (or `split_mode="fraction"`),
   and `source`.
 - `synth.py` — `generate(case) -> pd.DataFrame` returning the canonical long format
   (`unique_id`, `ds` UTC, `y`, plus exogenous columns). This lets the pipeline and CI
   run before any real data exists.
 - `download.py` — `main(argv) -> int` that fetches the real data and writes
-  `data/processed/<case_id>.parquet` via `tsforecastbench.cases._io.write_canonical`.
+  `data/processed/<case_id>.parquet` via `tsforecastbench.data.cases._io.write_canonical`.
+  Shared fetchers are available: `_usgs.py` (USGS NWIS), `_ndbc.py` (NDBC buoys),
+  `_era5.py` (credential-free ERA5 forcing via Open-Meteo).
 
-The registry auto-discovers any `cases/*/case.toml`.
+The registry auto-discovers any `data/cases/*/case.toml`. **Run `/review-case <id>`** (or
+`scripts/review_case.py`) on a new case before committing — it checks coverage, exogenous
+predictive skill, and forecastability.
 
-## Adding a method
+## Adding a method (bench side)
 
-Subclass `tsforecastbench.methods.base.Forecaster`:
+Subclass `tsforecastbench.bench.methods.base.Forecaster`:
 
 ```python
 class MyForecaster(Forecaster):
-    name = "MyMethod"           # column header in the matrix
+    name = "MyMethod"            # column header in the matrix
     requires_gpu = False
+    uses_exogenous = False       # set True to receive future covariates
     def fit(self, case, train): ...
-    def predict(self, case, history, horizon): ...   # -> DataFrame[ds, y_hat]
+    def predict(self, case, history, horizon, future_exog=None): ...  # -> DataFrame[ds, y_hat]
 ```
 
-Export it in `methods/__init__.py` and add it to the method list in `scripts/run_pilot.py`.
+Export it in `bench/methods/__init__.py` and add it to the method list in
+`scripts/run_pilot.py` (optionally behind a flag like `--with-dl` for heavy methods).
 
 ## Conventions
 
