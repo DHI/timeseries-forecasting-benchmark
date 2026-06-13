@@ -69,6 +69,9 @@ def main() -> int:
     p.add_argument("--origins", type=int, default=16, help="Rolling origins per cell.")
     p.add_argument("--with-fm", action="store_true",
                    help="Add the zero-shot foundation model (Chronos-Bolt; needs the 'fm' extra).")
+    p.add_argument("--with-dl", action="store_true",
+                   help="Add the torch deep-learning models (N-HiTS, PatchTST; needs the 'dl' extra). "
+                        "Heavy on CPU — pair with a small --origins.")
     args = p.parse_args()
 
     all_cases = discover_cases()
@@ -79,6 +82,10 @@ def main() -> int:
         return 1
 
     methods = build_methods()
+    if args.with_dl:
+        from tsforecastbench.bench.methods import NHITSForecaster, PatchTSTForecaster
+
+        methods += [NHITSForecaster(), PatchTSTForecaster()]
     if args.with_fm:
         from tsforecastbench.bench.methods import ChronosForecaster
 

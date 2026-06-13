@@ -121,6 +121,24 @@ def test_chronos_runs_if_installed():
     assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
 
 
+def test_torch_dl_classes_importable():
+    import tsforecastbench.bench.methods as m
+
+    assert hasattr(m, "NHITSForecaster") and hasattr(m, "PatchTSTForecaster")
+
+
+def test_torch_dl_runs_if_installed():
+    pytest.importorskip("torch")
+    from tsforecastbench.bench.methods import NHITSForecaster, PatchTSTForecaster
+
+    # tiny training budget keeps the test fast
+    methods = [NHITSForecaster(), PatchTSTForecaster()]
+    for mdl in methods:
+        mdl.max_steps = 5
+    res = run_case(get_case("usgs_river_discharge"), methods, prefer_synth=True)
+    assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
+
+
 def test_fraction_split_handles_truncated_obs():
     """CAMELS uses fraction splits; even if obs end early the test window is scorable."""
     case = get_case("camels_dk_discharge")
