@@ -12,18 +12,18 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
-from tsforecastbench.eval import run_case  # noqa: E402
-from tsforecastbench.eval.metrics import mae, mase, rmse, skill_score  # noqa: E402
-from tsforecastbench.eval.rolling import run_leadtime_curve  # noqa: E402
-from tsforecastbench.methods import (  # noqa: E402
+from tsforecastbench.bench.eval import run_case  # noqa: E402
+from tsforecastbench.bench.eval.metrics import mae, mase, rmse, skill_score  # noqa: E402
+from tsforecastbench.bench.eval.rolling import run_leadtime_curve  # noqa: E402
+from tsforecastbench.bench.methods import (  # noqa: E402
     Climatology,
     LightGBMForecaster,
     MeanBaseline,
     Persistence,
     SeasonalNaive,
 )
-from tsforecastbench.registry import discover_cases, get_case  # noqa: E402
-from tsforecastbench.viz import plot_leadtime_curve, render_matrix  # noqa: E402
+from tsforecastbench.bench.viz import plot_leadtime_curve, render_matrix  # noqa: E402
+from tsforecastbench.data.registry import discover_cases, get_case  # noqa: E402
 
 ALL_CASES = list(discover_cases())
 

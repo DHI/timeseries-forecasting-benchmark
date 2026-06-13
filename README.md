@@ -29,7 +29,7 @@ generator so CI and laptop demos work without any data at all.
 uv sync --extra data                         # xarray, utide, cdsapi, openpyxl, ...
 uv run python scripts/download_all.py        # all cases
 # or one at a time:
-uv run python -m tsforecastbench.cases.camels_dk_discharge.download
+uv run python -m tsforecastbench.data.cases.camels_dk_discharge.download
 ```
 
 GESLA-3 + Mendeley WWTP need a manual one-time archive; Copernicus/ERA5 need credentials.

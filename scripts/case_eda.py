@@ -28,7 +28,7 @@ import pandas as pd
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
-from tsforecastbench.registry import discover_cases  # noqa: E402
+from tsforecastbench.data.registry import discover_cases  # noqa: E402
 
 FIG_DIR = REPO_ROOT / "docs" / "figures" / "cases"
 

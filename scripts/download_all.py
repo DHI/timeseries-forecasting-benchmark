@@ -16,7 +16,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from tsforecastbench.registry import discover_cases
+from tsforecastbench.data.registry import discover_cases
 
 
 def main() -> int:
@@ -25,7 +25,7 @@ def main() -> int:
     for cid in cases:
         print(f"\n=== {cid} ===")
         try:
-            mod = importlib.import_module(f"tsforecastbench.cases.{cid}.download")
+            mod = importlib.import_module(f"tsforecastbench.data.cases.{cid}.download")
             rc |= mod.main([])
         except SystemExit as e:
             rc |= int(e.code or 0)

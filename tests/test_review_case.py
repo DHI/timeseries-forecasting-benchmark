@@ -19,7 +19,7 @@ sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
 import review_case as rc  # noqa: E402
 
-from tsforecastbench.registry import get_case  # noqa: E402
+from tsforecastbench.data.registry import get_case  # noqa: E402
 
 PASS, WARN, FAIL = rc.PASS, rc.WARN, rc.FAIL
 

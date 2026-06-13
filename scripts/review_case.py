@@ -36,16 +36,16 @@ import pandas as pd
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
-from tsforecastbench.eval.loop import _horizon_to_steps, run_case  # noqa: E402
-from tsforecastbench.methods.naive import (  # noqa: E402
+from tsforecastbench.bench.eval.loop import _horizon_to_steps, run_case  # noqa: E402
+from tsforecastbench.bench.methods.naive import (  # noqa: E402
     Climatology,
     MeanBaseline,
     Persistence,
     SeasonalNaive,
     _default_season_length,
 )
-from tsforecastbench.registry import discover_cases  # noqa: E402
-from tsforecastbench.schema import Case  # noqa: E402
+from tsforecastbench.data.registry import discover_cases  # noqa: E402
+from tsforecastbench.data.schema import Case  # noqa: E402
 
 OUT_DIR = REPO_ROOT / "results" / "case_review"
 
@@ -356,7 +356,7 @@ def check_forecastable(case: Case, prefer_synth: bool) -> tuple[list[Check], pd.
     methods = [MeanBaseline(), Persistence(), SeasonalNaive(), Climatology()]
     # Add one cheap ML method if mlforecast/lightgbm import; skip silently otherwise.
     try:
-        from tsforecastbench.methods.ml import LinearLagsForecaster
+        from tsforecastbench.bench.methods.ml import LinearLagsForecaster
 
         methods.append(LinearLagsForecaster())
     except Exception:

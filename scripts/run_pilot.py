@@ -16,8 +16,8 @@ import pandas as pd
 # Allow running from a clone without installing
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from tsforecastbench.eval import run_case
-from tsforecastbench.methods import (
+from tsforecastbench.bench.eval import run_case
+from tsforecastbench.bench.methods import (
     AutoARIMAForecaster,
     AutoETSForecaster,
     Climatology,
@@ -28,8 +28,8 @@ from tsforecastbench.methods import (
     Persistence,
     SeasonalNaive,
 )
-from tsforecastbench.registry import discover_cases
-from tsforecastbench.viz import render_matrix
+from tsforecastbench.bench.viz import render_matrix
+from tsforecastbench.data.registry import discover_cases
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 RESULTS_DIR = REPO_ROOT / "results"

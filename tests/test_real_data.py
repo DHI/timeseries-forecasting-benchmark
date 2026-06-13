@@ -17,9 +17,9 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
-from tsforecastbench.eval import run_case  # noqa: E402
-from tsforecastbench.methods import MeanBaseline, Persistence, SeasonalNaive  # noqa: E402
-from tsforecastbench.registry import discover_cases  # noqa: E402
+from tsforecastbench.bench.eval import run_case  # noqa: E402
+from tsforecastbench.bench.methods import MeanBaseline, Persistence, SeasonalNaive  # noqa: E402
+from tsforecastbench.data.registry import discover_cases  # noqa: E402
 
 REAL_CASES = [cid for cid, c in discover_cases().items() if c.parquet_path.exists()]
 
