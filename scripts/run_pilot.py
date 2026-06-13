@@ -21,6 +21,7 @@ from tsforecastbench.bench.methods import (
     AutoARIMAForecaster,
     AutoETSForecaster,
     Climatology,
+    DLinearForecaster,
     LightGBMExoForecaster,
     LightGBMForecaster,
     LinearLagsExoForecaster,
@@ -29,6 +30,7 @@ from tsforecastbench.bench.methods import (
     MLPForecaster,
     Persistence,
     SeasonalNaive,
+    ThetaForecaster,
 )
 from tsforecastbench.bench.viz import render_matrix
 from tsforecastbench.data.registry import discover_cases
@@ -47,9 +49,11 @@ def build_methods():
         Climatology(),
         AutoARIMAForecaster(),
         AutoETSForecaster(),
+        ThetaForecaster(),
         LinearLagsForecaster(),
         LightGBMForecaster(),
         MLPForecaster(),
+        DLinearForecaster(),
         LinearLagsExoForecaster(),
         LightGBMExoForecaster(),
     ]
@@ -63,6 +67,8 @@ def main() -> int:
     p.add_argument("--fast", action="store_true",
                    help="Single hold-out instead of rolling-origin (faster, noisier).")
     p.add_argument("--origins", type=int, default=16, help="Rolling origins per cell.")
+    p.add_argument("--with-fm", action="store_true",
+                   help="Add the zero-shot foundation model (Chronos-Bolt; needs the 'fm' extra).")
     args = p.parse_args()
 
     all_cases = discover_cases()
@@ -73,6 +79,10 @@ def main() -> int:
         return 1
 
     methods = build_methods()
+    if args.with_fm:
+        from tsforecastbench.bench.methods import ChronosForecaster
+
+        methods.append(ChronosForecaster())
     method_order = [m.name for m in methods]
 
     mode = "single hold-out" if args.fast else f"rolling-origin ({args.origins} origins)"
