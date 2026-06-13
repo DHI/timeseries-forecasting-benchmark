@@ -21,6 +21,7 @@ from tsforecastbench.bench.methods.naive import (
     Persistence,
     SeasonalNaive,
 )
+from tsforecastbench.bench.methods.torchdl import NHITSForecaster, PatchTSTForecaster
 
 __all__ = [
     "AutoARIMAForecaster",
@@ -35,6 +36,8 @@ __all__ = [
     "LinearLagsForecaster",
     "MLPForecaster",
     "MeanBaseline",
+    "NHITSForecaster",
+    "PatchTSTForecaster",
     "Persistence",
     "SeasonalNaive",
     "ThetaForecaster",
