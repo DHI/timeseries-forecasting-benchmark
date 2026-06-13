@@ -8,7 +8,8 @@ water domains: hydrology, urban drainage, water distribution, wastewater treatme
 storm surge, spectral waves, and coastal ocean processes.
 
 Developed under research outcome **RK2026 / KER 5** ("next-generation modelling").
-See [`research_plan.md`](research_plan.md) for the full design and roadmap.
+See [`research_plan.md`](research_plan.md) for the full design and roadmap, and
+[`docs/RESULTS.md`](docs/RESULTS.md) for the current cross-case findings.
 
 ## Quick start
 
