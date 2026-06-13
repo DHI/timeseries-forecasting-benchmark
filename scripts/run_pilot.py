@@ -72,6 +72,9 @@ def main() -> int:
     p.add_argument("--with-dl", action="store_true",
                    help="Add the torch deep-learning models (N-HiTS, PatchTST; needs the 'dl' extra). "
                         "Heavy on CPU — pair with a small --origins.")
+    p.add_argument("--with-nf", action="store_true",
+                   help="Add the neuralforecast zoo (TFT, iTransformer, TimesNet; needs the 'nf' "
+                        "extra — Linux/WSL only). GPU-accelerated when available.")
     args = p.parse_args()
 
     all_cases = discover_cases()
@@ -86,6 +89,14 @@ def main() -> int:
         from tsforecastbench.bench.methods import NHITSForecaster, PatchTSTForecaster
 
         methods += [NHITSForecaster(), PatchTSTForecaster()]
+    if args.with_nf:
+        from tsforecastbench.bench.methods import (
+            ITransformerForecaster,
+            TFTForecaster,
+            TimesNetForecaster,
+        )
+
+        methods += [TFTForecaster(), ITransformerForecaster(), TimesNetForecaster()]
     if args.with_fm:
         from tsforecastbench.bench.methods import ChronosForecaster
 

@@ -21,6 +21,11 @@ from tsforecastbench.bench.methods.naive import (
     Persistence,
     SeasonalNaive,
 )
+from tsforecastbench.bench.methods.nf_models import (
+    ITransformerForecaster,
+    TFTForecaster,
+    TimesNetForecaster,
+)
 from tsforecastbench.bench.methods.torchdl import NHITSForecaster, PatchTSTForecaster
 
 __all__ = [
@@ -30,6 +35,7 @@ __all__ = [
     "Climatology",
     "DLinearForecaster",
     "Forecaster",
+    "ITransformerForecaster",
     "LightGBMExoForecaster",
     "LightGBMForecaster",
     "LinearLagsExoForecaster",
@@ -40,5 +46,7 @@ __all__ = [
     "PatchTSTForecaster",
     "Persistence",
     "SeasonalNaive",
+    "TFTForecaster",
     "ThetaForecaster",
+    "TimesNetForecaster",
 ]

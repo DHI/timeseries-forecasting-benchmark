@@ -1,5 +1,12 @@
 # Scoping & review
 
+> **⚠️ Historical (June 2026).** This was the original scoping-review request sent to Rocco
+> when the benchmark had six cases and nine methods. It is kept for the design rationale
+> only — the review is **done** (responses in [`review_responses_pr2.md`](review_responses_pr2.md)),
+> and the project has since grown to 11 cases and 16 methods. For the current state see the
+> top-level [`README.md`](../README.md) and the results in [`RESULTS.md`](RESULTS.md). The
+> counts and "not yet built" lists below are no longer accurate.
+
 **For**: Rocco (scoping review, urban + catchment hydrology)
 **Authors**: Jesper (project lead); Claude (drafting support)
 **Estimated review time**: 30–60 minutes

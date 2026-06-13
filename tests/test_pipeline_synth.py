@@ -127,6 +127,15 @@ def test_torch_dl_classes_importable():
     assert hasattr(m, "NHITSForecaster") and hasattr(m, "PatchTSTForecaster")
 
 
+def test_neuralforecast_zoo_classes_importable():
+    # The nf zoo (TFT/iTransformer/TimesNet) is Linux/WSL-only at runtime, but the wrapper
+    # classes must always import (neuralforecast is imported lazily inside fit).
+    import tsforecastbench.bench.methods as m
+
+    assert all(hasattr(m, c) for c in
+               ("TFTForecaster", "ITransformerForecaster", "TimesNetForecaster"))
+
+
 def test_torch_dl_runs_if_installed():
     pytest.importorskip("torch")
     from tsforecastbench.bench.methods import NHITSForecaster, PatchTSTForecaster

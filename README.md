@@ -20,14 +20,30 @@ uv run pytest                                # tests on synthetic + committed pr
 uv run python scripts/run_pilot.py           # real data is committed - works immediately
 ```
 
-Processed Parquets (~5 MB total) are committed; raw downloads (~1 GB) are not. A fresh
-clone runs the full pilot with no further downloads. Every case also ships a synthetic
-generator so CI and laptop demos work without any data at all.
+Processed Parquets (~15 MB total) are committed; raw downloads are not. A fresh clone runs
+the full pilot with no further downloads. Every case also ships a synthetic generator so CI
+and laptop demos work without any data at all.
+
+### Optional extras
+
+```bash
+uv sync --extra fm     # Chronos-Bolt zero-shot foundation model   (run_pilot --with-fm)
+uv sync --extra dl     # torch N-HiTS / PatchTST                    (run_pilot --with-dl)
+```
+
+The torch DL models are portable (Windows/Linux/CI). The broader **neuralforecast zoo**
+(TFT, iTransformer, TimesNet; `--extra nf` / `run_pilot --with-nf`) needs `ray`, which has
+no Windows / Python-3.13 wheels — use **WSL2** for it (and for GPU). A one-command setup is
+provided:
+
+```bash
+bash scripts/bootstrap_wsl.sh          # or --gpu for CUDA torch
+```
 
 ## Rebuild data from source
 
 ```bash
-uv sync --extra data                         # xarray, utide, cdsapi, openpyxl, ...
+uv sync --extra data                         # utide (tide removal), xarray, openpyxl, ...
 uv run python scripts/download_all.py        # all cases
 # or one at a time:
 uv run python -m tsforecastbench.data.cases.camels_dk_discharge.download
