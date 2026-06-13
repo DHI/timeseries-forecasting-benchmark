@@ -228,18 +228,21 @@ def _tidal_residual(df: pd.DataFrame, lat: float) -> pd.DataFrame:
     return out
 
 
-def _lat_from_metadata(meta_csv: Path, station_code: str) -> float | None:
+def _latlon_from_metadata(meta_csv: Path, station_code: str) -> tuple[float | None, float | None]:
     meta = pd.read_csv(meta_csv)
     cols = {c.lower(): c for c in meta.columns}
     c_code = _col(cols, "site_code", "site code", "station_code", "code",
                   "file_name", "filename")
     c_lat = _col(cols, "latitude", "lat")
+    c_lon = _col(cols, "longitude", "lon", "lng")
     if not c_code or not c_lat:
-        return None
+        return None, None
     hit = meta[meta[c_code].astype(str).str.lower() == station_code.lower()]
     if hit.empty:
-        return None
-    return float(hit[c_lat].iloc[0])
+        return None, None
+    lat = float(hit[c_lat].iloc[0])
+    lon = float(hit[c_lon].iloc[0]) if c_lon else None
+    return lat, lon
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -249,6 +252,13 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--station-code", default=CONFIG["station_code"])
     p.add_argument("--lat", type=float, default=None,
                    help="Station latitude for UTide (auto-detected from metadata if absent)")
+    p.add_argument("--lon", type=float, default=None,
+                   help="Station longitude for ERA5 (auto-detected from metadata if absent)")
+    p.add_argument("--era5-start", default="2000-01-01",
+                   help="Trim the residual record to this start so ERA5 forcing covers it "
+                        "(the full GESLA record is ~106 yr; the splits only use 2017-2020).")
+    p.add_argument("--no-era5", action="store_true",
+                   help="Skip the ERA5 fetch (leave exogenous NaN). Offline fallback.")
     args = p.parse_args(argv)
 
     case = get_case("gesla_storm_surge")
@@ -282,14 +292,19 @@ def main(argv: list[str] | None = None) -> int:
     extracted = _io.extract_member(bulk_zip, member, raw_dir / "extracted")
     print(f"[gesla_storm_surge] extracted {member}")
 
-    lat = args.lat if args.lat is not None else _lat_from_metadata(meta_csv, args.station_code)
+    lat = args.lat if args.lat is not None else _latlon_from_metadata(meta_csv, args.station_code)[0]
+    lon = args.lon if args.lon is not None else _latlon_from_metadata(meta_csv, args.station_code)[1]
     if lat is None:
         print("[gesla_storm_surge] no latitude (pass --lat); UTide cannot run without it.")
         return 1
-    print(f"[gesla_storm_surge] using latitude {lat:.3f} for UTide")
+    print(f"[gesla_storm_surge] using station lat {lat:.3f}, lon {lon}")
 
     df = _read_gesla_record(extracted)
-    print(f"[gesla_storm_surge] read {len(df)} records; removing tide via UTide ...")
+    # Trim to the ERA5-covered window before the (expensive) tide fit. The full record is
+    # ~106 yr; the splits only use 2017-2020, and ERA5 forcing should span the whole series.
+    start = pd.Timestamp(args.era5_start, tz="UTC")
+    df = df[df["ds"] >= start].reset_index(drop=True)
+    print(f"[gesla_storm_surge] {len(df)} records from {args.era5_start}; removing tide via UTide ...")
     df = _tidal_residual(df, lat=lat)
 
     out = pd.DataFrame(
@@ -298,12 +313,27 @@ def main(argv: list[str] | None = None) -> int:
     )
     out = _io.resample_regular(out, case.freq)
 
-    for col in ["mslp", "u10", "v10", "mslp_forecast", "u10_forecast", "v10_forecast"]:
-        out[col] = float("nan")  # ERA5 forcing added in a later step
+    era5_vars = ["mslp", "u10", "v10"]
+    if args.no_era5 or lon is None:
+        for col in era5_vars:
+            out[col] = float("nan")
+        print("[gesla_storm_surge] ERA5 skipped; exogenous left NaN.")
+    else:
+        from tsforecastbench.cases import _era5
+
+        print(f"[gesla_storm_surge] fetching ERA5 {era5_vars} at ({lat:.3f},{lon:.3f}) "
+              f"{out['ds'].min().date()}..{out['ds'].max().date()} via Open-Meteo ...")
+        era5 = _era5.fetch_era5_point(
+            lat, lon, out["ds"].min(), out["ds"].max(),
+            variables=era5_vars, cache_dir=raw_dir / "era5_cache",
+        )
+        out = _era5.merge_onto(out, era5, era5_vars)
+        cov = {c: f"{out[c].notna().mean():.0%}" for c in era5_vars}
+        print(f"[gesla_storm_surge] ERA5 merged; coverage {cov}")
 
     path = _io.write_canonical(case, out)
-    print(f"[gesla_storm_surge] wrote {path} ({len(out)} rows). "
-          "ERA5 exogenous still NaN.")
+    exo_state = "ERA5 exogenous NaN (--no-era5)" if args.no_era5 else "with ERA5 exogenous"
+    print(f"[gesla_storm_surge] wrote {path} ({len(out)} rows), {exo_state}.")
     return 0
 
 

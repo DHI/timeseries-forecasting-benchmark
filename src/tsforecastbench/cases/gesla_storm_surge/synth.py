@@ -46,10 +46,6 @@ def generate(case: Case, seed: int = 2) -> pd.DataFrame:
         noise[t] = 0.7 * noise[t - 1] + rng.normal(0, 0.03)
     residual = residual + noise
 
-    mslp_forecast = mslp + rng.normal(0, 0.5, n)
-    u10_forecast = u10 + rng.normal(0, 0.5, n)
-    v10_forecast = v10 + rng.normal(0, 0.5, n)
-
     return pd.DataFrame(
         {
             "unique_id": [case.id] * n,
@@ -59,8 +55,5 @@ def generate(case: Case, seed: int = 2) -> pd.DataFrame:
             "mslp": mslp.astype(np.float64),
             "u10": u10.astype(np.float64),
             "v10": v10.astype(np.float64),
-            "mslp_forecast": mslp_forecast.astype(np.float64),
-            "u10_forecast": u10_forecast.astype(np.float64),
-            "v10_forecast": v10_forecast.astype(np.float64),
         }
     )

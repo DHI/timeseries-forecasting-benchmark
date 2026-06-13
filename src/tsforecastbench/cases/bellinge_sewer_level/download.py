@@ -50,6 +50,11 @@ CONFIG = {
     "rain_member_match": "5425",
     "level_col_candidates": ["level", "water_level", "value", "depth"],
     "rain_col_candidates": ["rain", "intensity", "precip", "value"],
+    # Bellinge suburb, Odense, DK — for fetching ERA5 2-m air temperature at the point.
+    # The dataset ships a met-station archive too, but ERA5 (credential-free via
+    # Open-Meteo) gives a complete, gap-free temperature series over the whole record.
+    "lat": 55.32,
+    "lon": 10.30,
 }
 
 
@@ -165,6 +170,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--list-zip", action="store_true")
     p.add_argument("--scan", action="store_true",
                    help="Scan every CSV member: time span + active (non-zero) row count")
+    p.add_argument("--no-era5", action="store_true",
+                   help="Skip the ERA5 temp_air fetch (leave it NaN). Offline fallback.")
     args = p.parse_args(argv)
 
     case = get_case("bellinge_sewer_level")
@@ -261,6 +268,20 @@ def main(argv: list[str] | None = None) -> int:
                   f"{int(base['rain_gauge'].notna().sum())} non-NaN of {len(base)}, "
                   f"{int((base['rain_gauge'] > 0).sum())} non-zero")
             base["rain_radar_nowcast"] = base["rain_gauge"]  # placeholder until X-band added
+
+    # air temperature from ERA5 at the Bellinge point (credential-free via Open-Meteo)
+    if not args.no_era5 and len(base):
+        from tsforecastbench.cases import _era5
+
+        print(f"[bellinge_sewer_level] fetching ERA5 temp_air at "
+              f"({CONFIG['lat']},{CONFIG['lon']}) "
+              f"{base['ds'].min().date()}..{base['ds'].max().date()} via Open-Meteo ...")
+        era5 = _era5.fetch_era5_point(
+            CONFIG["lat"], CONFIG["lon"], base["ds"].min(), base["ds"].max(),
+            variables=["temp_air"], cache_dir=_io.DATA_RAW / case.id / "era5_cache",
+        )
+        base = _era5.merge_onto(base, era5, ["temp_air"])
+        print(f"[bellinge_sewer_level] temp_air coverage {base['temp_air'].notna().mean():.0%}")
 
     for col in ["rain_gauge", "rain_radar_nowcast", "temp_air"]:
         if col not in base.columns:
