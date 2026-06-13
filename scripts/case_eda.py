@@ -35,11 +35,15 @@ FIG_DIR = REPO_ROOT / "docs" / "figures" / "cases"
 # Per-case visualisation hints: which exogenous to overlay, zoom window length.
 CASE_HINTS = {
     "camels_dk_discharge":  {"overlay": "precip",            "overlay_kind": "rain",  "zoom": "365D", "target_label": "Discharge (mm/d)"},
+    "usgs_river_discharge": {"overlay": "precip",            "overlay_kind": "rain",  "zoom": "365D", "target_label": "Discharge (m3/s)"},
+    "usgs_groundwater":     {"overlay": "precip",            "overlay_kind": "rain",  "zoom": "365D", "target_label": "Depth to water (m)"},
+    "usgs_stream_temp":     {"overlay": "temp_air",          "overlay_kind": "line",  "zoom": "365D", "target_label": "Water temp (C)"},
     "bellinge_sewer_level": {"overlay": "rain_gauge",        "overlay_kind": "rain",  "zoom": "14D",  "target_label": "Sewer level (m)"},
     "wd_battledim":         {"overlay": None,                "overlay_kind": None,    "zoom": "14D",  "target_label": "Inlet flow (L/s)"},
     "wwtp_influent":        {"overlay": None,                "overlay_kind": None,    "zoom": "14D",  "target_label": "Influent flow"},
     "gesla_storm_surge":    {"overlay": "mslp",              "overlay_kind": "line",  "zoom": "30D",  "target_label": "Residual (m)"},
     "ndbc_waves":           {"overlay": "wspd",              "overlay_kind": "line",  "zoom": "30D",  "target_label": "H_s (m)"},
+    "ndbc_waves_atlantic":  {"overlay": "wspd",              "overlay_kind": "line",  "zoom": "30D",  "target_label": "H_s (m)"},
 }
 
 

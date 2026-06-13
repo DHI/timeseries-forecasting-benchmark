@@ -39,7 +39,12 @@ _CANON_TO_OM = {
     "temp_air": ["temperature_2m"],
     "u10": ["wind_speed_10m", "wind_direction_10m"],
     "v10": ["wind_speed_10m", "wind_direction_10m"],
+    "precip": ["precipitation"],
 }
+
+# how each canonical var aggregates when resampling hourly -> coarser (precip accumulates,
+# everything else is an instantaneous mean)
+_AGG = {"precip": "sum"}
 
 
 def _om_fields(variables: list[str]) -> list[str]:
@@ -136,6 +141,20 @@ def _to_canonical(raw: pd.DataFrame, variables: list[str]) -> pd.DataFrame:
         out["mslp"] = pd.to_numeric(raw.get("pressure_msl"), errors="coerce").to_numpy()
     if "temp_air" in variables:
         out["temp_air"] = pd.to_numeric(raw.get("temperature_2m"), errors="coerce").to_numpy()
+    if "precip" in variables:
+        out["precip"] = pd.to_numeric(raw.get("precipitation"), errors="coerce").to_numpy()
+    return out
+
+
+def to_daily(era5: pd.DataFrame, variables: list[str]) -> pd.DataFrame:
+    """Aggregate an hourly canonical ERA5 frame to daily (UTC, anchored at 00:00).
+
+    Precip is summed over the day; instantaneous fields (temp, pressure, wind) are averaged.
+    """
+    e = era5.copy()
+    e["ds"] = pd.to_datetime(e["ds"], utc=True)
+    agg = {v: _AGG.get(v, "mean") for v in variables if v in e.columns}
+    out = e.set_index("ds").resample("1D").agg(agg).reset_index()
     return out
 
 
