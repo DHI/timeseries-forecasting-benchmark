@@ -17,19 +17,20 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from tsforecastbench.eval.rolling import run_leadtime_curve
-from tsforecastbench.methods import (
+from tsforecastbench.bench.eval.rolling import run_leadtime_curve
+from tsforecastbench.bench.methods import (
     AutoARIMAForecaster,
     AutoETSForecaster,
     Climatology,
+    LightGBMExoForecaster,
     LightGBMForecaster,
     LinearLagsForecaster,
     MeanBaseline,
     Persistence,
     SeasonalNaive,
 )
-from tsforecastbench.registry import get_case
-from tsforecastbench.viz.leadtime import plot_leadtime_curve
+from tsforecastbench.bench.viz.leadtime import plot_leadtime_curve
+from tsforecastbench.data.registry import get_case
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 RESULTS_DIR = REPO_ROOT / "results"
@@ -50,6 +51,8 @@ def main() -> int:
     case = get_case(args.case)
     methods = [MeanBaseline(), Persistence(), SeasonalNaive(), Climatology(),
                LinearLagsForecaster(), LightGBMForecaster()]
+    if case.exogenous or case.exogenous_known_future:
+        methods.append(LightGBMExoForecaster())  # Tier-2 covariate-aware comparison
     if args.with_arima:
         methods.append(AutoARIMAForecaster())
         methods.append(AutoETSForecaster())

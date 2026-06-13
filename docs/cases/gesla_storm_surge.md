@@ -22,7 +22,7 @@ flowchart LR
 
 Forecast the **non-tidal residual** at one tide gauge, **hourly**, **48 hours** ahead. The horizon matches operational coastal-flood-warning lead times (DMI, Met Office, NOAA).
 
-Station pinned to **Cuxhaven_Steubenhoft (`Cux`)** by `--scan` over the UK + Atlantic NW Europe bounding box: 108 years (1917–2024), shallow German Bight shelf, surge-rich climate (the 1962 Hamburg flood site), operational benchmark for the Elbe estuary and Hamburg port. Long-record + recent + active makes it the highest-leverage single station in the open data.
+Station pinned to **Cuxhaven_Steubenhoft (`Cux`)** by `--scan` over the UK + Atlantic NW Europe bounding box: shallow German Bight shelf, surge-rich climate (the 1962 Hamburg flood site), operational benchmark for the Elbe estuary and Hamburg port. The gauge record runs 1917–2024; the canonical Parquet is **trimmed to 2000–2024** so the ERA5 forcing covers the whole series (the splits only use 2017–2020, with ample training history before).
 
 ## Dynamics and drivers
 
@@ -30,9 +30,21 @@ Inverse barometer + wind setup, both highly nonlinear in shallow shelves like th
 
 ## Exogenous candidates
 
-- **Past forcing**: ERA5 MSLP + 10 m wind components at the station's grid point.
-- **Forecast forcing** (known-future): IFS/GFS at the time of forecast issue — what an operational system uses.
-- **Process-model reference column**: Copernicus Marine global surge product; the realistic operational baseline to beat. Hybrid ML residual correction on top is the state-of-practice pipeline.
+- **ERA5 MSLP + 10 m wind** (`mslp`, `u10`, `v10`) at the station point — **implemented**,
+  fetched credential-free via Open-Meteo's ERA5 archive. These are the physical surge
+  drivers; on the data, `u10` correlates with the residual at Spearman ≈ 0.73.
+- **Known-future semantics**: in the benchmark these fields are listed as known-future and
+  fed to the exogenous-aware methods as a **perfect-forecast (oracle) proxy** — observed
+  reanalysis standing in for the NWP (IFS/GFS) wind/pressure *forecast* an operational
+  system would actually use. The numbers are therefore an upper bound on covariate value;
+  real skill depends on the forecast forcing quality.
+- **Process-model reference column** (Copernicus Marine surge; hybrid ML residual
+  correction): not implemented — its scope is an open decision (see
+  [`review_responses_pr2.md`](../review_responses_pr2.md) E4).
+
+The exogenous uplift is large and grows with lead: covariate-aware LightGBM lifts
+skill-vs-persistence from ≈0.30 (univariate) to ≈0.64, and at 36 h lead cuts rolling-origin
+RMSE ~35% below persistence — the canonical "skill comes from the meteorology" result.
 
 ## Operational relevance
 

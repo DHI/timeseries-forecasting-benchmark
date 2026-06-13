@@ -4,9 +4,9 @@ Run all:
     uv run python scripts/download_pilot.py
 
 Run one, or discovery mode:
-    uv run python -m tsforecastbench.cases.camels_dk_discharge.download --list
-    uv run python -m tsforecastbench.cases.bellinge_sewer_level.download --list
-    uv run python -m tsforecastbench.cases.gesla_storm_surge.download --station-file <name>
+    uv run python -m tsforecastbench.data.cases.camels_dk_discharge.download --list
+    uv run python -m tsforecastbench.data.cases.bellinge_sewer_level.download --list
+    uv run python -m tsforecastbench.data.cases.gesla_storm_surge.download --station-file <name>
 
 Needs the `data` extra for some cases:
     uv sync --extra data       # xarray, netcdf4, utide, cdsapi, copernicusmarine
@@ -27,7 +27,7 @@ def main() -> int:
     rc = 0
     for cid in PILOT_CASE_IDS:
         print(f"\n=== {cid} ===")
-        mod = importlib.import_module(f"tsforecastbench.cases.{cid}.download")
+        mod = importlib.import_module(f"tsforecastbench.data.cases.{cid}.download")
         try:
             rc |= mod.main([])
         except SystemExit as e:

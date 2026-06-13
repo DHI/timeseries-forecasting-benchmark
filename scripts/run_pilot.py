@@ -16,28 +16,30 @@ import pandas as pd
 # Allow running from a clone without installing
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from tsforecastbench.eval import run_case
-from tsforecastbench.methods import (
+from tsforecastbench.bench.eval import run_case
+from tsforecastbench.bench.methods import (
     AutoARIMAForecaster,
     AutoETSForecaster,
     Climatology,
+    LightGBMExoForecaster,
     LightGBMForecaster,
+    LinearLagsExoForecaster,
     LinearLagsForecaster,
     MeanBaseline,
     MLPForecaster,
     Persistence,
     SeasonalNaive,
 )
-from tsforecastbench.registry import discover_cases
-from tsforecastbench.viz import render_matrix
+from tsforecastbench.bench.viz import render_matrix
+from tsforecastbench.data.registry import discover_cases
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 RESULTS_DIR = REPO_ROOT / "results"
 
-PILOT_CASE_IDS = ("camels_dk_discharge", "bellinge_sewer_level", "gesla_storm_surge")
-
 
 def build_methods():
+    # Univariate (Tier 1) baselines + windowed ML, then the exogenous-aware (Tier 2)
+    # variants. On cases with no declared covariates the +exo methods reduce to univariate.
     return [
         MeanBaseline(),
         Persistence(),
@@ -48,17 +50,21 @@ def build_methods():
         LinearLagsForecaster(),
         LightGBMForecaster(),
         MLPForecaster(),
+        LinearLagsExoForecaster(),
+        LightGBMExoForecaster(),
     ]
 
 
 def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--synth", action="store_true", help="Force synthetic data generators")
-    p.add_argument("--cases", nargs="*", default=list(PILOT_CASE_IDS))
+    p.add_argument("--cases", nargs="*", default=None,
+                   help="Case ids to run (default: all discovered cases)")
     args = p.parse_args()
 
     all_cases = discover_cases()
-    cases = [all_cases[cid] for cid in args.cases if cid in all_cases]
+    ids = args.cases if args.cases else list(all_cases)
+    cases = [all_cases[cid] for cid in ids if cid in all_cases]
     if not cases:
         print(f"No matching cases found. Available: {list(all_cases)}")
         return 1
@@ -94,11 +100,17 @@ def main() -> int:
         title="RK2026 pilot - skill vs persistence (higher is better)",
         method_order=method_order,
     )
+    render_matrix(
+        results,
+        metric="Skill_vs_Mean",
+        out_path=RESULTS_DIR / "pilot_matrix_skill_vs_mean.png",
+        title="RK2026 pilot - skill vs mean (higher is better)",
+        method_order=method_order,
+    )
 
     print(f"\nWrote results to {RESULTS_DIR.relative_to(REPO_ROOT)}/")
     print(f"  pilot_metrics.parquet ({len(results)} rows)")
-    print("  pilot_matrix_MASE.png")
-    print("  pilot_matrix_skill.png")
+    print("  pilot_matrix_MASE.png, pilot_matrix_skill.png, pilot_matrix_skill_vs_mean.png")
     return 0
 
 
