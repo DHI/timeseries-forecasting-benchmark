@@ -73,7 +73,9 @@ correction, and time series foundation models are on the roadmap (see `research_
 **Outputs**:
 
 - `scripts/run_pilot.py` → colour-coded **cases × methods** matrices (MASE, skill vs
-  persistence, **skill vs mean**) across all cases.
+  persistence, **skill vs mean**) across all cases. Scores are **rolling-origin** by
+  default (errors pooled over many refit origins, robust to single-window luck);
+  `--fast` switches to a single hold-out.
 - `scripts/run_leadtime.py` → **error vs lead time** curves vs the simple benchmarks
   (mean, persistence), averaged over rolling origins; adds `LightGBM+exo` on cases with
   covariates.

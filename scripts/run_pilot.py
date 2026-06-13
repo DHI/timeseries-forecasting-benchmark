@@ -16,7 +16,7 @@ import pandas as pd
 # Allow running from a clone without installing
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from tsforecastbench.bench.eval import run_case
+from tsforecastbench.bench.eval import run_case, run_case_rolling
 from tsforecastbench.bench.methods import (
     AutoARIMAForecaster,
     AutoETSForecaster,
@@ -60,6 +60,9 @@ def main() -> int:
     p.add_argument("--synth", action="store_true", help="Force synthetic data generators")
     p.add_argument("--cases", nargs="*", default=None,
                    help="Case ids to run (default: all discovered cases)")
+    p.add_argument("--fast", action="store_true",
+                   help="Single hold-out instead of rolling-origin (faster, noisier).")
+    p.add_argument("--origins", type=int, default=16, help="Rolling origins per cell.")
     args = p.parse_args()
 
     all_cases = discover_cases()
@@ -72,13 +75,17 @@ def main() -> int:
     methods = build_methods()
     method_order = [m.name for m in methods]
 
-    print(f"Running pilot: {len(cases)} case(s) x {len(methods)} method(s)")
+    mode = "single hold-out" if args.fast else f"rolling-origin ({args.origins} origins)"
+    print(f"Running pilot: {len(cases)} case(s) x {len(methods)} method(s) - {mode}")
     print(f"Data mode: {'synthetic' if args.synth else 'real-or-synth fallback'}\n")
 
     all_results = []
     for case in cases:
         print(f"=== {case.id} ({case.domain}, freq={case.freq}, horizon={case.horizon_primary}) ===")
-        res = run_case(case, methods, prefer_synth=args.synth)
+        if args.fast:
+            res = run_case(case, methods, prefer_synth=args.synth)
+        else:
+            res = run_case_rolling(case, methods, n_origins=args.origins, prefer_synth=args.synth)
         all_results.append(res)
         print()
 
