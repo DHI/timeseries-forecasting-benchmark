@@ -9,17 +9,33 @@ import numpy as np
 import pandas as pd
 from matplotlib.colors import TwoSlopeNorm
 
+# `vlo`/`vhi` clamp the COLOUR scale (not the printed numbers): a single catastrophic
+# cell (e.g. an MLP at skill -16) would otherwise compress the whole colormap so every
+# meaningful difference looks identical. Cells beyond the clamp saturate to the end colour
+# while their true value is still written in the cell.
 _METRIC_CONFIG = {
     "MASE": {
         "cmap": "RdYlGn_r",
         "center": 1.0,
-        "label": "MASE (lower is better; 1 = seasonal naive)",
+        "vlo": 0.0,
+        "vhi": 2.0,
+        "label": "MASE (lower=better; 1 = seasonal naive; colour clamped to [0, 2])",
         "fmt": "{:.2f}",
     },
     "Skill_vs_Persistence": {
         "cmap": "RdYlGn",
         "center": 0.0,
-        "label": "Skill vs persistence (higher is better; 0 = no better)",
+        "vlo": -1.0,
+        "vhi": 1.0,
+        "label": "Skill vs persistence (higher=better; 0 = no better; colour clamped to [-1, 1])",
+        "fmt": "{:+.2f}",
+    },
+    "Skill_vs_Mean": {
+        "cmap": "RdYlGn",
+        "center": 0.0,
+        "vlo": -1.0,
+        "vhi": 1.0,
+        "label": "Skill vs mean (higher=better; 0 = no better; colour clamped to [-1, 1])",
         "fmt": "{:+.2f}",
     },
     "MAE": {"cmap": "Reds", "center": None, "label": "MAE (lower is better)", "fmt": "{:.3g}"},
@@ -33,6 +49,8 @@ def render_matrix(
     out_path: Path | None = None,
     title: str | None = None,
     method_order: list[str] | None = None,
+    vlo: float | None = None,
+    vhi: float | None = None,
 ) -> plt.Figure:
     cfg = _METRIC_CONFIG.get(
         metric, {"cmap": "viridis", "center": None, "label": metric, "fmt": "{:.3g}"}
@@ -51,11 +69,16 @@ def render_matrix(
     fig, ax = plt.subplots(figsize=(1.2 * n_cols + 3, 0.6 * n_rows + 2.5))
 
     if cfg["center"] is not None and np.isfinite(data).any():
-        vmin = float(np.nanmin(data))
-        vmax = float(np.nanmax(data))
-        vmin = min(vmin, cfg["center"] - 1e-9)
-        vmax = max(vmax, cfg["center"] + 1e-9)
-        norm = TwoSlopeNorm(vmin=vmin, vcenter=cfg["center"], vmax=vmax)
+        center = cfg["center"]
+        # clamp bounds: explicit args > config > data range
+        lo = vlo if vlo is not None else cfg.get("vlo")
+        hi = vhi if vhi is not None else cfg.get("vhi")
+        vmin = float(lo) if lo is not None else float(np.nanmin(data))
+        vmax = float(hi) if hi is not None else float(np.nanmax(data))
+        vmin = min(vmin, center - 1e-9)
+        vmax = max(vmax, center + 1e-9)
+        # TwoSlopeNorm with clip so out-of-range cells saturate to the end colour
+        norm = TwoSlopeNorm(vmin=vmin, vcenter=center, vmax=vmax)
         im = ax.imshow(data, cmap=cfg["cmap"], norm=norm, aspect="auto")
     else:
         im = ax.imshow(data, cmap=cfg["cmap"], aspect="auto")

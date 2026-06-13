@@ -160,6 +160,20 @@ def test_matrix_renders(tmp_path):
     assert (tmp_path / "m.png").exists()
 
 
+def test_matrix_colour_scale_clamped_to_outlier(tmp_path):
+    """A catastrophic outlier must not skew the colour scale: the norm clamps to [-1, 1]
+    for skill while the cell still renders. (User-reported: a -16 cell washed out the map.)"""
+    rows = []
+    for method, val in [("Good", 0.5), ("Bad", -16.65)]:
+        rows.append({"case_id": "c1", "domain": "d", "method": method,
+                     "horizon": "1h", "metric": "Skill_vs_Persistence", "value": val})
+    fig = render_matrix(pd.DataFrame(rows), metric="Skill_vs_Persistence",
+                        out_path=tmp_path / "skill.png")
+    norm = fig.axes[0].images[0].norm
+    assert norm.vmin == -1.0 and norm.vmax == 1.0  # clamped, not -16.65
+    assert (tmp_path / "skill.png").exists()
+
+
 def test_leadtime_plot_renders(tmp_path):
     case = get_case("ndbc_waves")
     curve = run_leadtime_curve(case, [MeanBaseline(), Persistence()], n_origins=5, prefer_synth=True)
