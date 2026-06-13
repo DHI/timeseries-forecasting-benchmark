@@ -1,0 +1,29 @@
+id = "ndbc_waves_atlantic"
+domain = "spectral_waves"
+notes = "Significant wave height at NDBC buoy 44013 (Boston / Massachusetts Bay, NW Atlantic). A fetch-limited wind-sea / nor'easter regime, deliberately contrasting the swell-dominated open-Pacific buoy ndbc_waves (46050) — the same target and horizon across two wave climates tests whether method ranking is regime-robust. Exogenous: the buoy's own wind speed + pressure (known-future, perfect-forecast proxy for an NWP wind forecast) and air/water temperature."
+
+target = "wvht"
+target_unit = "m"
+
+freq = "1h"
+horizon_primary = "24h"
+horizons_eval = ["6h", "24h", "48h"]
+input_window = "14D"
+
+exogenous = ["wspd", "pres", "atmp", "wtmp"]
+exogenous_known_future = ["wspd", "pres"]
+static_attrs = ["lat", "lon"]
+data_type = "observed"
+split_mode = "fraction"
+split_fraction = [0.7, 0.85]
+
+[splits]
+train_end = 2021-12-31
+val_end = 2022-12-31
+test_end = 2023-12-31
+
+[source]
+name = "NDBC 44013"
+url = "https://www.ndbc.noaa.gov/station_page.php?station=44013"
+license = "Public domain (US Government)"
+citation = "NOAA National Data Buoy Center, standard meteorological data"

@@ -43,6 +43,24 @@ def _complete_for_fit(df: pd.DataFrame, cols: list[str], interp_limit: int | Non
     return out
 
 
+def _pick_origin(raw_y: np.ndarray, test_start: int, last_origin: int, horizon: int,
+                 min_frac: float = 0.5) -> int:
+    """First origin in [test_start, last_origin] whose horizon window is >= min_frac
+    observed; else the origin with the densest window. Keeps the single-holdout metric
+    meaningful when the test split begins in a gap."""
+    if last_origin <= test_start:
+        return test_start
+    step = max(1, horizon // 4)
+    best_o, best_frac = test_start, -1.0
+    for o in range(test_start, last_origin + 1, step):
+        frac = float(np.isfinite(raw_y[o : o + horizon]).mean())
+        if frac >= min_frac:
+            return o
+        if frac > best_frac:
+            best_frac, best_o = frac, o
+    return best_o
+
+
 def run_case(case: Case, methods: list[Forecaster], prefer_synth: bool = False) -> pd.DataFrame:
     df = case.load(prefer_synth=prefer_synth)
     splits = case.split_frame(df)
@@ -54,20 +72,29 @@ def run_case(case: Case, methods: list[Forecaster], prefer_synth: bool = False) 
     horizon_steps = _horizon_to_steps(case.horizon_primary, case.freq)
     horizon_steps = min(horizon_steps, len(test))
 
-    # Impute training gaps for methods that need a complete target/covariates.
     exo_cols = list(dict.fromkeys([*case.exogenous, *case.exogenous_known_future]))
     fit_cols = ["y", *exo_cols]
-    train_fit = _complete_for_fit(train_val, fit_cols)
 
-    # Future covariates over the horizon (a perfect-forecast proxy), imputed and passed to
-    # exogenous-aware methods. Univariate methods receive but ignore it.
+    # Choose the forecast origin within the test split. The naive choice (the very first
+    # test timestamp) can land in a data gap, making the single-holdout window mostly NaN
+    # and the metric meaningless. Instead slide to the first origin whose horizon window is
+    # at least half observed (falling back to the densest window). History is then extended
+    # to that origin so the forecast is still made from genuine observations.
+    full = pd.concat([train_val, test], ignore_index=True)
+    full_fit = _complete_for_fit(full, fit_cols)
+    raw_y = full["y"].to_numpy(dtype=float)
+    test_start = len(train_val)
+    last_origin = len(full) - horizon_steps
+    origin = _pick_origin(raw_y, test_start, last_origin, horizon_steps)
+
+    train_fit = full_fit.iloc[:origin].reset_index(drop=True)
     future_exog = None
     if exo_cols:
-        fe = _complete_for_fit(test.head(horizon_steps), exo_cols)
-        future_exog = fe[["ds", *[c for c in exo_cols if c in fe.columns]]]
+        fe = full_fit.iloc[origin : origin + horizon_steps]
+        future_exog = fe[["ds", *[c for c in exo_cols if c in fe.columns]]].reset_index(drop=True)
 
     # Test target kept raw; we score only on finite (observed) points.
-    y_true_raw = test["y"].head(horizon_steps).to_numpy(dtype=float)
+    y_true_raw = raw_y[origin : origin + horizon_steps]
     finite = np.isfinite(y_true_raw)
     frac_finite = float(finite.mean()) if len(finite) else 0.0
 

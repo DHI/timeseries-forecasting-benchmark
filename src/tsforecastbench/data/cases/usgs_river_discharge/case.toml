@@ -1,0 +1,27 @@
+id = "usgs_river_discharge"
+domain = "hydrology"
+notes = "Daily river discharge at Esopus Creek at Coldbrook, NY (USGS 01362500), a rainfall/snowmelt-driven Catskills river. Deliberate flashy contrast to the groundwater-dominated camels_dk_discharge: fast storm response, Richards-Baker flashiness ~0.3 vs the near-persistence DK lowland catchment. Discharge converted cfs->m3/s. Exogenous: ERA5 precipitation + air temperature at the gauge (Open-Meteo), as a perfect-forecast proxy."
+
+target = "discharge"
+target_unit = "m3/s"
+
+freq = "1D"
+horizon_primary = "7D"
+horizons_eval = ["1D", "3D", "7D"]
+input_window = "30D"
+
+exogenous = ["precip", "temp_air"]
+exogenous_known_future = ["precip", "temp_air"]
+static_attrs = ["lat", "lon"]
+data_type = "mixed"
+
+[splits]
+train_end = 2018-12-31
+val_end = 2019-12-31
+test_end = 2020-12-31
+
+[source]
+name = "USGS NWIS 01362500"
+url = "https://waterdata.usgs.gov/monitoring-location/01362500/"
+license = "Public domain (US Geological Survey)"
+citation = "U.S. Geological Survey National Water Information System"

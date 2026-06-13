@@ -43,12 +43,19 @@ point via the Open-Meteo archive API — no CDS account needed. See
 
 | Case | Domain | Target | Freq | Horizon | Source |
 |---|---|---|---|---|---|
-| `camels_dk_discharge` | hydrology | river discharge | daily | 7 d | CAMELS-DK |
+| `camels_dk_discharge` | hydrology (groundwater) | river discharge | daily | 7 d | CAMELS-DK |
+| `usgs_river_discharge` | hydrology (flashy) | river discharge | daily | 7 d | USGS NWIS |
+| `usgs_groundwater` | groundwater | water-table depth | daily | 30 d | USGS NWIS |
+| `usgs_stream_temp` | water quality | river temperature | daily | 7 d | USGS NWIS |
 | `bellinge_sewer_level` | urban drainage | sewer level | 15 min | 6 h | Bellinge (DTU) |
-| `wd_battledim` | water distribution | inlet flow | hourly | 24 h | BattLeDIM L-Town |
-| `wwtp_influent` | wastewater | influent flow | hourly | 24 h | Mendeley N₂O |
-| `gesla_storm_surge` | storm surge | non-tidal residual | hourly | 48 h | GESLA-3 |
-| `ndbc_waves` | spectral waves | significant wave height | hourly | 24 h | NOAA NDBC |
+| `wd_battledim` | water distribution | network demand | hourly | 24 h | BattLeDIM L-Town |
+| `wwtp_influent` | wastewater | influent flow | hourly | 24 h | N₂O WWTP (Cembrowicz) |
+| `gesla_storm_surge` | storm surge | non-tidal residual | hourly | 48 h | GESLA-3 + ERA5 |
+| `ndbc_waves` | spectral waves (swell) | significant wave height | hourly | 24 h | NOAA NDBC 46050 |
+| `ndbc_waves_atlantic` | spectral waves (wind-sea) | significant wave height | hourly | 24 h | NOAA NDBC 44013 |
+
+Atmospheric forcing (precip, wind, pressure, temperature) for the USGS and GESLA cases is
+fetched **credential-free** at the station point from the Open-Meteo ERA5 archive.
 
 **Methods** (columns of the matrix):
 

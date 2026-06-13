@@ -19,6 +19,26 @@
     "rows": 78889,
     "sha256": "c4d0a9e6c62d4f707bf01a4ffd2467a3feb3b067498734e69a34b05038c784db"
   },
+  "ndbc_waves_atlantic": {
+    "parquet": "data\\processed\\ndbc_waves_atlantic.parquet",
+    "rows": 78889,
+    "sha256": "ee68b24a1fa9bec64b5bbc149081c7c96ba5f6c8a7653859e818309d2a33446b"
+  },
+  "usgs_groundwater": {
+    "parquet": "data\\processed\\usgs_groundwater.parquet",
+    "rows": 4749,
+    "sha256": "fb50a4456e43a925043b6077fe8baeb645484e86ec63163f2d13e7ade9f4d2d8"
+  },
+  "usgs_river_discharge": {
+    "parquet": "data\\processed\\usgs_river_discharge.parquet",
+    "rows": 4749,
+    "sha256": "3e8d508145b82bdedc3db89222203aa2b45fe5a5768e9436d70a7d46b1be4ba5"
+  },
+  "usgs_stream_temp": {
+    "parquet": "data\\processed\\usgs_stream_temp.parquet",
+    "rows": 3653,
+    "sha256": "11d2ca127aaf950f39ffe6ab4d738c12850c2aa25cca83f873ea4d72f33e894a"
+  },
   "wd_battledim": {
     "parquet": "data\\processed\\wd_battledim.parquet",
     "rows": 17520,
