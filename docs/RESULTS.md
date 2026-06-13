@@ -117,6 +117,28 @@ on the forced water cases. The natural next steps are a **covariate-capable FM**
 the core matrix above used 16 origins, this extended pass 12. The qualitative ranking is
 stable across both.)*
 
+## Deep learning (N-HiTS / PatchTST)
+
+Both are implemented directly on torch (`run_pilot --with-dl`) — the usual route
+(neuralforecast) needs `ray`, which has no Python-3.13 wheels. A focused 4-case probe
+(rolling, 5 origins, skill vs persistence):
+
+| case | N-HiTS | PatchTST | LightGBM (uni) | LightGBM+exo |
+|---|---|---|---|---|
+| gesla_storm_surge (1h) | +0.18 | +0.25 | +0.20 | +0.86 |
+| ndbc_waves (1h) | +0.11 | −0.33 | −0.03 | +0.40 |
+| usgs_river_discharge (1d) | −0.05 | +0.05 | +0.24 | +0.90 |
+| usgs_stream_temp (1d) | −1.59 | −1.19 | −0.53 | +0.65 |
+
+The read: on the **hourly** cases, where the lookback (168 h) covers the dynamics, N-HiTS
+and PatchTST **beat persistence and match univariate LightGBM** (PatchTST is best of the
+univariate methods on surge). On the **daily** cases they trail — a 64-day lookback (capped
+for CPU tractability) can't see the annual cycle, and persistence is a stiff baseline on the
+flashy series. They are also the **heaviest** methods (PatchTST ~400 s for one hourly cell on
+CPU). So: promising univariate models where the lookback fits the dynamics, but lookback and
+compute are the binding constraints — exactly what a **GPU (WSL)** and a longer lookback
+budget would relax. As ever, the covariate-aware `+exo` columns still dominate.
+
 ## Caveats
 
 - **One station/catchment per case.** Findings are illustrative of a regime, not a
@@ -124,8 +146,10 @@ stable across both.)*
 - **Covariates are a perfect-forecast proxy.** Future covariate values come from observed
   reanalysis (oracle), so the `+exo` numbers are an *upper bound* on operational covariate
   value; real skill depends on the NWP forecast quality.
-- **CPU method set.** Deep learning beyond DLinear and covariate-capable / fine-tuned
-  foundation models are still to come (see `research_plan.md`).
+- **CPU method set.** DLinear, N-HiTS and PatchTST run, but on CPU the lookback and
+  training budget are capped; GPU (WSL) plus the neuralforecast zoo (TFT/iTransformer/
+  TimesNet, `--with-nf`) and covariate-capable / fine-tuned FMs are the next step
+  (see `research_plan.md`).
 - **One primary horizon per case** in the matrix; the lead-time curves
   (`scripts/run_leadtime.py`, and each case report) show how the ranking shifts as lead
   grows — covariates and FMs gain on persistence at longer leads.
