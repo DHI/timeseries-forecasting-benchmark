@@ -1,12 +1,19 @@
 # Benchmark results
 
-First full pass across **10 cases × the CPU method set**, scored by **rolling-origin**
+First full pass across **10 cases × the CPU method set** (the 11th case,
+`usgs_snowmelt_discharge`, was added after this pass and folds into the next refresh),
+scored by **rolling-origin**
 evaluation (16 refit origins per cell, errors pooled over origins × lead times, observed
 points only). The headline cell is **skill vs persistence** = `1 − MSE(model)/MSE(persistence)`
 at the primary horizon: positive means better than "tomorrow = today", `1.0` is perfect.
 
 Regenerate with `uv run python scripts/run_pilot.py` (add `--with-fm` for the Chronos
 column); per-case detail in [`reports/`](reports/) via `scripts/case_report.py`.
+
+![skill vs persistence matrix](figures/benchmark/matrix_skill_vs_persistence.png)
+
+*Colour-coded cases × methods matrix (skill vs persistence; greener = better). The tables
+below give the numbers and the analysis.*
 
 ## Skill vs persistence (rolling-origin)
 
@@ -69,21 +76,46 @@ wind-sea waves. The exception is the fetch-limited Atlantic buoy (`ndbc_waves_at
 the single hardest case: at 24 h every method sits near persistence and the covariate
 barely helps. Short-horizon wind-sea H_s is genuinely persistence-dominated there.
 
-## Foundation models (zero-shot)
+## Foundation model and extended baselines (full 14-method pass)
 
 Run with `--with-fm`, the pretrained **Chronos-Bolt** model forecasts each case
-**zero-shot — no case-specific training**. Spot-checks (rolling-origin):
+**zero-shot — no case-specific training**. The full pass also adds **DLinear** (linear,
+univariate) and **Theta**. Skill vs persistence, per case:
 
-| case | Chronos-Bolt | best tuned (with covariates) |
-|---|---|---|
-| gesla_storm_surge | +0.40 | LightGBM+exo +0.73 |
-| usgs_stream_temp | +0.15 | LightGBM+exo +0.85 |
+| case | Chronos-Bolt (zero-shot) | DLinear | Theta | best (with covariates) |
+|---|---|---|---|---|
+| usgs_river_discharge (flashy) | **+0.80** | +0.60 | −1.55 | Chronos / LightGBM+exo |
+| wd_battledim (demand) | +0.70 | +0.72 | +0.65 | LightGBM +0.74 |
+| wwtp_influent (flow) | +0.63 | +0.57 | +0.01 | LightGBM +0.69 |
+| usgs_groundwater | +0.30 | +0.25 | 0.00 | LightGBM+exo +0.65 |
+| usgs_stream_temp | +0.21 | +0.18 | 0.00 | LightGBM+exo +0.84 |
+| ndbc_waves_atlantic | +0.11 | +0.18 | 0.00 | LightGBM+exo +0.51 |
+| gesla_storm_surge | −0.03 | −0.02 | 0.00 | LightGBM+exo +0.52 |
+| ndbc_waves (swell) | −0.18 | +0.21 | 0.00 | LightGBM+exo +0.48 |
+| camels_dk_discharge | −0.09 | +0.21 | +0.05 | LinearLags+exo +0.30 |
+| bellinge_sewer_level | −0.57 | −0.95 | 0.00 | LightGBM +0.31 |
 
-The verdict for KER5: a zero-shot FM is a **strong univariate prior** — it beats
-persistence and most classical baselines with no fitting — but on these water cases it
-**does not yet replace a covariate-aware tuned model**, because it cannot see the rainfall
-/ wind / temperature that carries the skill. The natural next step is a covariate-capable
-FM (Chronos-2 / Moirai) and fine-tuning the top zero-shot performer.
+The KER5 verdict is more interesting than "FMs trail tuned models":
+
+- **Where the signal is regular/seasonal, the zero-shot FM is genuinely competitive** — it
+  *wins outright on the flashy discharge case* (**+0.80**, edging the covariate models) and
+  is near-best on water demand (+0.70) and WWTP flow (+0.63), with **no fitting at all**.
+  That is the headline FM result: a pretrained model matches tuned ML on the well-behaved
+  cases for free.
+- **Where the dynamics are noisy or covariate-driven, it trails badly** — sewer level
+  (−0.57), waves (−0.18), surge (−0.03) — because it is univariate and cannot see the
+  rainfall / wind that carries the skill, and the bare autoregressive structure is hard.
+- **DLinear** is a respectable univariate baseline (positive on 8/10), occasionally
+  unstable (bellinge −0.95); **Theta** is essentially persistence-or-worse here.
+
+So the foundation model is a **strong, free univariate prior that is regime-dependent**:
+adopt it where the series is regular, but it does not yet replace a covariate-aware model
+on the forced water cases. The natural next steps are a **covariate-capable FM**
+(Chronos-2 / Moirai) and **fine-tuning** the top zero-shot performer.
+
+*(Rolling-origin cell values are empirical estimates and shift modestly with origin count;
+the core matrix above used 16 origins, this extended pass 12. The qualitative ranking is
+stable across both.)*
 
 ## Caveats
 
