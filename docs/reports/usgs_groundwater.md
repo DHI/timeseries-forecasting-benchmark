@@ -15,12 +15,11 @@
 
 | method | MASE | skill vs persistence | skill vs mean |
 |---|---|---|---|
-| Persistence | 0.219 | +0.000 | +0.672 |
-| SeasonalNaive | 0.686 | -8.598 | -2.151 |
-| Theta | 0.219 | -0.000 | +0.672 |
-| DLinear | 0.178 | +0.355 | +0.788 |
-| LightGBM | 0.105 | +0.792 | +0.932 |
-| LightGBM+exo | 0.135 | +0.635 | +0.880 |
+| Persistence | 0.216 | +0.000 | +0.693 |
+| SeasonalNaive | 0.663 | -8.677 | -1.967 |
+| Theta | 0.216 | +0.000 | +0.693 |
+| DLinear | 0.181 | +0.250 | +0.770 |
+| Chronos-Bolt | 0.164 | +0.304 | +0.787 |
 
 ## Example forecast
 

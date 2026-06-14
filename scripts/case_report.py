@@ -34,8 +34,6 @@ from tsforecastbench.bench.eval import run_case_rolling, run_leadtime_curve  # n
 from tsforecastbench.bench.eval.loop import _complete_for_fit, _horizon_to_steps  # noqa: E402
 from tsforecastbench.bench.methods import (  # noqa: E402
     DLinearForecaster,
-    LightGBMExoForecaster,
-    LightGBMForecaster,
     Persistence,
     SeasonalNaive,
     ThetaForecaster,
@@ -49,8 +47,9 @@ FREQ_LABEL = {"1D": "days", "1h": "hours", "15min": "15-min steps", "1W": "weeks
 
 
 def _methods(with_fm: bool):
-    ms = [Persistence(), SeasonalNaive(), ThetaForecaster(), DLinearForecaster(),
-          LightGBMForecaster(), LightGBMExoForecaster()]
+    # LightGBM excluded: builds huge lag-feature matrices at high freq (e.g. bellinge 15-min),
+    # making per-case reports impractically slow. Full LightGBM results live in RESULTS.md.
+    ms = [Persistence(), SeasonalNaive(), ThetaForecaster(), DLinearForecaster()]
     if with_fm:
         try:
             from tsforecastbench.bench.methods import ChronosForecaster
