@@ -12,14 +12,11 @@ def _():
 
 @app.cell
 def _():
-    import sys
     import pathlib
-    _root = pathlib.Path(__file__).parents[1]
-    sys.path.insert(0, str(_root / "src"))
-    CACHE_DIR = _root / "notebooks" / ".cache"
+    CACHE_DIR = pathlib.Path(__file__).parents[1] / "notebooks" / ".cache"
     CACHE_DIR.mkdir(exist_ok=True)
     from tsforecastbench.data.registry import discover_cases, get_case
-    return CACHE_DIR, _root, discover_cases, get_case
+    return CACHE_DIR, discover_cases, get_case
 
 
 @app.cell

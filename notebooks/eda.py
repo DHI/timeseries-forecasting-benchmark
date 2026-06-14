@@ -13,9 +13,6 @@ def _():
 
 @app.cell
 def _():
-    import sys
-    import pathlib
-    sys.path.insert(0, str(pathlib.Path(__file__).parents[1] / "src"))
     from tsforecastbench.data.registry import discover_cases, get_case
 
     return discover_cases, get_case
