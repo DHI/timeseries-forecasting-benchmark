@@ -28,7 +28,7 @@ def _():
     from plotly.subplots import make_subplots
     from statsmodels.graphics.tsaplots import plot_acf
 
-    return go, make_subplots, pd, plot_acf, plt, px
+    return go, make_subplots, np, pd, plot_acf, plt, px
 
 
 @app.cell
@@ -68,6 +68,45 @@ def _(case, mo):
               f"val → {case.splits.val_end} · "
               f"test → {case.splits.test_end}"),
     ])
+    return
+
+
+@app.cell
+def _(case, go, mo):
+    # Coordinates sourced from station IDs / case notes.
+    # Lat/lon will move into the parquet static_attrs once #19 lands.
+    _LOCS = {
+        "usgs_groundwater":        (41.239,  -73.803, 10),   # USGS 411421073481202, Yorktown Hts NY
+        "usgs_river_discharge":    (41.994,  -74.472, 10),   # USGS 01362500, Esopus Creek NY
+        "usgs_snowmelt_discharge": (37.732, -119.557, 11),   # USGS 11264500, Merced R Yosemite CA
+        "usgs_stream_temp":        (37.652,  -78.087, 10),   # USGS 02035000, James R Cartersville VA
+        "gesla_storm_surge":       (53.867,    8.717,  9),   # Cuxhaven Steubenhoft, German Bight
+        "ndbc_waves":              (44.641, -124.532,  7),   # NDBC 46050, Stonewall Bank Oregon
+        "ndbc_waves_atlantic":     (42.346,  -70.651,  8),   # NDBC 44013, Boston / Mass Bay
+        "bellinge_sewer_level":    (55.383,   10.370, 12),   # Bellinge, Odense DK
+    }
+
+    if case.id not in _LOCS:
+        mo.md("_No precise location available for this case._")
+    else:
+        _lat, _lon, _zoom = _LOCS[case.id]
+        fig_map = go.Figure(go.Scattermap(
+            lat=[_lat], lon=[_lon],
+            mode="markers+text",
+            text=[f"  {case.id}"],
+            textposition="middle right",
+            marker=dict(size=14, color="#e63946"),
+        ))
+        fig_map.update_layout(
+            map=dict(
+                style="open-street-map",
+                center=dict(lat=_lat, lon=_lon),
+                zoom=_zoom,
+            ),
+            height=350,
+            margin=dict(t=0, b=0, l=0, r=0),
+        )
+        mo.ui.plotly(fig_map)
     return
 
 
@@ -237,6 +276,92 @@ def _(case, df, go, make_subplots, mo, pd):
             margin=dict(t=60, b=30),
         )
         mo.ui.plotly(_fig)
+    return (exo_cols,)
+
+
+@app.cell
+def _(case, df, exo_cols, go, make_subplots, mo, np, pd, splits):
+    from sklearn.feature_selection import mutual_info_regression as _mi_reg
+
+    if not exo_cols:
+        mo.md("_No exogenous variables — skip correlation analysis._")
+    else:
+        # Use train + val only to avoid test-set leakage in EDA metrics
+        _df_tv = pd.concat([splits["train"], splits["val"]], ignore_index=True)
+        _y = pd.to_numeric(_df_tv["y"], errors="coerce")
+
+        # Lag range tuned to freq so it spans ~2× the primary horizon
+        _max_lag = {"15min": 48, "1h": 48, "1D": 30, "1W": 16}.get(case.freq, 30)
+        _lags = list(range(-_max_lag, _max_lag + 1))
+
+        _palette = ["#e6550d", "#31a354", "#3182bd", "#756bb1", "#636363"]
+        _n_exo = len(exo_cols)
+        _fig_ccf = make_subplots(
+            rows=_n_exo, cols=1,
+            subplot_titles=[f"CCF: {c} → {case.target}" for c in exo_cols],
+            vertical_spacing=max(0.04, 0.3 / _n_exo),
+            shared_xaxes=True,
+        )
+        _summary = []
+
+        for _i, _col in enumerate(exo_cols):
+            if _col not in _df_tv.columns:
+                continue
+            _x = pd.to_numeric(_df_tv[_col], errors="coerce")
+
+            # CCF: corr(y[t], x[t - δ])  →  δ>0 means x from δ steps ago (x leads y, predictive)
+            _corrs = [float(_y.corr(_x.shift(_d))) for _d in _lags]
+            _corrs = [c if np.isfinite(c) else 0.0 for c in _corrs]
+            _best_idx = int(np.argmax(np.abs(_corrs)))
+            _best_lag, _best_r = _lags[_best_idx], _corrs[_best_idx]
+
+            _fig_ccf.add_trace(go.Bar(
+                x=_lags, y=_corrs,
+                name=_col,
+                marker_color=_palette[_i % len(_palette)],
+                showlegend=False,
+            ), row=_i + 1, col=1)
+            _fig_ccf.add_hline(y=0,   line_color="black", line_width=0.5, row=_i + 1, col=1)
+            _fig_ccf.add_vline(x=0,   line_color="grey",  line_width=0.8, line_dash="dash",
+                               row=_i + 1, col=1)
+            _fig_ccf.add_vline(x=_best_lag, line_color=_palette[_i % len(_palette)],
+                               line_width=1.2, line_dash="dot", row=_i + 1, col=1)
+
+            # Mutual information (non-linear importance)
+            _mask = _y.notna() & _x.notna()
+            _mi = float(_mi_reg(
+                _x[_mask].values.reshape(-1, 1), _y[_mask].values, random_state=0,
+            )[0]) if _mask.sum() > 20 else 0.0
+
+            _summary.append({
+                "variable": _col,
+                "known-future": "✓" if _col in case.exogenous_known_future else "",
+                "Pearson r (lag 0)": f"{float(_y.corr(_x)):+.3f}",
+                "best lag": f"{_best_lag:+d} steps",
+                "Pearson r (best lag)": f"{_best_r:+.3f}",
+                "mutual info": f"{_mi:.3f}",
+            })
+
+        _fig_ccf.update_xaxes(
+            title_text=f"Lag (steps of {case.freq})  —  positive lag: x from that many steps ago predicts y  →  x leads y",
+            row=_n_exo, col=1,
+        )
+        _fig_ccf.update_layout(
+            height=max(220, 180 * _n_exo) + 60,
+            margin=dict(t=40, b=60, l=60, r=20),
+        )
+
+        mo.vstack([
+            mo.md("### Exogenous variable analysis"),
+            mo.md(
+                "_**Best lag** = lag δ at which |CCF| is maximised. "
+                "Positive δ means the exogenous variable from δ steps ago best predicts the target — "
+                "a leading indicator useful for forecasting. "
+                "**Mutual info** captures non-linear dependence (higher = more informative)._"
+            ),
+            mo.ui.table(pd.DataFrame(_summary), selection=None),
+            mo.ui.plotly(_fig_ccf),
+        ])
     return
 
 
