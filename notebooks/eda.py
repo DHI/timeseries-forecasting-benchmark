@@ -102,9 +102,12 @@ def _(case, go, mo, pd, splits):
         title=f"{case.id} — full time series",
         xaxis_title="Date",
         yaxis_title=f"{case.target} [{case.target_unit}]",
-        height=350,
-        margin=dict(t=40, b=30, l=60, r=20),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0),
+        height=370,
+        margin=dict(t=50, b=40, l=60, r=20),
+        legend=dict(
+            orientation="h", x=0.5, xanchor="center",
+            y=-0.12, yanchor="top",
+        ),
         hovermode="x unified",
     )
     mo.ui.plotly(fig_ts)

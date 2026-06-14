@@ -111,14 +111,15 @@ def _(go, mo, scores):
         orientation="h",
         marker_color=["#d73027" if v < 0 else "#1a9850" for v in _skill.values],
         text=[f"{v:+.3f}" for v in _skill.values],
-        textposition="outside",
+        textposition="auto",
+        cliponaxis=False,
     ))
     fig_bar.add_vline(x=0, line_color="black", line_width=1)
     fig_bar.update_layout(
         title="Skill vs persistence (higher = better)",
         xaxis_title="Skill score",
         height=max(280, 44 * len(_skill) + 80),
-        margin=dict(t=40, b=30, l=130, r=70),
+        margin=dict(t=40, b=30, l=130, r=90),
     )
     mo.vstack([mo.md("## Skill ranking"), mo.ui.plotly(fig_bar)])
     return fig_bar,
@@ -219,10 +220,13 @@ def _(
         title=f"{case.id}: {case.horizon_primary} forecast from {pd.to_datetime(full['ds'].iloc[o]).date()}",
         xaxis_title="Date",
         yaxis_title=f"{case.target} [{case.target_unit}]",
-        height=380,
-        margin=dict(t=50, b=30),
+        height=400,
+        margin=dict(t=50, b=60),
         hovermode="x unified",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0),
+        legend=dict(
+            orientation="h", x=0.5, xanchor="center",
+            y=-0.18, yanchor="top",
+        ),
     )
     mo.ui.plotly(fig_ex)
     return ctx, fig_ex, fexog_ex, hist_ex, o
@@ -310,14 +314,16 @@ def _(
                 pass
 
     fig_diag.update_layout(
-        height=320,
-        title=f"4 hardest test windows — worst method: {_worst} (skill {_skill_col[_worst]:+.2f})",
-        margin=dict(t=60, b=30),
-        legend=dict(orientation="h", yanchor="bottom", y=1.1, x=0),
+        height=360,
+        margin=dict(t=40, b=70),
+        legend=dict(
+            orientation="h", x=0.5, xanchor="center",
+            y=-0.18, yanchor="top",
+        ),
     )
     mo.vstack([
         mo.md("## Diagnostic: hardest forecast windows"),
-        mo.md(f"_Showing 4 test origins with highest Persistence RMSE (= hardest to forecast). "
+        mo.md(f"_4 test origins with highest Persistence RMSE (hardest to forecast). "
               f"Worst overall method: **{_worst}** (skill {_skill_col[_worst]:+.2f})._"),
         mo.ui.plotly(fig_diag),
     ])
