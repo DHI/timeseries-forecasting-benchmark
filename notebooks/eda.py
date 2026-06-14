@@ -1,12 +1,13 @@
 import marimo
 
 __generated_with = "0.23.9"
-app = marimo.App(width="medium", title="Case EDA — time-series dataset explorer")
+app = marimo.App(width="medium")
 
 
 @app.cell
 def _():
     import marimo as mo
+
     return (mo,)
 
 
@@ -16,6 +17,7 @@ def _():
     import pathlib
     sys.path.insert(0, str(pathlib.Path(__file__).parents[1] / "src"))
     from tsforecastbench.data.registry import discover_cases, get_case
+
     return discover_cases, get_case
 
 
@@ -28,7 +30,8 @@ def _():
     import plotly.express as px
     from plotly.subplots import make_subplots
     from statsmodels.graphics.tsaplots import plot_acf
-    return go, make_subplots, np, pd, plot_acf, plt, px
+
+    return go, make_subplots, pd, plot_acf, plt, px
 
 
 @app.cell
@@ -36,7 +39,7 @@ def _(discover_cases, mo):
     cases = list(discover_cases())
     case_picker = mo.ui.dropdown(cases, value=cases[0], label="Case")
     mo.hstack([case_picker], justify="start")
-    return case_picker, cases
+    return (case_picker,)
 
 
 @app.cell
@@ -68,11 +71,11 @@ def _(case, mo):
               f"val → {case.splits.val_end} · "
               f"test → {case.splits.test_end}"),
     ])
-    return exo_display, source_link
+    return
 
 
 @app.cell
-def _(case, pd):
+def _(case):
     df = case.load()
     splits = case.split_frame(df)
     return df, splits
@@ -108,11 +111,11 @@ def _(case, go, mo, pd, splits):
         hovermode="x unified",
     )
     mo.ui.plotly(fig_ts)
-    return fig_ts,
+    return
 
 
 @app.cell
-def _(df, mo, np, pd, px):
+def _(df, mo, pd, px):
     y = pd.to_numeric(df["y"], errors="coerce")
     n_obs = int(y.notna().sum())
     span_days = (pd.to_datetime(df["ds"]).max() - pd.to_datetime(df["ds"]).min()).days
@@ -143,7 +146,7 @@ def _(df, mo, np, pd, px):
         ], justify="start", gap=1),
         mo.ui.plotly(fig_qual),
     ])
-    return fig_qual, n_obs, np, span_days, y, yearly
+    return (y,)
 
 
 @app.cell
@@ -176,11 +179,11 @@ def _(go, mo, pd, y):
         ], justify="start", gap=1),
         mo.ui.plotly(fig_dist),
     ])
-    return fig_dist, y_vals
+    return
 
 
 @app.cell
-def _(case, mo, pd, plot_acf, plt, y):
+def _(case, mo, plot_acf, plt, y):
     y_acf = y.dropna()
     y_acf = y_acf.iloc[-5000:] if len(y_acf) > 5000 else y_acf
 
@@ -193,7 +196,7 @@ def _(case, mo, pd, plot_acf, plt, y):
     ax_acf.set_xlabel(f"Lag ({case.freq})")
     plt.tight_layout()
     mo.mpl.interactive(fig_acf)
-    return ax_acf, fig_acf, n_lags, y_acf
+    return
 
 
 @app.cell
@@ -234,7 +237,7 @@ def _(case, df, go, make_subplots, mo, pd):
             margin=dict(t=60, b=30),
         )
         mo.ui.plotly(_fig)
-    return exo_cols,
+    return
 
 
 if __name__ == "__main__":
