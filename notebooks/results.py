@@ -50,7 +50,10 @@ def _(case_picker, get_case):
 def _(CACHE_DIR, case, mo, origins_slider, pd):
     from tsforecastbench.bench.eval import run_case_rolling
     from tsforecastbench.bench.methods import (
-        Persistence, SeasonalNaive, ThetaForecaster, DLinearForecaster,
+        DLinearForecaster,
+        Persistence,
+        SeasonalNaive,
+        ThetaForecaster,
     )
 
     _n = origins_slider.value
@@ -270,12 +273,12 @@ def _(
     _errors.sort(key=lambda x: -x[1])
     _hard = [_o for _o, _ in _errors[:4]]
 
+    import contextlib
+
     _exo_d = list(dict.fromkeys([*case.exogenous, *case.exogenous_known_future]))
     _method_objs_d = [Persistence()]
-    try:
+    with contextlib.suppress(Exception):
         _method_objs_d += [ThetaForecaster(), DLinearForecaster()]
-    except Exception:
-        pass
 
     _palette_d = ["#4C72B0", "#DD8452", "#55A868", "#C44E52"]
     _n_w = len(_hard)

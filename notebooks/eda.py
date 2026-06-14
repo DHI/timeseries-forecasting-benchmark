@@ -20,11 +20,11 @@ def _():
 
 @app.cell
 def _():
+    import matplotlib.pyplot as plt
     import numpy as np
     import pandas as pd
-    import matplotlib.pyplot as plt
-    import plotly.graph_objects as go
     import plotly.express as px
+    import plotly.graph_objects as go
     from plotly.subplots import make_subplots
     from statsmodels.graphics.tsaplots import plot_acf
 
@@ -252,7 +252,7 @@ def _(case, df, go, make_subplots, mo, pd):
         _n = len(exo_cols)
         _fig = make_subplots(
             rows=_n + 1, cols=1, shared_xaxes=True,
-            subplot_titles=[case.target] + exo_cols,
+            subplot_titles=[case.target, *exo_cols],
             vertical_spacing=0.05,
         )
         _fig.add_trace(go.Scatter(
@@ -290,7 +290,7 @@ def _(case, df, exo_cols, go, make_subplots, mo, np, pd, splits):
         _df_tv = pd.concat([splits["train"], splits["val"]], ignore_index=True)
         _y = pd.to_numeric(_df_tv["y"], errors="coerce")
 
-        # Lag range tuned to freq so it spans ~2× the primary horizon
+        # Lag range tuned to freq so it spans ~2x the primary horizon
         _max_lag = {"15min": 48, "1h": 48, "1D": 30, "1W": 16}.get(case.freq, 30)
         _lags = list(range(-_max_lag, _max_lag + 1))
 
