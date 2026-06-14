@@ -31,3 +31,6 @@ Thumbs.db
 .coverage
 htmlcov/
 .ruff_cache/
+# Marimo notebook cache (auto-generated results)
+notebooks/.cache/
+notebooks/__marimo__/
