@@ -87,7 +87,7 @@ def _(case, go, mo):
     }
 
     if case.id not in _LOCS:
-        mo.md("_No precise location available for this case._")
+        _map_out = mo.md("_No precise location available for this case._")
     else:
         _lat, _lon, _zoom = _LOCS[case.id]
         fig_map = go.Figure(go.Scattermap(
@@ -106,8 +106,8 @@ def _(case, go, mo):
             height=350,
             margin=dict(t=0, b=0, l=0, r=0),
         )
-        mo.ui.plotly(fig_map)
-    return
+        _map_out = mo.ui.plotly(fig_map)
+    _map_out
 
 
 @app.cell
@@ -243,7 +243,7 @@ def _(case, df, go, make_subplots, mo, pd):
     exo_cols = list(dict.fromkeys([*case.exogenous, *case.exogenous_known_future]))
 
     if not exo_cols:
-        mo.md("_No exogenous variables for this case._")
+        _exo_panel_out = mo.md("_No exogenous variables for this case._")
     else:
         _plot_df = df.copy()
         if len(_plot_df) > 6000:
@@ -275,7 +275,8 @@ def _(case, df, go, make_subplots, mo, pd):
             showlegend=False,
             margin=dict(t=60, b=30),
         )
-        mo.ui.plotly(_fig)
+        _exo_panel_out = mo.ui.plotly(_fig)
+    _exo_panel_out
     return (exo_cols,)
 
 
@@ -284,7 +285,7 @@ def _(case, df, exo_cols, go, make_subplots, mo, np, pd, splits):
     from sklearn.feature_selection import mutual_info_regression as _mi_reg
 
     if not exo_cols:
-        mo.md("_No exogenous variables — skip correlation analysis._")
+        _exo_analysis_out = mo.md("_No exogenous variables — skip correlation analysis._")
     else:
         # Use train + val only to avoid test-set leakage in EDA metrics
         _df_tv = pd.concat([splits["train"], splits["val"]], ignore_index=True)
@@ -351,7 +352,7 @@ def _(case, df, exo_cols, go, make_subplots, mo, np, pd, splits):
             margin=dict(t=40, b=60, l=60, r=20),
         )
 
-        mo.vstack([
+        _exo_analysis_out = mo.vstack([
             mo.md("### Exogenous variable analysis"),
             mo.md(
                 "_**Best lag** = lag δ at which |CCF| is maximised. "
@@ -362,6 +363,7 @@ def _(case, df, exo_cols, go, make_subplots, mo, np, pd, splits):
             mo.ui.table(pd.DataFrame(_summary), selection=None),
             mo.ui.plotly(_fig_ccf),
         ])
+    _exo_analysis_out
     return
 
 

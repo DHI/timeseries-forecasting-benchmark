@@ -49,6 +49,11 @@ target-version = "py311"
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
 ignore = ["E501", "UP036"]
 
+[tool.ruff.lint.per-file-ignores]
+# marimo cells display their last expression; a bare trailing name (e.g. a value
+# chosen in an if/else above) is the idiomatic way to render it, not dead code.
+"notebooks/*" = ["B018"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
