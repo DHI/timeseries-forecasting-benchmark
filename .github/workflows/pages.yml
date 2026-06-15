@@ -1,0 +1,58 @@
+name: EDA site
+
+# Build the static per-case EDA site (scripts/build_site.py) and publish it to
+# GitHub Pages. Requires Pages to be enabled with "Source: GitHub Actions" in the
+# repository settings — until then this workflow builds but the deploy step is a no-op.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "notebooks/eda.py"
+      - "scripts/build_site.py"
+      - ".github/workflows/pages.yml"
+      - "src/tsforecastbench/data/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time; don't cancel an in-progress run mid-publish.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86
+        with:
+          python-version: "3.12"
+
+      - name: Sync (notebooks extra → marimo + plotly)
+        run: uv sync --extra notebooks
+
+      - name: Build EDA site
+        run: uv run python scripts/build_site.py --out _site
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
