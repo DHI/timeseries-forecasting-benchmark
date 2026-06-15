@@ -15,8 +15,9 @@ def _():
     import pathlib
     CACHE_DIR = pathlib.Path(__file__).parents[1] / "notebooks" / ".cache"
     CACHE_DIR.mkdir(exist_ok=True)
+    from tsforecastbench.bench.eval import DEFAULT_ORIGINS
     from tsforecastbench.data.registry import discover_cases, get_case
-    return CACHE_DIR, discover_cases, get_case
+    return CACHE_DIR, DEFAULT_ORIGINS, discover_cases, get_case
 
 
 @app.cell
@@ -29,11 +30,11 @@ def _():
 
 
 @app.cell
-def _(discover_cases, mo):
+def _(DEFAULT_ORIGINS, discover_cases, mo):
     cases = list(discover_cases())
     case_picker = mo.ui.dropdown(cases, value=cases[0], label="Case")
     origins_slider = mo.ui.slider(
-        start=3, stop=20, step=1, value=6,
+        start=3, stop=24, step=1, value=DEFAULT_ORIGINS,
         label="Rolling origins (more = slower, more reliable)",
     )
     mo.hstack([case_picker, origins_slider], justify="start", gap=2)
