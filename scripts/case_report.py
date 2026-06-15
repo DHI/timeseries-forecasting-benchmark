@@ -153,8 +153,9 @@ def make_report(case_id: str, with_fm: bool, origins: int) -> Path:
         lines.append(f"| {m} | {r.get('MASE', float('nan')):.3f} | "
                      f"{r.get('Skill_vs_Persistence', float('nan')):+.3f} | "
                      f"{r.get('Skill_vs_Mean', float('nan')):+.3f} |")
-    rel_ex = Path("figures/reports") / f"{case_id}_example.png"
-    rel_lt = Path("figures/reports") / f"{case_id}_leadtime.png"
+    # report lives in docs/reports/, figures in docs/figures/reports/ — link is file-relative
+    rel_ex = Path("../figures/reports") / f"{case_id}_example.png"
+    rel_lt = Path("../figures/reports") / f"{case_id}_leadtime.png"
     lines += [
         "", "## Example forecast", "",
         f"![example]({rel_ex.as_posix()})", "",

@@ -50,7 +50,7 @@ exogenous-aware variants lift skill dramatically on the forced cases:
 | watertemp_james | air temperature | **+0.35 → +0.84** |
 | surge_cuxhaven | ERA5 wind/pressure | **+0.00 → +0.52** |
 | discharge_snowmelt_yosemite | temperature/precip | **−0.08 → +0.47** |
-| waves_oregon / _atlantic | wind | +0.13 → +0.48 / +0.14 → +0.51 |
+| waves_oregon / waves_massachusetts | wind | +0.13 → +0.48 / +0.14 → +0.51 |
 | discharge_lowland_denmark | precipitation (via LinearLags) | +0.06 → +0.30 |
 | groundwater_yorktown | (slow, integrative) | +0.65 → +0.65 — *no gain* |
 
