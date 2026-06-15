@@ -4,9 +4,9 @@ Run all:
     uv run python scripts/download_pilot.py
 
 Run one, or discovery mode:
-    uv run python -m tsforecastbench.data.cases.camels_dk_discharge.download --list
-    uv run python -m tsforecastbench.data.cases.bellinge_sewer_level.download --list
-    uv run python -m tsforecastbench.data.cases.gesla_storm_surge.download --station-file <name>
+    uv run python -m tsforecastbench.data.cases.discharge_lowland_denmark.download --list
+    uv run python -m tsforecastbench.data.cases.sewerlevel_bellinge.download --list
+    uv run python -m tsforecastbench.data.cases.surge_cuxhaven.download --station-file <name>
 
 Needs the `data` extra for some cases:
     uv sync --extra data       # xarray, netcdf4, utide, cdsapi, copernicusmarine
@@ -20,7 +20,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-PILOT_CASE_IDS = ("camels_dk_discharge", "bellinge_sewer_level", "gesla_storm_surge")
+PILOT_CASE_IDS = ("discharge_lowland_denmark", "sewerlevel_bellinge", "surge_cuxhaven")
 
 
 def main() -> int:

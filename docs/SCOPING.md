@@ -41,7 +41,7 @@ If a 20-minute walkthrough first would help, Jesper can set one up.
 > sane trivial baseline). This is the motivation for the per-case review tooling now being
 > built; see [`review_responses_pr2.md`](review_responses_pr2.md) A5.
 
-- Six cases implemented, five on real data, one (`gesla_storm_surge`) waiting on a manual GESLA archive download.
+- Six cases implemented, five on real data, one (`surge_cuxhaven`) waiting on a manual GESLA archive download.
 - Nine methods running: four naive baselines (Mean, Persistence, SeasonalNaive, Climatology), two classical (AutoARIMA, AutoETS), three windowed ML (LinearLags = Ridge, LightGBM, MLP).
 - Two output artefacts: the **cases × methods matrix** (MASE + skill vs persistence) and the **error-vs-lead-time curves** averaged over rolling origins.
 - Standard pipeline: long-format Parquet on disk, pandas in memory, fraction-or-calendar splits, NaN-masked metrics on gappy series.
@@ -59,7 +59,7 @@ Deliberately **not yet** built (the next things on the queue, which we want to d
 
 For each case we list the design choices we've made and where your domain input would change things. The case docs justify each in more detail.
 
-### `camels_dk_discharge` — daily discharge, 7-day horizon
+### `discharge_lowland_denmark` — daily discharge, 7-day horizon
 
 We chose CAMELS-DK catchment **`37470707`** by ranking the 304 gauged catchments by **baseflow index** (BFI 0.971, top of the distribution) and **low slope** (0.88, lowland) to make it a defensibly "typical Danish groundwater-dominated lowland" gauge.
 
@@ -68,7 +68,7 @@ We chose CAMELS-DK catchment **`37470707`** by ranking the 304 gauged catchments
 - Should we include `q_sim` from the DK-model as a process-model reference column from day one? *(Per Rocco: only worthwhile where there's no high-quality streamflow obs — and we **do** have `q_obs`, so it's optional here.)*
 - Does the open question of contrasting with a flashy catchment (Caravan / LamaH-CE) need to happen before we expand methods, or can it wait? *(Per Rocco: it can wait.)*
 
-### `bellinge_sewer_level` — 15-min sewer level, 6-hour horizon
+### `sewerlevel_bellinge` — 15-min sewer level, 6-hour horizon
 
 We use sensor **`G71F05R_LevelInlet_System2000p1`**, selected by `download --scan` as the
 level instance that is 100% active over the full 2010–2020 span. (An earlier draft of this
@@ -81,7 +81,7 @@ with the case doc and `case.toml`. Rocco flagged the mismatch.)
 - Should the case be the *event-aware* version (CSO event hit rate, peak-level bias) rather than continuous MAE/RMSE? The Bellinge data supports the event framing trivially. *(Per Rocco: yes — event-based metrics are often more meaningful here; see the original Bellinge paper for inspiration.)*
 - Is the X-band radar nowcast as known-future exogenous a realistic operational story, or do we need to be honest that most utilities don't have it? *(Per Rocco: the **rain gauge** is likely good enough — the Bellinge models were calibrated on gauges; the radar's added value is uncertain.)*
 
-### `wd_battledim` — hourly network demand, 24-hour horizon
+### `demand_ltown` — hourly network demand, 24-hour horizon
 
 L-Town, synthetic SCADA from EPANET simulation. The benchmark forecasts **total network
 demand** (sum of consumer demand across all nodes from `SCADA_Demands.csv`), resampled to
@@ -95,7 +95,7 @@ below. This is now consistent with the case doc.)
 - 24 hours for pump scheduling — agree?
 - Should we add a leak-detection extension? The 2019 evaluation period has leaks; a "demand-forecast residual = leak signal" anomaly metric writes itself.
 
-### `wwtp_influent` — hourly influent flow, 24-hour horizon
+### `wwtp_influent_n2o_350k` — hourly influent flow, 24-hour horizon
 
 Cembrowicz et al. (2024) N₂O WWTP dataset (hosted on Mendeley Data); target is `INLET.Q value`, the plant inlet totaliser.
 
@@ -104,7 +104,7 @@ Cembrowicz et al. (2024) N₂O WWTP dataset (hosted on Mendeley Data); target is
 - ~~The same dataset trivially yields two more cases (`wwtp_effluent_nh4`, `wwtp_n2o`).~~ Dropped per Rocco — don't mix influent and effluent.
 - ~~A synthetic BSM2 case alongside the real plant?~~ Dropped per Rocco — "not useful".
 
-### `gesla_storm_surge` — hourly residual, 48-hour horizon
+### `surge_cuxhaven` — hourly residual, 48-hour horizon
 
 *(Not yet reviewed by Rocco — flagged "not checked". Best given a second pass by a coastal / met-ocean expert.)*
 
@@ -115,7 +115,7 @@ Non-tidal residual after UTide harmonic removal. Station not yet chosen (Esbjerg
 - Process-model reference: Copernicus Marine surge product as a "free" baseline column. Worth pulling in?
 - Tide-surge interaction — should we be evaluating *total water level* rather than *residual*, since that's what matters operationally for flood thresholds?
 
-### `ndbc_waves` — hourly H_s, 24-hour horizon
+### `waves_oregon` — hourly H_s, 24-hour horizon
 
 *(Not yet reviewed by Rocco — flagged "not checked". Best given a second pass by a coastal / met-ocean expert.)*
 

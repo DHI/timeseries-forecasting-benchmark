@@ -1,0 +1,27 @@
+id = "watertemp_james"
+domain = "water_quality"
+notes = "Daily river water temperature at the James River at Cartersville, VA (USGS 02035000). Strongly air-temperature driven with a clear seasonal cycle; a water-quality / ecology case where the exogenous (ERA5 air temperature) carries most of the skill. Precipitation included as a secondary driver (storm cooling/mixing). Exogenous from Open-Meteo, perfect-forecast proxy."
+
+target = "water_temp"
+target_unit = "degC"
+
+freq = "1D"
+horizon_primary = "7D"
+horizons_eval = ["1D", "3D", "7D"]
+input_window = "30D"
+
+exogenous = ["temp_air", "precip"]
+exogenous_known_future = ["temp_air", "precip"]
+static_attrs = ["lat", "lon"]
+data_type = "mixed"
+
+[splits]
+train_end = 2018-12-31
+val_end = 2019-12-31
+test_end = 2020-12-31
+
+[source]
+name = "USGS NWIS 02035000"
+url = "https://waterdata.usgs.gov/monitoring-location/02035000/"
+license = "Public domain (US Geological Survey)"
+citation = "U.S. Geological Survey National Water Information System"

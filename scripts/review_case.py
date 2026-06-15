@@ -17,9 +17,9 @@ does the exogenous set match the domain story — is deliberately left to the re
 evidence; it does not pretend to know hydrology.
 
 Run:
-    uv run python scripts/review_case.py --case bellinge_sewer_level
-    uv run python scripts/review_case.py --case ndbc_waves --json-only
-    uv run python scripts/review_case.py --case wwtp_influent --max-gap 24h --strict
+    uv run python scripts/review_case.py --case sewerlevel_bellinge
+    uv run python scripts/review_case.py --case waves_oregon --json-only
+    uv run python scripts/review_case.py --case wwtp_influent_n2o_350k --max-gap 24h --strict
 """
 
 from __future__ import annotations

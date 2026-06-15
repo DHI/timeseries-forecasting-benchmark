@@ -44,8 +44,8 @@ A few need a manual one-time archive download:
 
 - **GESLA-3 storm surge** — the bulk archive is behind a manual link
   (https://gesla787883612.wordpress.com/downloads/); save `GESLA*_ALL.zip` + `GESLA*_ALL.csv`
-  under `data/raw/gesla_storm_surge/`, then run the download (defaults to `--station-code Cux`;
+  under `data/raw/surge_cuxhaven/`, then run the download (defaults to `--station-code Cux`;
   ERA5 wind/pressure are fetched automatically).
 - **Mendeley WWTP** — download the dataset zip from
   https://data.mendeley.com/datasets/xmbxhscgpr/1 (Download All) into
-  `data/raw/wwtp_influent/`, then run the case download.
+  `data/raw/wwtp_influent_n2o_350k/`, then run the case download.

@@ -1,0 +1,27 @@
+id = "groundwater_yorktown"
+domain = "groundwater"
+notes = "Daily groundwater level (depth to water, m below land surface) at USGS well We-5020, Yorktown Heights NY (411421073481202), a shallow water-table aquifer. Slow recharge-driven dynamics: persistence is a hard baseline; skill at longer horizons comes from antecedent precipitation. Depth converted ft->m. Exogenous: ERA5 precipitation + air temperature (Open-Meteo). Covers the water-resources domain (cf. GEMS-GER in the plan)."
+
+target = "gwl_depth_m"
+target_unit = "m"
+
+freq = "1D"
+horizon_primary = "30D"
+horizons_eval = ["7D", "14D", "30D"]
+input_window = "90D"
+
+exogenous = ["precip", "temp_air"]
+exogenous_known_future = ["precip", "temp_air"]
+static_attrs = ["lat", "lon"]
+data_type = "mixed"
+
+[splits]
+train_end = 2018-12-31
+val_end = 2019-12-31
+test_end = 2020-12-31
+
+[source]
+name = "USGS NWIS 411421073481202 (We-5020)"
+url = "https://waterdata.usgs.gov/monitoring-location/411421073481202/"
+license = "Public domain (US Geological Survey)"
+citation = "U.S. Geological Survey National Water Information System"

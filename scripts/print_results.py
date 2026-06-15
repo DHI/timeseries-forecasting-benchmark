@@ -26,7 +26,7 @@ def main() -> int:
         print("\n=== Method runtimes (s) ===")
         print(df.groupby(["case_id", "method"])["seconds"].first().unstack().round(2))
 
-    for cid in ("ndbc_waves", "camels_dk_discharge", "bellinge_sewer_level"):
+    for cid in ("waves_oregon", "discharge_lowland_denmark", "sewerlevel_bellinge"):
         p = R / f"leadtime_{cid}.parquet"
         if p.exists():
             curve = pd.read_parquet(p)

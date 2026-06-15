@@ -12,17 +12,17 @@
 
 | Case | Domain | Target | Freq | Horizon |
 |---|---|---|---|---|
-| [`camels_dk_discharge`](cases/camels_dk_discharge.md) | hydrology (groundwater-fed) | river discharge | daily | 7 d |
-| [`usgs_river_discharge`](cases/usgs_river_discharge.md) | hydrology (flashy) | river discharge | daily | 7 d |
-| [`usgs_snowmelt_discharge`](cases/usgs_snowmelt_discharge.md) | hydrology (snowmelt) | river discharge | daily | 7 d |
-| [`usgs_groundwater`](cases/usgs_groundwater.md) | groundwater | depth to water | daily | 30 d |
-| [`usgs_stream_temp`](cases/usgs_stream_temp.md) | water quality | river water temperature | daily | 7 d |
-| [`bellinge_sewer_level`](cases/bellinge_sewer_level.md) | urban drainage | sewer water level | 15 min | 6 h |
-| [`wd_battledim`](cases/wd_battledim.md) | water distribution | network demand | hourly | 24 h |
-| [`wwtp_influent`](cases/wwtp_influent.md) | wastewater | influent flow | hourly | 24 h |
-| [`gesla_storm_surge`](cases/gesla_storm_surge.md) | storm surge | non-tidal residual | hourly | 48 h |
-| [`ndbc_waves`](cases/ndbc_waves.md) | spectral waves (swell) | significant wave height | hourly | 24 h |
-| [`ndbc_waves_atlantic`](cases/ndbc_waves_atlantic.md) | spectral waves (wind-sea) | significant wave height | hourly | 24 h |
+| [`discharge_lowland_denmark`](cases/discharge_lowland_denmark.md) | hydrology (groundwater-fed) | river discharge | daily | 7 d |
+| [`discharge_flashy_catskills`](cases/discharge_flashy_catskills.md) | hydrology (flashy) | river discharge | daily | 7 d |
+| [`discharge_snowmelt_yosemite`](cases/discharge_snowmelt_yosemite.md) | hydrology (snowmelt) | river discharge | daily | 7 d |
+| [`groundwater_yorktown`](cases/groundwater_yorktown.md) | groundwater | depth to water | daily | 30 d |
+| [`watertemp_james`](cases/watertemp_james.md) | water quality | river water temperature | daily | 7 d |
+| [`sewerlevel_bellinge`](cases/sewerlevel_bellinge.md) | urban drainage | sewer water level | 15 min | 6 h |
+| [`demand_ltown`](cases/demand_ltown.md) | water distribution | network demand | hourly | 24 h |
+| [`wwtp_influent_n2o_350k`](cases/wwtp_influent_n2o_350k.md) | wastewater | influent flow | hourly | 24 h |
+| [`surge_cuxhaven`](cases/surge_cuxhaven.md) | storm surge | non-tidal residual | hourly | 48 h |
+| [`waves_oregon`](cases/waves_oregon.md) | spectral waves (swell) | significant wave height | hourly | 24 h |
+| [`waves_massachusetts`](cases/waves_massachusetts.md) | spectral waves (wind-sea) | significant wave height | hourly | 24 h |
 
 The three hydrology cases share the same target and horizon by design — a groundwater /
 flashy / snowmelt contrast that tests whether method ranking is regime-robust. Likewise the

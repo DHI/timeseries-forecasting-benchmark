@@ -31,8 +31,8 @@ ALL_CASES = list(discover_cases())
 
 
 def test_expected_cases_present():
-    for cid in ("camels_dk_discharge", "bellinge_sewer_level", "gesla_storm_surge",
-                "ndbc_waves", "wwtp_influent"):
+    for cid in ("discharge_lowland_denmark", "sewerlevel_bellinge", "surge_cuxhaven",
+                "waves_oregon", "wwtp_influent_n2o_350k"):
         assert cid in ALL_CASES
 
 
@@ -65,14 +65,14 @@ def test_baselines_run(cid):
 
 
 def test_lightgbm_runs_on_one_case():
-    res = run_case(get_case("ndbc_waves"), [LightGBMForecaster()], prefer_synth=True)
+    res = run_case(get_case("waves_oregon"), [LightGBMForecaster()], prefer_synth=True)
     assert (res["status"] == "ok").all()
 
 
 def test_rolling_matrix_runs():
     from tsforecastbench.bench.eval import run_case_rolling
 
-    case = get_case("usgs_river_discharge")
+    case = get_case("discharge_flashy_catskills")
     methods = [Persistence(), LightGBMExoForecaster()]
     res = run_case_rolling(case, methods, n_origins=6, prefer_synth=True)
     assert len(res) == len(methods) * 5
@@ -82,7 +82,7 @@ def test_rolling_matrix_runs():
     assert abs(float(pers.iloc[0])) < 1e-6
 
 
-@pytest.mark.parametrize("cid", ["gesla_storm_surge", "ndbc_waves", "camels_dk_discharge"])
+@pytest.mark.parametrize("cid", ["surge_cuxhaven", "waves_oregon", "discharge_lowland_denmark"])
 def test_exogenous_methods_run(cid):
     """Exogenous-aware windowed ML runs on every case that declares covariates."""
     case = get_case(cid)
@@ -94,14 +94,14 @@ def test_exogenous_methods_run(cid):
 
 def test_exogenous_method_on_univariate_case():
     """+exo variants reduce to univariate (no crash) on a case with no covariates."""
-    res = run_case(get_case("wd_battledim"), [LightGBMExoForecaster()], prefer_synth=True)
+    res = run_case(get_case("demand_ltown"), [LightGBMExoForecaster()], prefer_synth=True)
     assert (res["status"] == "ok").all()
 
 
 def test_dlinear_and_theta_run():
     from tsforecastbench.bench.methods import DLinearForecaster, ThetaForecaster
 
-    res = run_case(get_case("usgs_river_discharge"),
+    res = run_case(get_case("discharge_flashy_catskills"),
                    [DLinearForecaster(), ThetaForecaster()], prefer_synth=True)
     assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
 
@@ -117,7 +117,7 @@ def test_chronos_runs_if_installed():
     pytest.importorskip("chronos")
     from tsforecastbench.bench.methods import ChronosForecaster
 
-    res = run_case(get_case("ndbc_waves"), [ChronosForecaster()], prefer_synth=True)
+    res = run_case(get_case("waves_oregon"), [ChronosForecaster()], prefer_synth=True)
     assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
 
 
@@ -144,13 +144,13 @@ def test_torch_dl_runs_if_installed():
     methods = [NHITSForecaster(), PatchTSTForecaster()]
     for mdl in methods:
         mdl.max_steps = 5
-    res = run_case(get_case("usgs_river_discharge"), methods, prefer_synth=True)
+    res = run_case(get_case("discharge_flashy_catskills"), methods, prefer_synth=True)
     assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
 
 
 def test_fraction_split_handles_truncated_obs():
     """CAMELS uses fraction splits; even if obs end early the test window is scorable."""
-    case = get_case("camels_dk_discharge")
+    case = get_case("discharge_lowland_denmark")
     df = case.synth()
     df.loc[int(len(df) * 0.6):, "y"] = np.nan  # observations stop at 60%
     sp = case.split_frame(df)
@@ -172,7 +172,7 @@ def test_metrics_math():
 
 
 def test_leadtime_curve_shape():
-    case = get_case("ndbc_waves")
+    case = get_case("waves_oregon")
     curve = run_leadtime_curve(
         case, [MeanBaseline(), Persistence(), Climatology()], n_origins=6, prefer_synth=True
     )
@@ -181,7 +181,7 @@ def test_leadtime_curve_shape():
 
 
 def test_matrix_renders(tmp_path):
-    case = get_case("ndbc_waves")
+    case = get_case("waves_oregon")
     res = run_case(case, [MeanBaseline(), Persistence(), Climatology()], prefer_synth=True)
     render_matrix(res, metric="MASE", out_path=tmp_path / "m.png")
     assert (tmp_path / "m.png").exists()
@@ -202,7 +202,7 @@ def test_matrix_colour_scale_clamped_to_outlier(tmp_path):
 
 
 def test_leadtime_plot_renders(tmp_path):
-    case = get_case("ndbc_waves")
+    case = get_case("waves_oregon")
     curve = run_leadtime_curve(case, [MeanBaseline(), Persistence()], n_origins=5, prefer_synth=True)
     plot_leadtime_curve(curve, out_path=tmp_path / "c.png")
     assert (tmp_path / "c.png").exists()

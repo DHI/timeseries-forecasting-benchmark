@@ -170,8 +170,8 @@ Frequencies are pinned per case (no irregular timestamps inside a series — gap
 Every case ships a small TOML that the registry validates into a `Case` object:
 
 ```toml
-# cases/bellinge_sewer_level.toml
-id = "bellinge_sewer_level"
+# cases/sewerlevel_bellinge.toml
+id = "sewerlevel_bellinge"
 domain = "urban_drainage"
 target = "level_m"
 target_unit = "m"
