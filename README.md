@@ -11,6 +11,9 @@ Developed under research outcome **RK2026 / KER 5** ("next-generation modelling"
 See [`research_plan.md`](research_plan.md) for the full design and roadmap, and
 [`docs/RESULTS.md`](docs/RESULTS.md) for the current cross-case findings.
 
+> **New to the project?** Start with [`ONBOARDING.md`](ONBOARDING.md) — a guided
+> path from a fresh clone to your first contribution.
+
 ## Quick start
 
 ```bash
