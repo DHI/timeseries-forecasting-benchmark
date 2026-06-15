@@ -35,7 +35,7 @@ log "=== PHASE 1: nf zoo smoke test (2 cases × 3 origins) ==="
 PHASE1_OK=0
 uv run python scripts/run_pilot.py \
     --with-nf --origins 3 \
-    --cases gesla_storm_surge usgs_river_discharge \
+    --cases surge_cuxhaven discharge_flashy_catskills \
     2>&1 | tee "$RUN_DIR/phase1_nf_smoke/run.log" && PHASE1_OK=1 || true
 
 if [ "$PHASE1_OK" -eq 1 ] && [ -f "$REPO_ROOT/results/pilot_metrics.parquet" ]; then
