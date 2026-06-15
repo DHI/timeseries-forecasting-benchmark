@@ -33,8 +33,14 @@ def _():
 
 @app.cell
 def _(discover_cases, mo):
+    import os
+
     cases = list(discover_cases())
-    case_picker = mo.ui.dropdown(cases, value=cases[0], label="Case")
+    # EDA_CASE lets the static-site build (scripts/build_site.py) render one page per
+    # case; interactively it just sets which case loads first in the dropdown.
+    _default = os.environ.get("EDA_CASE")
+    _value = _default if _default in cases else cases[0]
+    case_picker = mo.ui.dropdown(cases, value=_value, label="Case")
     mo.hstack([case_picker], justify="start")
     return (case_picker,)
 

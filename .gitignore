@@ -34,3 +34,7 @@ htmlcov/
 # Marimo notebook cache (auto-generated results)
 notebooks/.cache/
 notebooks/__marimo__/
+
+# Static EDA site build output (scripts/build_site.py)
+site/
+_site/
