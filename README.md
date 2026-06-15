@@ -49,7 +49,7 @@ bash scripts/bootstrap_wsl.sh          # or --gpu for CUDA torch
 uv sync --extra data                         # utide (tide removal), xarray, openpyxl, ...
 uv run python scripts/download_all.py        # all cases
 # or one at a time:
-uv run python -m tsforecastbench.data.cases.camels_dk_discharge.download
+uv run python -m tsforecastbench.data.cases.discharge_lowland_denmark.download
 ```
 
 GESLA-3 + Mendeley WWTP need a manual one-time archive. ERA5 atmospheric forcing (GESLA
@@ -63,17 +63,17 @@ point via the Open-Meteo archive API — no CDS account needed. See
 
 | Case | Domain | Target | Freq | Horizon | Source |
 |---|---|---|---|---|---|
-| `camels_dk_discharge` | hydrology (groundwater) | river discharge | daily | 7 d | CAMELS-DK |
-| `usgs_river_discharge` | hydrology (flashy) | river discharge | daily | 7 d | USGS NWIS |
-| `usgs_snowmelt_discharge` | hydrology (snowmelt) | river discharge | daily | 7 d | USGS NWIS |
-| `usgs_groundwater` | groundwater | water-table depth | daily | 30 d | USGS NWIS |
-| `usgs_stream_temp` | water quality | river temperature | daily | 7 d | USGS NWIS |
-| `bellinge_sewer_level` | urban drainage | sewer level | 15 min | 6 h | Bellinge (DTU) |
-| `wd_battledim` | water distribution | network demand | hourly | 24 h | BattLeDIM L-Town |
-| `wwtp_influent` | wastewater | influent flow | hourly | 24 h | N₂O WWTP (Cembrowicz) |
-| `gesla_storm_surge` | storm surge | non-tidal residual | hourly | 48 h | GESLA-3 + ERA5 |
-| `ndbc_waves` | spectral waves (swell) | significant wave height | hourly | 24 h | NOAA NDBC 46050 |
-| `ndbc_waves_atlantic` | spectral waves (wind-sea) | significant wave height | hourly | 24 h | NOAA NDBC 44013 |
+| `discharge_lowland_denmark` | hydrology (groundwater) | river discharge | daily | 7 d | CAMELS-DK |
+| `discharge_flashy_catskills` | hydrology (flashy) | river discharge | daily | 7 d | USGS NWIS |
+| `discharge_snowmelt_yosemite` | hydrology (snowmelt) | river discharge | daily | 7 d | USGS NWIS |
+| `groundwater_yorktown` | groundwater | water-table depth | daily | 30 d | USGS NWIS |
+| `watertemp_james` | water quality | river temperature | daily | 7 d | USGS NWIS |
+| `sewerlevel_bellinge` | urban drainage | sewer level | 15 min | 6 h | Bellinge (DTU) |
+| `demand_ltown` | water distribution | network demand | hourly | 24 h | BattLeDIM L-Town |
+| `wwtp_influent_n2o_350k` | wastewater | influent flow | hourly | 24 h | N₂O WWTP (Cembrowicz) |
+| `surge_cuxhaven` | storm surge | non-tidal residual | hourly | 48 h | GESLA-3 + ERA5 |
+| `waves_oregon` | spectral waves (swell) | significant wave height | hourly | 24 h | NOAA NDBC 46050 |
+| `waves_massachusetts` | spectral waves (wind-sea) | significant wave height | hourly | 24 h | NOAA NDBC 44013 |
 
 Atmospheric forcing (precip, wind, pressure, temperature) for the USGS and GESLA cases is
 fetched **credential-free** at the station point from the Open-Meteo ERA5 archive.
@@ -104,7 +104,7 @@ correction, and time series foundation models are on the roadmap (see `research_
 
 ```bash
 uv run python scripts/run_pilot.py                       # all cases x all methods
-uv run python scripts/run_leadtime.py --case gesla_storm_surge --origins 20 --metric RMSE
+uv run python scripts/run_leadtime.py --case surge_cuxhaven --origins 20 --metric RMSE
 uv run python scripts/print_results.py
 ```
 

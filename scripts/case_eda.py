@@ -7,7 +7,7 @@ observed fraction.
 
 Run:
     uv run python scripts/case_eda.py             # all cases with processed Parquet
-    uv run python scripts/case_eda.py --case ndbc_waves
+    uv run python scripts/case_eda.py --case waves_oregon
 """
 
 from __future__ import annotations
@@ -34,17 +34,17 @@ FIG_DIR = REPO_ROOT / "docs" / "figures" / "cases"
 
 # Per-case visualisation hints: which exogenous to overlay, zoom window length.
 CASE_HINTS = {
-    "camels_dk_discharge":  {"overlay": "precip",            "overlay_kind": "rain",  "zoom": "365D", "target_label": "Discharge (mm/d)"},
-    "usgs_river_discharge": {"overlay": "precip",            "overlay_kind": "rain",  "zoom": "365D", "target_label": "Discharge (m3/s)"},
-    "usgs_groundwater":     {"overlay": "precip",            "overlay_kind": "rain",  "zoom": "365D", "target_label": "Depth to water (m)"},
-    "usgs_snowmelt_discharge": {"overlay": "temp_air",       "overlay_kind": "line",  "zoom": "365D", "target_label": "Discharge (m3/s)"},
-    "usgs_stream_temp":     {"overlay": "temp_air",          "overlay_kind": "line",  "zoom": "365D", "target_label": "Water temp (C)"},
-    "bellinge_sewer_level": {"overlay": "rain_gauge",        "overlay_kind": "rain",  "zoom": "14D",  "target_label": "Sewer level (m)"},
-    "wd_battledim":         {"overlay": None,                "overlay_kind": None,    "zoom": "14D",  "target_label": "Inlet flow (L/s)"},
-    "wwtp_influent":        {"overlay": None,                "overlay_kind": None,    "zoom": "14D",  "target_label": "Influent flow"},
-    "gesla_storm_surge":    {"overlay": "mslp",              "overlay_kind": "line",  "zoom": "30D",  "target_label": "Residual (m)"},
-    "ndbc_waves":           {"overlay": "wspd",              "overlay_kind": "line",  "zoom": "30D",  "target_label": "H_s (m)"},
-    "ndbc_waves_atlantic":  {"overlay": "wspd",              "overlay_kind": "line",  "zoom": "30D",  "target_label": "H_s (m)"},
+    "discharge_lowland_denmark":  {"overlay": "precip",            "overlay_kind": "rain",  "zoom": "365D", "target_label": "Discharge (mm/d)"},
+    "discharge_flashy_catskills": {"overlay": "precip",            "overlay_kind": "rain",  "zoom": "365D", "target_label": "Discharge (m3/s)"},
+    "groundwater_yorktown":     {"overlay": "precip",            "overlay_kind": "rain",  "zoom": "365D", "target_label": "Depth to water (m)"},
+    "discharge_snowmelt_yosemite": {"overlay": "temp_air",       "overlay_kind": "line",  "zoom": "365D", "target_label": "Discharge (m3/s)"},
+    "watertemp_james":     {"overlay": "temp_air",          "overlay_kind": "line",  "zoom": "365D", "target_label": "Water temp (C)"},
+    "sewerlevel_bellinge": {"overlay": "rain_gauge",        "overlay_kind": "rain",  "zoom": "14D",  "target_label": "Sewer level (m)"},
+    "demand_ltown":         {"overlay": None,                "overlay_kind": None,    "zoom": "14D",  "target_label": "Inlet flow (L/s)"},
+    "wwtp_influent_n2o_350k":        {"overlay": None,                "overlay_kind": None,    "zoom": "14D",  "target_label": "Influent flow"},
+    "surge_cuxhaven":    {"overlay": "mslp",              "overlay_kind": "line",  "zoom": "30D",  "target_label": "Residual (m)"},
+    "waves_oregon":           {"overlay": "wspd",              "overlay_kind": "line",  "zoom": "30D",  "target_label": "H_s (m)"},
+    "waves_massachusetts":  {"overlay": "wspd",              "overlay_kind": "line",  "zoom": "30D",  "target_label": "H_s (m)"},
 }
 
 

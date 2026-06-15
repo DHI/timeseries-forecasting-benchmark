@@ -82,14 +82,14 @@ def _(case, go, mo):
     # Coordinates sourced from station IDs / case notes.
     # Lat/lon will move into the parquet static_attrs once #19 lands.
     _LOCS = {
-        "usgs_groundwater":        (41.239,  -73.803, 10),   # USGS 411421073481202, Yorktown Hts NY
-        "usgs_river_discharge":    (41.994,  -74.472, 10),   # USGS 01362500, Esopus Creek NY
-        "usgs_snowmelt_discharge": (37.732, -119.557, 11),   # USGS 11264500, Merced R Yosemite CA
-        "usgs_stream_temp":        (37.652,  -78.087, 10),   # USGS 02035000, James R Cartersville VA
-        "gesla_storm_surge":       (53.867,    8.717,  9),   # Cuxhaven Steubenhoft, German Bight
-        "ndbc_waves":              (44.641, -124.532,  7),   # NDBC 46050, Stonewall Bank Oregon
-        "ndbc_waves_atlantic":     (42.346,  -70.651,  8),   # NDBC 44013, Boston / Mass Bay
-        "bellinge_sewer_level":    (55.383,   10.370, 12),   # Bellinge, Odense DK
+        "groundwater_yorktown":        (41.239,  -73.803, 10),   # USGS 411421073481202, Yorktown Hts NY
+        "discharge_flashy_catskills":    (41.994,  -74.472, 10),   # USGS 01362500, Esopus Creek NY
+        "discharge_snowmelt_yosemite": (37.732, -119.557, 11),   # USGS 11264500, Merced R Yosemite CA
+        "watertemp_james":        (37.652,  -78.087, 10),   # USGS 02035000, James R Cartersville VA
+        "surge_cuxhaven":       (53.867,    8.717,  9),   # Cuxhaven Steubenhoft, German Bight
+        "waves_oregon":              (44.641, -124.532,  7),   # NDBC 46050, Stonewall Bank Oregon
+        "waves_massachusetts":     (42.346,  -70.651,  8),   # NDBC 44013, Boston / Mass Bay
+        "sewerlevel_bellinge":    (55.383,   10.370, 12),   # Bellinge, Odense DK
     }
 
     if case.id not in _LOCS:

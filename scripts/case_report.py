@@ -9,9 +9,9 @@ For one case, writes a self-contained Markdown report under docs/reports/<id>.md
 
 Figures go to docs/figures/reports/. Reuses the bench eval + viz code.
 
-    uv run python scripts/case_report.py --case gesla_storm_surge
+    uv run python scripts/case_report.py --case surge_cuxhaven
     uv run python scripts/case_report.py            # all cases
-    uv run python scripts/case_report.py --case ndbc_waves --with-fm
+    uv run python scripts/case_report.py --case waves_oregon --with-fm
 """
 
 from __future__ import annotations

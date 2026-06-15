@@ -1,0 +1,30 @@
+id = "discharge_lowland_denmark"
+domain = "hydrology"
+notes = "Daily river discharge at one Danish lowland catchment from CAMELS-DK. Groundwater-dominated. Pilot uses a single representative gauge until station selection is finalised."
+
+target = "q_obs"
+target_unit = "mm/d"
+
+freq = "1D"
+horizon_primary = "7D"
+horizons_eval = ["1D", "7D", "14D"]
+input_window = "60D"
+
+exogenous = ["precip", "temp", "pet"]
+exogenous_known_future = []
+static_attrs = ["area_km2", "imperviousness"]
+data_type = "mixed"
+split_mode = "fraction"
+split_fraction = [0.7, 0.85]
+
+[splits]
+train_end = 2015-12-31
+val_end = 2017-12-31
+test_end = 2019-12-31
+
+[source]
+name = "CAMELS-DK"
+doi = "10.22008/FK2/AZXSYP"
+url = "https://essd.copernicus.org/articles/17/1551/2025/"
+license = "CC-BY-4.0"
+citation = "Koch et al. (2025) ESSD, doi:10.5194/essd-17-1551-2025"

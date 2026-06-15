@@ -60,6 +60,6 @@ Done. Next:
     Everything else (USGS, NDBC, ERA5) re-fetches automatically and credential-free.
   * Smoke the benchmark:   uv run python scripts/run_pilot.py --fast
   * Deep-learning columns:  uv run python scripts/run_pilot.py --with-dl --origins 5 \
-                              --cases gesla_storm_surge usgs_river_discharge
+                              --cases surge_cuxhaven discharge_flashy_catskills
   * neuralforecast zoo:     uv run python scripts/run_pilot.py --with-nf --origins 5 ...
 NOTE

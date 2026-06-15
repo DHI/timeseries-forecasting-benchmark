@@ -22,7 +22,7 @@ file in the same PR.
 | A4 | **Make clear the goal is not the perfect model per case, but a direct comparison of models across cases.** | This reframes the whole benchmark and we agree. Added an explicit "Purpose" statement to SCOPING (and it should go in `research_plan.md` §1). It also drives the metric choice — see A3 / E5. | ✅ |
 | A5 (status) | He reviewed only the cases, not the preliminary forecasts; **the forecasts should be investigated to confirm the cases were selected meaningfully.** | Exactly right, and this is the motivation for the **case-review skill** Jesper asked for next: a per-case check that the data is full enough, the exogenous inputs carry predictive skill, and a trivial baseline produces a sane forecast. Tracked as the next deliverable. | 👍 / 🔧 |
 
-## B. CAMELS-DK (`camels_dk_discharge`)
+## B. CAMELS-DK (`discharge_lowland_denmark`)
 
 | # | Rocco's comment | Response | Status |
 |---|---|---|---|
@@ -34,7 +34,7 @@ file in the same PR.
 | B6 | "The units on the axis seem off" (EDA figure). | 🔧 Real issue — the EDA panel y-axis/units need checking and the figure regenerating. This is precisely a case-review-skill check. Logged, not done in this docs PR. | 🔧 |
 | B7 | Operational pipeline "(not sure about how the post-processing works here)." | Softened the wording so the NWP→DK-model→ML-post-processing line is presented as the *aspiration/hybrid question*, not an established pipeline. | ✅ |
 
-## C. Bellinge (`bellinge_sewer_level`)
+## C. Bellinge (`sewerlevel_bellinge`)
 
 | # | Rocco's comment | Response | Status |
 |---|---|---|---|
@@ -46,7 +46,7 @@ file in the same PR.
 | C6 | Exogenous: "the model was calibrated on rain gauges only; not sure how helpful the radar observations are here." | Reworked the exogenous list to **lead with the rain gauge** as the primary driver and mark the X-band radar nowcast as *uncertain added value* rather than canonical. Matches the original Bellinge paper. | ✅ |
 | C7 | Data-quality note: "might be because 04R has two sensors, level1 and level2, of which only one is active for most of the period." | Plausible explanation for the F04R inactivity, now moot since we moved to F05R. Noted in SCOPING. | 👍 |
 
-## D. WWTP influent (`wwtp_influent`)
+## D. WWTP influent (`wwtp_influent_n2o_350k`)
 
 | # | Rocco's comment | Response | Status |
 |---|---|---|---|
@@ -69,7 +69,7 @@ file in the same PR.
 
 ## F. Items not yet reviewed by Rocco
 
-`gesla_storm_surge` and `ndbc_waves` were marked "not checked." No action; they remain
+`surge_cuxhaven` and `waves_oregon` were marked "not checked." No action; they remain
 open for a second-pass review (ideally a coastal/met-ocean expert rather than the
 urban+catchment hydrology lens of this review).
 

@@ -1,9 +1,9 @@
 """Lead-time skill curves: forecast error vs horizon, averaged over rolling origins.
 
 Usage:
-    uv run python scripts/run_leadtime.py --case camels_dk_discharge
-    uv run python scripts/run_leadtime.py --case bellinge_sewer_level --origins 30 --metric RMSE
-    uv run python scripts/run_leadtime.py --case camels_dk_discharge --with-arima  # slow
+    uv run python scripts/run_leadtime.py --case discharge_lowland_denmark
+    uv run python scripts/run_leadtime.py --case sewerlevel_bellinge --origins 30 --metric RMSE
+    uv run python scripts/run_leadtime.py --case discharge_lowland_denmark --with-arima  # slow
 
 By default runs the cheap references (Mean, Persistence, SeasonalNaive, Climatology)
 plus LightGBM. ARIMA is opt-in because it refits at every origin.

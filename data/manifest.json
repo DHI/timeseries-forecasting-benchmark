@@ -1,57 +1,57 @@
 {
-  "bellinge_sewer_level": {
-    "parquet": "data\\processed\\bellinge_sewer_level.parquet",
-    "rows": 357601,
-    "sha256": "e3d53a8edf78c26cd4325a276fa869d2b158389e06f21893464fd9d7c9e9ccc5"
-  },
-  "camels_dk_discharge": {
-    "parquet": "data\\processed\\camels_dk_discharge.parquet",
-    "rows": 12782,
-    "sha256": "ca895af8c6aaa5f076fb35e4d596e0155004f9b1aa28114877327312990e7f77"
-  },
-  "gesla_storm_surge": {
-    "parquet": "data\\processed\\gesla_storm_surge.parquet",
-    "rows": 214476,
-    "sha256": "b4520a2761644ab5749f6a3d4fbf1333d099365700ec21e72241efca767cd17b"
-  },
-  "ndbc_waves": {
-    "parquet": "data\\processed\\ndbc_waves.parquet",
-    "rows": 78889,
-    "sha256": "c4d0a9e6c62d4f707bf01a4ffd2467a3feb3b067498734e69a34b05038c784db"
-  },
-  "ndbc_waves_atlantic": {
-    "parquet": "data\\processed\\ndbc_waves_atlantic.parquet",
-    "rows": 78889,
-    "sha256": "ee68b24a1fa9bec64b5bbc149081c7c96ba5f6c8a7653859e818309d2a33446b"
-  },
-  "usgs_groundwater": {
-    "parquet": "data\\processed\\usgs_groundwater.parquet",
-    "rows": 4749,
-    "sha256": "fb50a4456e43a925043b6077fe8baeb645484e86ec63163f2d13e7ade9f4d2d8"
-  },
-  "usgs_river_discharge": {
-    "parquet": "data\\processed\\usgs_river_discharge.parquet",
-    "rows": 4749,
-    "sha256": "3e8d508145b82bdedc3db89222203aa2b45fe5a5768e9436d70a7d46b1be4ba5"
-  },
-  "usgs_snowmelt_discharge": {
-    "parquet": "data\\processed\\usgs_snowmelt_discharge.parquet",
-    "rows": 4749,
-    "sha256": "c9caefff3cacd024175d6d0e2fc97fee4f6863f41987477285110990c5e836e8"
-  },
-  "usgs_stream_temp": {
-    "parquet": "data\\processed\\usgs_stream_temp.parquet",
-    "rows": 3653,
-    "sha256": "11d2ca127aaf950f39ffe6ab4d738c12850c2aa25cca83f873ea4d72f33e894a"
-  },
-  "wd_battledim": {
-    "parquet": "data\\processed\\wd_battledim.parquet",
+  "demand_ltown": {
+    "parquet": "data/processed/demand_ltown.parquet",
     "rows": 17520,
-    "sha256": "cf3363712d70804f9d78cb096d5c999947c162ba9d7bc06648d372064000a498"
+    "sha256": "334eabc2896b4dab208ae5cd267b46f017c6fb0735dc623f75e8ad0953fc2bf4"
   },
-  "wwtp_influent": {
-    "parquet": "data\\processed\\wwtp_influent.parquet",
+  "discharge_flashy_catskills": {
+    "parquet": "data/processed/discharge_flashy_catskills.parquet",
+    "rows": 4749,
+    "sha256": "33bfb19591bcdaf1b8ba96a4b0d898bb88963aac8a0e4df864201da83baa4176"
+  },
+  "discharge_lowland_denmark": {
+    "parquet": "data/processed/discharge_lowland_denmark.parquet",
+    "rows": 12782,
+    "sha256": "14ac602f7f9b3f5cb18d3f189b68ee4ce2a5c9b1de1dd91015fb1a457025e055"
+  },
+  "discharge_snowmelt_yosemite": {
+    "parquet": "data/processed/discharge_snowmelt_yosemite.parquet",
+    "rows": 4749,
+    "sha256": "dc16f5aac1f44f09fba3b038bc38765320b0ff6dd7f7c31d3d05c858d1ef53b4"
+  },
+  "groundwater_yorktown": {
+    "parquet": "data/processed/groundwater_yorktown.parquet",
+    "rows": 4749,
+    "sha256": "41fc6556426dd694e14ec755e4ee1c7b40ce470e88f5c7c772fa2fbebfcbde27"
+  },
+  "sewerlevel_bellinge": {
+    "parquet": "data/processed/sewerlevel_bellinge.parquet",
+    "rows": 357601,
+    "sha256": "ae050178cccb380fda3107a7fbd83a128d70a6709a54fe3d8a3d8ddd74b3cfcf"
+  },
+  "surge_cuxhaven": {
+    "parquet": "data/processed/surge_cuxhaven.parquet",
+    "rows": 214476,
+    "sha256": "d9fe788340d97177cb927c4d9dcaddfb6161c7c2123b0ddb19e4b69cd75f88a1"
+  },
+  "watertemp_james": {
+    "parquet": "data/processed/watertemp_james.parquet",
+    "rows": 3653,
+    "sha256": "c655106b5645e015c6807ec1ff03bfb5cad0a144216d66f0f0afcbf6fedf38fb"
+  },
+  "waves_massachusetts": {
+    "parquet": "data/processed/waves_massachusetts.parquet",
+    "rows": 78889,
+    "sha256": "481cf921e50da86818593bbc26ee8b4f9197747aadc3ddafe0d5e5a7d52e37ab"
+  },
+  "waves_oregon": {
+    "parquet": "data/processed/waves_oregon.parquet",
+    "rows": 78889,
+    "sha256": "14d232d36555c297a6e01412ada2fcd62f2d5785939f92c4434aad885ce2d37f"
+  },
+  "wwtp_influent_n2o_350k": {
+    "parquet": "data/processed/wwtp_influent_n2o_350k.parquet",
     "rows": 17544,
-    "sha256": "59c471aa69a4ce2a759d7a890e17ee3548e4efa61affadea3c289c497c5ca0a8"
+    "sha256": "82e8073231ef105ddbed1ec7d9878b2d8fbdb9bbade08e25348e5ac33af24d14"
   }
 }
