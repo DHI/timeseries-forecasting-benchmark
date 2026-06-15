@@ -16,7 +16,7 @@ import pandas as pd
 # Allow running from a clone without installing
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from tsforecastbench.bench.eval import run_case, run_case_rolling
+from tsforecastbench.bench.eval import DEFAULT_ORIGINS, run_case, run_case_rolling
 from tsforecastbench.bench.methods import (
     AutoARIMAForecaster,
     AutoETSForecaster,
@@ -66,7 +66,9 @@ def main() -> int:
                    help="Case ids to run (default: all discovered cases)")
     p.add_argument("--fast", action="store_true",
                    help="Single hold-out instead of rolling-origin (faster, noisier).")
-    p.add_argument("--origins", type=int, default=16, help="Rolling origins per cell.")
+    p.add_argument("--origins", type=int, default=DEFAULT_ORIGINS,
+                   help=f"Rolling origins per cell (default {DEFAULT_ORIGINS}; "
+                        "override globally with TSFB_ORIGINS).")
     p.add_argument("--with-fm", action="store_true",
                    help="Add the zero-shot foundation model (Chronos-Bolt; needs the 'fm' extra).")
     p.add_argument("--with-dl", action="store_true",
