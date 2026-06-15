@@ -17,6 +17,7 @@ import time
 import numpy as np
 import pandas as pd
 
+from tsforecastbench.bench.eval.config import DEFAULT_ORIGINS
 from tsforecastbench.bench.eval.loop import _complete_for_fit, _horizon_to_steps
 from tsforecastbench.bench.methods.base import Forecaster
 from tsforecastbench.bench.methods.naive import _default_season_length
@@ -26,7 +27,7 @@ from tsforecastbench.data.schema import Case
 def run_case_rolling(
     case: Case,
     methods: list[Forecaster],
-    n_origins: int = 16,
+    n_origins: int = DEFAULT_ORIGINS,
     prefer_synth: bool = False,
 ) -> pd.DataFrame:
     """Rolling-origin scores for the cases x methods matrix — robust to single-window luck.
@@ -121,7 +122,7 @@ def run_case_rolling(
 def run_leadtime_curve(
     case: Case,
     methods: list[Forecaster],
-    n_origins: int = 24,
+    n_origins: int = DEFAULT_ORIGINS,
     max_horizon: str | None = None,
     prefer_synth: bool = False,
 ) -> pd.DataFrame:

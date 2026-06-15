@@ -30,7 +30,11 @@ import pandas as pd
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
-from tsforecastbench.bench.eval import run_case_rolling, run_leadtime_curve  # noqa: E402
+from tsforecastbench.bench.eval import (  # noqa: E402
+    DEFAULT_ORIGINS,
+    run_case_rolling,
+    run_leadtime_curve,
+)
 from tsforecastbench.bench.eval.loop import _complete_for_fit, _horizon_to_steps  # noqa: E402
 from tsforecastbench.bench.methods import (  # noqa: E402
     DLinearForecaster,
@@ -169,7 +173,8 @@ def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--case", help="single case id; default: all")
     p.add_argument("--with-fm", action="store_true", help="include Chronos-Bolt")
-    p.add_argument("--origins", type=int, default=12)
+    p.add_argument("--origins", type=int, default=DEFAULT_ORIGINS,
+                   help=f"rolling origins (default {DEFAULT_ORIGINS}; override with TSFB_ORIGINS)")
     args = p.parse_args()
     ids = [args.case] if args.case else list(discover_cases())
     for cid in ids:
