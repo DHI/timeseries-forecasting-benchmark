@@ -119,7 +119,8 @@ class Case(BaseModel):
 
         if self.split_mode == "fraction":
             train_end, val_end = self._fraction_split_dates(df.assign(ds=ds_cmp))
-            test_end = ds_cmp.max()
+            obs_ds = ds_cmp[df["y"].notna()]
+            test_end = obs_ds.max() if not obs_ds.empty else ds_cmp.max()
         else:
             train_end = pd.Timestamp(self.splits.train_end)
             val_end = pd.Timestamp(self.splits.val_end)

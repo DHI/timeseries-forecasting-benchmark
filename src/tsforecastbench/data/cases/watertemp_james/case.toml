@@ -14,10 +14,12 @@ exogenous = ["temp_air", "precip"]
 exogenous_known_future = ["temp_air", "precip"]
 static_attrs = ["lat", "lon"]
 data_type = "mixed"
+split_mode = "fraction"
+split_fraction = [0.7, 0.85]
 
 [splits]
-train_end = 2018-12-31
-val_end = 2019-12-31
+train_end = 2018-01-30
+val_end = 2019-07-15
 test_end = 2020-12-31
 
 [source]

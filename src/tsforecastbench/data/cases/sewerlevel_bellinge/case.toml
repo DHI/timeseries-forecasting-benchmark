@@ -14,11 +14,13 @@ exogenous = ["rain_gauge", "temp_air"]
 exogenous_known_future = ["rain_radar_nowcast"]
 static_attrs = ["catchment_area_ha", "impervious_frac"]
 data_type = "observed"
+split_mode = "fraction"
+split_fraction = [0.7, 0.85]
 
 [splits]
-train_end = 2018-12-31
-val_end = 2019-12-31
-test_end = 2020-12-31
+train_end = 2017-09-17
+val_end = 2019-03-27
+test_end = 2020-10-12
 
 [source]
 name = "Bellinge"
