@@ -49,15 +49,23 @@ def main() -> int:
     args = p.parse_args()
 
     case = get_case(args.case)
-    methods = [MeanBaseline(), Persistence(), SeasonalNaive(), Climatology(),
-               LinearLagsForecaster(), LightGBMForecaster()]
+    methods = [
+        MeanBaseline(),
+        Persistence(),
+        SeasonalNaive(),
+        Climatology(),
+        LinearLagsForecaster(),
+        LightGBMForecaster(),
+    ]
     if case.exogenous or case.exogenous_known_future:
         methods.append(LightGBMExoForecaster())  # Tier-2 covariate-aware comparison
     if args.with_arima:
         methods.append(AutoARIMAForecaster())
         methods.append(AutoETSForecaster())
 
-    print(f"Lead-time curve for {case.id} ({case.freq}, horizon {args.max_horizon or case.horizon_primary})")
+    print(
+        f"Lead-time curve for {case.id} ({case.freq}, horizon {args.max_horizon or case.horizon_primary})"
+    )
     curve = run_leadtime_curve(
         case, methods, n_origins=args.origins, max_horizon=args.max_horizon, prefer_synth=args.synth
     )

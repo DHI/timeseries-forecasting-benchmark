@@ -25,7 +25,9 @@ def _horizon_to_steps(horizon: str, freq: str) -> int:
     return int(delta / step)
 
 
-def _complete_for_fit(df: pd.DataFrame, cols: list[str], interp_limit: int | None = None) -> pd.DataFrame:
+def _complete_for_fit(
+    df: pd.DataFrame, cols: list[str], interp_limit: int | None = None
+) -> pd.DataFrame:
     """Return a copy with `cols` gap-filled so models needing complete data can fit.
 
     Strategy: linear time-interpolation (optionally limited), then fill any remaining
@@ -43,8 +45,9 @@ def _complete_for_fit(df: pd.DataFrame, cols: list[str], interp_limit: int | Non
     return out
 
 
-def _pick_origin(raw_y: np.ndarray, test_start: int, last_origin: int, horizon: int,
-                 min_frac: float = 0.5) -> int:
+def _pick_origin(
+    raw_y: np.ndarray, test_start: int, last_origin: int, horizon: int, min_frac: float = 0.5
+) -> int:
     """First origin in [test_start, last_origin] whose horizon window is >= min_frac
     observed; else the origin with the densest window. Keeps the single-holdout metric
     meaningful when the test split begins in a gap."""
@@ -146,6 +149,8 @@ def run_case(case: Case, methods: list[Forecaster], prefer_synth: bool = False) 
         print(f"  {method.name:>18s}: {status[:60]:<60s}  ({seconds:.2f}s)")
 
     if frac_finite < 1.0:
-        print(f"  [note] test window {frac_finite:.0%} observed; "
-              f"{int((1 - frac_finite) * horizon_steps)} of {horizon_steps} points were gaps (excluded).")
+        print(
+            f"  [note] test window {frac_finite:.0%} observed; "
+            f"{int((1 - frac_finite) * horizon_steps)} of {horizon_steps} points were gaps (excluded)."
+        )
     return pd.DataFrame(records)

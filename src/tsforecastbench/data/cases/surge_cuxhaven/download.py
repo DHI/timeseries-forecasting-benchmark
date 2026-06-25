@@ -79,17 +79,27 @@ def _scan(meta_csv: Path) -> int:
     c_lat = _col(cols, "latitude", "lat")
     c_lon = _col(cols, "longitude", "lon", "lng")
     c_name = _col(cols, "site name", "site_name", "station_name", "name")
-    c_code = _col(cols, "site code", "site_code", "station_code", "code",
-                  "file name", "file_name", "filename")
+    c_code = _col(
+        cols, "site code", "site_code", "station_code", "code", "file name", "file_name", "filename"
+    )
     c_country = _col(cols, "country")
     c_start = _col(cols, "start date/time", "start_date", "start date", "start", "earliest")
     c_end = _col(cols, "end date/time", "end_date", "end date", "end", "latest")
-    c_years = _col(cols, "number of years", "number_of_years", "n_years", "years",
-                   "record_length", "length_years")
+    c_years = _col(
+        cols,
+        "number of years",
+        "number_of_years",
+        "n_years",
+        "years",
+        "record_length",
+        "length_years",
+    )
 
     if c_lat is None or c_lon is None:
-        print("[scan] could not auto-detect lat/lon columns; printing the first 5 rows so "
-              "you can edit the scan code to match the actual schema:")
+        print(
+            "[scan] could not auto-detect lat/lon columns; printing the first 5 rows so "
+            "you can edit the scan code to match the actual schema:"
+        )
         print(df.head(5).to_string())
         return 0
 
@@ -114,8 +124,11 @@ def _scan(meta_csv: Path) -> int:
     if c_name and rank_col:
         sel = sel.drop_duplicates(subset=c_name, keep="first")
 
-    show = [c for c in (c_code, c_name, c_country, c_lat, c_lon,
-                        c_start, c_end, c_years, rank_col) if c is not None]
+    show = [
+        c
+        for c in (c_code, c_name, c_country, c_lat, c_lon, c_start, c_end, c_years, rank_col)
+        if c is not None
+    ]
     show = list(dict.fromkeys(show))
     n = min(CONFIG["scan_top_n"], len(sel))
     print(f"\n[scan] top {n} ranked by {rank_col!r}:")
@@ -143,8 +156,9 @@ def _filename_from_metadata(meta_csv: Path, station_code: str) -> str | None:
     return str(hit[c_file].iloc[0]).strip()
 
 
-def _find_station_in_zip(bulk_zip: Path, station_code: str,
-                         meta_csv: Path | None = None) -> str | None:
+def _find_station_in_zip(
+    bulk_zip: Path, station_code: str, meta_csv: Path | None = None
+) -> str | None:
     """Find the member in the bulk zip for the given station code.
 
     Strategy:
@@ -167,8 +181,10 @@ def _find_station_in_zip(bulk_zip: Path, station_code: str,
             for m in members:
                 if Path(m).name.lower().endswith(wl):
                     return m
-            print(f"[surge_cuxhaven] metadata FILE NAME {wanted!r} not found in zip; "
-                  "falling back to code substring search.")
+            print(
+                f"[surge_cuxhaven] metadata FILE NAME {wanted!r} not found in zip; "
+                "falling back to code substring search."
+            )
 
     code_l = station_code.lower()
     for m in members:
@@ -213,14 +229,17 @@ def _tidal_residual(df: pd.DataFrame, lat: float) -> pd.DataFrame:
         import utide
     except ImportError as e:
         raise RuntimeError(
-            "utide is required for GESLA tide removal. Install via: "
-            "uv sync --extra data"
+            "utide is required for GESLA tide removal. Install via: uv sync --extra data"
         ) from e
 
     t = df["ds"].dt.tz_convert("UTC").dt.tz_localize(None)
     coef = utide.solve(
-        t.to_numpy(), df["sea_level"].to_numpy(), lat=lat,
-        method="ols", conf_int="none", verbose=False,
+        t.to_numpy(),
+        df["sea_level"].to_numpy(),
+        lat=lat,
+        method="ols",
+        conf_int="none",
+        verbose=False,
     )
     tide = utide.reconstruct(t.to_numpy(), coef, verbose=False)
     out = df.copy()
@@ -231,8 +250,7 @@ def _tidal_residual(df: pd.DataFrame, lat: float) -> pd.DataFrame:
 def _latlon_from_metadata(meta_csv: Path, station_code: str) -> tuple[float | None, float | None]:
     meta = pd.read_csv(meta_csv)
     cols = {c.lower(): c for c in meta.columns}
-    c_code = _col(cols, "site_code", "site code", "station_code", "code",
-                  "file_name", "filename")
+    c_code = _col(cols, "site_code", "site code", "station_code", "code", "file_name", "filename")
     c_lat = _col(cols, "latitude", "lat")
     c_lon = _col(cols, "longitude", "lon", "lng")
     if not c_code or not c_lat:
@@ -247,18 +265,35 @@ def _latlon_from_metadata(meta_csv: Path, station_code: str) -> tuple[float | No
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--scan", action="store_true",
-                   help="Read the metadata CSV, print Danish/North Sea candidates")
+    p.add_argument(
+        "--scan",
+        action="store_true",
+        help="Read the metadata CSV, print Danish/North Sea candidates",
+    )
     p.add_argument("--station-code", default=CONFIG["station_code"])
-    p.add_argument("--lat", type=float, default=None,
-                   help="Station latitude for UTide (auto-detected from metadata if absent)")
-    p.add_argument("--lon", type=float, default=None,
-                   help="Station longitude for ERA5 (auto-detected from metadata if absent)")
-    p.add_argument("--era5-start", default="2000-01-01",
-                   help="Trim the residual record to this start so ERA5 forcing covers it "
-                        "(the full GESLA record is ~106 yr; the splits only use 2017-2020).")
-    p.add_argument("--no-era5", action="store_true",
-                   help="Skip the ERA5 fetch (leave exogenous NaN). Offline fallback.")
+    p.add_argument(
+        "--lat",
+        type=float,
+        default=None,
+        help="Station latitude for UTide (auto-detected from metadata if absent)",
+    )
+    p.add_argument(
+        "--lon",
+        type=float,
+        default=None,
+        help="Station longitude for ERA5 (auto-detected from metadata if absent)",
+    )
+    p.add_argument(
+        "--era5-start",
+        default="2000-01-01",
+        help="Trim the residual record to this start so ERA5 forcing covers it "
+        "(the full GESLA record is ~106 yr; the splits only use 2017-2020).",
+    )
+    p.add_argument(
+        "--no-era5",
+        action="store_true",
+        help="Skip the ERA5 fetch (leave exogenous NaN). Offline fallback.",
+    )
     args = p.parse_args(argv)
 
     case = get_case("surge_cuxhaven")
@@ -267,16 +302,17 @@ def main(argv: list[str] | None = None) -> int:
 
     meta_csv = _find_metadata_csv()
     if meta_csv is None:
-        print(f"[surge_cuxhaven] no metadata CSV in {raw_dir}/. "
-              "Place GESLA*_ALL.csv there.")
+        print(f"[surge_cuxhaven] no metadata CSV in {raw_dir}/. Place GESLA*_ALL.csv there.")
         return 1
 
     if args.scan:
         return _scan(meta_csv)
 
     if not args.station_code:
-        print("[surge_cuxhaven] --station-code <code> is required "
-              "(run --scan first to see candidates).")
+        print(
+            "[surge_cuxhaven] --station-code <code> is required "
+            "(run --scan first to see candidates)."
+        )
         return 1
 
     bulk_zip = _find_bulk_zip()
@@ -292,8 +328,12 @@ def main(argv: list[str] | None = None) -> int:
     extracted = _io.extract_member(bulk_zip, member, raw_dir / "extracted")
     print(f"[surge_cuxhaven] extracted {member}")
 
-    lat = args.lat if args.lat is not None else _latlon_from_metadata(meta_csv, args.station_code)[0]
-    lon = args.lon if args.lon is not None else _latlon_from_metadata(meta_csv, args.station_code)[1]
+    lat = (
+        args.lat if args.lat is not None else _latlon_from_metadata(meta_csv, args.station_code)[0]
+    )
+    lon = (
+        args.lon if args.lon is not None else _latlon_from_metadata(meta_csv, args.station_code)[1]
+    )
     if lat is None:
         print("[surge_cuxhaven] no latitude (pass --lat); UTide cannot run without it.")
         return 1
@@ -308,8 +348,12 @@ def main(argv: list[str] | None = None) -> int:
     df = _tidal_residual(df, lat=lat)
 
     out = pd.DataFrame(
-        {"unique_id": case.id, "ds": df["ds"], "y": df["residual_m"],
-         "residual_m": df["residual_m"]}
+        {
+            "unique_id": case.id,
+            "ds": df["ds"],
+            "y": df["residual_m"],
+            "residual_m": df["residual_m"],
+        }
     )
     out = _io.resample_regular(out, case.freq)
 
@@ -321,11 +365,17 @@ def main(argv: list[str] | None = None) -> int:
     else:
         from tsforecastbench.data.cases import _era5
 
-        print(f"[surge_cuxhaven] fetching ERA5 {era5_vars} at ({lat:.3f},{lon:.3f}) "
-              f"{out['ds'].min().date()}..{out['ds'].max().date()} via Open-Meteo ...")
+        print(
+            f"[surge_cuxhaven] fetching ERA5 {era5_vars} at ({lat:.3f},{lon:.3f}) "
+            f"{out['ds'].min().date()}..{out['ds'].max().date()} via Open-Meteo ..."
+        )
         era5 = _era5.fetch_era5_point(
-            lat, lon, out["ds"].min(), out["ds"].max(),
-            variables=era5_vars, cache_dir=raw_dir / "era5_cache",
+            lat,
+            lon,
+            out["ds"].min(),
+            out["ds"].max(),
+            variables=era5_vars,
+            cache_dir=raw_dir / "era5_cache",
         )
         out = _era5.merge_onto(out, era5, era5_vars)
         cov = {c: f"{out[c].notna().mean():.0%}" for c in era5_vars}

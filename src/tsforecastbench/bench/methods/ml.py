@@ -106,8 +106,13 @@ class _WindowedMLBase(Forecaster):
         self._fcst.fit(df, static_features=[])
         self._model_col = type(next(iter(self._fcst.models.values()))).__name__
 
-    def predict(self, case: Case, history: pd.DataFrame, horizon: int,
-                future_exog: pd.DataFrame | None = None) -> pd.DataFrame:
+    def predict(
+        self,
+        case: Case,
+        history: pd.DataFrame,
+        horizon: int,
+        future_exog: pd.DataFrame | None = None,
+    ) -> pd.DataFrame:
         if self._exo:
             x_df = self._future_X(case, history, horizon, future_exog)
             preds = self._fcst.predict(h=horizon, X_df=x_df)
@@ -117,8 +122,9 @@ class _WindowedMLBase(Forecaster):
         future = self._future_index(case, history["ds"].max(), horizon)
         return pd.DataFrame({"ds": future, "y_hat": y_hat})
 
-    def _future_X(self, case: Case, history: pd.DataFrame, horizon: int,
-                  future_exog: pd.DataFrame | None) -> pd.DataFrame:
+    def _future_X(
+        self, case: Case, history: pd.DataFrame, horizon: int, future_exog: pd.DataFrame | None
+    ) -> pd.DataFrame:
         """Build the mlforecast X_df of future covariate values for the horizon."""
         last = _naive_ds(history["ds"].max()).iloc[0]
         fidx = pd.date_range(start=last, periods=horizon + 1, freq=case.freq)[1:]
@@ -126,7 +132,9 @@ class _WindowedMLBase(Forecaster):
         for c in self._exo:
             fill = self._last_exo.get(c, 0.0)
             if future_exog is not None and c in future_exog.columns:
-                vals = _fit_len(pd.to_numeric(future_exog[c], errors="coerce").to_numpy(), horizon, fill)
+                vals = _fit_len(
+                    pd.to_numeric(future_exog[c], errors="coerce").to_numpy(), horizon, fill
+                )
             else:
                 vals = np.full(horizon, fill)
             data[c] = np.where(np.isfinite(vals), vals, fill)

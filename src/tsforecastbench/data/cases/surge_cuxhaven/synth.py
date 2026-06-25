@@ -25,9 +25,7 @@ def generate(case: Case, seed: int = 2) -> pd.DataFrame:
     for s in storm_starts:
         depth = rng.uniform(8, 25)
         duration = rng.integers(24, 72)
-        kernel = -depth * np.exp(
-            -((np.arange(duration) - duration / 2) ** 2) / (duration / 4) ** 2
-        )
+        kernel = -depth * np.exp(-((np.arange(duration) - duration / 2) ** 2) / (duration / 4) ** 2)
         endi = min(n, s + duration)
         storms[s:endi] += kernel[: endi - s]
     mslp = base_mslp + synoptic + storms

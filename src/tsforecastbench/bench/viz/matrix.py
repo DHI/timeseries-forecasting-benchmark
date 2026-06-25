@@ -56,9 +56,8 @@ def render_matrix(
         metric, {"cmap": "viridis", "center": None, "label": metric, "fmt": "{:.3g}"}
     )
 
-    pivot = (
-        results[results["metric"] == metric]
-        .pivot(index="case_id", columns="method", values="value")
+    pivot = results[results["metric"] == metric].pivot(
+        index="case_id", columns="method", values="value"
     )
     if method_order is not None:
         pivot = pivot.reindex(columns=[m for m in method_order if m in pivot.columns])

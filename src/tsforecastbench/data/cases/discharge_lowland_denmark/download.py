@@ -26,8 +26,8 @@ from tsforecastbench.data.registry import get_case
 
 DATAVERSE_BASE = "https://dataverse.geus.dk"
 GAUGED_DYNAMICS_FILE_ID = 83022  # Dynamics/Gauged_catchments.zip
-SIGNATURE_OBS_FILE_ID = 84628    # Attibutes/CAMELS_DK_signature_obs_based.csv
-TOPOGRAPHY_FILE_ID = 84631       # Attibutes/CAMELS_DK_topography.csv
+SIGNATURE_OBS_FILE_ID = 84628  # Attibutes/CAMELS_DK_signature_obs_based.csv
+TOPOGRAPHY_FILE_ID = 84631  # Attibutes/CAMELS_DK_topography.csv
 
 CONFIG = {
     # Set to a station id substring to pick a specific catchment; None -> first member.
@@ -59,7 +59,6 @@ def _pick_column(df: pd.DataFrame, candidates: list[str]) -> str | None:
         if cand.lower() in lower:
             return lower[cand.lower()]
     return None
-
 
 
 def _download_attr(case, file_id: int, name: str):
@@ -144,8 +143,10 @@ def main(argv: list[str] | None = None) -> int:
     if CONFIG["catchment_id"]:
         sel = next((m for m in data_members if CONFIG["catchment_id"] in m), None)
         if sel is None:
-            print(f"[discharge_lowland_denmark] catchment {CONFIG['catchment_id']!r} not found. "
-                  "Run --list-zip.")
+            print(
+                f"[discharge_lowland_denmark] catchment {CONFIG['catchment_id']!r} not found. "
+                "Run --list-zip."
+            )
             return 1
     else:
         sel = data_members[0]
@@ -165,8 +166,10 @@ def main(argv: list[str] | None = None) -> int:
     for canon, cands in CONFIG["col_map_candidates"].items():
         col = _pick_column(src, cands)
         if col is None:
-            print(f"[discharge_lowland_denmark] WARNING no source col for {canon} "
-                  f"(tried {cands}); columns are {list(src.columns)}")
+            print(
+                f"[discharge_lowland_denmark] WARNING no source col for {canon} "
+                f"(tried {cands}); columns are {list(src.columns)}"
+            )
             continue
         out[canon] = pd.to_numeric(src[col], errors="coerce").to_numpy()
     if "q_obs" not in out.columns:

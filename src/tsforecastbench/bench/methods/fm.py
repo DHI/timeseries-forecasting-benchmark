@@ -27,7 +27,9 @@ def _load_pipeline(model_name: str):
         from chronos import BaseChronosPipeline
 
         _PIPELINE_CACHE[model_name] = BaseChronosPipeline.from_pretrained(
-            model_name, device_map="cpu", torch_dtype=torch.float32,
+            model_name,
+            device_map="cpu",
+            torch_dtype=torch.float32,
         )
     return _PIPELINE_CACHE[model_name]
 
@@ -52,15 +54,22 @@ class ChronosForecaster(Forecaster):
         y = pd.to_numeric(train["y"], errors="coerce").ffill().bfill().to_numpy(dtype=float)
         self._context = y[-self.context_length :]
 
-    def predict(self, case: Case, history: pd.DataFrame, horizon: int,
-                future_exog: pd.DataFrame | None = None) -> pd.DataFrame:
+    def predict(
+        self,
+        case: Case,
+        history: pd.DataFrame,
+        horizon: int,
+        future_exog: pd.DataFrame | None = None,
+    ) -> pd.DataFrame:
         import torch
 
         pipe = _load_pipeline(self.model_name)
         ctx = torch.tensor(self._context, dtype=torch.float32)
         # predict_quantiles -> (quantiles [B, H, Q], mean [B, H]); take the median quantile
         quantiles, _mean = pipe.predict_quantiles(
-            inputs=ctx, prediction_length=horizon, quantile_levels=[0.1, 0.5, 0.9],
+            inputs=ctx,
+            prediction_length=horizon,
+            quantile_levels=[0.1, 0.5, 0.9],
         )
         y_hat = quantiles[0, :, 1].cpu().numpy().astype(np.float64)
         future = self._future_index(case, history["ds"].max(), horizon)

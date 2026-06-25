@@ -9,18 +9,37 @@ import pandas as pd
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 R = REPO_ROOT / "results"
+SENTINEL = R / ".run_in_progress"
 
 
 def main() -> int:
-    m = R / "pilot_metrics.parquet"
+    committed = REPO_ROOT / "docs" / "results" / "scores.parquet"
+    local = R / "pilot_metrics.parquet"
+
+    if SENTINEL.exists() and local.exists():
+        print(
+            "WARNING: .run_in_progress sentinel found — last run may have been interrupted.\n"
+            "         Showing partial local results instead of committed scores.parquet.\n"
+        )
+        m = local
+    elif committed.exists():
+        m = committed
+    else:
+        m = local
     if m.exists():
         df = pd.read_parquet(m)
         print("\n=== Pilot matrix: MASE (lower is better; 1.0 = seasonal naive) ===")
-        print(df[df["metric"] == "MASE"]
-              .pivot(index="case_id", columns="method", values="value").round(2))
+        print(
+            df[df["metric"] == "MASE"]
+            .pivot(index="case_id", columns="method", values="value")
+            .round(2)
+        )
         print("\n=== Pilot matrix: Skill vs Persistence (higher is better; 0 = no better) ===")
-        print(df[df["metric"] == "Skill_vs_Persistence"]
-              .pivot(index="case_id", columns="method", values="value").round(2))
+        print(
+            df[df["metric"] == "Skill_vs_Persistence"]
+            .pivot(index="case_id", columns="method", values="value")
+            .round(2)
+        )
         print("\n=== Fraction of test window observed (NaN-masked) ===")
         print(df.groupby("case_id")["frac_finite_test"].first().round(3).to_string())
         print("\n=== Method runtimes (s) ===")

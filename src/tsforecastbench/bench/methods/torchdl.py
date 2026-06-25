@@ -48,8 +48,9 @@ def _make_modules():
     from torch import nn
 
     class PatchTSTNet(nn.Module):
-        def __init__(self, L, H, patch_len=16, stride=8, d_model=64, n_heads=4,
-                     n_layers=2, dropout=0.1):
+        def __init__(
+            self, L, H, patch_len=16, stride=8, d_model=64, n_heads=4, n_layers=2, dropout=0.1
+        ):
             super().__init__()
             patch_len = min(patch_len, L)
             stride = min(stride, patch_len)
@@ -58,8 +59,12 @@ def _make_modules():
             self.embed = nn.Linear(patch_len, d_model)
             self.pos = nn.Parameter(torch.randn(self.n_patches, d_model) * 0.02)
             layer = nn.TransformerEncoderLayer(
-                d_model, n_heads, dim_feedforward=128, dropout=dropout,
-                batch_first=True, activation="gelu",
+                d_model,
+                n_heads,
+                dim_feedforward=128,
+                dropout=dropout,
+                batch_first=True,
+                activation="gelu",
             )
             self.encoder = nn.TransformerEncoder(layer, n_layers)
             self.head = nn.Sequential(nn.Flatten(), nn.Linear(self.n_patches * d_model, H))
@@ -78,8 +83,10 @@ def _make_modules():
             self.b_basis = max(L // down, 2)
             self.f_basis = max(H // down, 2)
             self.mlp = nn.Sequential(
-                nn.Linear(lp, hidden), nn.ReLU(),
-                nn.Linear(hidden, hidden), nn.ReLU(),
+                nn.Linear(lp, hidden),
+                nn.ReLU(),
+                nn.Linear(hidden, hidden),
+                nn.ReLU(),
             )
             self.b_lin = nn.Linear(hidden, self.b_basis)
             self.f_lin = nn.Linear(hidden, self.f_basis)
@@ -162,8 +169,13 @@ class _TorchDLBase(Forecaster):
             loss.backward()
             opt.step()
 
-    def predict(self, case: Case, history: pd.DataFrame, horizon: int,
-                future_exog: pd.DataFrame | None = None) -> pd.DataFrame:
+    def predict(
+        self,
+        case: Case,
+        history: pd.DataFrame,
+        horizon: int,
+        future_exog: pd.DataFrame | None = None,
+    ) -> pd.DataFrame:
         future = self._future_index(case, history["ds"].max(), horizon)
         if getattr(self, "_model", None) is None:
             last = float(pd.to_numeric(history["y"], errors="coerce").ffill().iloc[-1])
