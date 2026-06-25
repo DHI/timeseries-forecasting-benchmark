@@ -4,7 +4,8 @@ produce a PCA biplot.
 Outputs
 -------
 results/morphology_features.csv        raw feature table (case × 6 features)
-docs/figures/morphology/pca_biplot.png PCA biplot — PC1/PC2 scores + loadings
+docs/figures/morphology/pca_biplot.png PCA biplot — two 2-D projections of the
+                                        3-component PCA (PC1/PC2 and PC1/PC3)
 
 Usage
 -----
@@ -79,18 +80,18 @@ def _run_pca(
 
     Returns
     -------
-    scores_df    DataFrame(index=case_id, columns=[PC1, PC2])
-    loadings_df  DataFrame(index=feature, columns=[PC1, PC2])
-    ev_ratio     explained variance ratios for PC1 and PC2
+    scores_df    DataFrame(index=case_id, columns=[PC1, PC2, PC3])
+    loadings_df  DataFrame(index=feature, columns=[PC1, PC2, PC3])
+    ev_ratio     explained variance ratios for PC1, PC2, PC3
     """
     X = StandardScaler().fit_transform(features_df[FEATURE_COLS].to_numpy())
-    pca = PCA(n_components=2)
+    pca = PCA(n_components=3)
     scores = pca.fit_transform(X)
-    scores_df = pd.DataFrame(scores, index=features_df.index, columns=["PC1", "PC2"])
+    scores_df = pd.DataFrame(scores, index=features_df.index, columns=["PC1", "PC2", "PC3"])
     loadings_df = pd.DataFrame(
         pca.components_.T,
         index=FEATURE_COLS,
-        columns=["PC1", "PC2"],
+        columns=["PC1", "PC2", "PC3"],
     )
     return scores_df, loadings_df, pca.explained_variance_ratio_
 
@@ -107,24 +108,37 @@ def _plot_biplot(
     domains: dict[str, str],
     out: Path,
 ) -> None:
-    """Matplotlib biplot: labelled case scores + feature loading arrows."""
+    """Single-panel biplot: PC1/PC2 axes, PC3 min-max scaled to marker size."""
     fig, ax = plt.subplots(figsize=(10, 7.5))
 
     unique_domains = sorted(set(domains.values()))
     palette = plt.cm.tab10.colors
     domain_colour = {d: palette[i % len(palette)] for i, d in enumerate(unique_domains)}
 
-    for case_id, (pc1, pc2) in scores.iterrows():
-        colour = domain_colour.get(domains.get(case_id, ""), "#888")
-        ax.scatter(pc1, pc2, color=colour, s=90, zorder=3, edgecolors="white", linewidths=0.5)
-        ax.text(pc1 + 0.05, pc2 + 0.05, case_id, fontsize=7.5, color=colour, zorder=4)
+    # Min-max scale PC3 scores → marker area (px²)
+    MIN_S, MAX_S = 40, 350
+    pc3 = scores["PC3"]
+    pc3_min, pc3_max = pc3.min(), pc3.max()
+    def _size(v: float) -> float:
+        return MIN_S + (v - pc3_min) / (pc3_max - pc3_min) * (MAX_S - MIN_S)
 
-    # Scale loading arrows to ~80 % of the score spread
-    score_range = max(scores.abs().max().max(), 1e-9)
-    loading_max = max(loadings.abs().max().max(), 1e-9)
+    for case_id, row in scores.iterrows():
+        colour = domain_colour.get(domains.get(case_id, ""), "#888")
+        ax.scatter(
+            row["PC1"], row["PC2"],
+            color=colour, s=_size(row["PC3"]),
+            zorder=3, edgecolors="white", linewidths=0.5,
+        )
+        ax.text(row["PC1"] + 0.05, row["PC2"] + 0.05, case_id, fontsize=7.5, color=colour, zorder=4)
+
+    # Scale loading arrows to ~80 % of PC1/PC2 score spread
+    load_sub = loadings[["PC1", "PC2"]]
+    score_range = max(scores[["PC1", "PC2"]].abs().max().max(), 1e-9)
+    loading_max = max(load_sub.abs().max().max(), 1e-9)
     arrow_scale = 0.8 * score_range / loading_max
 
-    for feat, (l1, l2) in loadings.iterrows():
+    for feat, row in load_sub.iterrows():
+        l1, l2 = row["PC1"], row["PC2"]
         ax.annotate(
             "",
             xy=(l1 * arrow_scale, l2 * arrow_scale),
@@ -147,9 +161,6 @@ def _plot_biplot(
     ax.axhline(0, color="#ccc", linewidth=0.7, zorder=1)
     ax.axvline(0, color="#ccc", linewidth=0.7, zorder=1)
 
-    # Conceptual axis interpretation: double-headed arrows + labels at each pole.
-    # Placed in axes-fraction coordinates so they sit at fixed positions regardless
-    # of the data range.  Low zorder keeps them behind everything else.
     _ann_kw = {
         "xycoords": "axes fraction",
         "textcoords": "axes fraction",
@@ -163,44 +174,60 @@ def _plot_biplot(
         "style": "italic",
         "zorder": 0,
     }
-
-    # Horizontal: smooth (left) ↔ impulsive (right) — PC1
     ax.annotate("", xy=(0.42, 0.05), xytext=(0.58, 0.05), **_ann_kw)
     ax.text(0.40, 0.05, "smooth", ha="right", va="center", **_txt_kw)
     ax.text(0.60, 0.05, "impulsive", ha="left", va="center", **_txt_kw)
-
-    # Vertical: seasonal (bottom) ↔ trending (top) — PC2
     ax.annotate("", xy=(0.05, 0.42), xytext=(0.05, 0.58), **_ann_kw)
     ax.text(0.05, 0.40, "seasonal", ha="center", va="top", rotation=90, **_txt_kw)
     ax.text(0.05, 0.60, "trending", ha="center", va="bottom", rotation=90, **_txt_kw)
+
     ax.set_xlabel(f"PC1  ({ev_ratio[0]:.1%} variance explained)", fontsize=10)
     ax.set_ylabel(f"PC2  ({ev_ratio[1]:.1%} variance explained)", fontsize=10)
     ax.set_title(
-        "Morphological feature space — PCA biplot\n"
-        "Water benchmark cases  ·  6-feature vector on raw series at native frequency",
+        f"Morphological feature space — PCA biplot  ·  {ev_ratio[:3].sum():.1%} variance explained (3 PCs)\n"
+        "Water benchmark cases  ·  6-feature vector  ·  marker size ∝ PC3 (larger = heavier-tailed)",
         fontsize=10,
     )
 
-    for domain, colour in domain_colour.items():
-        ax.scatter([], [], color=colour, label=domain, s=60)
-    ax.legend(
+    # Domain colour legend — outside, bottom, 2 rows × 4 columns
+    colour_handles = [plt.scatter([], [], color=c, s=90, label=d) for d, c in domain_colour.items()]
+    fig.legend(
+        handles=colour_handles,
         title="Domain",
         fontsize=8,
         title_fontsize=8,
-        loc="upper center",
-        bbox_to_anchor=(0.5, -0.12),
+        loc="lower center",
+        bbox_to_anchor=(0.5, 0.0),
         ncols=4,
         frameon=False,
     )
 
+    # PC3 size legend — outside, right, 3 reference bubbles at min / mid / max
+    ref_vals = [pc3_min, (pc3_min + pc3_max) / 2, pc3_max]
+    size_handles = [
+        plt.scatter([], [], color="#888", s=_size(v), edgecolors="white", linewidths=0.5,
+                    label=f"PC3 = {v:+.1f}")
+        for v in ref_vals
+    ]
+    ax.legend(
+        handles=size_handles,
+        title="PC3 (heavy-tailed)",
+        fontsize=8,
+        title_fontsize=8,
+        loc="center left",
+        bbox_to_anchor=(1.02, 0.5),
+        frameon=False,
+    )
+
+    fig.subplots_adjust(bottom=0.15, right=0.85)
+
     ax.grid(True, alpha=0.18)
     ax.set_aspect("equal", "box")
-    xmin, xmax = ax.get_xlim()
-    m = max(abs(xmin), abs(xmax))
-    ax.set_xlim(-m, m)
-    ymin, ymax = ax.get_ylim()
-    m = max(abs(ymin), abs(ymax))
-    ax.set_ylim(-m, m)
+    xlo, xhi = ax.get_xlim()
+    ax.set_xlim(-max(abs(xlo), abs(xhi)), max(abs(xlo), abs(xhi)))
+    ylo, yhi = ax.get_ylim()
+    ax.set_ylim(-max(abs(ylo), abs(yhi)), max(abs(ylo), abs(yhi)))
+
     out.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out, dpi=200, bbox_inches="tight")
     plt.close(fig)
