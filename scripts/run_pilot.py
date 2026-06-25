@@ -195,7 +195,7 @@ def main() -> int:
     print(f"  pilot_metrics.parquet ({len(results)} rows)")
     print("  matrix_mase.png, matrix_skill_vs_persistence.png, matrix_skill_vs_mean.png")
     print(f"Wrote committed outputs to {DOCS_RESULTS_DIR.relative_to(REPO_ROOT)}/")
-    print(f"  scores.parquet → commit after each run")
+    print("  scores.parquet → commit after each run")
     print(f"Wrote committed figures to {DOCS_FIGURES_DIR.relative_to(REPO_ROOT)}/")
     return 0
 

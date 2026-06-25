@@ -61,7 +61,7 @@ def _(mo, pd):
                     "_Committed results from the last `run_pilot.py` run — no compute needed._"
                 ),
                 _img,
-                mo.md("### Skill vs persistence (all cases × methods)"),
+                mo.md("### Skill vs persistence (all cases X methods)"),
                 _tbl,
                 mo.md("---"),
             ]
