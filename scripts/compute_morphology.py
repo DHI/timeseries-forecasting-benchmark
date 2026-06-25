@@ -32,7 +32,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from tsforecastbench.data.registry import discover_cases
-from tsforecastbench.morphology.features import compute_features, period_for_freq
+from tsforecastbench.morphology.features import compute_features, exog_r2_gain, period_for_freq
 
 RESULTS_DIR = REPO_ROOT / "results"
 FIG_DIR = REPO_ROOT / "docs" / "figures" / "morphology"
@@ -62,10 +62,32 @@ FEATURE_LABELS = {
 # ---------------------------------------------------------------------------
 
 
-def _extract_y(case) -> np.ndarray:
-    """Load processed parquet for a case and return the clean target array."""
+def _horizon_steps(case) -> int:
+    """Convert horizon_primary + freq strings to an integer step count."""
+    h = pd.Timedelta(case.horizon_primary)
+    f = pd.Timedelta(case.freq)
+    return max(1, int(round(h / f)))
+
+
+def _extract_train_data(case) -> tuple[np.ndarray, np.ndarray | None]:
+    """Return (y_train, X_exog_train) from the training split.
+
+    Exogenous NaNs are filled with column means.
+    Returns None for the exog array when the case has no exogenous variables.
+    """
     df = case.load()
-    return df["y"].dropna().to_numpy(dtype=float)
+    train = case.split_frame(df)["train"]
+    mask = train["y"].notna()
+    y = train.loc[mask, "y"].to_numpy(dtype=float)
+    if not case.exogenous:
+        return y, None
+    X = train.loc[mask, case.exogenous].to_numpy(dtype=float)
+    col_means = np.nanmean(X, axis=0)
+    for j in range(X.shape[1]):
+        nan_idx = np.isnan(X[:, j])
+        if nan_idx.any():
+            X[nan_idx, j] = col_means[j]
+    return y, X
 
 
 # ---------------------------------------------------------------------------
@@ -234,6 +256,53 @@ def _plot_biplot(
     print(f"Biplot saved → {out.relative_to(REPO_ROOT)}")
 
 
+def _plot_exog_bar(
+    exog_series: pd.Series,
+    domains: dict[str, str],
+    out: Path,
+) -> None:
+    """Horizontal bar chart of exog_r2_gain, cases sorted descending."""
+    ordered = exog_series.sort_values(ascending=True)  # ascending so top bar is highest
+
+    unique_domains = sorted(set(domains.values()))
+    palette = plt.cm.tab10.colors
+    domain_colour = {d: palette[i % len(palette)] for i, d in enumerate(unique_domains)}
+    colours = [domain_colour.get(domains.get(case_id, ""), "#888") for case_id in ordered.index]
+
+    fig, ax = plt.subplots(figsize=(7, 0.45 * len(ordered) + 1.2))
+    bars = ax.barh(range(len(ordered)), ordered.values, color=colours, edgecolor="white", linewidth=0.5)
+
+    ax.set_yticks(range(len(ordered)))
+    ax.set_yticklabels(ordered.index, fontsize=8.5)
+    ax.set_xlabel("Exogenous R² gain  (ARX − AR, ridge, training split)", fontsize=9)
+    ax.set_title("External forcing dependence by case", fontsize=10)
+    ax.set_xlim(0, max(ordered.values.max() * 1.15, 0.02))
+    ax.axvline(0, color="#ccc", linewidth=0.7)
+    ax.grid(axis="x", alpha=0.2)
+
+    for bar, val in zip(bars, ordered.values):
+        ax.text(
+            bar.get_width() + 0.003, bar.get_y() + bar.get_height() / 2,
+            f"{val:.3f}", va="center", fontsize=7.5, color="#444",
+        )
+
+    colour_handles = [plt.scatter([], [], color=c, s=60, label=d) for d, c in domain_colour.items()]
+    ax.legend(
+        handles=colour_handles,
+        title="Domain",
+        fontsize=7.5,
+        title_fontsize=8,
+        loc="lower right",
+        frameon=False,
+    )
+
+    fig.tight_layout()
+    out.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out, dpi=200, bbox_inches="tight")
+    plt.close(fig)
+    print(f"Exog bar chart saved → {out.relative_to(REPO_ROOT)}")
+
+
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
@@ -250,6 +319,7 @@ def main() -> int:
 
     cases = discover_cases()
     records: dict[str, dict[str, float]] = {}
+    exog_gains: dict[str, float] = {}
     domains: dict[str, str] = {}
 
     for case_id, case in cases.items():
@@ -257,12 +327,14 @@ def main() -> int:
             print(f"[{case_id}] no parquet — skipping.")
             continue
         print(f"[{case_id}] computing ...", end="  ", flush=True)
-        y = _extract_y(case)
+        y, X_exog = _extract_train_data(case)
         period = period_for_freq(case.freq)
         feats = compute_features(y, period)
+        n_exog_lags = min(_horizon_steps(case), 30)
+        exog_gains[case_id] = exog_r2_gain(y, X_exog, period, n_exog_lags)
         records[case_id] = feats
         domains[case_id] = case.domain
-        print("  ".join(f"{k}={v:+.3f}" for k, v in feats.items()))
+        print("  ".join(f"{k}={v:+.3f}" for k, v in feats.items()) + f"  exog_r2_gain={exog_gains[case_id]:+.3f}")
 
     if not records:
         print("No cases with processed parquet found — nothing to do.")
@@ -270,6 +342,7 @@ def main() -> int:
 
     features_df = pd.DataFrame.from_dict(records, orient="index")[FEATURE_COLS]
     features_df.index.name = "case_id"
+    features_df["exog_r2_gain"] = pd.Series(exog_gains)
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     csv_path = RESULTS_DIR / "morphology_features.csv"
@@ -278,13 +351,18 @@ def main() -> int:
     print(features_df.to_string(float_format="{:+.3f}".format))
 
     if not args.no_plot:
-        scores_df, loadings_df, ev_ratio = _run_pca(features_df)
+        scores_df, loadings_df, ev_ratio = _run_pca(features_df[FEATURE_COLS])
         _plot_biplot(
             scores_df,
             loadings_df,
             ev_ratio,
             domains,
             out=FIG_DIR / "pca_biplot.png",
+        )
+        _plot_exog_bar(
+            features_df["exog_r2_gain"],
+            domains,
+            out=FIG_DIR / "exog_r2_gain.png",
         )
 
     return 0

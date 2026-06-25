@@ -10,6 +10,7 @@ from __future__ import annotations
 import numpy as np
 from scipy import stats
 from scipy.signal import periodogram
+from sklearn.linear_model import Ridge
 from statsmodels.tsa.seasonal import STL
 from statsmodels.tsa.stattools import acf as sm_acf
 
@@ -117,6 +118,55 @@ def compute_features(y: np.ndarray, period: int) -> dict[str, float]:
         "boxcox_lambda": boxcox_lambda(y),
         "kurtosis": excess_kurtosis(y),
     }
+
+
+def exog_r2_gain(
+    y: np.ndarray,
+    X_exog: np.ndarray | None,
+    period: int,
+    n_exog_lags: int,
+) -> float:
+    """R² gain of a ridge ARX model over a pure ridge AR model.
+
+    Both models are fit on the same data (training split). Returns 0.0 for
+    univariate cases. Clipped to [0, 1].
+
+    Limitation: a weak linear AR baseline on impulsive or nonlinear series
+    can inflate the gain beyond genuine external forcing dependence.
+
+    Parameters
+    ----------
+    y:            Clean 1-D target array (training split).
+    X_exog:       2-D exogenous array (n_samples × n_vars) or None.
+    period:       Dominant seasonality period; AR order p = min(period, 30).
+    n_exog_lags:  Exogenous lags included: 0..n_exog_lags.
+    """
+    if X_exog is None or X_exog.ndim < 2 or X_exog.shape[1] == 0:
+        return 0.0
+
+    p = min(period, 30)
+    q = n_exog_lags
+    max_lag = max(p, q)
+    n = len(y)
+
+    if n - max_lag < max(20, p + q * X_exog.shape[1] + 5):
+        return 0.0
+
+    Y = y[max_lag:]
+    AR = np.column_stack([y[max_lag - lag: n - lag] for lag in range(1, p + 1)])
+    exog_blocks = [X_exog[max_lag - lag: n - lag, :] for lag in range(0, q + 1)]
+    ARX = np.hstack([AR] + exog_blocks)
+
+    y_mean, y_std = Y.mean(), Y.std() + 1e-10
+    Y_s = (Y - y_mean) / y_std
+
+    def _r2(X: np.ndarray) -> float:
+        X_s = (X - X.mean(axis=0)) / (X.std(axis=0) + 1e-10)
+        pred = Ridge(alpha=1.0).fit(X_s, Y_s).predict(X_s)
+        ss_tot = ((Y_s - Y_s.mean()) ** 2).sum()
+        return float(1.0 - ((Y_s - pred) ** 2).sum() / ss_tot) if ss_tot > 0 else 0.0
+
+    return float(np.clip(_r2(ARX) - _r2(AR), 0.0, 1.0))
 
 
 # ---------------------------------------------------------------------------
