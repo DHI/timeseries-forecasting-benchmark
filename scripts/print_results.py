@@ -9,13 +9,23 @@ import pandas as pd
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 R = REPO_ROOT / "results"
+SENTINEL = R / ".run_in_progress"
 
 
 def main() -> int:
-    # Prefer the committed distilled file; fall back to the local run output.
-    m = REPO_ROOT / "docs" / "results" / "scores.parquet"
-    if not m.exists():
-        m = R / "pilot_metrics.parquet"
+    committed = REPO_ROOT / "docs" / "results" / "scores.parquet"
+    local = R / "pilot_metrics.parquet"
+
+    if SENTINEL.exists() and local.exists():
+        print(
+            "WARNING: .run_in_progress sentinel found — last run may have been interrupted.\n"
+            "         Showing partial local results instead of committed scores.parquet.\n"
+        )
+        m = local
+    elif committed.exists():
+        m = committed
+    else:
+        m = local
     if m.exists():
         df = pd.read_parquet(m)
         print("\n=== Pilot matrix: MASE (lower is better; 1.0 = seasonal naive) ===")

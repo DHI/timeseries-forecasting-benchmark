@@ -39,6 +39,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 RESULTS_DIR = REPO_ROOT / "results"
 DOCS_RESULTS_DIR = REPO_ROOT / "docs" / "results"
 DOCS_FIGURES_DIR = REPO_ROOT / "docs" / "figures" / "benchmark"
+SENTINEL = RESULTS_DIR / ".run_in_progress"
 
 
 def build_methods():
@@ -129,6 +130,7 @@ def main() -> int:
     print(f"Data mode: {'synthetic' if args.synth else 'real-or-synth fallback'}\n")
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    SENTINEL.write_text("")
     all_results = []
     for case in cases:
         print(
@@ -161,6 +163,7 @@ def main() -> int:
     DOCS_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     DOCS_FIGURES_DIR.mkdir(parents=True, exist_ok=True)
     results.to_parquet(DOCS_RESULTS_DIR / "scores.parquet", index=False)
+    SENTINEL.unlink(missing_ok=True)
 
     _matrix_specs = [
         ("MASE", "matrix_mase.png", "RK2026 pilot - MASE (lower is better)"),
