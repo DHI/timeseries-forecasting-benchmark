@@ -30,6 +30,37 @@ def _():
 
 
 @app.cell
+def _(mo, pd):
+    import pathlib as _pl
+    _scores_path = _pl.Path(__file__).parents[1] / "docs" / "results" / "scores.parquet"
+    _img_path = (_pl.Path(__file__).parents[1] / "docs" / "figures" / "benchmark"
+                 / "matrix_skill_vs_persistence.png")
+    _committed = pd.read_parquet(_scores_path) if _scores_path.exists() else None
+    if _committed is not None:
+        _pivot = (
+            _committed[_committed["metric"] == "Skill_vs_Persistence"]
+            .pivot_table(index="case_id", columns="method", values="value")
+            .round(3)
+        )
+        _tbl = mo.ui.table(_pivot.reset_index(), selection=None)
+        _img = mo.image(str(_img_path)) if _img_path.exists() else mo.md("")
+        mo.vstack([
+            mo.md("## Full benchmark overview\n"
+                  "_Committed results from the last `run_pilot.py` run — no compute needed._"),
+            _img,
+            mo.md("### Skill vs persistence (all cases × methods)"),
+            _tbl,
+            mo.md("---"),
+        ])
+    else:
+        mo.md(
+            "> **No committed results found.** Run `uv run python scripts/run_pilot.py` once "
+            "to populate `docs/results/scores.parquet`."
+        )
+    return
+
+
+@app.cell
 def _(DEFAULT_ORIGINS, discover_cases, mo):
     cases = list(discover_cases())
     case_picker = mo.ui.dropdown(cases, value=cases[0], label="Case")

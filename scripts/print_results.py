@@ -12,7 +12,10 @@ R = REPO_ROOT / "results"
 
 
 def main() -> int:
-    m = R / "pilot_metrics.parquet"
+    # Prefer the committed distilled file; fall back to the local run output.
+    m = REPO_ROOT / "docs" / "results" / "scores.parquet"
+    if not m.exists():
+        m = R / "pilot_metrics.parquet"
     if m.exists():
         df = pd.read_parquet(m)
         print("\n=== Pilot matrix: MASE (lower is better; 1.0 = seasonal naive) ===")

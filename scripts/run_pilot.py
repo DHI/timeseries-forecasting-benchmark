@@ -37,6 +37,8 @@ from tsforecastbench.data.registry import discover_cases
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 RESULTS_DIR = REPO_ROOT / "results"
+DOCS_RESULTS_DIR = REPO_ROOT / "docs" / "results"
+DOCS_FIGURES_DIR = REPO_ROOT / "docs" / "figures" / "benchmark"
 
 
 def build_methods():
@@ -134,31 +136,40 @@ def main() -> int:
     results = pd.concat(all_results, ignore_index=True)
     results.to_parquet(RESULTS_DIR / "pilot_metrics.parquet", index=False)
 
-    render_matrix(
-        results,
-        metric="MASE",
-        out_path=RESULTS_DIR / "pilot_matrix_MASE.png",
-        title="RK2026 pilot - MASE (lower is better)",
-        method_order=method_order,
-    )
-    render_matrix(
-        results,
-        metric="Skill_vs_Persistence",
-        out_path=RESULTS_DIR / "pilot_matrix_skill.png",
-        title="RK2026 pilot - skill vs persistence (higher is better)",
-        method_order=method_order,
-    )
-    render_matrix(
-        results,
-        metric="Skill_vs_Mean",
-        out_path=RESULTS_DIR / "pilot_matrix_skill_vs_mean.png",
-        title="RK2026 pilot - skill vs mean (higher is better)",
-        method_order=method_order,
-    )
+    # Distilled outputs go to docs/ so they travel with the repo (committed).
+    DOCS_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    DOCS_FIGURES_DIR.mkdir(parents=True, exist_ok=True)
+    results.to_parquet(DOCS_RESULTS_DIR / "scores.parquet", index=False)
+
+    _matrix_specs = [
+        ("MASE", "matrix_mase.png", "RK2026 pilot - MASE (lower is better)"),
+        ("Skill_vs_Persistence", "matrix_skill_vs_persistence.png",
+         "RK2026 pilot - skill vs persistence (higher is better)"),
+        ("Skill_vs_Mean", "matrix_skill_vs_mean.png",
+         "RK2026 pilot - skill vs mean (higher is better)"),
+    ]
+    for metric, fname, title in _matrix_specs:
+        render_matrix(
+            results,
+            metric=metric,
+            out_path=RESULTS_DIR / fname,
+            title=title,
+            method_order=method_order,
+        )
+        render_matrix(
+            results,
+            metric=metric,
+            out_path=DOCS_FIGURES_DIR / fname,
+            title=title,
+            method_order=method_order,
+        )
 
     print(f"\nWrote results to {RESULTS_DIR.relative_to(REPO_ROOT)}/")
     print(f"  pilot_metrics.parquet ({len(results)} rows)")
-    print("  pilot_matrix_MASE.png, pilot_matrix_skill.png, pilot_matrix_skill_vs_mean.png")
+    print("  matrix_mase.png, matrix_skill_vs_persistence.png, matrix_skill_vs_mean.png")
+    print(f"Wrote committed outputs to {DOCS_RESULTS_DIR.relative_to(REPO_ROOT)}/")
+    print(f"  scores.parquet → commit after each run")
+    print(f"Wrote committed figures to {DOCS_FIGURES_DIR.relative_to(REPO_ROOT)}/")
     return 0
 
 
