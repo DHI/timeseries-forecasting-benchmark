@@ -8,6 +8,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import shutil
 import sys
 from pathlib import Path
 
@@ -186,13 +187,7 @@ def main() -> int:
             title=title,
             method_order=method_order,
         )
-        render_matrix(
-            results,
-            metric=metric,
-            out_path=DOCS_FIGURES_DIR / fname,
-            title=title,
-            method_order=method_order,
-        )
+        shutil.copy2(RESULTS_DIR / fname, DOCS_FIGURES_DIR / fname)
 
     print(f"\nWrote results to {RESULTS_DIR.relative_to(REPO_ROOT)}/")
     print(f"  pilot_metrics.parquet ({len(results)} rows)")
