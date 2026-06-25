@@ -1,7 +1,7 @@
 """Build the NW Atlantic wave case (NDBC buoy 44008, Nantucket SE).
 
-    uv run python -m tsforecastbench.data.cases.waves_massachusetts.download
-    uv run python -m tsforecastbench.data.cases.waves_massachusetts.download --station 44008 --years 2014-2023
+uv run python -m tsforecastbench.data.cases.waves_massachusetts.download
+uv run python -m tsforecastbench.data.cases.waves_massachusetts.download --station 44008 --years 2014-2023
 """
 
 from __future__ import annotations
@@ -29,8 +29,10 @@ def main(argv: list[str] | None = None) -> int:
 
     out = _ndbc.build_ndbc(case, args.station, years)
     path = _io.write_canonical(case, out)
-    print(f"[waves_massachusetts] wrote {path} ({len(out)} rows) station {args.station} "
-          f"{years[0]}-{years[-1]}")
+    print(
+        f"[waves_massachusetts] wrote {path} ({len(out)} rows) station {args.station} "
+        f"{years[0]}-{years[-1]}"
+    )
     return 0
 
 

@@ -1,6 +1,6 @@
 """Build the USGS stream-temperature case (James River, VA) + ERA5 forcing.
 
-    uv run python -m tsforecastbench.data.cases.watertemp_james.download
+uv run python -m tsforecastbench.data.cases.watertemp_james.download
 """
 
 from __future__ import annotations
@@ -29,8 +29,9 @@ def main(argv: list[str] | None = None) -> int:
     t = _usgs.fetch_nwis(SITE, "00010", START, END, service="dv", colname="water_temp")
     print(f"[watertemp_james] {len(t)} daily rows, {t['water_temp'].notna().mean():.0%} finite")
 
-    base = pd.DataFrame({"unique_id": case.id, "ds": t["ds"], "y": t["water_temp"],
-                         "water_temp": t["water_temp"]})
+    base = pd.DataFrame(
+        {"unique_id": case.id, "ds": t["ds"], "y": t["water_temp"], "water_temp": t["water_temp"]}
+    )
     base = _io.resample_regular(base, case.freq)
 
     era5_vars = ["temp_air", "precip"]
@@ -40,9 +41,14 @@ def main(argv: list[str] | None = None) -> int:
         print("[watertemp_james] ERA5 skipped.")
     else:
         print(f"[watertemp_james] fetching ERA5 {era5_vars} (daily) via Open-Meteo ...")
-        hourly = _era5.fetch_era5_point(info["lat"], info["lon"], base["ds"].min(),
-                                        base["ds"].max(), variables=era5_vars,
-                                        cache_dir=_io.DATA_RAW / case.id / "era5_cache")
+        hourly = _era5.fetch_era5_point(
+            info["lat"],
+            info["lon"],
+            base["ds"].min(),
+            base["ds"].max(),
+            variables=era5_vars,
+            cache_dir=_io.DATA_RAW / case.id / "era5_cache",
+        )
         daily = _era5.to_daily(hourly, era5_vars)
         base = _era5.merge_onto(base, daily, era5_vars, interpolate=False)
         cov = {c: f"{base[c].notna().mean():.0%}" for c in era5_vars}

@@ -60,8 +60,9 @@ def _list_files() -> list[dict]:
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--list", action="store_true", help="List Zenodo files")
-    p.add_argument("--columns", action="store_true",
-                   help="Print flow CSV column names after download")
+    p.add_argument(
+        "--columns", action="store_true", help="Print flow CSV column names after download"
+    )
     args = p.parse_args(argv)
 
     case = get_case("demand_ltown")
@@ -76,11 +77,16 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  {f['name']}  ({f['size']} bytes)")
         return 0
 
-    demand_files = [f for f in files
-                    if CONFIG["demands_file_match"].lower() in (f["name"] or "").lower()
-                    and (f["name"] or "").lower().endswith(".csv")]
+    demand_files = [
+        f
+        for f in files
+        if CONFIG["demands_file_match"].lower() in (f["name"] or "").lower()
+        and (f["name"] or "").lower().endswith(".csv")
+    ]
     if not demand_files:
-        print(f"[demand_ltown] no demand CSVs matched {CONFIG['demands_file_match']!r}. Run --list.")
+        print(
+            f"[demand_ltown] no demand CSVs matched {CONFIG['demands_file_match']!r}. Run --list."
+        )
         return 1
 
     frames = []
@@ -100,12 +106,16 @@ def main(argv: list[str] | None = None) -> int:
         print(f"\n{len(raw.columns)} columns; {len(raw)} rows")
         return 0
 
-    dcol = next((c for c in raw.columns if c.lower() in {"timestamp", "datetime", "time", "date"}),
-                raw.columns[0])
+    dcol = next(
+        (c for c in raw.columns if c.lower() in {"timestamp", "datetime", "time", "date"}),
+        raw.columns[0],
+    )
     demand_cols = [c for c in raw.columns if c != dcol]
     print(f"[demand_ltown] summing demand across {len(demand_cols)} consumer nodes")
 
-    total_demand = pd.DataFrame({c: pd.to_numeric(raw[c], errors="coerce") for c in demand_cols}).sum(axis=1)
+    total_demand = pd.DataFrame(
+        {c: pd.to_numeric(raw[c], errors="coerce") for c in demand_cols}
+    ).sum(axis=1)
 
     out = pd.DataFrame(
         {
@@ -119,8 +129,10 @@ def main(argv: list[str] | None = None) -> int:
     out = _io.resample_regular(out, case.freq)
 
     path = _io.write_canonical(case, out)
-    print(f"[demand_ltown] wrote {path} ({len(out)} rows) - total consumer demand "
-          f"summed across {len(demand_cols)} nodes")
+    print(
+        f"[demand_ltown] wrote {path} ({len(out)} rows) - total consumer demand "
+        f"summed across {len(demand_cols)} nodes"
+    )
     return 0
 
 

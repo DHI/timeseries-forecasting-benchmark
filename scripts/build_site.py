@@ -50,9 +50,7 @@ def _export_case(case_id: str, out_html: Path) -> None:
 
 
 def _index_html(case_ids: list[str]) -> str:
-    items = "\n".join(
-        f'      <li><a href="eda/{cid}.html">{cid}</a></li>' for cid in case_ids
-    )
+    items = "\n".join(f'      <li><a href="eda/{cid}.html">{cid}</a></li>' for cid in case_ids)
     return f"""<!doctype html>
 <html lang="en">
 <head>

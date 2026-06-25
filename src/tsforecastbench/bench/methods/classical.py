@@ -48,8 +48,13 @@ class AutoARIMAForecaster(Forecaster):
         )
         self._sf.fit(df)
 
-    def predict(self, case: Case, history: pd.DataFrame, horizon: int,
-                future_exog: pd.DataFrame | None = None) -> pd.DataFrame:
+    def predict(
+        self,
+        case: Case,
+        history: pd.DataFrame,
+        horizon: int,
+        future_exog: pd.DataFrame | None = None,
+    ) -> pd.DataFrame:
         fcst = self._sf.predict(h=horizon)
         y_hat = fcst["AutoARIMA"].to_numpy().astype(np.float64)
         last_ds = history["ds"].max()
@@ -89,8 +94,13 @@ class AutoETSForecaster(Forecaster):
         )
         self._sf.fit(df)
 
-    def predict(self, case: Case, history: pd.DataFrame, horizon: int,
-                future_exog: pd.DataFrame | None = None) -> pd.DataFrame:
+    def predict(
+        self,
+        case: Case,
+        history: pd.DataFrame,
+        horizon: int,
+        future_exog: pd.DataFrame | None = None,
+    ) -> pd.DataFrame:
         fcst = self._sf.predict(h=horizon)
         y_hat = fcst["AutoETS"].to_numpy().astype(np.float64)
         future = self._future_index(case, history["ds"].max(), horizon)
@@ -119,13 +129,20 @@ class ThetaForecaster(Forecaster):
             ds = ds.dt.tz_convert("UTC").dt.tz_localize(None)
         df["ds"] = ds
         self._sf = StatsForecast(
-            models=[AutoTheta(season_length=self.season_length)], freq=case.freq, n_jobs=1,
+            models=[AutoTheta(season_length=self.season_length)],
+            freq=case.freq,
+            n_jobs=1,
         )
         self._sf.fit(df)
         self._col = "AutoTheta"
 
-    def predict(self, case: Case, history: pd.DataFrame, horizon: int,
-                future_exog: pd.DataFrame | None = None) -> pd.DataFrame:
+    def predict(
+        self,
+        case: Case,
+        history: pd.DataFrame,
+        horizon: int,
+        future_exog: pd.DataFrame | None = None,
+    ) -> pd.DataFrame:
         fcst = self._sf.predict(h=horizon)
         y_hat = fcst[self._col].to_numpy().astype(np.float64)
         future = self._future_index(case, history["ds"].max(), horizon)

@@ -64,21 +64,38 @@ def build_methods():
 def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--synth", action="store_true", help="Force synthetic data generators")
-    p.add_argument("--cases", nargs="*", default=None,
-                   help="Case ids to run (default: all discovered cases)")
-    p.add_argument("--fast", action="store_true",
-                   help="Single hold-out instead of rolling-origin (faster, noisier).")
-    p.add_argument("--origins", type=int, default=DEFAULT_ORIGINS,
-                   help=f"Rolling origins per cell (default {DEFAULT_ORIGINS}; "
-                        "override globally with TSFB_ORIGINS).")
-    p.add_argument("--with-fm", action="store_true",
-                   help="Add the zero-shot foundation model (Chronos-Bolt; needs the 'fm' extra).")
-    p.add_argument("--with-dl", action="store_true",
-                   help="Add the torch deep-learning models (N-HiTS, PatchTST; needs the 'dl' extra). "
-                        "Heavy on CPU — pair with a small --origins.")
-    p.add_argument("--with-nf", action="store_true",
-                   help="Add the neuralforecast zoo (TFT, iTransformer, TimesNet; needs the 'nf' "
-                        "extra — Linux/WSL only). GPU-accelerated when available.")
+    p.add_argument(
+        "--cases", nargs="*", default=None, help="Case ids to run (default: all discovered cases)"
+    )
+    p.add_argument(
+        "--fast",
+        action="store_true",
+        help="Single hold-out instead of rolling-origin (faster, noisier).",
+    )
+    p.add_argument(
+        "--origins",
+        type=int,
+        default=DEFAULT_ORIGINS,
+        help=f"Rolling origins per cell (default {DEFAULT_ORIGINS}; "
+        "override globally with TSFB_ORIGINS).",
+    )
+    p.add_argument(
+        "--with-fm",
+        action="store_true",
+        help="Add the zero-shot foundation model (Chronos-Bolt; needs the 'fm' extra).",
+    )
+    p.add_argument(
+        "--with-dl",
+        action="store_true",
+        help="Add the torch deep-learning models (N-HiTS, PatchTST; needs the 'dl' extra). "
+        "Heavy on CPU — pair with a small --origins.",
+    )
+    p.add_argument(
+        "--with-nf",
+        action="store_true",
+        help="Add the neuralforecast zoo (TFT, iTransformer, TimesNet; needs the 'nf' "
+        "extra — Linux/WSL only). GPU-accelerated when available.",
+    )
     args = p.parse_args()
 
     all_cases = discover_cases()
@@ -114,12 +131,16 @@ def main() -> int:
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     all_results = []
     for case in cases:
-        print(f"=== {case.id} ({case.domain}, freq={case.freq}, horizon={case.horizon_primary}) ===")
+        print(
+            f"=== {case.id} ({case.domain}, freq={case.freq}, horizon={case.horizon_primary}) ==="
+        )
         try:
             if args.fast:
                 res = run_case(case, methods, prefer_synth=args.synth)
             else:
-                res = run_case_rolling(case, methods, n_origins=args.origins, prefer_synth=args.synth)
+                res = run_case_rolling(
+                    case, methods, n_origins=args.origins, prefer_synth=args.synth
+                )
         except Exception as exc:  # keep a long unattended run going if one case fails
             print(f"  [case-error] {case.id}: {type(exc).__name__}: {exc}")
             continue
@@ -143,10 +164,16 @@ def main() -> int:
 
     _matrix_specs = [
         ("MASE", "matrix_mase.png", "RK2026 pilot - MASE (lower is better)"),
-        ("Skill_vs_Persistence", "matrix_skill_vs_persistence.png",
-         "RK2026 pilot - skill vs persistence (higher is better)"),
-        ("Skill_vs_Mean", "matrix_skill_vs_mean.png",
-         "RK2026 pilot - skill vs mean (higher is better)"),
+        (
+            "Skill_vs_Persistence",
+            "matrix_skill_vs_persistence.png",
+            "RK2026 pilot - skill vs persistence (higher is better)",
+        ),
+        (
+            "Skill_vs_Mean",
+            "matrix_skill_vs_mean.png",
+            "RK2026 pilot - skill vs mean (higher is better)",
+        ),
     ]
     for metric, fname, title in _matrix_specs:
         render_matrix(

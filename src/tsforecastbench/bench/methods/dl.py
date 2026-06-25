@@ -78,8 +78,13 @@ class DLinearForecaster(Forecaster):
         remainder = X - trend
         return np.concatenate([trend, remainder], axis=1)
 
-    def predict(self, case: Case, history: pd.DataFrame, horizon: int,
-                future_exog: pd.DataFrame | None = None) -> pd.DataFrame:
+    def predict(
+        self,
+        case: Case,
+        history: pd.DataFrame,
+        horizon: int,
+        future_exog: pd.DataFrame | None = None,
+    ) -> pd.DataFrame:
         future = self._future_index(case, history["ds"].max(), horizon)
         if getattr(self, "_model", None) is None:
             last = float(pd.to_numeric(history["y"], errors="coerce").ffill().iloc[-1])
