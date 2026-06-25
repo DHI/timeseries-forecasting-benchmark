@@ -14,6 +14,11 @@
     "rows": 12782,
     "sha256": "14ac602f7f9b3f5cb18d3f189b68ee4ce2a5c9b1de1dd91015fb1a457025e055"
   },
+  "discharge_saugeen": {
+    "parquet": "data/processed/discharge_saugeen.parquet",
+    "rows": 23741,
+    "sha256": "1ab6790a5c709529868816ab13f002f810a08b757177e9f67fb122c6b132246b"
+  },
   "discharge_snowmelt_yosemite": {
     "parquet": "data/processed/discharge_snowmelt_yosemite.parquet",
     "rows": 4749,
