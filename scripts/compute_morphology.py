@@ -196,12 +196,22 @@ def _plot_biplot(
         "style": "italic",
         "zorder": 0,
     }
+    # Place qualitative labels on the side that the relevant loading actually points.
+    # seasonal_strength sign on PC2 determines which end is "seasonal".
+    # kurtosis sign on PC1 determines which end is "impulsive".
+    seasonal_up = float(loadings.loc["seasonal_strength", "PC2"]) >= 0
+    impulsive_right = float(loadings.loc["kurtosis", "PC1"]) >= 0
+
     ax.annotate("", xy=(0.42, 0.05), xytext=(0.58, 0.05), **_ann_kw)
-    ax.text(0.40, 0.05, "smooth", ha="right", va="center", **_txt_kw)
-    ax.text(0.60, 0.05, "impulsive", ha="left", va="center", **_txt_kw)
+    ax.text(0.40 if impulsive_right else 0.60, 0.05,
+            "smooth", ha="right" if impulsive_right else "left", va="center", **_txt_kw)
+    ax.text(0.60 if impulsive_right else 0.40, 0.05,
+            "impulsive", ha="left" if impulsive_right else "right", va="center", **_txt_kw)
     ax.annotate("", xy=(0.05, 0.42), xytext=(0.05, 0.58), **_ann_kw)
-    ax.text(0.05, 0.40, "seasonal", ha="center", va="top", rotation=90, **_txt_kw)
-    ax.text(0.05, 0.60, "trending", ha="center", va="bottom", rotation=90, **_txt_kw)
+    ax.text(0.05, 0.60 if seasonal_up else 0.40,
+            "seasonal", ha="center", va="bottom" if seasonal_up else "top", rotation=90, **_txt_kw)
+    ax.text(0.05, 0.40 if seasonal_up else 0.60,
+            "trending", ha="center", va="top" if seasonal_up else "bottom", rotation=90, **_txt_kw)
 
     ax.set_xlabel(f"PC1  ({ev_ratio[0]:.1%} variance explained)", fontsize=10)
     ax.set_ylabel(f"PC2  ({ev_ratio[1]:.1%} variance explained)", fontsize=10)
