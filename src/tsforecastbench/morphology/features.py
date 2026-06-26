@@ -11,6 +11,7 @@ import numpy as np
 from scipy import stats
 from scipy.signal import periodogram
 from sklearn.linear_model import Ridge
+from sklearn.preprocessing import PolynomialFeatures
 from statsmodels.tsa.seasonal import STL
 from statsmodels.tsa.stattools import acf as sm_acf
 
@@ -125,11 +126,19 @@ def exog_r2_gain(
     X_exog: np.ndarray | None,
     period: int,
     n_exog_lags: int,
+    poly_degree: int = 1,
 ) -> float:
     """R² gain of a ridge ARX model over a pure ridge AR model.
 
     Both models are fit on the same data (training split). Returns 0.0 for
     univariate cases. Clipped to [0, 1].
+
+    When ``poly_degree`` > 1, polynomial features are computed on the raw
+    series *before* lagging (poly → lags). Concretely: y is expanded to
+    [y, y², …] and X_exog to its degree-``poly_degree`` expansion, then each
+    derived series is lagged independently. This avoids the cross-lag
+    interaction explosion that occurs with the reverse order (lags → poly)
+    and keeps the feature count tractable even for long lag depths.
 
     Limitation: a weak linear AR baseline on impulsive or nonlinear series
     can inflate the gain beyond genuine external forcing dependence.
@@ -140,6 +149,7 @@ def exog_r2_gain(
     X_exog:       2-D exogenous array (n_samples × n_vars) or None.
     period:       Dominant seasonality period; AR order p = min(period, 30).
     n_exog_lags:  Exogenous lags included: 0..n_exog_lags.
+    poly_degree:  Polynomial expansion degree applied before lagging (1 = linear).
     """
     if X_exog is None or X_exog.ndim < 2 or X_exog.shape[1] == 0:
         return 0.0
@@ -153,9 +163,18 @@ def exog_r2_gain(
         return 0.0
 
     Y = y[max_lag:]
-    AR = np.column_stack([y[max_lag - lag: n - lag] for lag in range(1, p + 1)])
-    exog_blocks = [X_exog[max_lag - lag: n - lag, :] for lag in range(0, q + 1)]
-    ARX = np.hstack([AR] + exog_blocks)
+
+    # Expand raw series before lagging, then build lag matrices.
+    poly_y = PolynomialFeatures(degree=poly_degree, include_bias=False)
+    poly_x = PolynomialFeatures(degree=poly_degree, include_bias=False)
+
+    y_exp = poly_y.fit_transform(y.reshape(-1, 1))          # (n, d_y)
+    x_exp = poly_x.fit_transform(X_exog)                    # (n, d_x)
+
+    AR  = np.hstack([y_exp[max_lag - lag: n - lag] for lag in range(1, p + 1)])
+    ARX = np.hstack(
+        [AR] + [x_exp[max_lag - lag: n - lag] for lag in range(0, q + 1)]
+    )
 
     y_mean, y_std = Y.mean(), Y.std() + 1e-10
     Y_s = (Y - y_mean) / y_std

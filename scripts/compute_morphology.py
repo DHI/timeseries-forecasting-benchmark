@@ -331,7 +331,7 @@ def main() -> int:
         period = period_for_freq(case.freq)
         feats = compute_features(y, period)
         n_exog_lags = min(_horizon_steps(case), 30)
-        exog_gains[case_id] = exog_r2_gain(y, X_exog, period, n_exog_lags)
+        exog_gains[case_id] = exog_r2_gain(y, X_exog, period, n_exog_lags, poly_degree=2)
         records[case_id] = feats
         domains[case_id] = case.domain
         print("  ".join(f"{k}={v:+.3f}" for k, v in feats.items()) + f"  exog_r2_gain={exog_gains[case_id]:+.3f}")
