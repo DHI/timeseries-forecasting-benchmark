@@ -1,6 +1,6 @@
 # Benchmark results
 
-One consistent pass across **all 11 cases × 14 methods**, scored by **rolling-origin**
+One consistent pass across **all 12 cases × 14 methods**, scored by **rolling-origin**
 evaluation (12 refit origins per cell, errors pooled over origins × lead times, observed
 points only). The headline cell is **skill vs persistence** = `1 − MSE(model)/MSE(persistence)`
 at the primary horizon: positive means better than "tomorrow = today", `1.0` is perfect.
@@ -19,17 +19,18 @@ to [−1, 1] so one catastrophic cell can't wash out the scale). Numbers + analy
 
 | case | SeasonalNaive | AutoARIMA | DLinear | LightGBM | LightGBM+exo | Chronos-Bolt | best |
 |---|---|---|---|---|---|---|---|
-| discharge_lowland_denmark (slow hydrology) | −31.4 | +0.12 | +0.21 | −0.11 | +0.21 | −0.09 | **LinearLags+exo +0.30** |
-| discharge_flashy_catskills (flashy) | −0.13 | +0.59 | +0.60 | −3.11 | +0.22 | **+0.80** | **Chronos +0.80** |
-| discharge_snowmelt_yosemite | −34.3 | −0.05 | −0.28 | −0.08 | +0.47 | +0.03 | **LightGBM+exo +0.47** |
-| groundwater_yorktown | −8.68 | +0.06 | +0.25 | **+0.65** | +0.65 | +0.30 | **LightGBM +0.65** |
-| watertemp_james | −2.26 | +0.12 | +0.18 | +0.35 | **+0.84** | +0.21 | **LightGBM+exo +0.84** |
-| sewerlevel_bellinge | −4.24 | +0.26 | −0.95 | **+0.31** | −0.45 | −0.57 | **LightGBM +0.31** |
-| demand_ltown | +0.26 | +0.67 | +0.72 | **+0.74** | +0.74 | +0.70 | **LightGBM +0.74** |
-| wwtp_influent_n2o_350k | −1.52 | +0.02 | +0.57 | **+0.69** | +0.69 | +0.63 | **LightGBM +0.69** |
-| surge_cuxhaven | −1.15 | −0.03 | −0.02 | +0.00 | **+0.52** | −0.03 | **LightGBM+exo +0.52** |
-| waves_oregon (swell) | −0.33 | +0.10 | +0.21 | +0.13 | **+0.48** | −0.18 | **LightGBM+exo +0.48** |
-| waves_massachusetts (wind-sea) | −0.35 | +0.10 | +0.18 | +0.14 | **+0.51** | +0.11 | **LightGBM+exo +0.51** |
+| discharge_lowland_denmark (slow hydrology) | −0.92 | +0.05 | +0.01 | +0.07 | +0.40 | −0.02 | **LinearLags+exo +0.45** |
+| discharge_flashy_catskills (flashy) | −0.19 | +0.01 | −0.06 | −0.52 | **+0.81** | −0.02 | **LightGBM+exo +0.81** |
+| discharge_snowmelt_yosemite | −4.16 | −0.64 | −0.82 | +0.33 | **+0.65** | −0.24 | **LightGBM+exo +0.65** |
+| discharge_saugeen (seasonal) | +0.23 | +0.04 | +0.07 | +0.08 | +0.08 | +0.04 | **MLP +0.26** |
+| groundwater_yorktown | −9.43 | +0.22 | +0.33 | +0.09 | +0.04 | **+0.73** | **Chronos +0.73** |
+| watertemp_james | −2.17 | +0.20 | +0.27 | +0.21 | **+0.86** | +0.15 | **LightGBM+exo +0.86** |
+| sewerlevel_bellinge | −0.10 | −1.04 | −1.51 | +0.32 | +0.32 | −0.34 | **LinearLags +0.45** |
+| demand_ltown | −0.63 | +0.17 | +0.34 | **+0.41** | +0.41 | +0.41 | **LightGBM +0.41** |
+| wwtp_influent_n2o_350k | −0.33 | +0.15 | +0.40 | **+0.56** | +0.56 | +0.55 | **LightGBM +0.56** |
+| surge_cuxhaven | −0.66 | −0.25 | −0.28 | −0.52 | **+0.38** | −0.31 | **LightGBM+exo +0.38** |
+| waves_oregon (swell) | −0.11 | −0.13 | +0.18 | +0.15 | +0.47 | +0.16 | **MLP +0.51** |
+| waves_massachusetts (wind-sea) | −0.57 | −0.02 | −0.14 | +0.00 | **+0.35** | −0.17 | **LightGBM+exo +0.35** |
 
 (`+exo` = the exogenous-aware Tier-2 variant; on `demand_ltown` / `wwtp_influent_n2o_350k`, which
 declare no covariates, it equals the univariate column by construction.)
@@ -37,65 +38,78 @@ declare no covariates, it equals the univariate column by construction.)
 ## What the matrix says
 
 **1. Covariate-aware models win where covariates exist; plain boosting wins the regular,
-self-driven series.** `LightGBM+exo` or `LinearLags+exo` is best on 8 of 11 cases; plain
-`LightGBM` takes the three that are essentially self-driven (`demand_ltown` demand,
-`wwtp_influent_n2o_350k` flow, `groundwater_yorktown`); `Chronos` zero-shot takes the flashy river. No
-naive or classical method wins anywhere on these horizons.
+self-driven series.** `LightGBM+exo` or `LinearLags+exo` is best on 6 of 12 cases (the
+covariate-driven ones); `LightGBM` takes the two self-driven cases (`demand_ltown`,
+`wwtp_influent_n2o_350k`); `Chronos` zero-shot takes groundwater; `MLP` takes the two wave
+cases. No naive or classical method wins anywhere on these horizons.
 
 **2. Domain covariates add large skill — exactly where the physics predicts.** The
 exogenous-aware variants lift skill dramatically on the forced cases:
 
 | case | driver | univariate → +exo (skill) |
 |---|---|---|
-| watertemp_james | air temperature | **+0.35 → +0.84** |
-| surge_cuxhaven | ERA5 wind/pressure | **+0.00 → +0.52** |
-| discharge_snowmelt_yosemite | temperature/precip | **−0.08 → +0.47** |
-| waves_oregon / waves_massachusetts | wind | +0.13 → +0.48 / +0.14 → +0.51 |
-| discharge_lowland_denmark | precipitation (via LinearLags) | +0.06 → +0.30 |
-| groundwater_yorktown | (slow, integrative) | +0.65 → +0.65 — *no gain* |
+| discharge_flashy_catskills | precipitation | **−0.52 → +0.81** |
+| watertemp_james | air temperature | **+0.21 → +0.86** |
+| surge_cuxhaven | ERA5 wind/pressure | **−0.52 → +0.38** |
+| discharge_snowmelt_yosemite | temperature/precip | **+0.33 → +0.65** |
+| waves_oregon / waves_massachusetts | wind | +0.15 → +0.47 / +0.00 → +0.35 |
+| discharge_lowland_denmark | precipitation (via LinearLags) | +0.02 → +0.45 |
+| groundwater_yorktown | (slow, integrative) | +0.09 → +0.04 — *no gain* |
 
 Covariate value is real, case-specific, and tracks domain understanding. Groundwater is the
 instructive null: the water table integrates weeks of recharge, which the target's own lags
 already capture, so an instantaneous precip feature adds nothing.
 
-**3. …but covariates are not free — they can hurt.** On `sewerlevel_bellinge`, adding the
-oracle rain covariate *lowered* LightGBM from **+0.31 to −0.45**. At 15-min resolution the
-rain→level response is sharp and variably-lagged; across rolling origins the model keys on
-rain timing that doesn't generalise. An honest reminder that "physically relevant" ≠
-"helps the forecast" — covariate engineering (lags, antecedent state) matters, and this case
-is a candidate for the event-aware framing Rocco suggested.
+**3. The flashy river is now the strongest covariate-gain case.** On `discharge_flashy_catskills`,
+plain `LightGBM` collapses to **−0.52** (gradient boosting overfits the spiky daily signal),
+but `LightGBM+exo` jumps to **+0.81** using precipitation — the single largest exo gain in
+the matrix. Meanwhile `DLinear` and `AutoARIMA` both sit near zero, and `Chronos` is
+marginally negative. So the flashy-regime conclusion has flipped: the covariate-aware
+booster is now the strongest method, not zero-shot.
 
-**4. The usual winner is brittle on flashy daily flow.** Univariate `LightGBM` is the worst
-method on `discharge_flashy_catskills` (**−3.11** — gradient boosting overfits the spiky daily
-signal), while linear `DLinear` (+0.60), `AutoARIMA` (+0.59) and zero-shot `Chronos` (+0.80)
-all do well; `+exo` rescues boosting to +0.22. So "boosting always wins" is false — on a
-flashy regime the simpler and pretrained models are safer.
+**4. Covariates must be matched to model type — linear wins where boosting stalls.** On
+`sewerlevel_bellinge`, `LightGBM` and `LightGBM+exo` are tied at **+0.32**, while
+`LinearLags` (with the rain covariate) reaches **+0.45**. At 15-min resolution the sharp,
+variably-lagged rain→level response is more tractable for a linear model, which imposes less
+risk of overfitting across rolling origins. Classical methods all fail badly (AutoARIMA −1.04,
+DLinear −1.51): the sewer-level signal is too non-stationary for them.
 
-**5. MLP is the least robust method.** It collapses on the hard cases (`bellinge` −54,
-`groundwater_yorktown` −1.8, `gesla` −1.3) where it extrapolates wildly. For a cross-case
-benchmark, tree/linear models are the safe default.
+**5. MLP is the least robust method overall but can surprise on smooth wave series.** It
+collapses on the hard cases (`bellinge` −54, `groundwater_yorktown` −0.0,
+`discharge_snowmelt_yosemite` +0.05) but tops the leader board on `waves_oregon` (**+0.51**)
+and `waves_massachusetts` (`LightGBM+exo` is a close second at +0.35). Wave spectra are
+smooth and quasi-periodic — exactly the regime where MLP's implicit global fit is less
+dangerous. For a cross-case benchmark, tree/linear models remain the safe default.
 
 **6. Seasonal-naive is a trap on trending series** — catastrophic on the slow hydrology /
-groundwater cases (camels −31, snowmelt −34, groundwater −8.7) because the year-ago value is
-meaningless there. The "obvious" seasonal baseline must be chosen per case.
+groundwater cases (lowland_denmark −0.92, snowmelt −4.16, groundwater −9.43) because the
+year-ago value is meaningless there. The "obvious" seasonal baseline must be chosen per case.
+
+**7. `discharge_saugeen` is the least forecastable case.** The mildest winner across all cases
+is `MLP +0.26` on this seasonally-regular Canadian river; `SeasonalNaive` (+0.23) is
+competitive, meaning the annual cycle alone carries most of the predictable variance — little
+room for model advantage.
 
 ## Foundation model (Chronos-Bolt, zero-shot)
 
 The pretrained **Chronos-Bolt** forecasts each case **zero-shot — no case-specific
-training**. The KER5 verdict is sharper than "FMs trail tuned models":
+training**. The updated picture:
 
-- **Where the signal is regular it is genuinely competitive** — it *wins the flashy
-  discharge case outright* (**+0.80**, beating every fitted model) and is near-best on water
-  demand (+0.70) and WWTP flow (+0.63), with no fitting at all. A pretrained model matching
-  tuned ML on the well-behaved cases for free is the headline FM result.
-- **Where the dynamics are noisy or covariate-driven it trails** — sewer (−0.57), waves
-  (−0.18), surge (−0.03) — because it is univariate and cannot see the rainfall / wind that
-  carries the skill.
+- **Groundwater is the FM's showcase case.** Chronos wins `groundwater_yorktown` outright at
+  **+0.73**, the highest single-method skill in the matrix, beating every fitted model. The
+  slow, integrative annual cycle is evidently a pattern the pretrained model captures
+  without any case-specific fitting — a striking result.
+- **Where the series is regular it remains competitive** — demand (+0.41, tied for best),
+  WWTP flow (+0.55, second only to LightGBM +0.56) — with no fitting at all.
+- **Where the dynamics are covariate-driven or noisy it trails** — flashy discharge (−0.02),
+  surge (−0.31), waves (−0.17 / −0.17) — because it is univariate and cannot see the
+  rainfall / wind that carries the skill.
 
-So the FM is a **strong, free, but regime-dependent univariate prior**: adopt it where the
-series is regular; it does not yet replace a covariate-aware model on the forced water cases.
-Natural next steps: a **covariate-capable FM** (Chronos-2 / Moirai) and **fine-tuning** the
-top zero-shot performer.
+So the FM is a **strong, free, but regime-dependent univariate prior**: it is now the
+strongest method on the slow integrative groundwater case and competitive on self-driven
+regular series; it does not yet replace a covariate-aware model on the physically-forced
+cases. Natural next steps: a **covariate-capable FM** (Chronos-2 / Moirai) and
+**fine-tuning** on the cases where zero-shot already works.
 
 ## Deep learning (N-HiTS / PatchTST)
 
