@@ -1,8 +1,8 @@
 """Morphological feature vector for time series characterisation.
 
-Six core features are computed by ``compute_features``; thirteen candidate
-features (core + extended) are computed by ``compute_features_all`` and used
-for the feature-selection analysis in ``notebooks/feature_selection.py``.
+The working 5-feature vector (seasonal_strength, hurst, trend_strength,
+phase_consistency, l_skewness) is assembled by ``compute_morphology.py``
+from the full 13-candidate set returned by ``compute_features_all``.
 All functions are stateless and independently importable.
 """
 
@@ -284,40 +284,6 @@ def zero_proportion(y: np.ndarray, threshold: float | None = None) -> float:
         threshold = max(1e-6, 0.01 * p95)
     return float(np.mean(y <= threshold))
 
-
-def compute_features(
-    y: np.ndarray,
-    period: int,
-    seasonal_periods: list[int] | None = None,
-) -> dict[str, float]:
-    """Compute the full 6-feature morphological vector.
-
-    Parameters
-    ----------
-    y:
-        Clean (NaN-free) 1-D array of the target variable at native frequency.
-    period:
-        Primary seasonality period in steps (see ``period_for_freq``). Used by
-        trend_strength and all STL-based features except seasonal_strength.
-    seasonal_periods:
-        Candidate periods for seasonal_strength (see ``seasonal_periods_for_freq``).
-        Defaults to ``[period]`` when omitted (backward-compatible).
-
-    Returns
-    -------
-    dict with keys: acf1, trend_strength, seasonal_strength,
-    spectral_entropy, boxcox_lambda, kurtosis.
-    """
-    if seasonal_periods is None:
-        seasonal_periods = [period]
-    return {
-        "acf1": acf1(y),
-        "trend_strength": trend_strength(y, period),
-        "seasonal_strength": seasonal_strength(y, seasonal_periods),
-        "spectral_entropy": spectral_entropy(y),
-        "boxcox_lambda": boxcox_lambda(y),
-        "kurtosis": excess_kurtosis(y),
-    }
 
 
 def compute_features_all(
