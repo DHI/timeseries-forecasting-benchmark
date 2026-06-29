@@ -1,11 +1,14 @@
 """Morphological feature vector for time series characterisation.
 
-Six features computed on a raw (NaN-free) numpy array. All functions are
-stateless and independently importable; ``compute_features`` is the normal
-entry point.
+Six core features are computed by ``compute_features``; thirteen candidate
+features (core + extended) are computed by ``compute_features_all`` and used
+for the feature-selection analysis in ``notebooks/feature_selection.py``.
+All functions are stateless and independently importable.
 """
 
 from __future__ import annotations
+
+import math
 
 import numpy as np
 from scipy import stats
@@ -96,6 +99,158 @@ def excess_kurtosis(y: np.ndarray) -> float:
     return float(stats.kurtosis(y, fisher=True))
 
 
+def hurst_exponent(y: np.ndarray) -> float:
+    """Hurst exponent via R/S analysis (slope of log-log regression over window sizes).
+
+    H > 0.5 → long-range persistence (e.g. groundwater).
+    H ≈ 0.5 → random walk.
+    H < 0.5 → anti-persistent.
+    Clipped to [0, 1]. Returns 0.5 on failure.
+    """
+    n = len(y)
+    if n < 20:
+        return 0.5
+    sizes = np.unique(np.logspace(1, np.log10(n // 2), num=20).astype(int))
+    rs_vals: list[tuple[int, float]] = []
+    for size in sizes:
+        sub = y[:size]
+        mean_adj = sub - sub.mean()
+        cumsum = np.cumsum(mean_adj)
+        R = float(cumsum.max() - cumsum.min())
+        S = float(sub.std(ddof=1))
+        if S > 0:
+            rs_vals.append((size, R / S))
+    if len(rs_vals) < 2:
+        return 0.5
+    arr = np.array(rs_vals)
+    h = float(np.polyfit(np.log(arr[:, 0]), np.log(arr[:, 1]), 1)[0])
+    return float(np.clip(h, 0.0, 1.0))
+
+
+def permutation_entropy(y: np.ndarray, order: int = 3, delay: int = 1) -> float:
+    """Normalised permutation entropy in [0, 1].
+
+    Embeds y into ordinal patterns of length ``order`` with step ``delay``.
+    Low → highly structured/predictable; High → complex/random.
+    Normalised by log₂(order!) so the range is [0, 1].
+    """
+    n = len(y)
+    m = order
+    n_patterns = n - (m - 1) * delay
+    if n_patterns < 1:
+        return 1.0
+    # Build embedding matrix and rank each row to get ordinal pattern.
+    idx = np.arange(m) * delay
+    embedded = np.stack([y[i: i + (m - 1) * delay + 1: delay] for i in range(n_patterns)])
+    ordinals = np.argsort(np.argsort(embedded, axis=1), axis=1)
+    _, counts = np.unique(ordinals, axis=0, return_counts=True)
+    pmf = counts / counts.sum()
+    entropy = float(-np.sum(pmf * np.log2(pmf + 1e-14)))
+    return float(np.clip(entropy / math.log2(math.factorial(m)), 0.0, 1.0))
+
+
+def seasonal_stability(y: np.ndarray, period: int) -> float:
+    """Coefficient of variation of seasonal amplitude across complete periods.
+
+    Uses the STL seasonal component. Each complete chunk of length ``period``
+    has its amplitude (max − min) computed; returns std/mean of those amplitudes.
+    Low → consistent seasonality year-on-year; High → shifting/unstable seasonality.
+    Returns 0 when fewer than 2 complete periods or when the seasonal signal is flat.
+    """
+    stl = _fit_stl(y, period)
+    seasonal = stl.seasonal
+    n_complete = len(seasonal) // period
+    if n_complete < 2:
+        return 0.0
+    chunks = seasonal[: n_complete * period].reshape(n_complete, period)
+    amplitudes = chunks.max(axis=1) - chunks.min(axis=1)
+    # Guard against a near-flat seasonal component (non-seasonal series).
+    if amplitudes.mean() < 1e-2 * (y.max() - y.min() + 1e-10):
+        return 0.0
+    mean_amp = amplitudes.mean()
+    if mean_amp < 1e-10:
+        return 0.0
+    return float(amplitudes.std(ddof=1) / mean_amp)
+
+
+def phase_consistency(y: np.ndarray, period: int) -> float:
+    """Circular spread of peak-of-season phase across complete periods.
+
+    Uses the STL seasonal component. Peak phase per chunk is normalised to [0, 1].
+    Returns 1 − mean-resultant-length of the circular distribution.
+    0 → perfectly consistent peak timing; 1 → uniformly scattered phases.
+    Returns 0 when fewer than 2 complete periods.
+    """
+    stl = _fit_stl(y, period)
+    seasonal = stl.seasonal
+    n_complete = len(seasonal) // period
+    if n_complete < 2:
+        return 0.0
+    chunks = seasonal[: n_complete * period].reshape(n_complete, period)
+    amplitudes = chunks.max(axis=1) - chunks.min(axis=1)
+    if amplitudes.mean() < 1e-2 * (y.max() - y.min() + 1e-10):
+        return 0.0
+    peak_phases = chunks.argmax(axis=1) / period  # [0, 1)
+    angles = 2 * np.pi * peak_phases
+    R = float(np.abs(np.exp(1j * angles).mean()))
+    return float(np.clip(1.0 - R, 0.0, 1.0))
+
+
+def asymmetry_index(y: np.ndarray) -> float:
+    """Temporal rise/fall asymmetry index in (−1, 1).
+
+    Positive → mean rise rate exceeds mean fall rate (e.g. flashy discharge).
+    Negative → mean fall rate exceeds mean rise rate.
+    Near-zero → symmetric dynamics (smooth/tidal series).
+    Returns 0 when all differences are zero.
+    """
+    diff = np.diff(y)
+    rises = diff[diff > 0]
+    falls = -diff[diff < 0]
+    if len(rises) == 0 or len(falls) == 0:
+        return 0.0
+    mean_rise = rises.mean()
+    mean_fall = falls.mean()
+    denom = mean_rise + mean_fall
+    if denom < 1e-10:
+        return 0.0
+    return float((mean_rise - mean_fall) / denom)
+
+
+def l_skewness(y: np.ndarray) -> float:
+    """L-skewness (τ₃ = L₃/L₂) via probability-weighted moments.
+
+    More robust to outliers than conventional skewness.
+    0 → symmetric; positive → right-skewed (heavy upper tail).
+    Returns 0 when n < 4 or L₂ ≈ 0.
+    """
+    n = len(y)
+    if n < 4:
+        return 0.0
+    x = np.sort(y)
+    i = np.arange(1, n + 1, dtype=float)
+    b0 = x.mean()
+    b1 = float(np.sum((i - 1) / (n - 1) * x)) / n
+    b2 = float(np.sum((i - 1) * (i - 2) / ((n - 1) * (n - 2)) * x)) / n
+    l2 = 2 * b1 - b0
+    l3 = 6 * b2 - 6 * b1 + b0
+    if abs(l2) < 1e-10:
+        return 0.0
+    return float(l3 / l2)
+
+
+def zero_proportion(y: np.ndarray, threshold: float | None = None) -> float:
+    """Fraction of time steps where the signal is near-zero.
+
+    Threshold defaults to 1 % of the 95th percentile (auto-scaled per series).
+    Useful for distinguishing perennial from intermittent flow regimes.
+    """
+    if threshold is None:
+        p95 = float(np.percentile(y, 95))
+        threshold = max(1e-6, 0.01 * p95)
+    return float(np.mean(y <= threshold))
+
+
 def compute_features(y: np.ndarray, period: int) -> dict[str, float]:
     """Compute the full 6-feature morphological vector.
 
@@ -118,6 +273,41 @@ def compute_features(y: np.ndarray, period: int) -> dict[str, float]:
         "spectral_entropy": spectral_entropy(y),
         "boxcox_lambda": boxcox_lambda(y),
         "kurtosis": excess_kurtosis(y),
+    }
+
+
+def compute_features_all(y: np.ndarray, period: int) -> dict[str, float]:
+    """Compute all 13 candidate features (core 6 + extended 7) for feature selection.
+
+    Parameters
+    ----------
+    y:
+        Clean (NaN-free) 1-D array of the target variable at native frequency.
+    period:
+        Dominant seasonality period in steps (see ``period_for_freq``).
+
+    Returns
+    -------
+    dict with keys: acf1, trend_strength, seasonal_strength, spectral_entropy,
+    boxcox_lambda, kurtosis, hurst, perm_entropy, seasonal_stability,
+    phase_consistency, asymmetry, l_skewness, zero_proportion.
+    """
+    return {
+        # Core 6
+        "acf1": acf1(y),
+        "trend_strength": trend_strength(y, period),
+        "seasonal_strength": seasonal_strength(y, period),
+        "spectral_entropy": spectral_entropy(y),
+        "boxcox_lambda": boxcox_lambda(y),
+        "kurtosis": excess_kurtosis(y),
+        # Extended 7
+        "hurst": hurst_exponent(y),
+        "perm_entropy": permutation_entropy(y),
+        "seasonal_stability": seasonal_stability(y, period),
+        "phase_consistency": phase_consistency(y, period),
+        "asymmetry": asymmetry_index(y),
+        "l_skewness": l_skewness(y),
+        "zero_proportion": zero_proportion(y),
     }
 
 
