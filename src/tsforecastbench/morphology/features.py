@@ -19,10 +19,22 @@ from statsmodels.tsa.seasonal import STL
 from statsmodels.tsa.stattools import acf as sm_acf
 
 # Maps the freq string used in case.toml to a seasonal period in steps.
+# Used as the primary period for trend_strength, phase_consistency, seasonal_stability,
+# exog_r2_gain, and as the fallback when no seasonal_periods list is provided.
 PERIOD_FOR_FREQ: dict[str, int] = {
     "1D": 365,
     "1h": 24,
     "15min": 96,
+}
+
+# Candidate periods for seasonal_strength — all plausible dominant cycles per freq.
+# seasonal_strength runs STL at each and returns the max so that series with a
+# dominant annual cycle (e.g. waves, surge) are not incorrectly scored as zero
+# simply because the primary period targets the diurnal cycle.
+SEASONAL_PERIODS_FOR_FREQ: dict[str, list[int]] = {
+    "1D": [7, 365],
+    "1h": [24, 168, 8760],       # diurnal, weekly, annual
+    "15min": [96, 672, 35040],   # diurnal, weekly, annual
 }
 
 # STL is O(N) per iteration; cap series length to keep runtimes reasonable.
@@ -36,6 +48,16 @@ def period_for_freq(freq: str) -> int:
     except KeyError:
         raise KeyError(
             f"No period defined for freq {freq!r}. Known: {list(PERIOD_FOR_FREQ)}"
+        ) from None
+
+
+def seasonal_periods_for_freq(freq: str) -> list[int]:
+    """Return all candidate seasonality periods in steps for a given freq string."""
+    try:
+        return SEASONAL_PERIODS_FOR_FREQ[freq]
+    except KeyError:
+        raise KeyError(
+            f"No seasonal periods defined for freq {freq!r}. Known: {list(SEASONAL_PERIODS_FOR_FREQ)}"
         ) from None
 
 
@@ -54,8 +76,20 @@ def trend_strength(y: np.ndarray, period: int) -> float:
     return float(max(0.0, 1.0 - var_resid / var_tr))
 
 
-def seasonal_strength(y: np.ndarray, period: int) -> float:
-    """Seasonal strength from STL: max(0, 1 - Var(resid) / Var(seasonal + resid))."""
+def seasonal_strength(y: np.ndarray, periods: int | list[int]) -> float:
+    """Seasonal strength: max across candidate periods.
+
+    Runs STL independently at each period and returns the highest score so
+    that series with a dominant annual cycle are not penalised for having no
+    diurnal cycle (and vice-versa). Formula per period:
+        max(0, 1 - Var(resid) / Var(seasonal + resid))
+    """
+    if isinstance(periods, int):
+        periods = [periods]
+    return max(_seasonal_strength_at(y, p) for p in periods)
+
+
+def _seasonal_strength_at(y: np.ndarray, period: int) -> float:
     stl = _fit_stl(y, period)
     var_resid = np.var(stl.resid, ddof=1)
     var_sr = np.var(stl.seasonal + stl.resid, ddof=1)
@@ -251,7 +285,11 @@ def zero_proportion(y: np.ndarray, threshold: float | None = None) -> float:
     return float(np.mean(y <= threshold))
 
 
-def compute_features(y: np.ndarray, period: int) -> dict[str, float]:
+def compute_features(
+    y: np.ndarray,
+    period: int,
+    seasonal_periods: list[int] | None = None,
+) -> dict[str, float]:
     """Compute the full 6-feature morphological vector.
 
     Parameters
@@ -259,24 +297,34 @@ def compute_features(y: np.ndarray, period: int) -> dict[str, float]:
     y:
         Clean (NaN-free) 1-D array of the target variable at native frequency.
     period:
-        Dominant seasonality period in steps (see ``period_for_freq``).
+        Primary seasonality period in steps (see ``period_for_freq``). Used by
+        trend_strength and all STL-based features except seasonal_strength.
+    seasonal_periods:
+        Candidate periods for seasonal_strength (see ``seasonal_periods_for_freq``).
+        Defaults to ``[period]`` when omitted (backward-compatible).
 
     Returns
     -------
     dict with keys: acf1, trend_strength, seasonal_strength,
     spectral_entropy, boxcox_lambda, kurtosis.
     """
+    if seasonal_periods is None:
+        seasonal_periods = [period]
     return {
         "acf1": acf1(y),
         "trend_strength": trend_strength(y, period),
-        "seasonal_strength": seasonal_strength(y, period),
+        "seasonal_strength": seasonal_strength(y, seasonal_periods),
         "spectral_entropy": spectral_entropy(y),
         "boxcox_lambda": boxcox_lambda(y),
         "kurtosis": excess_kurtosis(y),
     }
 
 
-def compute_features_all(y: np.ndarray, period: int) -> dict[str, float]:
+def compute_features_all(
+    y: np.ndarray,
+    period: int,
+    seasonal_periods: list[int] | None = None,
+) -> dict[str, float]:
     """Compute all 13 candidate features (core 6 + extended 7) for feature selection.
 
     Parameters
@@ -284,7 +332,11 @@ def compute_features_all(y: np.ndarray, period: int) -> dict[str, float]:
     y:
         Clean (NaN-free) 1-D array of the target variable at native frequency.
     period:
-        Dominant seasonality period in steps (see ``period_for_freq``).
+        Primary seasonality period in steps (see ``period_for_freq``). Used by
+        trend_strength, phase_consistency, seasonal_stability, and exog_r2_gain.
+    seasonal_periods:
+        Candidate periods for seasonal_strength (see ``seasonal_periods_for_freq``).
+        Defaults to ``[period]`` when omitted (backward-compatible).
 
     Returns
     -------
@@ -292,11 +344,13 @@ def compute_features_all(y: np.ndarray, period: int) -> dict[str, float]:
     boxcox_lambda, kurtosis, hurst, perm_entropy, seasonal_stability,
     phase_consistency, asymmetry, l_skewness, zero_proportion.
     """
+    if seasonal_periods is None:
+        seasonal_periods = [period]
     return {
         # Core 6
         "acf1": acf1(y),
         "trend_strength": trend_strength(y, period),
-        "seasonal_strength": seasonal_strength(y, period),
+        "seasonal_strength": seasonal_strength(y, seasonal_periods),
         "spectral_entropy": spectral_entropy(y),
         "boxcox_lambda": boxcox_lambda(y),
         "kurtosis": excess_kurtosis(y),

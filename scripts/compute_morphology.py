@@ -31,7 +31,12 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from tsforecastbench.data.registry import discover_cases
-from tsforecastbench.morphology.features import compute_features_all, exog_r2_gain, period_for_freq
+from tsforecastbench.morphology.features import (
+    compute_features_all,
+    exog_r2_gain,
+    period_for_freq,
+    seasonal_periods_for_freq,
+)
 
 RESULTS_DIR = REPO_ROOT / "results"
 FIG_DIR = REPO_ROOT / "docs" / "figures" / "morphology"
@@ -282,7 +287,8 @@ def main() -> int:
         print(f"[{case_id}] computing ...", end="  ", flush=True)
         y, X_exog = _extract_train_data(case)
         period = period_for_freq(case.freq)
-        feats = compute_features_all(y, period)
+        seasonal_periods = seasonal_periods_for_freq(case.freq)
+        feats = compute_features_all(y, period, seasonal_periods=seasonal_periods)
         n_exog_lags = min(_horizon_steps(case), 30)
         exog_gains[case_id] = exog_r2_gain(y, X_exog, period, n_exog_lags, poly_degree=2)
         records[case_id] = feats
