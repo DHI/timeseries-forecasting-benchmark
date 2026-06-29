@@ -22,6 +22,8 @@ from tsforecastbench.bench.methods import (
     AutoETSForecaster,
     Climatology,
     DLinearForecaster,
+    LightGBMCalendarExoForecaster,
+    LightGBMCalendarForecaster,
     LightGBMExoForecaster,
     LightGBMForecaster,
     LinearLagsExoForecaster,
@@ -58,6 +60,8 @@ def build_methods():
         DLinearForecaster(),
         LinearLagsExoForecaster(),
         LightGBMExoForecaster(),
+        LightGBMCalendarForecaster(),
+        LightGBMCalendarExoForecaster(),
     ]
 
 

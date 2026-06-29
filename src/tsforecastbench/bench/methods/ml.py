@@ -30,6 +30,33 @@ def _date_features_for(freq: str) -> list[str]:
     return ["dayofweek", "month"]
 
 
+def _sincos_features_for(freq: str) -> list:
+    """Sin/cos encoding of the dominant seasonal period for the given frequency.
+
+    MLForecast passes a DatetimeIndex to each callable (no .dt accessor).
+    """
+    f = freq.lower()
+    if f in {"1d", "d"}:
+        def sin_week(ds): return np.sin(2 * np.pi * ds.dayofweek / 7)
+        def cos_week(ds): return np.cos(2 * np.pi * ds.dayofweek / 7)
+        return [sin_week, cos_week]
+    if f in {"1h", "h"}:
+        def sin_day(ds): return np.sin(2 * np.pi * ds.hour / 24)
+        def cos_day(ds): return np.cos(2 * np.pi * ds.hour / 24)
+        return [sin_day, cos_day]
+    if f in {"15min", "15t"}:
+        def sin_d15(ds):
+            pos = ds.hour * 4 + ds.minute // 15
+            return np.sin(2 * np.pi * pos / 96)
+        def cos_d15(ds):
+            pos = ds.hour * 4 + ds.minute // 15
+            return np.cos(2 * np.pi * pos / 96)
+        return [sin_d15, cos_d15]
+    def sin_fb(ds): return np.sin(2 * np.pi * ds.dayofweek / 7)
+    def cos_fb(ds): return np.cos(2 * np.pi * ds.dayofweek / 7)
+    return [sin_fb, cos_fb]
+
+
 def _lags_for(freq: str) -> list[int]:
     f = freq.lower()
     if f in {"1d", "d"}:
@@ -70,6 +97,7 @@ class _WindowedMLBase(Forecaster):
     name = "WindowedML"
     max_train_steps: int | None = None
     use_exogenous: bool = False
+    use_calendar: bool = False
 
     def __init__(self):
         self.uses_exogenous = self.use_exogenous
@@ -97,11 +125,15 @@ class _WindowedMLBase(Forecaster):
         if self._exo:
             df[self._exo] = df[self._exo].ffill().fillna(0.0)
 
+        date_feats = list(_date_features_for(case.freq))
+        if self.use_calendar:
+            date_feats += _sincos_features_for(case.freq)
+
         self._fcst = MLForecast(
             models=[self._make_model()],
             freq=case.freq,
             lags=_lags_for(case.freq),
-            date_features=_date_features_for(case.freq),
+            date_features=date_feats,
         )
         self._fcst.fit(df, static_features=[])
         self._model_col = type(next(iter(self._fcst.models.values()))).__name__
@@ -170,6 +202,16 @@ class MLPForecaster(_WindowedMLBase):
 
 class LightGBMExoForecaster(LightGBMForecaster):
     name = "LightGBM+exo"
+    use_exogenous = True
+
+
+class LightGBMCalendarForecaster(LightGBMForecaster):
+    name = "LightGBM+calendar"
+    use_calendar = True
+
+
+class LightGBMCalendarExoForecaster(LightGBMCalendarForecaster):
+    name = "LightGBM+calendar+exo"
     use_exogenous = True
 
 

@@ -10,6 +10,8 @@ from tsforecastbench.bench.methods.classical import (
 from tsforecastbench.bench.methods.dl import DLinearForecaster
 from tsforecastbench.bench.methods.fm import ChronosForecaster
 from tsforecastbench.bench.methods.ml import (
+    LightGBMCalendarExoForecaster,
+    LightGBMCalendarForecaster,
     LightGBMExoForecaster,
     LightGBMForecaster,
     LinearLagsExoForecaster,
@@ -37,6 +39,8 @@ __all__ = [
     "DLinearForecaster",
     "Forecaster",
     "ITransformerForecaster",
+    "LightGBMCalendarExoForecaster",
+    "LightGBMCalendarForecaster",
     "LightGBMExoForecaster",
     "LightGBMForecaster",
     "LinearLagsExoForecaster",
