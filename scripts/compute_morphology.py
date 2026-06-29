@@ -1,11 +1,10 @@
-"""Compute the 6-feature morphological vector for all benchmark cases and
+"""Compute the 5-feature morphological vector for all benchmark cases and
 produce a PCA biplot.
 
 Outputs
 -------
-results/morphology_features.csv        raw feature table (case × 6 features)
-docs/figures/morphology/pca_biplot.png PCA biplot — two 2-D projections of the
-                                        3-component PCA (PC1/PC2 and PC1/PC3)
+results/morphology_features.csv        raw feature table (case × 5 features)
+docs/figures/morphology/pca_biplot.png PCA biplot — 2-component PCA (PC1/PC2)
 
 Usage
 -----
@@ -32,28 +31,26 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from tsforecastbench.data.registry import discover_cases
-from tsforecastbench.morphology.features import compute_features, exog_r2_gain, period_for_freq
+from tsforecastbench.morphology.features import compute_features_all, exog_r2_gain, period_for_freq
 
 RESULTS_DIR = REPO_ROOT / "results"
 FIG_DIR = REPO_ROOT / "docs" / "figures" / "morphology"
 
 FEATURE_COLS = [
-    "acf1",
-    "trend_strength",
     "seasonal_strength",
-    "spectral_entropy",
-    "boxcox_lambda",
-    "kurtosis",
+    "hurst",
+    "trend_strength",
+    "phase_consistency",
+    "l_skewness",
 ]
 
 # Friendly display names for the loading arrows in the biplot.
 FEATURE_LABELS = {
-    "acf1": "ACF₁",
-    "trend_strength": "trend",
     "seasonal_strength": "seasonal",
-    "spectral_entropy": "entropy",
-    "boxcox_lambda": "λ (Box-Cox)",
-    "kurtosis": "kurtosis",
+    "hurst": "Hurst",
+    "trend_strength": "trend",
+    "phase_consistency": "phase\nconsistency",
+    "l_skewness": "L-skewness",
 }
 
 
@@ -102,18 +99,18 @@ def _run_pca(
 
     Returns
     -------
-    scores_df    DataFrame(index=case_id, columns=[PC1, PC2, PC3])
-    loadings_df  DataFrame(index=feature, columns=[PC1, PC2, PC3])
-    ev_ratio     explained variance ratios for PC1, PC2, PC3
+    scores_df    DataFrame(index=case_id, columns=[PC1, PC2])
+    loadings_df  DataFrame(index=feature, columns=[PC1, PC2])
+    ev_ratio     explained variance ratios for PC1, PC2
     """
     X = StandardScaler().fit_transform(features_df[FEATURE_COLS].to_numpy())
-    pca = PCA(n_components=3)
+    pca = PCA(n_components=2)
     scores = pca.fit_transform(X)
-    scores_df = pd.DataFrame(scores, index=features_df.index, columns=["PC1", "PC2", "PC3"])
+    scores_df = pd.DataFrame(scores, index=features_df.index, columns=["PC1", "PC2"])
     loadings_df = pd.DataFrame(
         pca.components_.T,
         index=FEATURE_COLS,
-        columns=["PC1", "PC2", "PC3"],
+        columns=["PC1", "PC2"],
     )
     return scores_df, loadings_df, pca.explained_variance_ratio_
 
@@ -130,25 +127,18 @@ def _plot_biplot(
     domains: dict[str, str],
     out: Path,
 ) -> None:
-    """Single-panel biplot: PC1/PC2 axes, PC3 min-max scaled to marker size."""
+    """Single-panel biplot: PC1/PC2 axes, uniform marker size."""
     fig, ax = plt.subplots(figsize=(10, 7.5))
 
     unique_domains = sorted(set(domains.values()))
     palette = plt.cm.tab10.colors
     domain_colour = {d: palette[i % len(palette)] for i, d in enumerate(unique_domains)}
 
-    # Min-max scale PC3 scores → marker area (px²)
-    MIN_S, MAX_S = 40, 350
-    pc3 = scores["PC3"]
-    pc3_min, pc3_max = pc3.min(), pc3.max()
-    def _size(v: float) -> float:
-        return MIN_S + (v - pc3_min) / (pc3_max - pc3_min) * (MAX_S - MIN_S)
-
     for case_id, row in scores.iterrows():
         colour = domain_colour.get(domains.get(case_id, ""), "#888")
         ax.scatter(
             row["PC1"], row["PC2"],
-            color=colour, s=_size(row["PC3"]),
+            color=colour, s=90,
             zorder=3, edgecolors="white", linewidths=0.5,
         )
         ax.text(row["PC1"] + 0.05, row["PC2"] + 0.05, case_id, fontsize=7.5, color=colour, zorder=4)
@@ -183,41 +173,11 @@ def _plot_biplot(
     ax.axhline(0, color="#ccc", linewidth=0.7, zorder=1)
     ax.axvline(0, color="#ccc", linewidth=0.7, zorder=1)
 
-    _ann_kw = {
-        "xycoords": "axes fraction",
-        "textcoords": "axes fraction",
-        "arrowprops": {"arrowstyle": "<->", "color": "#bbb", "lw": 1.3},
-        "zorder": 0,
-    }
-    _txt_kw = {
-        "transform": ax.transAxes,
-        "fontsize": 8,
-        "color": "#aaa",
-        "style": "italic",
-        "zorder": 0,
-    }
-    # Place qualitative labels on the side that the relevant loading actually points.
-    # seasonal_strength sign on PC2 determines which end is "seasonal".
-    # kurtosis sign on PC1 determines which end is "impulsive".
-    seasonal_up = float(loadings.loc["seasonal_strength", "PC2"]) >= 0
-    impulsive_right = float(loadings.loc["kurtosis", "PC1"]) >= 0
-
-    ax.annotate("", xy=(0.42, 0.05), xytext=(0.58, 0.05), **_ann_kw)
-    ax.text(0.40 if impulsive_right else 0.60, 0.05,
-            "smooth", ha="right" if impulsive_right else "left", va="center", **_txt_kw)
-    ax.text(0.60 if impulsive_right else 0.40, 0.05,
-            "impulsive", ha="left" if impulsive_right else "right", va="center", **_txt_kw)
-    ax.annotate("", xy=(0.05, 0.42), xytext=(0.05, 0.58), **_ann_kw)
-    ax.text(0.05, 0.60 if seasonal_up else 0.40,
-            "seasonal", ha="center", va="bottom" if seasonal_up else "top", rotation=90, **_txt_kw)
-    ax.text(0.05, 0.40 if seasonal_up else 0.60,
-            "trending", ha="center", va="top" if seasonal_up else "bottom", rotation=90, **_txt_kw)
-
     ax.set_xlabel(f"PC1  ({ev_ratio[0]:.1%} variance explained)", fontsize=10)
     ax.set_ylabel(f"PC2  ({ev_ratio[1]:.1%} variance explained)", fontsize=10)
     ax.set_title(
-        f"Morphological feature space — PCA biplot  ·  {ev_ratio[:3].sum():.1%} variance explained (3 PCs)\n"
-        "Water benchmark cases  ·  6-feature vector  ·  marker size ∝ PC3 (larger = heavier-tailed)",
+        f"Morphological feature space — PCA biplot  ·  {ev_ratio[:2].sum():.1%} variance explained (2 PCs)\n"
+        "Water benchmark cases  ·  5-feature vector",
         fontsize=10,
     )
 
@@ -234,24 +194,7 @@ def _plot_biplot(
         frameon=False,
     )
 
-    # PC3 size legend — outside, right, 3 reference bubbles at min / mid / max
-    ref_vals = [pc3_min, (pc3_min + pc3_max) / 2, pc3_max]
-    size_handles = [
-        plt.scatter([], [], color="#888", s=_size(v), edgecolors="white", linewidths=0.5,
-                    label=f"PC3 = {v:+.1f}")
-        for v in ref_vals
-    ]
-    ax.legend(
-        handles=size_handles,
-        title="PC3 (heavy-tailed)",
-        fontsize=8,
-        title_fontsize=8,
-        loc="center left",
-        bbox_to_anchor=(1.02, 0.5),
-        frameon=False,
-    )
-
-    fig.subplots_adjust(bottom=0.15, right=0.85)
+    fig.subplots_adjust(bottom=0.15, right=0.95)
 
     ax.grid(True, alpha=0.18)
     ax.set_aspect("equal", "box")
@@ -339,7 +282,7 @@ def main() -> int:
         print(f"[{case_id}] computing ...", end="  ", flush=True)
         y, X_exog = _extract_train_data(case)
         period = period_for_freq(case.freq)
-        feats = compute_features(y, period)
+        feats = compute_features_all(y, period)
         n_exog_lags = min(_horizon_steps(case), 30)
         exog_gains[case_id] = exog_r2_gain(y, X_exog, period, n_exog_lags, poly_degree=2)
         records[case_id] = feats
