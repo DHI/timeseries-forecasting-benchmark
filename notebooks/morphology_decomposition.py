@@ -315,8 +315,8 @@ def _(mo):
     fundamental sinusoid** to get a per-cycle amplitude $A_k=\sqrt{a_k^2+b_k^2}$ and
     phase $\varphi_k=\operatorname{atan2}(b_k,a_k)$:
 
-    - `seasonal_stability` $= \operatorname{std}(A_k)/\operatorname{mean}(A_k)$ — does the cycle keep its **size**?
-    - `phase_consistency` $= 1 - \big|\operatorname{mean}(e^{i\varphi_k})\big|$ — does it keep its **timing**?
+    - `amplitude_dispersion` $= c/(1+c)$ with $c=\operatorname{std}(A_k)/\operatorname{mean}(A_k)$ — does the cycle keep its **size**? (bounded to $[0,1)$, low = steady)
+    - `phase_dispersion` $= 1 - \big|\operatorname{mean}(e^{i\varphi_k})\big|$ — how much its **timing** drifts (low = phase-locked)
 
     (Projection onto the fundamental is sturdier than reading an `argmax`, which is
     noisy and quantised to integer lags.)
@@ -332,9 +332,10 @@ def _(F, d, np):
     print(f"dominant period   : {_dom_p}")
     print(f"complete cycles    : {len(_amp)}")
     print(f"mean amplitude     : {_amp.mean():.4g}")
-    print(f"seasonal_stability : {_amp.std(ddof=1)/_amp.mean():.4f}  (CV of cycle amplitude)")
+    _cv = _amp.std(ddof=1) / _amp.mean()
+    print(f"amplitude_dispersion: {_cv / (1 + _cv):.4f}  (bounded CV of cycle amplitude)")
     _R = np.abs(np.exp(1j * _phase).mean())
-    print(f"phase_consistency  : {np.clip(1-_R,0,1):.4f}  (1 - circular concentration)")
+    print(f"phase_dispersion   : {np.clip(1-_R,0,1):.4f}  (1 - circular concentration)")
     return
 
 
@@ -388,7 +389,7 @@ def _(F, mo, pd, y):
     {_rows}
 
     *(The working 5-feature taxonomy vector is `seasonal_strength`, `hurst`,
-    `trend_strength`, `phase_consistency`, `l_skewness`.)*
+    `trend_strength`, `phase_dispersion`, `l_skewness`.)*
     """)
     return
 

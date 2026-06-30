@@ -44,7 +44,7 @@ FEATURE_COLS = [
     "seasonal_strength",
     "hurst",
     "trend_strength",
-    "phase_consistency",
+    "phase_dispersion",
     "l_skewness",
 ]
 
@@ -53,7 +53,7 @@ FEATURE_LABELS = {
     "seasonal_strength": "seasonal",
     "hurst": "Hurst",
     "trend_strength": "trend",
-    "phase_consistency": "phase\nconsistency",
+    "phase_dispersion": "phase\ndispersion",
     "l_skewness": "L-skewness",
 }
 

@@ -68,7 +68,7 @@ def _(REPO_ROOT, mo, np, pd):
     ALL_FEATURE_COLS = [
         "acf1", "trend_strength", "seasonal_strength", "spectral_entropy",
         "boxcox_lambda", "kurtosis",
-        "hurst", "perm_entropy", "seasonal_stability", "phase_consistency",
+        "hurst", "perm_entropy", "amplitude_dispersion", "phase_dispersion",
         "asymmetry", "l_skewness", "zero_proportion",
     ]
 
@@ -81,8 +81,8 @@ def _(REPO_ROOT, mo, np, pd):
         "kurtosis":           "Kurtosis",
         "hurst":              "Hurst exponent",
         "perm_entropy":       "Permutation entropy",
-        "seasonal_stability": "Seasonal stability",
-        "phase_consistency":  "Phase consistency",
+        "amplitude_dispersion": "Amplitude dispersion",
+        "phase_dispersion":   "Phase dispersion",
         "asymmetry":          "Asymmetry index",
         "l_skewness":         "L-skewness",
         "zero_proportion":    "Zero proportion",
@@ -287,12 +287,12 @@ def _(mo):
         is physically interpretable across all water-domain series. Spectral entropy and
         permutation entropy are dropped as redundant.
 
-        **Seasonality group** — seasonal strength, seasonal stability, phase consistency.
-        Seasonal strength measures whether a periodic pattern *exists*; phase consistency measures
-        whether its *timing* is stable across years. These are orthogonal for seasonal series
-        and together span the seasonality axis more completely than either alone.
-        Seasonal stability is dropped as the most collinear with seasonal strength.
-        Keep **seasonal strength** and **phase consistency**.
+        **Seasonality group** — seasonal strength, amplitude dispersion, phase dispersion.
+        Seasonal strength measures whether a periodic pattern *exists*; phase dispersion measures
+        whether its *timing* drifts across years (low = phase-locked). These are orthogonal for
+        seasonal series and together span the seasonality axis more completely than either alone.
+        Amplitude dispersion is dropped as the most collinear with seasonal strength.
+        Keep **seasonal strength** and **phase dispersion**.
 
         **Distributional shape group** — kurtosis, L-skewness, Box-Cox λ.
         In the PCA biplot, the kurtosis loading vector aligns closely with L-skewness and
@@ -312,17 +312,19 @@ def _(mo):
 
         ### Selected features (5, N/p = 2.4)
 
-        `seasonal_strength`, `hurst`, `trend_strength`, `phase_consistency`, `l_skewness`
+        `seasonal_strength`, `hurst`, `trend_strength`, `phase_dispersion`, `l_skewness`
 
         Together these cover: periodicity, seasonal timing reliability, long-range memory,
         monotonic drift, and distributional asymmetry — one representative per distinct
         physical axis, with no confirmed redundancy in the PCA loading space.
 
-        *Note on phase consistency:* for non-seasonal series (waves, demand, surge), the STL
-        seasonal component is near-zero noise, so phase consistency reflects noise peak timing
-        rather than real structure. This is worth acknowledging in the paper, though it does
-        not change the feature selection since those series are already separated by
-        seasonal strength.
+        *Note on phase dispersion:* this is the circular spread of the dominant cycle's
+        phase across cycles (`1 - R`), so **low** values mean tightly phase-locked
+        seasonality and **high** values mean drifting timing. For non-seasonal series
+        (waves, demand, surge), the seasonal component is near-zero noise, so phase
+        dispersion reflects noise peak timing rather than real structure. This is worth
+        acknowledging in the paper, though it does not change the feature selection since
+        those series are already separated by seasonal strength.
         """
     )
     return
@@ -331,7 +333,7 @@ def _(mo):
 @app.cell
 def _(ALL_FEATURE_COLS, FEATURE_LABELS, mo):
     label_to_key = {FEATURE_LABELS[c]: c for c in ALL_FEATURE_COLS}
-    _default_keys = ["seasonal_strength", "hurst", "trend_strength", "phase_consistency", "l_skewness"]
+    _default_keys = ["seasonal_strength", "hurst", "trend_strength", "phase_dispersion", "l_skewness"]
     _default_labels = [FEATURE_LABELS[k] for k in _default_keys]
 
     feature_selector = mo.ui.multiselect(

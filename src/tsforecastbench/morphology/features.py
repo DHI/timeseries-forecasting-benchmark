@@ -1,7 +1,7 @@
 """Morphological feature vector for time series characterisation.
 
 The working 5-feature vector (seasonal_strength, hurst, trend_strength,
-phase_consistency, l_skewness) is assembled by ``compute_morphology.py``
+phase_dispersion, l_skewness) is assembled by ``compute_morphology.py``
 from the full 13-candidate set returned by ``compute_features_all``.
 All functions are stateless and independently importable.
 
@@ -299,7 +299,7 @@ def _decompose(y: np.ndarray) -> _Decomp:
 
 
 # ---------------------------------------------------------------------------
-# Feature helpers (seasonal_stability and phase_consistency inner logic)
+# Feature helpers (amplitude_dispersion and phase_dispersion inner logic)
 # ---------------------------------------------------------------------------
 
 def _cycle_amplitude_phase(
@@ -324,28 +324,38 @@ def _cycle_amplitude_phase(
     return np.sqrt(a ** 2 + b ** 2), np.arctan2(b, a)
 
 
-def _seasonal_stability_from_component(
+def _amplitude_dispersion_from_component(
     g: np.ndarray, period: int, y: np.ndarray
 ) -> float:
     res = _cycle_amplitude_phase(g, period)
+    # No measurable seasonal amplitude (too few cycles, or amplitude below the
+    # noise floor) → maximal-instability sentinel of 1.0, the limit of the
+    # bounded transform below. A genuinely steady cycle returns a small value;
+    # 1.0 reads as "no measurable stable cycle", never as "perfectly stable".
     if res is None:
-        return 0.0
+        return 1.0
     amplitudes, _ = res
     mean_amp = float(amplitudes.mean())
     if mean_amp < 1e-2 * (y.max() - y.min() + 1e-10) or mean_amp < 1e-10:
-        return 0.0
-    return float(amplitudes.std(ddof=1) / mean_amp)
+        return 1.0
+    # Bound the unbounded CV onto [0, 1): cv/(1+cv). Monotonic, so 0 still means
+    # perfectly steady amplitude and the ordering across series is preserved.
+    cv = float(amplitudes.std(ddof=1) / mean_amp)
+    return cv / (1.0 + cv)
 
 
-def _phase_consistency_from_component(
+def _phase_dispersion_from_component(
     g: np.ndarray, period: int, y: np.ndarray
 ) -> float:
     res = _cycle_amplitude_phase(g, period)
+    # No measurable seasonal phase (too few cycles, or amplitude below the
+    # noise floor) → maximal dispersion. A sentinel of 1.0 reads correctly:
+    # "no coherent phase", distinct from a genuine near-0 phase-locked cycle.
     if res is None:
-        return 0.0
+        return 1.0
     amplitudes, phases = res
     if amplitudes.mean() < 1e-2 * (y.max() - y.min() + 1e-10):
-        return 0.0
+        return 1.0
     R = float(np.abs(np.exp(1j * phases).mean()))
     return float(np.clip(1.0 - R, 0.0, 1.0))
 
@@ -386,28 +396,37 @@ def seasonal_strength(y: np.ndarray) -> float:
     return float(max(0.0, 1.0 - var_resid / var_sr)) if var_sr > 0 else 0.0
 
 
-def seasonal_stability(y: np.ndarray) -> float:
-    """CV of seasonal amplitude across complete cycles of the dominant period.
+def amplitude_dispersion(y: np.ndarray) -> float:
+    """Bounded dispersion of the dominant cycle's amplitude across cycles, [0, 1).
 
-    Returns 0 when fewer than 2 complete cycles or no seasonal periods.
+    ``cv / (1 + cv)`` where ``cv`` is the coefficient of variation of the
+    per-cycle amplitude of the dominant period. 0 means the seasonal swing has
+    identical magnitude every cycle (perfectly steady); values approach 1 as the
+    amplitude becomes increasingly erratic. Returns 1 (the limit) when no
+    seasonal period is detected or there are fewer than 2 complete cycles —
+    there is no measurable cycle whose amplitude dispersion could be assessed.
     """
     d = _decompose(y)
     if d.dom_idx is None:
-        return 0.0
+        return 1.0
     g = d.resid + d.seasonal_arrays[d.dom_idx]
-    return _seasonal_stability_from_component(g, d.periods[d.dom_idx], y)
+    return _amplitude_dispersion_from_component(g, d.periods[d.dom_idx], y)
 
 
-def phase_consistency(y: np.ndarray) -> float:
+def phase_dispersion(y: np.ndarray) -> float:
     """Circular spread of the dominant cycle's phase across cycles.
 
-    Returns 0 when fewer than 2 complete cycles or no seasonal periods.
+    Computed as ``1 - R`` where ``R`` is the resultant length of the per-cycle
+    phase. Near 0 means the cycle is phase-locked across cycles (a clean,
+    regular seasonal pattern); larger values mean the timing drifts.
+    Returns 1 (maximal dispersion) when no seasonal period is detected or there
+    are fewer than 2 complete cycles — there is no coherent phase to measure.
     """
     d = _decompose(y)
     if d.dom_idx is None:
-        return 0.0
+        return 1.0
     g = d.resid + d.seasonal_arrays[d.dom_idx]
-    return _phase_consistency_from_component(g, d.periods[d.dom_idx], y)
+    return _phase_dispersion_from_component(g, d.periods[d.dom_idx], y)
 
 
 def spectral_entropy(y: np.ndarray) -> float:
@@ -435,7 +454,7 @@ def boxcox_lambda(y: np.ndarray) -> float:
     """Optimal Box-Cox lambda (MLE). Shifted to be strictly positive."""
     y_shifted = y - y.min() + 1e-6
     if np.std(y_shifted) < 1e-10:
-        return 0.0  # constant series; lambda undefined
+        return 1.0  # constant series; lambda undefined → identity (no transform)
     _, lam = stats.boxcox(y_shifted)
     return float(np.clip(lam, -3.0, 3.0))
 
@@ -499,13 +518,18 @@ def asymmetry_index(y: np.ndarray) -> float:
     Positive → mean rise rate exceeds mean fall rate (e.g. flashy discharge).
     Negative → mean fall rate exceeds mean rise rate.
     Near-zero → symmetric dynamics (smooth/tidal series).
-    Returns 0 when all differences are zero.
+    A purely monotonic series is maximally asymmetric: +1 (only rises) or
+    -1 (only falls). Returns 0 only for a flat series (no rises and no falls).
     """
     diff = np.diff(y)
     rises = diff[diff > 0]
     falls = -diff[diff < 0]
-    if len(rises) == 0 or len(falls) == 0:
+    if len(rises) == 0 and len(falls) == 0:
         return 0.0
+    if len(falls) == 0:
+        return 1.0
+    if len(rises) == 0:
+        return -1.0
     mean_rise = rises.mean()
     mean_fall = falls.mean()
     denom = mean_rise + mean_fall
@@ -564,8 +588,8 @@ def compute_features_all(y: np.ndarray) -> dict[str, float]:
     Returns
     -------
     dict with keys: acf1, trend_strength, seasonal_strength, spectral_entropy,
-    boxcox_lambda, kurtosis, hurst, perm_entropy, seasonal_stability,
-    phase_consistency, asymmetry, l_skewness, zero_proportion.
+    boxcox_lambda, kurtosis, hurst, perm_entropy, amplitude_dispersion,
+    phase_dispersion, asymmetry, l_skewness, zero_proportion.
     """
     d = _decompose(y)
     var_resid = np.var(d.resid, ddof=1)
@@ -578,10 +602,13 @@ def compute_features_all(y: np.ndarray) -> dict[str, float]:
         ss = float(max(0.0, 1.0 - var_resid / var_sr)) if var_sr > 0 else 0.0
         g = d.resid + d.seasonal_arrays[d.dom_idx]
         dom_period = d.periods[d.dom_idx]
-        sstab = _seasonal_stability_from_component(g, dom_period, y)
-        pc = _phase_consistency_from_component(g, dom_period, y)
+        ad = _amplitude_dispersion_from_component(g, dom_period, y)
+        pc = _phase_dispersion_from_component(g, dom_period, y)
     else:
-        ss = sstab = pc = 0.0
+        # No seasonal period: strength collapses to 0, but stability and phase
+        # dispersion are maximal (no coherent cycle to measure).
+        ss = 0.0
+        ad = pc = 1.0
 
     return {
         # Core 6
@@ -594,8 +621,8 @@ def compute_features_all(y: np.ndarray) -> dict[str, float]:
         # Extended 7
         "hurst": hurst_exponent(y),
         "perm_entropy": permutation_entropy(y),
-        "seasonal_stability": sstab,
-        "phase_consistency": pc,
+        "amplitude_dispersion": ad,
+        "phase_dispersion": pc,
         "asymmetry": asymmetry_index(y),
         "l_skewness": l_skewness(y),
         "zero_proportion": zero_proportion(y),

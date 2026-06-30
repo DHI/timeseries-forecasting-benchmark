@@ -48,12 +48,12 @@ RESULTS_DIR = REPO_ROOT / "results"
 ALL_FEATURE_COLS = [
     "acf1", "trend_strength", "seasonal_strength", "spectral_entropy",
     "boxcox_lambda", "kurtosis",
-    "hurst", "perm_entropy", "seasonal_stability", "phase_consistency",
+    "hurst", "perm_entropy", "amplitude_dispersion", "phase_dispersion",
     "asymmetry", "l_skewness", "zero_proportion",
 ]
 
 # The 5 features already computed gap-aware by compute_morphology.py.
-SELECTED_COLS = ["seasonal_strength", "hurst", "trend_strength", "phase_consistency", "l_skewness"]
+SELECTED_COLS = ["seasonal_strength", "hurst", "trend_strength", "phase_dispersion", "l_skewness"]
 REMAINING_COLS = [c for c in ALL_FEATURE_COLS if c not in SELECTED_COLS]
 
 
