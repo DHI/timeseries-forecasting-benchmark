@@ -4,6 +4,13 @@ The working 5-feature vector (seasonal_strength, hurst, trend_strength,
 phase_consistency, l_skewness) is assembled by ``compute_morphology.py``
 from the full 13-candidate set returned by ``compute_features_all``.
 All functions are stateless and independently importable.
+
+Trend and seasonal features come from a single, explainable least-squares
+decomposition ``y = T + S + e`` (see ``_decompose``): a low-order polynomial
+trend plus ``_N_HARMONICS`` sine/cosine pairs per automatically detected
+period.  This replaces the earlier MSTL decomposition — one closed-form solve
+handles multiple seasonalities, runs in well under a second even on hundreds
+of thousands of samples, and needs no downsampling.
 """
 
 from __future__ import annotations
@@ -15,7 +22,6 @@ from scipy import stats
 from scipy.signal import find_peaks, periodogram
 from sklearn.linear_model import Ridge
 from sklearn.preprocessing import PolynomialFeatures
-from statsmodels.tsa.seasonal import MSTL
 from statsmodels.tsa.stattools import acf as sm_acf
 
 # Maps freq string → primary period in steps.  Used only for gap-handling
@@ -34,24 +40,40 @@ PERIOD_FOR_FREQ: dict[str, int] = {
 # A periodogram peak must exceed this multiple of the median PSD to be accepted.
 _PEAK_THRESHOLD: float = 10.0
 
+# A peak must also *rise* this multiple of the median PSD above its local
+# background (scipy prominence).  Height alone is a poor test on a red (1/f)
+# spectrum — a high-Hurst series piles power at low frequencies and a global
+# median threshold admits the slope itself as a spurious long "period".
+# Prominence requires the peak to stand out from its surroundings, so the same
+# significance bar applies whether the spectrum is red or white.
+_PEAK_PROMINENCE: float = 5.0
+
 # Detected period P is rejected unless the series contains at least this many
 # complete cycles: len(y) / P >= _MIN_CYCLES.
 _MIN_CYCLES: int = 3
 
-# Candidate period P is suppressed as a harmonic of accepted period A when
-# |P - A/k| / (A/k) <= _HARMONIC_TOL for any integer k in {2, 3, 4}.
-_HARMONIC_TOL: float = 0.05
-
 # Candidate period P is suppressed when too close to an already-accepted period
 # A: |P - A| / A <= _CLUSTER_TOL.  Prevents spectral-leakage sidebands from
-# being accepted as independent seasons.
+# being accepted as independent seasons.  Note we deliberately do NOT suppress
+# sub-harmonics here: a genuine 12 h semidiurnal and 24 h diurnal cycle must
+# both survive.  Redundant frequencies (e.g. the 24 h cycle's 2nd harmonic vs
+# the 12 h fundamental) are de-duplicated later, in the Fourier design.
 _CLUSTER_TOL: float = 0.25
 
 # Minimum meaningful period in samples (shorter periods are noise).
 _MIN_PERIOD: int = 4
 
-# MSTL is O(N) per iteration; cap series length to keep runtimes sane.
-_MAX_N: int = 50_000
+# Keep at most the strongest this-many periods (ranked by periodogram power).
+# Without sub-harmonic suppression a richly structured series produces a long
+# cascade of harmonic peaks; capping to the dominant handful keeps the feature
+# space (and the design matrix) small and interpretable while still admitting
+# genuinely multi-seasonal cases (e.g. semidiurnal + diurnal + weekly).
+_MAX_PERIODS: int = 4
+
+# Sine/cosine pairs fitted per detected period in the structural decomposition.
+# Small enough to stay collision-free and avoid fitting noise, large enough to
+# register non-sinusoidal (peaky) seasonal shape.
+_N_HARMONICS: int = 3
 
 
 # ---------------------------------------------------------------------------
@@ -113,41 +135,48 @@ def _detect_periods(y_det: np.ndarray) -> list[int]:
     if len(psd) == 0:
         return []
 
-    threshold = _PEAK_THRESHOLD * float(np.median(psd))
-    peak_idxs, _ = find_peaks(psd, height=threshold)
+    med = float(np.median(psd))
+    if med <= 0.0:
+        return []
 
+    # A peak must be both tall (height) and locally distinct (prominence).
+    peak_idxs, props = find_peaks(
+        psd,
+        height=_PEAK_THRESHOLD * med,
+        prominence=_PEAK_PROMINENCE * med,
+    )
+    prominences = props["prominences"]
+
+    # Rank by *prominence*, not raw power: on a red (1/f) spectrum low
+    # frequencies carry the most absolute power, so ranking by height would
+    # crowd genuine short cycles (diurnal, tidal) out of the top _MAX_PERIODS.
+    # Prominence measures how far a peak rises above its local background, which
+    # lets a modest-power but sharp seasonal peak compete fairly.
     candidates: list[tuple[float, float]] = []
-    for i in peak_idxs:
+    for i, prom in zip(peak_idxs, prominences):
         period_f = n / (i + 1)
         if period_f < _MIN_PERIOD:
             continue
         if n / period_f < _MIN_CYCLES:
             continue
-        candidates.append((period_f, float(psd[i])))
+        candidates.append((period_f, float(prom)))
 
     if not candidates:
         return []
 
-    # Greedy suppression: process strongest peaks first.
-    # Reject a candidate if it is (a) a sub-harmonic of an accepted period or
-    # (b) within _CLUSTER_TOL of an accepted period (spectral-leakage sideband).
+    # Greedy suppression of spectral-leakage sidebands only: process the most
+    # prominent peaks first and reject a candidate within _CLUSTER_TOL of an
+    # accepted period.  Sub-harmonics are intentionally NOT suppressed (see
+    # _CLUSTER_TOL note); harmonically related but physically distinct periods
+    # survive and any redundant frequencies are removed later in _structural_fit.
     candidates.sort(key=lambda x: -x[1])
     accepted: list[float] = []
     for period_f, _ in candidates:
-        is_suppressed = False
-        for acc in accepted:
-            # Sub-harmonic: period_f ≈ acc/k for k in {2,3,4}
-            for k in range(2, 5):
-                ref = acc / k
-                if ref > 0 and abs(period_f - ref) / ref <= _HARMONIC_TOL:
-                    is_suppressed = True
-                    break
-            if not is_suppressed and abs(period_f - acc) / acc <= _CLUSTER_TOL:
-                is_suppressed = True
-            if is_suppressed:
-                break
-        if not is_suppressed:
-            accepted.append(period_f)
+        if any(abs(period_f - acc) / acc <= _CLUSTER_TOL for acc in accepted):
+            continue
+        accepted.append(period_f)
+        if len(accepted) >= _MAX_PERIODS:
+            break
 
     return sorted({max(2, round(p)) for p in accepted})
 
@@ -164,96 +193,160 @@ def detect_periods(y: np.ndarray) -> list[int]:
 
 
 # ---------------------------------------------------------------------------
-# MSTL decomposition
+# Structural least-squares decomposition
 # ---------------------------------------------------------------------------
 
-def _fit_mstl(y: np.ndarray, periods: list[int]):
-    """Fit a robust MSTL model, truncating very long series."""
-    if len(y) > _MAX_N:
-        max_p = max(periods)
-        n_keep = max((_MAX_N // max_p) * max_p, 3 * max_p)
-        y = y[-n_keep:]
-    return MSTL(y, periods=periods, stl_kwargs={"robust": True}).fit()
+class _Decomp:
+    """Result of the structural decomposition ``y = T + S + e``.
 
-
-def _mstl_seasonal_arrays(mstl_result, n_periods: int) -> list[np.ndarray]:
-    """Return per-period seasonal components as a list of 1-D arrays."""
-    s = np.asarray(mstl_result.seasonal)
-    if s.ndim == 1:
-        return [s]
-    return [s[:, i] for i in range(n_periods)]
-
-
-def _dominant_idx(seasonal_arrays: list[np.ndarray], resid: np.ndarray) -> int:
-    """Index of the period with the highest per-period seasonal strength."""
-    var_resid = np.var(resid, ddof=1)
-
-    def _strength(s: np.ndarray) -> float:
-        var_sr = np.var(s + resid, ddof=1)
-        return 0.0 if var_sr == 0.0 else max(0.0, 1.0 - var_resid / var_sr)
-
-    return max(range(len(seasonal_arrays)), key=lambda i: _strength(seasonal_arrays[i]))
-
-
-# ---------------------------------------------------------------------------
-# Shared decomposition
-# ---------------------------------------------------------------------------
-
-def _decompose(y: np.ndarray):
-    """Poly-detrend → detect periods → fit MSTL.
-
-    Returns
-    -------
-    periods         : list[int]            detected periods (may be empty)
-    mstl_result     : MSTL result | None   None when no periods detected
-    y_det           : np.ndarray           polynomial-detrended series
-    seasonal_arrays : list[np.ndarray]     per-period MSTL seasonal components
-    dom_idx         : int | None           index of dominant period
+    Attributes
+    ----------
+    periods         : sorted detected periods (empty when none found)
+    trend           : fitted polynomial trend T
+    seasonal_arrays : per-period seasonal components S_p, aligned with ``periods``
+    resid           : residual e = y - T - sum(S_p)
+    dom_idx         : index into ``periods`` of the dominant period (None if no
+                      periods), chosen as the period explaining the most variance
     """
-    y_det, _ = _poly_detrend(y)
+
+    __slots__ = ("periods", "trend", "seasonal_arrays", "resid", "dom_idx")
+
+    def __init__(self, periods, trend, seasonal_arrays, resid, dom_idx):
+        self.periods = periods
+        self.trend = trend
+        self.seasonal_arrays = seasonal_arrays
+        self.resid = resid
+        self.dom_idx = dom_idx
+
+    @property
+    def seasonal_total(self):
+        """Sum of all per-period seasonal components (0.0 when none)."""
+        return sum(self.seasonal_arrays) if self.seasonal_arrays else 0.0
+
+
+def _structural_fit(
+    y: np.ndarray, periods: list[int], degree: int
+) -> tuple[np.ndarray, list[np.ndarray], np.ndarray]:
+    """One OLS solve of ``y`` on a polynomial trend + Fourier seasonal basis.
+
+    The trend basis uses powers of a [-1, 1]-scaled time axis (well conditioned
+    even for very long series).  Each detected period contributes ``_N_HARMONICS``
+    sine/cosine pairs.  Frequencies are de-duplicated across periods via reduced
+    fractions h/p: a shared frequency (e.g. the 24 h cycle's 2nd harmonic and the
+    12 h fundamental) is fitted once and attributed to the *shortest* period that
+    generates it (its most fundamental owner).  This keeps the design full-rank
+    while honouring physically distinct seasonalities.
+
+    Returns (trend, seasonal_arrays, resid), with seasonal_arrays aligned to
+    ``sorted(periods)``.
+    """
+    n = len(y)
+    t = np.arange(n, dtype=float)
+    ts = (2.0 * t / (n - 1) - 1.0) if n > 1 else np.zeros(n)
+
+    trend_cols = [ts ** k for k in range(degree + 1)]
+    n_trend = len(trend_cols)
+
+    seasonal_cols: list[np.ndarray] = []
+    period_col_idx: dict[int, list[int]] = {p: [] for p in periods}
+    claimed: set[tuple[int, int]] = set()
+    for p in sorted(periods):  # shortest first → fundamentals own shared freqs
+        for h in range(1, _N_HARMONICS + 1):
+            g = math.gcd(h, p)
+            key = (h // g, p // g)  # reduced fraction = unique frequency h/p
+            if key in claimed:
+                continue
+            claimed.add(key)
+            w = 2.0 * np.pi * h / p
+            ci = n_trend + len(seasonal_cols)
+            seasonal_cols.append(np.cos(w * t))
+            si = n_trend + len(seasonal_cols)
+            seasonal_cols.append(np.sin(w * t))
+            period_col_idx[p].extend([ci, si])
+
+    X = np.column_stack(trend_cols + seasonal_cols)
+    beta, *_ = np.linalg.lstsq(X, y, rcond=None)
+
+    trend = X[:, :n_trend] @ beta[:n_trend]
+    resid = y - X @ beta
+    seasonal_arrays = [
+        (X[:, idx] @ beta[idx] if (idx := period_col_idx[p]) else np.zeros(n))
+        for p in sorted(periods)
+    ]
+    return trend, seasonal_arrays, resid
+
+
+def _decompose(y: np.ndarray) -> _Decomp:
+    """Poly-detrend → detect periods → single structural OLS fit.
+
+    Period detection runs on the full-resolution series (a cheap FFT).  The
+    polynomial trend degree is the AIC-selected degree from ``_poly_detrend``.
+    When no periods are detected the trend-only polynomial fit is returned.
+    """
+    y_det, coeffs = _poly_detrend(y)
+    degree = len(coeffs) - 1
     periods = _detect_periods(y_det)
+
     if not periods:
-        return [], None, y_det, [], None
-    mstl = _fit_mstl(y, periods)
-    seasonal_arrays = _mstl_seasonal_arrays(mstl, len(periods))
-    resid = np.asarray(mstl.resid)
-    dom_idx = _dominant_idx(seasonal_arrays, resid)
-    return periods, mstl, y_det, seasonal_arrays, dom_idx
+        # Trend-only: _poly_detrend already gives trend = y - y_det.
+        return _Decomp([], y - y_det, [], y_det, None)
+
+    trend, seasonal_arrays, resid = _structural_fit(y, periods, degree)
+    dom_idx = max(
+        range(len(periods)), key=lambda i: float(np.var(seasonal_arrays[i], ddof=1))
+    )
+    return _Decomp(periods, trend, seasonal_arrays, resid, dom_idx)
 
 
 # ---------------------------------------------------------------------------
 # Feature helpers (seasonal_stability and phase_consistency inner logic)
 # ---------------------------------------------------------------------------
 
-def _seasonal_stability_from_component(
-    seasonal_dom: np.ndarray, period: int, y: np.ndarray
-) -> float:
-    n_complete = len(seasonal_dom) // period
+def _cycle_amplitude_phase(
+    g: np.ndarray, period: int
+) -> tuple[np.ndarray, np.ndarray] | None:
+    """Per-cycle amplitude and phase of the dominant fundamental.
+
+    Folds ``g`` (the dominant seasonal plus residual, ``e + S_dom``) into
+    complete cycles of ``period`` and projects each cycle onto the fundamental
+    sine/cosine: amplitude = sqrt(a^2 + b^2), phase = atan2(b, a).  Returns None
+    when fewer than two complete cycles are available.
+    """
+    n_complete = len(g) // period
     if n_complete < 2:
+        return None
+    chunks = g[: n_complete * period].reshape(n_complete, period)
+    j = np.arange(period, dtype=float)
+    cos_j = np.cos(2.0 * np.pi * j / period)
+    sin_j = np.sin(2.0 * np.pi * j / period)
+    a = chunks @ cos_j * (2.0 / period)
+    b = chunks @ sin_j * (2.0 / period)
+    return np.sqrt(a ** 2 + b ** 2), np.arctan2(b, a)
+
+
+def _seasonal_stability_from_component(
+    g: np.ndarray, period: int, y: np.ndarray
+) -> float:
+    res = _cycle_amplitude_phase(g, period)
+    if res is None:
         return 0.0
-    chunks = seasonal_dom[: n_complete * period].reshape(n_complete, period)
-    amplitudes = chunks.max(axis=1) - chunks.min(axis=1)
-    if amplitudes.mean() < 1e-2 * (y.max() - y.min() + 1e-10):
-        return 0.0
-    mean_amp = amplitudes.mean()
-    if mean_amp < 1e-10:
+    amplitudes, _ = res
+    mean_amp = float(amplitudes.mean())
+    if mean_amp < 1e-2 * (y.max() - y.min() + 1e-10) or mean_amp < 1e-10:
         return 0.0
     return float(amplitudes.std(ddof=1) / mean_amp)
 
 
 def _phase_consistency_from_component(
-    seasonal_dom: np.ndarray, period: int, y: np.ndarray
+    g: np.ndarray, period: int, y: np.ndarray
 ) -> float:
-    n_complete = len(seasonal_dom) // period
-    if n_complete < 2:
+    res = _cycle_amplitude_phase(g, period)
+    if res is None:
         return 0.0
-    chunks = seasonal_dom[: n_complete * period].reshape(n_complete, period)
-    amplitudes = chunks.max(axis=1) - chunks.min(axis=1)
+    amplitudes, phases = res
     if amplitudes.mean() < 1e-2 * (y.max() - y.min() + 1e-10):
         return 0.0
-    peak_phases = chunks.argmax(axis=1) / period
-    angles = 2 * np.pi * peak_phases
-    R = float(np.abs(np.exp(1j * angles).mean()))
+    R = float(np.abs(np.exp(1j * phases).mean()))
     return float(np.clip(1.0 - R, 0.0, 1.0))
 
 
@@ -267,64 +360,54 @@ def acf1(y: np.ndarray) -> float:
 
 
 def trend_strength(y: np.ndarray) -> float:
-    """Trend strength from MSTL: max(0, 1 - Var(resid) / Var(trend + resid)).
+    """Trend strength: max(0, 1 - Var(resid) / Var(trend + resid)).
 
-    Falls back to polynomial R² when no seasonal periods are detected.
+    ``trend + resid`` is ``y`` with the seasonal component removed. With no
+    detected periods this reduces to the polynomial trend's R² against ``y``.
     """
-    _, mstl, y_det, _, _ = _decompose(y)
-    if mstl is None:
-        var_y = np.var(y, ddof=1)
-        var_det = np.var(y_det, ddof=1)
-        return float(max(0.0, 1.0 - var_det / var_y)) if var_y > 0 else 0.0
-    resid = np.asarray(mstl.resid)
-    trend = np.asarray(mstl.trend)
-    var_resid = np.var(resid, ddof=1)
-    var_tr = np.var(trend + resid, ddof=1)
+    d = _decompose(y)
+    var_resid = np.var(d.resid, ddof=1)
+    var_tr = np.var(y - d.seasonal_total, ddof=1)
     return float(max(0.0, 1.0 - var_resid / var_tr)) if var_tr > 0 else 0.0
 
 
 def seasonal_strength(y: np.ndarray) -> float:
-    """Seasonal strength from MSTL against the combined seasonal signal.
+    """Seasonal strength against the combined seasonal signal.
 
-    ``total_seasonal`` is the sum of all per-period MSTL components.
-    Returns 0 when no seasonal periods are detected.
+    ``S + resid`` is ``y`` with the trend removed; the ratio measures the share
+    of de-trended variance explained by the fitted Fourier seasonality across
+    all detected periods. Returns 0 when no seasonal periods are detected.
     """
-    _, mstl, _, seasonal_arrays, _ = _decompose(y)
-    if mstl is None:
+    d = _decompose(y)
+    if not d.periods:
         return 0.0
-    resid = np.asarray(mstl.resid)
-    seasonal_total = sum(seasonal_arrays)
-    var_resid = np.var(resid, ddof=1)
-    var_sr = np.var(seasonal_total + resid, ddof=1)
+    var_resid = np.var(d.resid, ddof=1)
+    var_sr = np.var(y - d.trend, ddof=1)
     return float(max(0.0, 1.0 - var_resid / var_sr)) if var_sr > 0 else 0.0
 
 
 def seasonal_stability(y: np.ndarray) -> float:
     """CV of seasonal amplitude across complete cycles of the dominant period.
 
-    Uses the dominant period's MSTL seasonal component. Returns 0 when fewer
-    than 2 complete cycles or no seasonal periods are detected.
+    Returns 0 when fewer than 2 complete cycles or no seasonal periods.
     """
-    periods, mstl, _, seasonal_arrays, dom_idx = _decompose(y)
-    if mstl is None:
+    d = _decompose(y)
+    if d.dom_idx is None:
         return 0.0
-    return _seasonal_stability_from_component(
-        seasonal_arrays[dom_idx], periods[dom_idx], y
-    )
+    g = d.resid + d.seasonal_arrays[d.dom_idx]
+    return _seasonal_stability_from_component(g, d.periods[d.dom_idx], y)
 
 
 def phase_consistency(y: np.ndarray) -> float:
-    """Circular spread of peak-of-season phase across cycles of the dominant period.
+    """Circular spread of the dominant cycle's phase across cycles.
 
-    Uses the dominant period's MSTL seasonal component. Returns 0 when fewer
-    than 2 complete cycles or no seasonal periods are detected.
+    Returns 0 when fewer than 2 complete cycles or no seasonal periods.
     """
-    periods, mstl, _, seasonal_arrays, dom_idx = _decompose(y)
-    if mstl is None:
+    d = _decompose(y)
+    if d.dom_idx is None:
         return 0.0
-    return _phase_consistency_from_component(
-        seasonal_arrays[dom_idx], periods[dom_idx], y
-    )
+    g = d.resid + d.seasonal_arrays[d.dom_idx]
+    return _phase_consistency_from_component(g, d.periods[d.dom_idx], y)
 
 
 def spectral_entropy(y: np.ndarray) -> float:
@@ -468,9 +551,10 @@ def zero_proportion(y: np.ndarray, threshold: float | None = None) -> float:
 def compute_features_all(y: np.ndarray) -> dict[str, float]:
     """Compute all 13 candidate features with fully automatic period detection.
 
-    Fits MSTL once on the detected periods; all seasonal features share the
-    same decomposition. Falls back to polynomial R² for trend_strength and
-    zeros for seasonal features when no periods are detected.
+    Runs the structural decomposition once (``_decompose``); all four trend and
+    seasonal features share that single fit. ``trend_strength`` reduces to the
+    polynomial trend's R² and the seasonal features to 0 when no periods are
+    detected.
 
     Parameters
     ----------
@@ -483,29 +567,20 @@ def compute_features_all(y: np.ndarray) -> dict[str, float]:
     boxcox_lambda, kurtosis, hurst, perm_entropy, seasonal_stability,
     phase_consistency, asymmetry, l_skewness, zero_proportion.
     """
-    periods, mstl, y_det, seasonal_arrays, dom_idx = _decompose(y)
+    d = _decompose(y)
+    var_resid = np.var(d.resid, ddof=1)
 
-    if mstl is not None:
-        resid = np.asarray(mstl.resid)
-        trend = np.asarray(mstl.trend)
-        seasonal_total = sum(seasonal_arrays)
-        dom_period = periods[dom_idx]
-        seasonal_dom = seasonal_arrays[dom_idx]
+    var_tr = np.var(y - d.seasonal_total, ddof=1)
+    ts = float(max(0.0, 1.0 - var_resid / var_tr)) if var_tr > 0 else 0.0
 
-        var_resid = np.var(resid, ddof=1)
-
-        var_tr = np.var(trend + resid, ddof=1)
-        ts = float(max(0.0, 1.0 - var_resid / var_tr)) if var_tr > 0 else 0.0
-
-        var_sr = np.var(seasonal_total + resid, ddof=1)
+    if d.dom_idx is not None:
+        var_sr = np.var(y - d.trend, ddof=1)
         ss = float(max(0.0, 1.0 - var_resid / var_sr)) if var_sr > 0 else 0.0
-
-        sstab = _seasonal_stability_from_component(seasonal_dom, dom_period, y)
-        pc = _phase_consistency_from_component(seasonal_dom, dom_period, y)
+        g = d.resid + d.seasonal_arrays[d.dom_idx]
+        dom_period = d.periods[d.dom_idx]
+        sstab = _seasonal_stability_from_component(g, dom_period, y)
+        pc = _phase_consistency_from_component(g, dom_period, y)
     else:
-        var_y = np.var(y, ddof=1)
-        var_det = np.var(y_det, ddof=1)
-        ts = float(max(0.0, 1.0 - var_det / var_y)) if var_y > 0 else 0.0
         ss = sstab = pc = 0.0
 
     return {
