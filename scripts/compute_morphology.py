@@ -43,8 +43,7 @@ FIG_DIR = REPO_ROOT / "docs" / "figures" / "morphology"
 FEATURE_COLS = [
     "seasonal_strength",
     "hurst",
-    "trend_strength",
-    "phase_dispersion",
+    "amplitude_dispersion",
     "l_skewness",
 ]
 
@@ -64,12 +63,12 @@ FEATURE_LABELS = {
 # NaN steps are filled by linear interpolation before feature computation.
 # Longer gaps become segment boundaries.
 GAP_INTERP_FRAC: float = 1 / 12
-GAP_INTERP_MIN:  int   = 3
+GAP_INTERP_MIN: int = 3
 
 # Segments shorter than max(MIN_SEGMENT_ABS, period * MIN_SEGMENT_FRAC) are
 # excluded from feature aggregation.
 MIN_SEGMENT_FRAC: float = 1 / 4
-MIN_SEGMENT_ABS:  int   = 20
+MIN_SEGMENT_ABS: int = 20
 
 
 # ---------------------------------------------------------------------------
@@ -106,7 +105,7 @@ def _gap_aware_segments(
     padded = np.concatenate(([False], is_nan, [False])).view(np.int8)
     edges = np.flatnonzero(np.diff(padded))
     nan_starts = edges[0::2]
-    nan_ends   = edges[1::2]  # exclusive
+    nan_ends = edges[1::2]  # exclusive
 
     short_gap_mask = np.zeros(len(y_s), dtype=bool)
     for s, e in zip(nan_starts, nan_ends):
@@ -133,12 +132,12 @@ def _gap_aware_segments(
     notna = train["y"].notna().to_numpy()
     # find starts/ends of contiguous True runs
     padded2 = np.concatenate(([False], notna, [False])).view(np.int8)
-    edges2  = np.flatnonzero(np.diff(padded2))
+    edges2 = np.flatnonzero(np.diff(padded2))
     seg_starts = edges2[0::2]
-    seg_ends   = edges2[1::2]  # exclusive
+    seg_ends = edges2[1::2]  # exclusive
 
-    y_segs: list[np.ndarray]          = []
-    X_segs: list[np.ndarray | None]   = []
+    y_segs: list[np.ndarray] = []
+    X_segs: list[np.ndarray | None] = []
 
     for s, e in zip(seg_starts, seg_ends):
         if (e - s) < min_segment_len:
@@ -197,7 +196,7 @@ def _compute_features_segmented(
 
     feats = _aggregate_features(feat_dicts, lengths)
     total = sum(lengths)
-    gain  = sum(g * w for g, w in zip(gains, lengths)) / total
+    gain = sum(g * w for g, w in zip(gains, lengths)) / total
     return feats, gain
 
 
@@ -251,9 +250,13 @@ def _plot_biplot(
     for case_id, row in scores.iterrows():
         colour = domain_colour.get(domains.get(case_id, ""), "#888")
         ax.scatter(
-            row["PC1"], row["PC2"],
-            color=colour, s=90,
-            zorder=3, edgecolors="white", linewidths=0.5,
+            row["PC1"],
+            row["PC2"],
+            color=colour,
+            s=90,
+            zorder=3,
+            edgecolors="white",
+            linewidths=0.5,
         )
         ax.text(row["PC1"] + 0.05, row["PC2"] + 0.05, case_id, fontsize=7.5, color=colour, zorder=4)
 
@@ -337,7 +340,9 @@ def _plot_exog_bar(
     colours = [domain_colour.get(domains.get(case_id, ""), "#888") for case_id in ordered.index]
 
     fig, ax = plt.subplots(figsize=(7, 0.45 * len(ordered) + 1.2))
-    bars = ax.barh(range(len(ordered)), ordered.values, color=colours, edgecolor="white", linewidth=0.5)
+    bars = ax.barh(
+        range(len(ordered)), ordered.values, color=colours, edgecolor="white", linewidth=0.5
+    )
 
     ax.set_yticks(range(len(ordered)))
     ax.set_yticklabels(ordered.index, fontsize=8.5)
@@ -349,8 +354,12 @@ def _plot_exog_bar(
 
     for bar, val in zip(bars, ordered.values):
         ax.text(
-            bar.get_width() + 0.003, bar.get_y() + bar.get_height() / 2,
-            f"{val:.3f}", va="center", fontsize=7.5, color="#444",
+            bar.get_width() + 0.003,
+            bar.get_y() + bar.get_height() / 2,
+            f"{val:.3f}",
+            va="center",
+            fontsize=7.5,
+            color="#444",
         )
 
     colour_handles = [plt.scatter([], [], color=c, s=60, label=d) for d, c in domain_colour.items()]
@@ -394,18 +403,20 @@ def main() -> int:
             print(f"[{case_id}] no parquet — skipping.")
             continue
         period = period_for_freq(case.freq)
-        gap_interp_max  = max(GAP_INTERP_MIN,  int(period * GAP_INTERP_FRAC))
+        gap_interp_max = max(GAP_INTERP_MIN, int(period * GAP_INTERP_FRAC))
         min_segment_len = max(MIN_SEGMENT_ABS, int(period * MIN_SEGMENT_FRAC))
         y_segs, X_segs = _gap_aware_segments(case, period, gap_interp_max, min_segment_len)
         if not y_segs:
             print(f"[{case_id}] no segments meet min_segment_len={min_segment_len} — skipping.")
             continue
         n_segs = len(y_segs)
-        print(f"[{case_id}] {n_segs} seg(s), gap_interp_max={gap_interp_max} ...", end="  ", flush=True)
-        n_exog_lags = min(_horizon_steps(case), 30)
-        feats, gain = _compute_features_segmented(
-            y_segs, X_segs, period, n_exog_lags
+        print(
+            f"[{case_id}] {n_segs} seg(s), gap_interp_max={gap_interp_max} ...",
+            end="  ",
+            flush=True,
         )
+        n_exog_lags = min(_horizon_steps(case), 30)
+        feats, gain = _compute_features_segmented(y_segs, X_segs, period, n_exog_lags)
         exog_gains[case_id] = gain
         records[case_id] = feats
         domains[case_id] = case.domain
