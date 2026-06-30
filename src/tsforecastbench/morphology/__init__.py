@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from tsforecastbench.morphology.features import compute_features_all, period_for_freq
+from tsforecastbench.morphology.features import compute_features_all, detect_periods, period_for_freq
 
 # ---------------------------------------------------------------------------
 # Gap-handling thresholds (shared by compute_morphology.py and
@@ -114,6 +114,7 @@ def aggregate_features(
 
 __all__ = [
     "compute_features_all",
+    "detect_periods",
     "period_for_freq",
     "gap_aware_segments",
     "aggregate_features",

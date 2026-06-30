@@ -39,17 +39,8 @@ from tsforecastbench.morphology import (
     gap_aware_segments,
 )
 from tsforecastbench.morphology.features import (
-    acf1,
-    asymmetry_index,
-    boxcox_lambda,
     compute_features_all,
-    excess_kurtosis,
     period_for_freq,
-    permutation_entropy,
-    seasonal_periods_for_freq,
-    seasonal_stability,
-    spectral_entropy,
-    zero_proportion,
 )
 
 RESULTS_DIR = REPO_ROOT / "results"
@@ -65,19 +56,6 @@ ALL_FEATURE_COLS = [
 SELECTED_COLS = ["seasonal_strength", "hurst", "trend_strength", "phase_consistency", "l_skewness"]
 REMAINING_COLS = [c for c in ALL_FEATURE_COLS if c not in SELECTED_COLS]
 
-
-def _compute_remaining(y: np.ndarray, period: int) -> dict[str, float]:
-    """Compute the 8 features not covered by compute_morphology.py."""
-    return {
-        "acf1":              acf1(y),
-        "spectral_entropy":  spectral_entropy(y),
-        "boxcox_lambda":     boxcox_lambda(y),
-        "kurtosis":          excess_kurtosis(y),
-        "perm_entropy":      permutation_entropy(y),
-        "seasonal_stability": seasonal_stability(y, period),
-        "asymmetry":         asymmetry_index(y),
-        "zero_proportion":   zero_proportion(y),
-    }
 
 
 def main() -> int:
@@ -119,7 +97,6 @@ def main() -> int:
     for i, case_id in enumerate(available, 1):
         case = cases[case_id]
         period = period_for_freq(case.freq)
-        seasonal_periods = seasonal_periods_for_freq(case.freq)
         gap_interp_max = max(GAP_INTERP_MIN, int(period * GAP_INTERP_FRAC))
         min_segment_len = max(MIN_SEGMENT_ABS, int(period * MIN_SEGMENT_FRAC))
 
@@ -134,13 +111,7 @@ def main() -> int:
         lengths = [len(y) for y in y_segs]
         print(f"{n_segs} seg(s), gap_interp_max={gap_interp_max}", end="  ", flush=True)
 
-        if args.remaining_only:
-            feat_dicts = [_compute_remaining(y, period) for y in y_segs]
-        else:
-            feat_dicts = [
-                compute_features_all(y, period, seasonal_periods=seasonal_periods)
-                for y in y_segs
-            ]
+        feat_dicts = [compute_features_all(y) for y in y_segs]
 
         feats = aggregate_features(feat_dicts, lengths)
         records[case_id] = feats

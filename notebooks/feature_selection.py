@@ -96,7 +96,7 @@ def _(REPO_ROOT, mo, np, pd):
     else:
         # Compute live — slow but self-contained
         from tsforecastbench.data.registry import discover_cases
-        from tsforecastbench.morphology.features import compute_features_all, period_for_freq
+        from tsforecastbench.morphology.features import compute_features_all
 
         _cases = discover_cases()
         _records: dict = {}
@@ -108,8 +108,7 @@ def _(REPO_ROOT, mo, np, pd):
             _train = _case.split_frame(_df)["train"]
             _mask = _train["y"].notna()
             _y = _train.loc[_mask, "y"].to_numpy(dtype=float)
-            _period = period_for_freq(_case.freq)
-            _records[_case_id] = compute_features_all(_y, _period)
+            _records[_case_id] = compute_features_all(_y)
             domains[_case_id] = _case.domain
         features_df = pd.DataFrame.from_dict(_records, orient="index")[ALL_FEATURE_COLS]
         features_df.index.name = "case_id"

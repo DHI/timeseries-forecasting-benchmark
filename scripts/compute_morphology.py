@@ -35,7 +35,6 @@ from tsforecastbench.morphology.features import (
     compute_features_all,
     exog_r2_gain,
     period_for_freq,
-    seasonal_periods_for_freq,
 )
 
 RESULTS_DIR = REPO_ROOT / "results"
@@ -181,7 +180,6 @@ def _compute_features_segmented(
     y_segs: list[np.ndarray],
     X_segs: list[np.ndarray | None],
     period: int,
-    seasonal_periods: list[int],
     n_exog_lags: int,
 ) -> tuple[dict[str, float], float]:
     """Compute morphological features and exog_r2_gain across all segments.
@@ -193,7 +191,7 @@ def _compute_features_segmented(
     lengths: list[int] = []
 
     for y_seg, X_seg in zip(y_segs, X_segs):
-        feat_dicts.append(compute_features_all(y_seg, period, seasonal_periods=seasonal_periods))
+        feat_dicts.append(compute_features_all(y_seg))
         gains.append(exog_r2_gain(y_seg, X_seg, period, n_exog_lags, poly_degree=2))
         lengths.append(len(y_seg))
 
@@ -396,7 +394,6 @@ def main() -> int:
             print(f"[{case_id}] no parquet — skipping.")
             continue
         period = period_for_freq(case.freq)
-        seasonal_periods = seasonal_periods_for_freq(case.freq)
         gap_interp_max  = max(GAP_INTERP_MIN,  int(period * GAP_INTERP_FRAC))
         min_segment_len = max(MIN_SEGMENT_ABS, int(period * MIN_SEGMENT_FRAC))
         y_segs, X_segs = _gap_aware_segments(case, period, gap_interp_max, min_segment_len)
@@ -407,7 +404,7 @@ def main() -> int:
         print(f"[{case_id}] {n_segs} seg(s), gap_interp_max={gap_interp_max} ...", end="  ", flush=True)
         n_exog_lags = min(_horizon_steps(case), 30)
         feats, gain = _compute_features_segmented(
-            y_segs, X_segs, period, seasonal_periods, n_exog_lags
+            y_segs, X_segs, period, n_exog_lags
         )
         exog_gains[case_id] = gain
         records[case_id] = feats
