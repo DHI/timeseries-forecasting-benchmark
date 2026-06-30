@@ -112,12 +112,12 @@ footer{border-top:1px solid var(--rule);padding-top:1.25rem;color:var(--muted);f
 <header>
   <div class="eyebrow">TSForecastBench · Morphology Analysis</div>
   <h1>Do morphologically similar cases have similar forecasting results?</h1>
-  <p class="subtitle">Analysing whether the 6-feature morphological embedding predicts method performance across 12 benchmark cases and 15 forecasting methods.</p>
+  <p class="subtitle">Analysing whether the revised 5-feature morphological embedding predicts method performance across 12 benchmark cases and 14 forecasting methods.</p>
   <div class="meta-row">
     <div class="meta-item"><div class="value">12</div><div class="label">Benchmark cases</div></div>
-    <div class="meta-item"><div class="value">15</div><div class="label">Methods</div></div>
-    <div class="meta-item"><div class="value">6</div><div class="label">Morphology features</div></div>
-    <div class="meta-item"><div class="value">3</div><div class="label">Significant findings</div></div>
+    <div class="meta-item"><div class="value">14</div><div class="label">Methods</div></div>
+    <div class="meta-item"><div class="value">5</div><div class="label">Morphology features</div></div>
+    <div class="meta-item"><div class="value">2</div><div class="label">Significant findings</div></div>
   </div>
 </header>
 
@@ -127,30 +127,30 @@ footer{border-top:1px solid var(--rule);padding-top:1.25rem;color:var(--muted);f
   <div class="findings">
     <div class="fc">
       <div class="fnum">Finding 1</div>
-      <div class="fstat">ρ = +0.09</div>
-      <div class="fdesc">Morphological distance does not predict method-ranking agreement. Spearman correlation between morphological distance and rank-vector distance: p = 0.50.</div>
+      <div class="fstat">ρ = +0.11</div>
+      <div class="fdesc">Morphological distance does not predict method-ranking agreement. Spearman correlation between morphological distance and Kendall-τ rank agreement across all 66 case pairs: p = 0.38.</div>
     </div>
     <div class="fc">
       <div class="fnum">Finding 2</div>
-      <div class="fstat mid">ρ = −0.57</div>
-      <div class="fdesc">Seasonal strength is the strongest predictor of overall case difficulty (best achievable MASE). Stronger seasonality → easier to forecast. Suggestive at p = 0.051.</div>
+      <div class="fstat mid">ρ = +0.61 *</div>
+      <div class="fdesc">L-skewness is the strongest predictor of overall case difficulty (mean MASE). Right-skewed series — those with occasional large spikes — are harder to forecast on average. Significant at p = 0.036.</div>
     </div>
     <div class="fc strong">
       <div class="fnum">Finding 3 — strongest</div>
-      <div class="fstat sig">ρ = +0.74 **</div>
-      <div class="fdesc">exog_r2_gain strongly predicts the MASE improvement from adding exogenous variables to LightGBM (p = 0.006). The feature does what it promises.</div>
+      <div class="fstat sig">ρ = +0.77 **</div>
+      <div class="fdesc">exog_r2_gain strongly predicts the MASE improvement from adding exogenous variables to LightGBM (p = 0.004). The feature does what it promises.</div>
     </div>
   </div>
   <div class="callout">
     <div class="clabel">Bottom line</div>
-    <p style="max-width:100%;margin:0;font-size:14px">Morphological similarity is a weak global predictor of shared method rankings — cases that look alike do not systematically prefer the same methods. Two features break through: <strong>seasonal strength</strong> tracks how hard a case is overall (stronger seasonality → lower MASE), and <strong>exog_r2_gain</strong> reliably flags when exogenous-aware methods will outperform their univariate counterparts. The sample (n = 12) is underpowered for most correlations, so the null results should be read as "inconclusive" rather than "no effect."</p>
+    <p style="max-width:100%;margin:0;font-size:14px">Morphological similarity remains a weak global predictor of shared method rankings — cases that look alike do not systematically prefer the same methods. Under the revised feature set, <strong>seasonal_strength is no longer a significant difficulty signal</strong> (ρ = −0.40, p = 0.20); the difficulty signal that survives is <strong>l_skewness</strong>, which tracks mean MASE (right-skewed, spiky series are harder). The headline result is unchanged and slightly stronger: <strong>exog_r2_gain</strong> reliably flags when exogenous-aware methods will outperform their univariate counterparts (ρ = +0.77). Separately, the benchmark itself is decisive — <strong>every one of the 12 cases is won by an exogenous-aware ML method or by Chronos-Bolt</strong>, never by a pure univariate baseline. The sample (n = 12) is underpowered, so null results should be read as "inconclusive" rather than "no effect."</p>
   </div>
 </section>
 
 <section id="mase">
-  <h2>MASE matrix — cases ordered by seasonal strength (↓ = less seasonal)</h2>
+  <h2>MASE matrix — cases ordered by overall difficulty (easiest at top)</h2>
   <div class="rule"></div>
-  <p style="margin-bottom:1rem">Color encodes MASE: <span style="background:#C1DDCF;padding:.1rem .4rem;border-radius:2px;font-size:12px">low (good)</span> → <span style="background:#FAE0CC;padding:.1rem .4rem;border-radius:2px;font-size:12px">high (bad)</span>. Bold = row minimum. Cases with stronger seasonality (top) tend to have more green cells; weakly-seasonal cases (bottom) are generally harder to forecast.</p>
+  <p style="margin-bottom:1rem">Color encodes MASE: <span style="background:#C1DDCF;padding:.1rem .4rem;border-radius:2px;font-size:12px">low (good)</span> → <span style="background:#FAE0CC;padding:.1rem .4rem;border-radius:2px;font-size:12px">high (bad)</span>. Bold = row minimum. Rows are sorted by mean MASE; the bar column shows <strong>L-skewness</strong>, which rises (more right-skewed) toward the harder cases at the bottom — visualising the ρ = +0.61 correlation. The bold row minimum always falls on an exogenous-aware ML method (LinL+x / LGB+x) or Chronos.</p>
   <div class="tscroll">
     <table id="mase-table"></table>
   </div>
@@ -166,15 +166,14 @@ footer{border-top:1px solid var(--rule);padding-top:1.25rem;color:var(--muted);f
       <th>Feature</th><th>Spearman ρ</th><th>p-value</th><th>Direction</th>
     </tr></thead>
     <tbody>
-      <tr><td class="feat">seasonal_strength</td><td class="r-neg">−0.573</td><td class="p-sig">0.051 *</td><td class="feat" style="color:var(--muted);font-family:system-ui">Stronger seasonality → easier to forecast</td></tr>
-      <tr><td class="feat">hurst</td><td class="r-neg">−0.455</td><td>0.138</td><td class="feat" style="color:var(--muted);font-family:system-ui">Stronger persistence → easier</td></tr>
-      <tr><td class="feat">phase_consistency</td><td class="r-pos">+0.441</td><td>0.152</td><td class="feat" style="color:var(--muted);font-family:system-ui">Inconsistent phase timing → harder</td></tr>
-      <tr><td class="feat">l_skewness</td><td class="r-pos">+0.420</td><td>0.175</td><td class="feat" style="color:var(--muted);font-family:system-ui">Right-skewed distributions → harder</td></tr>
-      <tr><td class="feat">exog_r2_gain</td><td class="r-neg">−0.162</td><td>0.615</td><td class="feat" style="color:var(--muted);font-family:system-ui">Not predictive of overall difficulty</td></tr>
-      <tr><td class="feat">trend_strength</td><td class="r-pos">+0.105</td><td>0.746</td><td class="feat" style="color:var(--muted);font-family:system-ui">No clear relationship</td></tr>
+      <tr><td class="feat">hurst</td><td class="r-neg">−0.434</td><td>0.158</td><td class="feat" style="color:var(--muted);font-family:system-ui">Stronger persistence → easier</td></tr>
+      <tr><td class="feat">l_skewness</td><td class="r-pos">+0.427</td><td>0.166</td><td class="feat" style="color:var(--muted);font-family:system-ui">Right-skewed → harder (significant vs mean MASE)</td></tr>
+      <tr><td class="feat">seasonal_strength</td><td class="r-neg">−0.399</td><td>0.198</td><td class="feat" style="color:var(--muted);font-family:system-ui">Weaker than before — no longer significant</td></tr>
+      <tr><td class="feat">amplitude_dispersion</td><td class="r-pos">+0.154</td><td>0.632</td><td class="feat" style="color:var(--muted);font-family:system-ui">New feature — not predictive of difficulty</td></tr>
+      <tr><td class="feat">exog_r2_gain</td><td class="r-neg">−0.169</td><td>0.599</td><td class="feat" style="color:var(--muted);font-family:system-ui">Not predictive of overall difficulty</td></tr>
     </tbody>
   </table>
-  <p style="margin-top:.75rem;font-size:12.5px;color:var(--muted)">Note: l_skewness also correlates with Mean MASE (ρ = +0.61, p = 0.036) — right-skewed series with occasional extreme values make the unconditional mean baseline look especially poor, inflating the MASE denominator.</p>
+  <p style="margin-top:.75rem;font-size:12.5px;color:var(--muted)">Note: no feature reaches significance against the <em>best achievable</em> MASE at this sample size. The one significant difficulty relationship is <strong>l_skewness vs Mean MASE</strong> (ρ = +0.61, p = 0.036) — right-skewed series with occasional extreme values are harder for every method on average, not just for the best one.</p>
 </section>
 
 <section id="charts">
@@ -183,12 +182,12 @@ footer{border-top:1px solid var(--rule);padding-top:1.25rem;color:var(--muted);f
   <div class="charts">
     <div class="ccard">
       <div class="ctitle">exog_r2_gain vs LightGBM+exo improvement (ΔMASE)</div>
-      <div class="cstat">ρ = +0.738, p = 0.006 **</div>
+      <div class="cstat">ρ = +0.767, p = 0.004 **</div>
       <canvas id="c1" width="360" height="260"></canvas>
     </div>
     <div class="ccard">
-      <div class="ctitle">Seasonal strength vs best achievable MASE</div>
-      <div class="cstat">ρ = −0.573, p = 0.051 *</div>
+      <div class="ctitle">L-skewness vs mean MASE (case difficulty)</div>
+      <div class="cstat">ρ = +0.608, p = 0.036 *</div>
       <canvas id="c2" width="360" height="260"></canvas>
     </div>
   </div>
@@ -197,7 +196,7 @@ footer{border-top:1px solid var(--rule);padding-top:1.25rem;color:var(--muted);f
 <section id="pairs">
   <h2>Morphologically closest pairs — do they agree on method rankings?</h2>
   <div class="rule"></div>
-  <p>The five closest pairs in standardised morphological feature space, ranked by Euclidean distance. Kendall τ measures agreement between the 15-method rank vectors. The weak τ values confirm Finding 1: morphological proximity does not guarantee shared method preferences.</p>
+  <p>The five closest pairs in standardised morphological feature space, ranked by Euclidean distance. Kendall τ measures agreement between the 14-method rank vectors. The weak-to-moderate τ values confirm Finding 1: morphological proximity does not guarantee shared method preferences.</p>
   <br>
   <table class="ptable">
     <thead><tr>
@@ -205,61 +204,62 @@ footer{border-top:1px solid var(--rule);padding-top:1.25rem;color:var(--muted);f
     </tr></thead>
     <tbody>
       <tr>
-        <td>Bellinge sewer</td><td>WWTP N₂O</td>
-        <td class="mono">1.51</td>
-        <td><span class="tau-chip tau-weak">τ = +0.19</span></td>
-        <td style="font-size:12.5px;color:var(--muted)">Closest pair; strong seasonality and Hurst but near-random rank agreement</td>
+        <td>Bellinge sewer</td><td>MA waves</td>
+        <td class="mono">0.32</td>
+        <td><span class="tau-chip tau-weak">τ = +0.29</span></td>
+        <td style="font-size:12.5px;color:var(--muted)">By far the closest pair, yet one of the easiest cases (Bellinge, best 0.20) sits beside the hardest (MA waves, best 0.88) — weak rank agreement</td>
       </tr>
       <tr>
-        <td>MA waves</td><td>OR waves</td>
-        <td class="mono">1.67</td>
-        <td><span class="tau-chip tau-mod">τ = +0.34</span></td>
-        <td style="font-size:12.5px;color:var(--muted)">Same domain and physics — modest agreement</td>
+        <td>Bellinge sewer</td><td>OR waves</td>
+        <td class="mono">1.03</td>
+        <td><span class="tau-chip tau-mod">τ = +0.42</span></td>
+        <td style="font-size:12.5px;color:var(--muted)">Modest agreement despite very different difficulty levels</td>
       </tr>
       <tr>
-        <td>Saugeen Q</td><td>Yosemite Q</td>
-        <td class="mono">1.68</td>
-        <td><span class="tau-chip tau-weak">τ = +0.19</span></td>
-        <td style="font-size:12.5px;color:var(--muted)">Similar morphology; near-random rank agreement</td>
+        <td>DK lowland Q</td><td>OR waves</td>
+        <td class="mono">1.18</td>
+        <td><span class="tau-chip tau-strong">τ = +0.51</span></td>
+        <td style="font-size:12.5px;color:var(--muted)">Moderate agreement — both reward exogenous-aware linear/ML methods</td>
       </tr>
       <tr>
-        <td>Yorktown GW</td><td>James R. temp</td>
-        <td class="mono">1.71</td>
-        <td><span class="tau-chip tau-mod">τ = +0.56</span></td>
-        <td style="font-size:12.5px;color:var(--muted)">Strong rank agreement — both are smooth, persistent series where statistical methods excel</td>
+        <td>DK lowland Q</td><td>WWTP N₂O</td>
+        <td class="mono">1.18</td>
+        <td><span class="tau-chip tau-weak">τ = +0.16</span></td>
+        <td style="font-size:12.5px;color:var(--muted)">Near-random rank agreement despite morphological proximity</td>
       </tr>
       <tr>
-        <td>DK lowland Q</td><td>Yorktown GW</td>
-        <td class="mono">1.83</td>
-        <td><span class="tau-chip tau-strong">τ = +0.63</span></td>
-        <td style="font-size:12.5px;color:var(--muted)">Best rank agreement — slow, high-Hurst series with very similar method preference profiles</td>
+        <td>OR waves</td><td>MA waves</td>
+        <td class="mono">1.24</td>
+        <td><span class="tau-chip tau-mod">τ = +0.36</span></td>
+        <td style="font-size:12.5px;color:var(--muted)">Both wave cases, both won by LGB+x — yet only moderate rank agreement across the full method set</td>
       </tr>
     </tbody>
   </table>
 </section>
 
 <footer>
-  <p><strong>Data:</strong> 12 benchmark cases · 15 forecasting methods · MASE metric · rolling-origin evaluation. Morphological features (6 selected from 13 candidates) computed via <code>scripts/compute_features_all.py</code>; results from <code>results/pilot_metrics.parquet</code>. Feature selection rationale in <code>notebooks/feature_selection.py</code>.</p>
-  <p style="margin-top:.4rem"><strong>Caveat:</strong> n = 12 is severely underpowered. Correlations with p &gt; 0.1 should be treated as inconclusive. The exog_r2_gain finding (p = 0.006) survives multiple-testing scrutiny; the seasonal_strength finding (p = 0.051) is suggestive but borderline.</p>
+  <p><strong>Data:</strong> 12 benchmark cases · 14 forecasting methods · MASE metric · rolling-origin evaluation. Morphological features (5 selected from 13 candidates) computed via <code>scripts/compute_features_all.py</code> → <code>results/morphology_features.csv</code>; method results from <code>docs/figures/benchmark/matrix_mase.png</code>. Feature selection rationale in <code>notebooks/feature_selection.py</code>.</p>
+  <p style="margin-top:.4rem"><strong>Caveat:</strong> n = 12 is severely underpowered. Correlations with p &gt; 0.1 should be treated as inconclusive. The exog_r2_gain finding (p = 0.004) and the l_skewness vs mean MASE finding (p = 0.036) survive at α = 0.05; the previously-reported seasonal_strength signal has weakened to non-significance under the revised feature definitions.</p>
 </footer>
 
 </div>
 
 <script>
 // ── Data ──────────────────────────────────────────────────────────────────────
+// ls = l_skewness (feature shown as bar). Rows ordered by mean MASE (easiest first).
 const cases = [
-  {label:"WWTP N₂O",       ss:0.966, mase:{Mean:0.685,Pers:0.725,SN:0.624,Clim:0.571,ARIMA:0.634,ETS:0.725,TBATS:0.408,Theta:0.724,LinL:0.584,LinLx:0.584,LGB:0.378,LGBx:0.378,DLin:0.527,MLP:0.581,Chr:0.382}},
-  {label:"James R. temp",  ss:0.953, mase:{Mean:3.250,Pers:0.615,SN:1.224,Clim:0.936,ARIMA:0.578,ETS:0.615,TBATS:0.579,Theta:0.615,LinL:0.486,LinLx:0.233,LGB:0.494,LGBx:0.244,DLin:0.548,MLP:0.664,Chr:0.579}},
-  {label:"Bellinge sewer", ss:0.939, mase:{Mean:0.988,Pers:0.308,SN:0.267,Clim:1.017,ARIMA:0.476,ETS:0.304,TBATS:0.302,Theta:0.308,LinL:0.249,LinLx:0.223,LGB:0.235,LGBx:0.201,DLin:0.516,MLP:2.001,Chr:0.307}},
-  {label:"L-Town demand",  ss:0.869, mase:{Mean:0.733,Pers:0.840,SN:0.904,Clim:0.625,ARIMA:0.762,ETS:0.743,TBATS:0.624,Theta:0.815,LinL:0.654,LinLx:0.654,LGB:0.551,LGBx:0.551,DLin:0.623,MLP:0.678,Chr:0.517}},
-  {label:"Yorktown GW",    ss:0.488, mase:{Mean:1.016,Pers:0.324,SN:1.354,Clim:0.583,ARIMA:0.242,ETS:0.216,TBATS:0.378,Theta:0.324,LinL:0.269,LinLx:0.230,LGB:0.265,LGBx:0.265,DLin:0.286,MLP:0.336,Chr:0.159}},
-  {label:"OR waves",       ss:0.471, mase:{Mean:1.321,Pers:0.773,SN:0.834,Clim:1.320,ARIMA:0.822,ETS:0.855,TBATS:0.823,Theta:0.767,LinL:0.721,LinLx:0.595,LGB:0.737,LGBx:0.553,DLin:0.776,MLP:0.613,Chr:0.713}},
-  {label:"Saugeen Q",      ss:0.437, mase:{Mean:1.211,Pers:0.980,SN:1.121,Clim:1.140,ARIMA:1.041,ETS:1.034,TBATS:2.024,Theta:0.980,LinL:1.023,LinLx:1.023,LGB:1.126,LGBx:1.126,DLin:1.054,MLP:1.162,Chr:0.942}},
-  {label:"DK lowland Q",   ss:0.428, mase:{Mean:0.762,Pers:0.394,SN:0.924,Clim:0.566,ARIMA:0.406,ETS:0.394,TBATS:0.372,Theta:0.394,LinL:0.416,LinLx:0.326,LGB:0.387,LGBx:0.326,DLin:0.406,MLP:0.475,Chr:0.384}},
-  {label:"Yosemite Q",     ss:0.420, mase:{Mean:2.489,Pers:0.759,SN:1.575,Clim:1.514,ARIMA:1.003,ETS:0.697,TBATS:0.758,Theta:0.757,LinL:1.033,LinLx:1.086,LGB:0.637,LGBx:0.462,DLin:1.042,MLP:0.821,Chr:0.821}},
-  {label:"Catskills Q",    ss:0.312, mase:{Mean:1.111,Pers:0.795,SN:1.219,Clim:1.066,ARIMA:0.904,ETS:0.925,TBATS:0.938,Theta:0.920,LinL:0.948,LinLx:0.738,LGB:1.454,LGBx:0.463,DLin:0.970,MLP:0.910,Chr:0.731}},
-  {label:"MA waves",       ss:0.127, mase:{Mean:1.429,Pers:1.115,SN:1.621,Clim:1.430,ARIMA:1.149,ETS:1.139,TBATS:1.158,Theta:1.115,LinL:1.167,LinLx:1.268,LGB:1.077,LGBx:0.881,DLin:1.140,MLP:1.254,Chr:1.098}},
-  {label:"Cuxhaven surge", ss:0.082, mase:{Mean:0.956,Pers:0.723,SN:0.914,Clim:0.956,ARIMA:0.845,ETS:0.703,TBATS:0.827,Theta:0.723,LinL:0.801,LinLx:0.638,LGB:0.855,LGBx:0.573,DLin:0.790,MLP:1.160,Chr:0.819}},
+  {label:"Yorktown GW",    ls:-0.003, mase:{Mean:1.02,Pers:0.32,SN:1.35,Clim:0.58,ARIMA:0.24,ETS:0.22,Theta:0.32,LinL:0.27,LGB:0.27,MLP:0.34,DLin:0.29,LinLx:0.23,LGBx:0.27,Chr:0.16}},
+  {label:"DK lowland Q",   ls:0.183,  mase:{Mean:0.76,Pers:0.39,SN:0.92,Clim:0.57,ARIMA:0.41,ETS:0.39,Theta:0.39,LinL:0.42,LGB:0.39,MLP:0.47,DLin:0.41,LinLx:0.33,LGBx:0.33,Chr:0.38}},
+  {label:"Bellinge sewer", ls:0.344,  mase:{Mean:0.99,Pers:0.31,SN:0.27,Clim:1.02,ARIMA:0.48,ETS:0.30,Theta:0.31,LinL:0.25,LGB:0.24,MLP:2.00,DLin:0.52,LinLx:0.22,LGBx:0.20,Chr:0.31}},
+  {label:"WWTP N₂O",       ls:0.380,  mase:{Mean:0.68,Pers:0.73,SN:0.62,Clim:0.57,ARIMA:0.63,ETS:0.73,Theta:0.72,LinL:0.58,LGB:0.38,MLP:0.58,DLin:0.53,LinLx:0.58,LGBx:0.38,Chr:0.38}},
+  {label:"L-Town demand",  ls:0.315,  mase:{Mean:0.73,Pers:0.84,SN:0.90,Clim:0.63,ARIMA:0.76,ETS:0.74,Theta:0.82,LinL:0.65,LGB:0.55,MLP:0.68,DLin:0.62,LinLx:0.65,LGBx:0.55,Chr:0.52}},
+  {label:"James R. temp",  ls:0.003,  mase:{Mean:3.25,Pers:0.62,SN:1.22,Clim:0.94,ARIMA:0.58,ETS:0.62,Theta:0.62,LinL:0.49,LGB:0.49,MLP:0.66,DLin:0.55,LinLx:0.23,LGBx:0.24,Chr:0.58}},
+  {label:"OR waves",       ls:0.218,  mase:{Mean:1.32,Pers:0.77,SN:0.83,Clim:1.32,ARIMA:0.82,ETS:0.86,Theta:0.77,LinL:0.72,LGB:0.74,MLP:0.61,DLin:0.78,LinLx:0.60,LGBx:0.55,Chr:0.71}},
+  {label:"Cuxhaven surge", ls:0.023,  mase:{Mean:0.96,Pers:0.72,SN:0.91,Clim:0.96,ARIMA:0.85,ETS:0.70,Theta:0.72,LinL:0.80,LGB:0.85,MLP:1.16,DLin:0.79,LinLx:0.64,LGBx:0.57,Chr:0.82}},
+  {label:"Catskills Q",    ls:0.498,  mase:{Mean:1.11,Pers:0.80,SN:1.22,Clim:1.07,ARIMA:0.90,ETS:0.93,Theta:0.92,LinL:0.95,LGB:1.45,MLP:0.91,DLin:0.97,LinLx:0.74,LGBx:0.46,Chr:0.73}},
+  {label:"Yosemite Q",     ls:0.548,  mase:{Mean:2.49,Pers:0.76,SN:1.57,Clim:1.51,ARIMA:1.00,ETS:0.70,Theta:0.76,LinL:1.03,LGB:0.64,MLP:0.82,DLin:1.04,LinLx:1.09,LGBx:0.46,Chr:0.82}},
+  {label:"Saugeen Q",      ls:0.505,  mase:{Mean:1.21,Pers:0.98,SN:1.12,Clim:1.14,ARIMA:1.04,ETS:1.03,Theta:0.98,LinL:1.02,LGB:1.13,MLP:1.16,DLin:1.05,LinLx:1.02,LGBx:1.13,Chr:0.94}},
+  {label:"MA waves",       ls:0.372,  mase:{Mean:1.43,Pers:1.12,SN:1.62,Clim:1.43,ARIMA:1.15,ETS:1.14,Theta:1.11,LinL:1.17,LGB:1.08,MLP:1.25,DLin:1.14,LinLx:1.27,LGBx:0.88,Chr:1.10}},
 ];
 
 const methods = [
@@ -267,27 +267,26 @@ const methods = [
   {key:"Pers", label:"Pers.",  group:"base"},
   {key:"SN",   label:"S.Naive",group:"base"},
   {key:"Clim", label:"Clim.",  group:"base"},
-  {key:"ARIMA", label:"ARIMA",  group:"stat", sep:true},
-  {key:"ETS",   label:"ETS",    group:"stat"},
-  {key:"TBATS", label:"TBATS",  group:"stat"},
-  {key:"Theta", label:"Theta",  group:"stat"},
+  {key:"ARIMA",label:"ARIMA",  group:"stat", sep:true},
+  {key:"ETS",  label:"ETS",    group:"stat"},
+  {key:"Theta",label:"Theta",  group:"stat"},
   {key:"LinL", label:"LinL",   group:"ml",   sep:true},
-  {key:"LinLx",label:"+exo",   group:"ml"},
   {key:"LGB",  label:"LGB",    group:"ml"},
-  {key:"LGBx", label:"+exo",   group:"ml"},
-  {key:"DLin", label:"DLin",   group:"ml"},
   {key:"MLP",  label:"MLP",    group:"ml"},
+  {key:"DLin", label:"DLin",   group:"ml"},
+  {key:"LinLx",label:"LinL+x", group:"ml"},
+  {key:"LGBx", label:"LGB+x",  group:"ml"},
   {key:"Chr",  label:"Chronos",group:"found",sep:true},
 ];
 
 // ── MASE colour mapping ───────────────────────────────────────────────────────
 function maColor(v) {
-  // 0.15 → green, 0.7 → near white, 1.5+ → orange-red
+  // 0.15 → green, ~0.65 → near white, 1.5+ → orange-red (colour clamped to [0,2])
   const stops = [
     {t:0,   r:185,g:225,b:200},  // light green
-    {t:0.5, r:240,g:247,b:252},  // near white (0.65 MASE)
-    {t:1.0, r:245,g:195,b:165},  // light orange (1.2 MASE)
-    {t:1.5, r:220,g:130,b:90},   // orange (1.8 MASE)
+    {t:0.5, r:240,g:247,b:252},  // near white
+    {t:1.0, r:245,g:195,b:165},  // light orange
+    {t:1.5, r:220,g:130,b:90},   // orange
   ];
   const lo = 0.15, hi = 2.0;
   const t = Math.max(0, Math.min(1, (v - lo) / (hi - lo)));
@@ -304,7 +303,7 @@ function maColor(v) {
   const tbl = document.getElementById('mase-table');
 
   // --- group header row ---
-  const groupCounts = {base:4, stat:4, ml:6, found:1};
+  const groupCounts = {base:4, stat:3, ml:6, found:1};
   const groupLabels = {base:'Baselines', stat:'Statistical', ml:'Machine Learning', found:'Foundation'};
   const groupClass  = {base:'gr-base', stat:'gr-stat', ml:'gr-ml', found:'gr-found'};
   let gRow = `<tr><th colspan="2" class="case-th" style="background:#E4ECF4"></th>`;
@@ -314,7 +313,7 @@ function maColor(v) {
   gRow += '</tr>';
 
   // --- method header row ---
-  let mRow = `<tr><th class="case-th">Case</th><th class="ent-th" style="background:#E4ECF4">Seas. str.</th>`;
+  let mRow = `<tr><th class="case-th">Case</th><th class="ent-th" style="background:#E4ECF4">L-skew</th>`;
   for (const m of methods) {
     const sepClass = m.sep ? ' sep' : '';
     mRow += `<th class="${groupClass[m.group]}${sepClass}">${m.label}</th>`;
@@ -328,15 +327,15 @@ function maColor(v) {
     const vals = methods.map(m => c.mase[m.key]);
     const minV = Math.min(...vals);
     let row = `<tr><td class="case-td">${c.label}</td>`;
-    // seasonal-strength cell with bar
-    const barW = Math.round(c.ss * 100);
-    row += `<td class="ent-td"><div class="ent-wrap"><div class="ent-bar-bg"><div class="ent-bar" style="width:${barW}%"></div></div><span class="ent-num">${c.ss.toFixed(2)}</span></div></td>`;
+    // l-skewness cell with bar (scaled to max ~0.55)
+    const barW = Math.max(0, Math.round(c.ls / 0.55 * 100));
+    row += `<td class="ent-td"><div class="ent-wrap"><div class="ent-bar-bg"><div class="ent-bar" style="width:${barW}%"></div></div><span class="ent-num">${c.ls.toFixed(2)}</span></div></td>`;
     for (const m of methods) {
       const v = c.mase[m.key];
       const isBest = Math.abs(v - minV) < 0.0005;
       const sepClass = m.sep ? ' sep' : '';
       const bestClass = isBest ? ' best-cell' : '';
-      row += `<td class="${sepClass}${bestClass}" style="background:${maColor(v)}">${v.toFixed(3)}</td>`;
+      row += `<td class="${sepClass}${bestClass}" style="background:${maColor(v)}">${v.toFixed(2)}</td>`;
     }
     row += '</tr>';
     tbody.innerHTML += row;
@@ -470,39 +469,41 @@ function drawScatter(canvasId, pts, xLabel, yLabel, opts={}) {
 }
 
 // ── Chart 1: exog_r2_gain vs LGB+exo improvement ─────────────────────────────
+// [exog_r2_gain, ΔMASE(LGB→LGB+exo), label, highlight]
 const exogData = [
-  [0.000, 0.000, null,          false],
-  [0.509, 0.991, "Catskills Q", true ],
-  [0.023, 0.060, null,          false],
-  [0.000, 0.000, null,          false],
-  [0.012, 0.174, null,          false],
-  [0.000, 0.000, null,          false],
-  [0.002, 0.034, null,          false],
-  [0.003, 0.281, "Cuxhaven",   false],
-  [0.005, 0.249, "James R.",   false],
-  [0.004, 0.196, null,          false],
-  [0.002, 0.184, null,          false],
-  [0.000, 0.000, null,          false],
+  [0.0000, 0.000, null,        false],
+  [0.5087, 0.990, "Catskills", true ],
+  [0.0228, 0.060, null,        false],
+  [0.0000, 0.000, null,        false],
+  [0.0120, 0.180, null,        false],
+  [0.0002, 0.000, null,        false],
+  [0.0025, 0.040, null,        false],
+  [0.0031, 0.280, "Cuxhaven",  false],
+  [0.0054, 0.250, "James R.",  false],
+  [0.0040, 0.200, null,        false],
+  [0.0023, 0.190, null,        false],
+  [0.0000, 0.000, null,        false],
 ];
 
-// ── Chart 2: seasonal_strength vs best MASE ───────────────────────────────────
-const ssData = [
-  [0.966, 0.378, "WWTP N₂O",   true ],
-  [0.953, 0.233, null,          false],
-  [0.939, 0.201, null,          false],
-  [0.869, 0.517, null,          false],
-  [0.488, 0.159, null,          false],
-  [0.471, 0.553, null,          false],
-  [0.437, 0.942, "Saugeen Q",  true ],
-  [0.428, 0.326, null,          false],
-  [0.420, 0.462, null,          false],
-  [0.312, 0.463, null,          false],
-  [0.127, 0.881, "MA waves",   false],
-  [0.082, 0.573, null,          false],
+// ── Chart 2: l_skewness vs mean MASE ──────────────────────────────────────────
+// [l_skewness, mean MASE, label, highlight]
+const lsData = [
+  [-0.003, 0.420, null,       false],
+  [0.183,  0.469, null,       false],
+  [0.344,  0.530, null,       false],
+  [0.380,  0.578, null,       false],
+  [0.315,  0.689, null,       false],
+  [0.003,  0.792, null,       false],
+  [0.218,  0.814, null,       false],
+  [0.023,  0.818, null,       false],
+  [0.498,  0.940, "Catskills",true ],
+  [0.548,  1.049, "Yosemite", true ],
+  [0.505,  1.068, "Saugeen",  true ],
+  [0.372,  1.206, "MA waves", false],
 ];
 
 window.addEventListener('load', () => {
   drawScatter('c1', exogData, 'exog_r2_gain', 'MASE reduction (LGB→LGB+exo)', {xmax:0.55, ymin:0, ymax:1.1, logX:true, xFloor:0.001});
-  drawScatter('c2', ssData, 'Seasonal strength', 'Best achievable MASE', {xmin:0, xmax:1, ymin:0, ymax:1.1});
+  drawScatter('c2', lsData, 'L-skewness', 'Mean MASE (case difficulty)', {xmin:-0.05, xmax:0.6, ymin:0.4, ymax:1.25});
 });
 </script>

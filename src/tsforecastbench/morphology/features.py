@@ -70,6 +70,26 @@ _MIN_PERIOD: int = 4
 # genuinely multi-seasonal cases (e.g. semidiurnal + diurnal + weekly).
 _MAX_PERIODS: int = 4
 
+# Relative-prominence gate (two tiers, both measured against the dominant peak).
+# This is what lets the detector return *fewer* than _MAX_PERIODS: when one
+# cycle dominates, the cap is no longer the binding constraint and weak spurious
+# peaks are rejected instead of mechanically filling the top-4 slots.
+#
+#  - A peak at or above _STRONG_FRACTION of the dominant prominence is always a
+#    season, regardless of how many cycles it spans (so a genuinely dominant
+#    long-period cycle that only fits a handful of cycles still survives).
+#  - A fainter peak (between _FAINT_FRACTION and _STRONG_FRACTION) is admitted
+#    only if it completes at least _FAINT_MIN_CYCLES cycles.  This is the test
+#    that separates a real-but-secondary season from a spurious low-frequency
+#    bump: a weekly cycle dwarfed by a sharp diurnal peak sits at ~6% prominence
+#    but spans ~100 cycles (a sharp, well-resolved line, kept), whereas a
+#    ~950-sample "period" also at ~6% spans only ~5 cycles (a broad bump from
+#    imperfect detrending, rejected).
+#  - Anything below _FAINT_FRACTION is treated as noise.
+_STRONG_FRACTION: float = 0.10
+_FAINT_FRACTION: float = 0.05
+_FAINT_MIN_CYCLES: int = 12
+
 # Sine/cosine pairs fitted per detected period in the structural decomposition.
 # Small enough to stay collision-free and avoid fitting noise, large enough to
 # register non-sinusoidal (peaky) seasonal shape.
@@ -170,8 +190,19 @@ def _detect_periods(y_det: np.ndarray) -> list[int]:
     # _CLUSTER_TOL note); harmonically related but physically distinct periods
     # survive and any redundant frequencies are removed later in _structural_fit.
     candidates.sort(key=lambda x: -x[1])
+    top_prom = candidates[0][1]
+    strong = _STRONG_FRACTION * top_prom
+    faint = _FAINT_FRACTION * top_prom
     accepted: list[float] = []
-    for period_f, _ in candidates:
+    for period_f, prom in candidates:
+        # Candidates are sorted by descending prominence, so once one falls
+        # below the faint floor every remaining one does too.
+        if prom < faint:
+            break
+        # Strong peaks pass outright; faint peaks must be well-resolved (span
+        # many cycles) to be distinguished from broad low-frequency bumps.
+        if prom < strong and n / period_f < _FAINT_MIN_CYCLES:
+            continue
         if any(abs(period_f - acc) / acc <= _CLUSTER_TOL for acc in accepted):
             continue
         accepted.append(period_f)
