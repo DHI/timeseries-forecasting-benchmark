@@ -364,7 +364,6 @@ def main() -> int:
     csv_path = RESULTS_DIR / "morphology_features.csv"
     features_df.to_csv(csv_path)
     print(f"\nFeatures saved → {csv_path.relative_to(REPO_ROOT)}")
-    print(features_df.to_string(float_format="{:+.3f}".format))
 
     if not args.no_plot:
         scores_df, loadings_df, ev_ratio = _run_pca(features_df[FEATURE_COLS])
