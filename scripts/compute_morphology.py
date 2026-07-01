@@ -1,19 +1,16 @@
 """Compute morphological features for all benchmark cases and produce a PCA biplot.
 
 All 13 candidate features are computed and saved (plus exog_r2_gain and domain).
-FEATURE_COLS selects the 4-feature subset used for the PCA taxonomy biplot.
 
 Outputs
 -------
 results/morphology_features.csv        full feature table (case × 13 features
                                        + exog_r2_gain + domain)
-docs/figures/morphology/pca_biplot.png PCA biplot — 2-component PCA on FEATURE_COLS
 docs/figures/morphology/exog_r2_gain.png external-forcing dependence bar chart
 
 Usage
 -----
     uv run python scripts/compute_morphology.py
-    uv run python scripts/compute_morphology.py --no-plot
 """
 
 from __future__ import annotations
@@ -28,8 +25,6 @@ os.environ.setdefault("MPLBACKEND", "Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from sklearn.decomposition import PCA
-from sklearn.preprocessing import StandardScaler
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
@@ -52,21 +47,40 @@ from tsforecastbench.morphology.features import (
 RESULTS_DIR = REPO_ROOT / "results"
 FIG_DIR = REPO_ROOT / "docs" / "figures" / "morphology"
 
-# The 4 features used for the PCA taxonomy biplot.
-FEATURE_COLS = [
-    "seasonal_strength",
-    "hurst",
-    "amplitude_dispersion",
-    "l_skewness",
-]
 
-# Friendly display names for the loading arrows in the biplot. Keys must match
-# FEATURE_COLS.
+# The 4 features used for the PCA taxonomy biplot.
+# Written by notebooks/feature_selection.py (Save selection button);
+# falls back to the defaults below if the file is absent.
+def _load_feature_cols() -> list[str]:
+    import json as _json
+
+    _cfg = RESULTS_DIR / "selected_features.json"
+    if _cfg.exists():
+        return _json.loads(_cfg.read_text())["feature_cols"]
+    return [
+        "seasonal_strength",
+        "hurst",
+        "amplitude_dispersion",
+        "l_skewness",
+    ]
+
+
+# Friendly display names for the loading arrows in the biplot. All 13 candidates
+# are listed so the biplot is always readable regardless of which features are active.
 FEATURE_LABELS = {
+    "acf1": "ACF₁",
+    "trend_strength": "Trend\nstrength",
     "seasonal_strength": "Seasonal\nstrength",
+    "spectral_entropy": "Spectral\nentropy",
+    "boxcox_lambda": "Box-Cox λ",
+    "kurtosis": "Kurtosis",
     "hurst": "Hurst",
+    "perm_entropy": "Perm.\nentropy",
     "amplitude_dispersion": "Amplitude\ndispersion",
+    "phase_dispersion": "Phase\ndispersion",
+    "asymmetry": "Asymmetry",
     "l_skewness": "L-skewness",
+    "zero_proportion": "Zero\nproportion",
 }
 
 # Column order for the output CSV (all 13 candidates + exog_r2_gain + domain).
@@ -127,129 +141,8 @@ def _compute_features_segmented(
 
 
 # ---------------------------------------------------------------------------
-# PCA
-# ---------------------------------------------------------------------------
-
-
-def _run_pca(
-    features_df: pd.DataFrame,
-) -> tuple[pd.DataFrame, pd.DataFrame, np.ndarray]:
-    """Standardise and run PCA.
-
-    Returns
-    -------
-    scores_df    DataFrame(index=case_id, columns=[PC1, PC2])
-    loadings_df  DataFrame(index=feature, columns=[PC1, PC2])
-    ev_ratio     explained variance ratios for PC1, PC2
-    """
-    X = StandardScaler().fit_transform(features_df[FEATURE_COLS].to_numpy())
-    pca = PCA(n_components=2)
-    scores = pca.fit_transform(X)
-    scores_df = pd.DataFrame(scores, index=features_df.index, columns=["PC1", "PC2"])
-    loadings_df = pd.DataFrame(
-        pca.components_.T,
-        index=FEATURE_COLS,
-        columns=["PC1", "PC2"],
-    )
-    return scores_df, loadings_df, pca.explained_variance_ratio_
-
-
-# ---------------------------------------------------------------------------
 # Visualisation
 # ---------------------------------------------------------------------------
-
-
-def _plot_biplot(
-    scores: pd.DataFrame,
-    loadings: pd.DataFrame,
-    ev_ratio: np.ndarray,
-    domains: dict[str, str],
-    out: Path,
-) -> None:
-    """Single-panel biplot: PC1/PC2 axes, uniform marker size."""
-    fig, ax = plt.subplots(figsize=(10, 7.5))
-
-    unique_domains = sorted(set(domains.values()))
-    palette = plt.cm.tab10.colors
-    domain_colour = {d: palette[i % len(palette)] for i, d in enumerate(unique_domains)}
-
-    for case_id, row in scores.iterrows():
-        colour = domain_colour.get(domains.get(case_id, ""), "#888")
-        ax.scatter(
-            row["PC1"],
-            row["PC2"],
-            color=colour,
-            s=90,
-            zorder=3,
-            edgecolors="white",
-            linewidths=0.5,
-        )
-        ax.text(row["PC1"] + 0.05, row["PC2"] + 0.05, case_id, fontsize=7.5, color=colour, zorder=4)
-
-    # Scale loading arrows to ~80 % of PC1/PC2 score spread
-    load_sub = loadings[["PC1", "PC2"]]
-    score_range = max(scores[["PC1", "PC2"]].abs().max().max(), 1e-9)
-    loading_max = max(load_sub.abs().max().max(), 1e-9)
-    arrow_scale = 0.8 * score_range / loading_max
-
-    for feat, row in load_sub.iterrows():
-        l1, l2 = row["PC1"], row["PC2"]
-        ax.annotate(
-            "",
-            xy=(l1 * arrow_scale, l2 * arrow_scale),
-            xytext=(0, 0),
-            arrowprops={"arrowstyle": "->", "color": "#333", "lw": 1.3},
-            zorder=2,
-        )
-        label = FEATURE_LABELS.get(feat, feat)
-        ax.text(
-            l1 * arrow_scale * 1.10,
-            l2 * arrow_scale * 1.10,
-            label,
-            fontsize=8.5,
-            color="#222",
-            ha="center",
-            va="center",
-            zorder=5,
-        )
-
-    ax.axhline(0, color="#ccc", linewidth=0.7, zorder=1)
-    ax.axvline(0, color="#ccc", linewidth=0.7, zorder=1)
-
-    ax.set_xlabel(f"PC1  ({ev_ratio[0]:.1%} variance explained)", fontsize=10)
-    ax.set_ylabel(f"PC2  ({ev_ratio[1]:.1%} variance explained)", fontsize=10)
-    ax.set_title(
-        f"Morphological feature space — PCA biplot  ·  {ev_ratio[:2].sum():.1%} variance explained (2 PCs)\n"
-        f"Water benchmark cases  ·  {len(FEATURE_COLS)}-feature vector",
-        fontsize=10,
-    )
-
-    # Domain colour legend — outside, bottom, 2 rows × 4 columns
-    colour_handles = [plt.scatter([], [], color=c, s=90, label=d) for d, c in domain_colour.items()]
-    fig.legend(
-        handles=colour_handles,
-        title="Domain",
-        fontsize=8,
-        title_fontsize=8,
-        loc="lower center",
-        bbox_to_anchor=(0.5, 0.0),
-        ncols=4,
-        frameon=False,
-    )
-
-    fig.subplots_adjust(bottom=0.15, right=0.95)
-
-    ax.grid(True, alpha=0.18)
-    ax.set_aspect("equal", "box")
-    xlo, xhi = ax.get_xlim()
-    ax.set_xlim(-max(abs(xlo), abs(xhi)), max(abs(xlo), abs(xhi)))
-    ylo, yhi = ax.get_ylim()
-    ax.set_ylim(-max(abs(ylo), abs(yhi)), max(abs(ylo), abs(yhi)))
-
-    out.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out, dpi=200, bbox_inches="tight")
-    plt.close(fig)
-    print(f"Biplot saved → {out.relative_to(REPO_ROOT)}")
 
 
 def _plot_exog_bar(
@@ -314,9 +207,6 @@ def main() -> int:
     p = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    p.add_argument(
-        "--no-plot", action="store_true", help="Skip PCA and biplot; only write the CSV."
-    )
     args = p.parse_args()
 
     cases = discover_cases()
@@ -346,9 +236,6 @@ def main() -> int:
         exog_gains[case_id] = gain
         records[case_id] = feats
         domains[case_id] = case.domain
-        print(
-            "  ".join(f"{k}={feats[k]:+.3f}" for k in FEATURE_COLS) + f"  exog_r2_gain={gain:+.3f}"
-        )
 
     if not records:
         print("No cases with processed parquet found — nothing to do.")
@@ -365,20 +252,11 @@ def main() -> int:
     features_df.to_csv(csv_path)
     print(f"\nFeatures saved → {csv_path.relative_to(REPO_ROOT)}")
 
-    if not args.no_plot:
-        scores_df, loadings_df, ev_ratio = _run_pca(features_df[FEATURE_COLS])
-        _plot_biplot(
-            scores_df,
-            loadings_df,
-            ev_ratio,
-            domains,
-            out=FIG_DIR / "pca_biplot.png",
-        )
-        _plot_exog_bar(
-            features_df["exog_r2_gain"],
-            domains,
-            out=FIG_DIR / "exog_r2_gain.png",
-        )
+    _plot_exog_bar(
+        features_df["exog_r2_gain"],
+        domains,
+        out=FIG_DIR / "exog_r2_gain.png",
+    )
 
     return 0
 

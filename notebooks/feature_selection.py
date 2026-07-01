@@ -1,12 +1,13 @@
 import marimo
 
-__generated_with = "0.23.9"
+__generated_with = "0.23.11"
 app = marimo.App(width="medium")
 
 
 @app.cell
 def _():
     import marimo as mo
+
     return (mo,)
 
 
@@ -14,6 +15,7 @@ def _():
 def _():
     import math
     import sys
+    import os
     from pathlib import Path
 
     import numpy as np
@@ -29,40 +31,53 @@ def _():
 
     REPO_ROOT = Path(__file__).resolve().parents[1]
     sys.path.insert(0, str(REPO_ROOT / "src"))
+
+    from tsforecastbench.data.registry import discover_cases, get_case
+    from tsforecastbench.morphology import features as F
+
     return (
-        REPO_ROOT, Path, go, linkage, dendrogram,
-        math, matplotlib, np, pd, plt, px,
-        PCA, StandardScaler, sys,
+        F,
+        PCA,
+        REPO_ROOT,
+        StandardScaler,
+        dendrogram,
+        discover_cases,
+        get_case,
+        go,
+        linkage,
+        np,
+        os,
+        pd,
+        plt,
+        px,
     )
 
 
 @app.cell
 def _(mo):
-    mo.md(
-        r"""
-        # Morphological Feature Selection
+    mo.md(r"""
+    # Morphological Feature Selection
 
-        The morphological taxonomy uses a feature vector to place each water-domain
-        time series in a latent feature space, then visualises the result via PCA.
+    The morphological taxonomy uses a feature vector to place each water-domain
+    time series in a latent feature space, then visualises the result via PCA.
 
-        **The selection problem.** We have 13 candidate features (6 original + 7 extended
-        from domain analysis). With only 12 benchmark series, PCA is reliable only when
-        features are genuinely uncorrelated — correlated features inflate apparent dimensions
-        without adding information. The usual rule of thumb is N/p ≥ 3, so with N = 12
-        we should target **4–6 features** with pairwise |r| < 0.65.
+    **The selection problem.** We have 13 candidate features (6 original + 7 extended
+    from domain analysis). With only 12 benchmark series, PCA is reliable only when
+    features are genuinely uncorrelated — correlated features inflate apparent dimensions
+    without adding information. The usual rule of thumb is N/p ≥ 3, so with N = 12
+    we should target **4–6 features** with pairwise |r| < 0.65.
 
-        This notebook:
-        1. Shows the full candidate feature matrix
-        2. Identifies redundant feature groups via correlation and clustering
-        3. Analyses which features vary meaningfully across series
-        4. Lets you interactively pick the final set and preview the PCA biplot
-        """
-    )
+    This notebook:
+    1. Shows the full candidate feature matrix
+    2. Identifies redundant feature groups via correlation and clustering
+    3. Analyses which features vary meaningfully across series
+    4. Lets you interactively pick the final set and preview the PCA biplot
+    """)
     return
 
 
 @app.cell
-def _(REPO_ROOT, mo, np, pd):
+def _(REPO_ROOT, discover_cases, mo, pd):
     _CSV = REPO_ROOT / "results" / "morphology_features.csv"
 
     ALL_FEATURE_COLS = [
@@ -95,7 +110,6 @@ def _(REPO_ROOT, mo, np, pd):
         _source = "precomputed CSV"
     else:
         # Compute live — slow but self-contained
-        from tsforecastbench.data.registry import discover_cases
         from tsforecastbench.morphology.features import compute_features_all
 
         _cases = discover_cases()
@@ -122,7 +136,7 @@ def _(REPO_ROOT, mo, np, pd):
 
 
 @app.cell
-def _(ALL_FEATURE_COLS, FEATURE_LABELS, features_df, mo, pd):
+def _(ALL_FEATURE_COLS, FEATURE_LABELS, features_df, mo):
     _display = features_df[ALL_FEATURE_COLS].copy()
     _display.columns = [FEATURE_LABELS[c] for c in ALL_FEATURE_COLS]
     _display = _display.round(3).reset_index()
@@ -165,39 +179,20 @@ def _(ALL_FEATURE_COLS, FEATURE_LABELS, features_df, mo, np, px):
         mo.md("## Correlation matrix\n\nHigh |r| (dark red or blue) indicates redundant feature pairs. Target: no selected pair above |r| ≈ 0.65."),
         mo.ui.plotly(fig_corr),
     ])
-    return (fig_corr,)
-
-
-@app.cell
-def _(ALL_FEATURE_COLS, FEATURE_LABELS, features_df, mo, np, pd):
-    _X = features_df[ALL_FEATURE_COLS].to_numpy()
-    _corr = np.corrcoef(_X, rowvar=False)
-    _labels = [FEATURE_LABELS[c] for c in ALL_FEATURE_COLS]
-
-    _THRESHOLD = 0.65
-    _pairs = []
-    for _i in range(len(ALL_FEATURE_COLS)):
-        for _j in range(_i + 1, len(ALL_FEATURE_COLS)):
-            _r = _corr[_i, _j]
-            if abs(_r) >= _THRESHOLD:
-                _pairs.append({
-                    "Feature A": _labels[_i],
-                    "Feature B": _labels[_j],
-                    "r": round(float(_r), 3),
-                    "|r|": round(abs(float(_r)), 3),
-                })
-
-    _pairs_df = pd.DataFrame(_pairs).sort_values("|r|", ascending=False) if _pairs else pd.DataFrame(columns=["Feature A", "Feature B", "r", "|r|"])
-
-    mo.vstack([
-        mo.md(f"## Redundant pairs  (|r| ≥ {_THRESHOLD})\n\nFor each redundant pair, keep the feature that is more physically interpretable or varies more across series."),
-        mo.ui.table(_pairs_df, selection=None) if len(_pairs_df) else mo.md("_No pairs above the threshold — all features are sufficiently independent._"),
-    ])
     return
 
 
 @app.cell
-def _(ALL_FEATURE_COLS, FEATURE_LABELS, features_df, mo, np, plt, linkage, dendrogram):
+def _(
+    ALL_FEATURE_COLS,
+    FEATURE_LABELS,
+    dendrogram,
+    features_df,
+    linkage,
+    mo,
+    np,
+    plt,
+):
     _X = features_df[ALL_FEATURE_COLS].to_numpy()
     _corr = np.corrcoef(_X, rowvar=False)
     _dist = 1.0 - np.abs(_corr)
@@ -206,17 +201,19 @@ def _(ALL_FEATURE_COLS, FEATURE_LABELS, features_df, mo, np, plt, linkage, dendr
     _Z = linkage(_condensed, method="ward")
     _labels = [FEATURE_LABELS[c] for c in ALL_FEATURE_COLS]
 
+    dendro_threshold = 0.5
+
     fig_dendro, ax_dendro = plt.subplots(figsize=(9, 3.5))
     dendrogram(
         _Z,
         labels=_labels,
         ax=ax_dendro,
-        color_threshold=0.30,
+        color_threshold=dendro_threshold,
         above_threshold_color="#aaa",
         leaf_rotation=40,
         leaf_font_size=9,
     )
-    ax_dendro.axhline(0.30, color="#e63946", linewidth=1, linestyle="--", label="grouping threshold (1 − |r| = 0.30, i.e. |r| ≥ 0.70)")
+    ax_dendro.axhline(dendro_threshold, color="#e63946", linewidth=1, linestyle="--", label=f"grouping threshold (1 − |r| = {dendro_threshold}, i.e. |r| ≥ {round(1- dendro_threshold, 2)})")
     ax_dendro.set_ylabel("1 − |r|  (distance)", fontsize=9)
     ax_dendro.set_title("Hierarchical clustering of candidate features", fontsize=10)
     ax_dendro.legend(fontsize=8, frameon=False)
@@ -270,70 +267,13 @@ def _(ALL_FEATURE_COLS, FEATURE_LABELS, features_df, mo, np, pd, px):
         ),
         mo.ui.plotly(fig_var),
     ])
-
-
-@app.cell
-def _(mo):
-    mo.md(
-        r"""
-        ## Selection rationale
-
-        Based on the correlation matrix and clustering above, the 13 candidates fall into
-        these groups:
-
-        **Predictability / complexity group** — spectral entropy, permutation entropy, Hurst exponent.
-        All three measure orderliness or long-range structure; permutation entropy and Hurst cluster tightly (|r| ≥ 0.70).
-        Hurst is the strongest representative: it captures *long-range* dependence directly and
-        is physically interpretable across all water-domain series. Spectral entropy and
-        permutation entropy are dropped as redundant.
-
-        **Seasonality group** — seasonal strength, amplitude dispersion, phase dispersion.
-        Seasonal strength measures whether a periodic pattern *exists*; phase dispersion measures
-        whether its *timing* drifts across years (low = phase-locked). These are orthogonal for
-        seasonal series and together span the seasonality axis more completely than either alone.
-        Amplitude dispersion is dropped as the most collinear with seasonal strength.
-        Keep **seasonal strength** and **phase dispersion**.
-
-        **Distributional shape group** — kurtosis, L-skewness, Box-Cox λ.
-        In the PCA biplot, the kurtosis loading vector aligns closely with L-skewness and
-        adding it reduces explained variance from 82% to 72% — a clear sign of redundancy,
-        not complementarity. L-skewness is retained as the more robust and interpretable
-        representative. Box-Cox λ is dropped.
-
-        **Flow-specific feature** — zero proportion.
-        Near-zero for all non-flow series (temperature, waves, demand), making it a degenerate
-        dimension in a cross-domain PCA. Dropped.
-
-        **Temporal dynamics** — ACF₁, trend strength, asymmetry index.
-        ACF₁ is largely redundant with Hurst (both capture temporal dependence) and has low
-        discriminating power across this dataset. Trend strength is retained — it separates
-        the wave and surge series from the discharge series and is uncorrelated with Hurst.
-        Asymmetry index is dropped for parsimony.
-
-        ### Selected features (4, N/p = 3.0)
-
-        `seasonal_strength`, `hurst`, `amplitude_dispersion`, `l_skewness`
-
-        Together these cover: periodicity, seasonal timing reliability, long-range memory,
-        monotonic drift, and distributional asymmetry — one representative per distinct
-        physical axis, with no confirmed redundancy in the PCA loading space.
-
-        *Note on phase dispersion:* this is the circular spread of the dominant cycle's
-        phase across cycles (`1 - R`), so **low** values mean tightly phase-locked
-        seasonality and **high** values mean drifting timing. For non-seasonal series
-        (waves, demand, surge), the seasonal component is near-zero noise, so phase
-        dispersion reflects noise peak timing rather than real structure. This is worth
-        acknowledging in the paper, though it does not change the feature selection since
-        those series are already separated by seasonal strength.
-        """
-    )
     return
 
 
 @app.cell
 def _(ALL_FEATURE_COLS, FEATURE_LABELS, mo):
     label_to_key = {FEATURE_LABELS[c]: c for c in ALL_FEATURE_COLS}
-    _default_keys = ["seasonal_strength", "hurst", "amplitude_dispersion", "l_skewness"]
+    _default_keys = ["spectral_entropy", "hurst", "phase_dispersion", "l_skewness"]
     _default_labels = [FEATURE_LABELS[k] for k in _default_keys]
 
     feature_selector = mo.ui.multiselect(
@@ -347,7 +287,7 @@ def _(ALL_FEATURE_COLS, FEATURE_LABELS, mo):
         mo.md("Choose which features to include. The PCA biplot below updates immediately."),
         feature_selector,
     ])
-    return (label_to_key, feature_selector)
+    return feature_selector, label_to_key
 
 
 @app.cell
@@ -374,10 +314,21 @@ def _(feature_selector, mo):
             kind="success",
         )
     _np_out
+    return
 
 
 @app.cell
-def _(PCA, StandardScaler, label_to_key, domains, feature_selector, features_df, go, mo, np):
+def _(
+    PCA,
+    StandardScaler,
+    domains,
+    feature_selector,
+    features_df,
+    go,
+    label_to_key,
+    mo,
+    np,
+):
     _selected_labels = feature_selector.value
     _selected_keys = [label_to_key[lbl] for lbl in _selected_labels]
 
@@ -457,7 +408,16 @@ def _(PCA, StandardScaler, label_to_key, domains, feature_selector, features_df,
 
 
 @app.cell
-def _(PCA, StandardScaler, label_to_key, feature_selector, features_df, mo, np, pd):
+def _(
+    PCA,
+    StandardScaler,
+    feature_selector,
+    features_df,
+    label_to_key,
+    mo,
+    np,
+    pd,
+):
     _selected_labels = feature_selector.value
     _selected_keys = [label_to_key[lbl] for lbl in _selected_labels]
 
@@ -486,32 +446,214 @@ def _(PCA, StandardScaler, label_to_key, feature_selector, features_df, mo, np, 
 
 
 @app.cell
-def _(feature_selector, mo):
+def _(feature_selector):
     _selected = feature_selector.value
     _n = len(_selected)
     _ratio = 12 / _n if _n > 0 else float("inf")
-    _feat_list = "\n".join(f"- {f}" for f in _selected)
+    return
 
-    mo.md(
-        f"""
-        ## Conclusion
 
-        **Selected features ({_n}, N/p = {_ratio:.1f}):**
-
-        {_feat_list}
-
-        Update the multiselect above to explore alternatives. Once satisfied, set
-        `FEATURE_COLS` in `scripts/compute_morphology.py` to the chosen keys and
-        re-run that script to regenerate the final taxonomy biplot.
-
-        **Key takeaways from the analysis above:**
-        - Permutation entropy clusters tightly with Hurst (|r| ≥ 0.70) and is dropped as redundant; spectral entropy measures the same underlying axis and is also dropped.
-        - Kurtosis loads nearly parallel to L-skewness in the biplot; adding it reduces explained variance from 82% to 72%. L-skewness is retained as the more robust representative.
-        - ACF₁ is redundant with Hurst for this dataset and has low discriminating power.
-        - Zero proportion is degenerate for non-flow series and excluded from cross-domain PCA.
-        - Phase consistency adds an orthogonal seasonal timing axis beyond seasonal strength, but its values for non-seasonal series are noise-driven — worth noting in the paper.
-        """
+@app.cell
+def _(ALL_FEATURE_COLS, mo):
+    _EXPLAIN = {
+        "acf1":               "Lag-1 autocorrelation — persistence from one step to the next.",
+        "trend_strength":     "Variance share of the polynomial trend. High → strong deterministic drift.",
+        "seasonal_strength":  "De-trended variance share of the seasonal fit. High → dominant periodicity.",
+        "spectral_entropy":   "Spectrum flatness [0,1]. Low → energy in a few frequencies; high → broadband noise.",
+        "boxcox_lambda":      "Box-Cox power that best symmetrises the distribution.",
+        "kurtosis":           "Excess kurtosis — tail heaviness. High → spiky, extreme-event-prone.",
+        "hurst":              "Hurst exponent. ≈0.5 → random-walk; >0.5 → long-range persistence / slow wander.",
+        "perm_entropy":       "Permutation entropy [0,1]. Low → structured/predictable; high → complex.",
+        "amplitude_dispersion": "Cycle-to-cycle amplitude variability [0,1). 0 → identical swing each cycle.",
+        "phase_dispersion":   "Drift of dominant-cycle timing [0,1]. 0 → phase-locked; 1 → timing wanders.",
+        "asymmetry":          "Rise/fall asymmetry (−1,1). Positive → faster rises (flashy hydrograph).",
+        "l_skewness":         "Robust (L-moment) skewness. 0 → symmetric; positive → heavy upper tail.",
+        "zero_proportion":    "Fraction of near-zero values. High → intermittent / zero-inflated regime.",
+    }
+    _fit = {"trend_strength", "seasonal_strength", "amplitude_dispersion", "phase_dispersion"}
+    _rows = "\n".join(
+        f"| `{k}` | {'fit' if k in _fit else 'direct'} | {_EXPLAIN[k]} |"
+        for k in ALL_FEATURE_COLS
     )
+    _table = "| Feature | Source | What it measures |\n|---|---|---|\n" + _rows
+    mo.vstack([
+        mo.md(
+            r"""
+            ---
+
+            ## Feature reference
+
+            All 13 candidates derive from a single structural fit
+            $y(t) = T(t) + S(t) + e(t)$, where $T$ is a polynomial trend
+            (AIC-selected degree 1–3), $S = \sum_p S_p$ sums Fourier blocks per detected
+            period ($K = 3$ harmonics each), and $e$ is the residual.
+            **Source — fit**: read directly off the decomposition;
+            **direct**: computed from the raw series.
+
+            **Strength features** (variance ratios):
+            $$\text{trend\_strength} = \max\!\Big(0,\;1 - \tfrac{\operatorname{Var}(e)}{\operatorname{Var}(T+e)}\Big),
+            \qquad
+            \text{seasonal\_strength} = \max\!\Big(0,\;1 - \tfrac{\operatorname{Var}(e)}{\operatorname{Var}(S+e)}\Big)$$
+
+            **Dispersion features** — per dominant cycle $k$, project onto the fundamental sinusoid
+            to get amplitude $A_k$ and phase $\varphi_k$:
+            $$\text{amplitude\_dispersion} = \frac{c}{1+c},\quad
+            c = \frac{\operatorname{std}(A_k)}{\operatorname{mean}(A_k)}; \qquad
+            \text{phase\_dispersion} = 1 - \big|\operatorname{mean}(e^{i\varphi_k})\big|$$
+            """
+        ),
+        mo.md(_table),
+    ])
+    return
+
+
+@app.cell
+def _(discover_cases, mo, os):
+    _cases = list(discover_cases())
+    _default = os.environ.get("EDA_CASE")
+    _init = _default if _default in _cases else _cases[0]
+    case_picker = mo.ui.dropdown(_cases, value=_init, label="Case")
+    mo.vstack([
+        mo.md(
+            "---\n\n"
+            "## Case explorer\n\n"
+            "Pick any benchmark case to see its structural decomposition "
+            "and where it sits in the morphological feature space."
+        ),
+        case_picker,
+    ])
+    return (case_picker,)
+
+
+@app.cell
+def _(F, case_picker, get_case, mo, np):
+    mo.stop(not case_picker.value, mo.md("_Select a case above._"))
+    case = get_case(case_picker.value)
+    _df_exp = case.load().dropna(subset=["y"]).reset_index(drop=True)
+    y = _df_exp["y"].to_numpy().astype(float)
+    t = np.arange(len(y), dtype=float)
+    d = F._decompose(y)
+    if d.periods:
+        dom_p = d.periods[d.dom_idx]
+        _win_len = int(min(len(y), max(dom_p * 8, 200)))
+    else:
+        dom_p = None
+        _win_len = int(min(len(y), 1000))
+    WIN = slice(0, _win_len)
+    return WIN, case, d, dom_p, t, y
+
+
+@app.cell
+def _(WIN, case, d, mo, plt, t, y):
+    _fig, _ax = plt.subplots(4, 1, figsize=(10, 8.5), sharex=True)
+    _ax[0].plot(t[WIN], y[WIN], lw=0.8, color="steelblue")
+    _ax[0].set_ylabel("y")
+    _ax[0].set_title(f"{case.id} — structural decomposition  y = T + S + e")
+
+    _ax[1].plot(t[WIN], d.trend[WIN], lw=1.6, color="darkred")
+    _ax[1].set_ylabel("trend T")
+
+    _seasonal = d.seasonal_total
+    if hasattr(_seasonal, "__len__"):
+        _ax[2].plot(t[WIN], _seasonal[WIN], lw=0.9, color="seagreen")
+    _ax[2].set_ylabel("seasonal S")
+
+    _ax[3].plot(t[WIN], d.resid[WIN], lw=0.6, color="gray")
+    _ax[3].axhline(0, color="k", lw=0.4)
+    _ax[3].set_ylabel("residual e")
+    _ax[3].set_xlabel(f"step ({case.freq})")
+
+    for _a in _ax:
+        _a.grid(True, alpha=0.3)
+    plt.tight_layout()
+    mo.mpl.interactive(_fig)
+    return
+
+
+@app.cell
+def _(F, d, dom_p, mo, np, plt):
+    if dom_p is None:
+        _cyc_out = mo.md(
+            "_No dominant cycle detected — `amplitude_dispersion` and `phase_dispersion` fall back to the 1.0 sentinel._"
+        )
+    else:
+        _g = d.resid + d.seasonal_arrays[d.dom_idx]
+        _res = F._cycle_amplitude_phase(_g, dom_p)
+        if _res is None:
+            _cyc_out = mo.md("_Fewer than two complete cycles — dispersion features use the 1.0 sentinel._")
+        else:
+            _amp, _phase = _res
+            _n_cyc = len(_g) // dom_p
+            _chunks = _g[: _n_cyc * dom_p].reshape(_n_cyc, dom_p)
+            _cv = _amp.std(ddof=1) / _amp.mean()
+            _R = np.abs(np.exp(1j * _phase).mean())
+
+            _fig, _ax = plt.subplots(1, 2, figsize=(10, 3.6))
+            for _c in _chunks[:: max(1, _n_cyc // 60)]:
+                _ax[0].plot(np.arange(dom_p), _c, lw=0.4, color="steelblue", alpha=0.25)
+            _ax[0].plot(np.arange(dom_p), _chunks.mean(axis=0), lw=2.0, color="crimson", label="mean cycle")
+            _ax[0].set_title(f"Dominant cycle overlaid  (p = {dom_p} steps)")
+            _ax[0].set_xlabel("phase within cycle (steps)")
+            _ax[0].legend(fontsize=8)
+            _ax[0].grid(True, alpha=0.3)
+
+            _ax[1].plot(_amp, lw=1.0, color="darkorange")
+            _ax[1].set_title(
+                f"Per-cycle amplitude  ·  "
+                f"amplitude_dispersion = {_cv / (1 + _cv):.3f}  ·  "
+                f"phase_dispersion = {float(np.clip(1 - _R, 0, 1)):.3f}"
+            )
+            _ax[1].set_xlabel("cycle index")
+            _ax[1].axhline(_amp.mean(), color="gray", ls="--", lw=1.0)
+            _ax[1].grid(True, alpha=0.3)
+            plt.tight_layout()
+            _cyc_out = mo.mpl.interactive(_fig)
+    _cyc_out
+    return
+
+
+@app.cell
+def _(ALL_FEATURE_COLS, F, case, features_df, mo, np, pd, plt, y):
+    _feats = F.compute_features_all(y)
+    _ncol = 4
+    _nrow = int(np.ceil(len(ALL_FEATURE_COLS) / _ncol))
+    _fig, _axes = plt.subplots(_nrow, _ncol, figsize=(10, 2.2 * _nrow))
+    _axes = np.atleast_1d(_axes).ravel()
+
+    for _i, _name in enumerate(ALL_FEATURE_COLS):
+        _ax = _axes[_i]
+        _vals = (
+            pd.to_numeric(features_df[_name], errors="coerce").dropna().to_numpy()
+            if _name in features_df.columns else np.array([])
+        )
+        if _vals.size:
+            _ax.boxplot(
+                _vals, vert=False, widths=0.6,
+                patch_artist=True,
+                boxprops=dict(facecolor="#dfe7ef", edgecolor="slategray"),
+                medianprops=dict(color="slategray"),
+                flierprops=dict(marker="o", markersize=3, alpha=0.4),
+            )
+            _ax.scatter(_vals, np.ones_like(_vals), color="slategray", s=10, alpha=0.5, zorder=3)
+        _cur = _feats[_name]
+        _ax.axvline(_cur, color="crimson", lw=1.8, zorder=4)
+        _ax.set_title(f"{_name}\n{case.id} = {_cur:+.3g}", fontsize=8)
+        _ax.set_yticks([])
+        _ax.grid(True, axis="x", alpha=0.3)
+
+    for _j in range(len(ALL_FEATURE_COLS), len(_axes)):
+        _axes[_j].axis("off")
+
+    plt.tight_layout()
+    mo.vstack([
+        mo.md(
+            "### Feature profile — where this case sits\n\n"
+            "Red line = this case. Box = spread across all benchmark series. "
+            "Features recomputed live from the full series."
+        ),
+        mo.mpl.interactive(_fig),
+    ])
+    return
 
 
 if __name__ == "__main__":

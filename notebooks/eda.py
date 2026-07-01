@@ -245,6 +245,45 @@ def _(case, mo, plot_acf, plt, y):
 
 
 @app.cell
+def _(case, mo, np, plt, y):
+    from scipy.signal import periodogram as _periodogram
+    from tsforecastbench.morphology import features as _F
+
+    _y_arr = y.dropna().to_numpy(dtype=float)
+    _y_det, _ = _F._poly_detrend(_y_arr)
+    _freq, _psd = _periodogram(_y_det)
+    _psd = _psd[1:]
+    _freq = _freq[1:]
+    _med = np.median(_psd)
+    _d = _F._decompose(_y_arr)
+
+    _fig, _ax = plt.subplots(figsize=(9, 3.5))
+    _per = 1.0 / _freq
+    _ax.semilogx(_per, _psd, lw=0.7, color="slategray", label="periodogram (detrended)")
+    _ax.axhline(
+        _F._PEAK_THRESHOLD * _med, color="orange", ls="--", lw=1.0,
+        label=f"height threshold (×{_F._PEAK_THRESHOLD} median)",
+    )
+    for _p in _d.periods:
+        _ax.axvline(_p, color="crimson", ls=":", lw=1.2)
+        _ax.text(
+            _p, _ax.get_ylim()[1] * 0.6, f"{_p}", rotation=90,
+            color="crimson", fontsize=8, ha="right", va="top",
+        )
+    _ax.set_xlabel(f"period ({case.freq}, log scale)")
+    _ax.set_ylabel("power")
+    _ax.set_title(
+        f"Periodogram — detrended {case.target}  ·  "
+        f"detected periods (steps): {_d.periods or 'none'}"
+    )
+    _ax.legend(loc="upper right", fontsize=8)
+    _ax.grid(True, alpha=0.3, which="both")
+    plt.tight_layout()
+    mo.mpl.interactive(_fig)
+    return
+
+
+@app.cell
 def _(case, df, go, make_subplots, mo, pd):
     exo_cols = list(dict.fromkeys([*case.exogenous, *case.exogenous_known_future]))
 
