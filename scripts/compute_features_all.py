@@ -52,8 +52,9 @@ ALL_FEATURE_COLS = [
     "asymmetry", "l_skewness", "zero_proportion",
 ]
 
-# The 5 features already computed gap-aware by compute_morphology.py.
-SELECTED_COLS = ["seasonal_strength", "hurst", "trend_strength", "phase_dispersion", "l_skewness"]
+# The features already computed gap-aware by compute_morphology.py (must match
+# its FEATURE_COLS).
+SELECTED_COLS = ["seasonal_strength", "hurst", "amplitude_dispersion", "l_skewness"]
 REMAINING_COLS = [c for c in ALL_FEATURE_COLS if c not in SELECTED_COLS]
 
 
@@ -65,8 +66,8 @@ def main() -> int:
     p.add_argument(
         "--remaining-only", action="store_true",
         help=(
-            "Load the 5 gap-aware features from morphology_features.csv and "
-            "compute only the remaining 8. Faster when the selected features "
+            "Load the gap-aware features from morphology_features.csv and "
+            "compute only the remaining ones. Faster when the selected features "
             "are already up to date."
         ),
     )

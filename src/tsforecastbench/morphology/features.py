@@ -1,8 +1,8 @@
 """Morphological feature vector for time series characterisation.
 
-The working 5-feature vector (seasonal_strength, hurst, trend_strength,
-phase_dispersion, l_skewness) is assembled by ``compute_morphology.py``
-from the full 13-candidate set returned by ``compute_features_all``.
+The working 4-feature vector (seasonal_strength, hurst, amplitude_dispersion,
+l_skewness) is assembled by ``compute_morphology.py`` from the full 13-candidate
+set returned by ``compute_features_all``.
 All functions are stateless and independently importable.
 
 Trend and seasonal features come from a single, explainable least-squares

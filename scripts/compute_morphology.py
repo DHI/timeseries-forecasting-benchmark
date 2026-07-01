@@ -1,9 +1,9 @@
-"""Compute the 5-feature morphological vector for all benchmark cases and
+"""Compute the 4-feature morphological vector for all benchmark cases and
 produce a PCA biplot.
 
 Outputs
 -------
-results/morphology_features.csv        raw feature table (case × 5 features)
+results/morphology_features.csv        raw feature table (case × 4 features)
 docs/figures/morphology/pca_biplot.png PCA biplot — 2-component PCA (PC1/PC2)
 
 Usage
@@ -47,12 +47,12 @@ FEATURE_COLS = [
     "l_skewness",
 ]
 
-# Friendly display names for the loading arrows in the biplot.
+# Friendly display names for the loading arrows in the biplot. Keys must match
+# FEATURE_COLS.
 FEATURE_LABELS = {
     "seasonal_strength": "seasonal",
     "hurst": "Hurst",
-    "trend_strength": "trend",
-    "phase_dispersion": "phase\ndispersion",
+    "amplitude_dispersion": "amplitude\ndispersion",
     "l_skewness": "L-skewness",
 }
 
@@ -294,7 +294,7 @@ def _plot_biplot(
     ax.set_ylabel(f"PC2  ({ev_ratio[1]:.1%} variance explained)", fontsize=10)
     ax.set_title(
         f"Morphological feature space — PCA biplot  ·  {ev_ratio[:2].sum():.1%} variance explained (2 PCs)\n"
-        f"Water benchmark cases  ·  {len(FEATURE_LABELS)}-feature vector",
+        f"Water benchmark cases  ·  {len(FEATURE_COLS)}-feature vector",
         fontsize=10,
     )
 

@@ -392,8 +392,8 @@ def _(mo):
     features. The four trend/seasonal ones come from the fit above; the other nine
     describe the series' **distribution shape, complexity, and memory** directly.
 
-    The working 5-feature taxonomy vector is `seasonal_strength`, `hurst`,
-    `trend_strength`, `phase_dispersion`, `l_skewness`.
+    The working 4-feature taxonomy vector is `seasonal_strength`, `hurst`,
+    `amplitude_dispersion`, `l_skewness`.
     """)
     return
 
