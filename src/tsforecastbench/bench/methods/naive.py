@@ -22,6 +22,23 @@ def _default_season_length(freq: str) -> int:
     return 24
 
 
+def _seasonal_periods(freq: str) -> list[int]:
+    """Natural multi-seasonal period set for a frequency, for MSTL-style decomposition.
+
+    Returns the dominant cycles (shortest first): e.g. hourly data has both a daily (24)
+    and weekly (168) cycle. Callers that fit a decomposition must still drop periods the
+    training series is too short to support (STL needs >=2 full cycles of each period).
+    """
+    f = freq.lower()
+    if f in {"1d", "d"}:
+        return [7, 365]
+    if f in {"1h", "h"}:
+        return [24, 168]
+    if f in {"15min", "15t"}:
+        return [96, 672]
+    return [_default_season_length(freq)]
+
+
 class MeanBaseline(Forecaster):
     name = "Mean"
 

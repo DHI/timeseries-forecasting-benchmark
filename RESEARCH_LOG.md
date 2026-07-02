@@ -8,6 +8,46 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-02 — Seasonal classical baselines: MSTL forecasters + seasonally-adjusted Theta (issue #46)
+
+Closes the "classical methods run non-seasonal by default" flaw from the method-suite audit
+below. Previously AutoARIMA/AutoETS/AutoTheta all ran with `season_length=1` and the pilot
+never overrode it, while the windowed-ML methods got calendar features and seasonal lags
+(168h etc.). So any "classical vs ML" cell was partly an artifact of deliberately
+de-seasonalized classical baselines rather than a genuine methodology comparison.
+
+**What was decided and why.** Native seasonal fitting is only tractable for small periods:
+seasonal ARIMA cost explodes with the period *m*, and AutoETS's seasonal state grows with
+*m*, so *m*=365 (daily) or *m*=96 (15-min) are impractical. Rather than switch
+AutoARIMA/AutoETS to seasonal on some cases and not others (which would make the same-named
+column behave differently across the matrix), we kept them as the **non-seasonal
+short-memory baselines** and added dedicated seasonal classical columns:
+
+- **MSTL-ETS** and **MSTL-ARIMA** (`classical.py`): statsforecast `MSTL` strips one or more
+  seasonal components with a fast STL decomposition, fits AutoETS (`model="ZZN"`) or
+  AutoARIMA on the seasonally-adjusted series, then re-seasonalizes. This handles large and
+  multiple periods (daily+weekly, weekly+yearly) uniformly and cheaply. Periods come from a
+  new `_seasonal_periods(freq)` helper (`naive.py`): daily `[7, 365]`, hourly `[24, 168]`,
+  15-min `[96, 672]`.
+- **Theta** is now seasonal by default. AutoTheta deseasonalizes with a cheap classical
+  decomposition (not a costly seasonal state), so wiring the case's period in is tractable
+  at any frequency and is standard practice (the M3/M4 seasonally-adjusted Theta).
+
+**Robustness / honest reporting.** STL needs ≥2 full cycles of each period, so MSTL filters
+its candidate periods to those the (truncated) training series supports. If *none* survive
+— only on pathologically short series; real cases always clear the smallest period's bar,
+and a daily case short of ~2 years simply drops the 365 component and runs on weekly-7 — the
+method **raises** rather than falling back to a bare non-seasonal trend forecaster. A silent
+fallback would have made MSTL-ETS/MSTL-ARIMA byte-identical to the AutoETS/AutoARIMA columns,
+i.e. a fake independent data point. Instead the eval loop records the cell as blank/NaN with
+an explanatory status — the honest outcome the audit argued for.
+
+**What it means going forward.** The classical-vs-ML comparison is now a genuine methodology
+contrast: non-seasonal ARIMA/ETS as short-memory baselines, versus seasonally-adjusted Theta
+and MSTL-seasonalized ARIMA/ETS as the seasonal classical family. Verified end-to-end on a
+synth pilot (hourly `waves_oregon`, daily `discharge_flashy_catskills`): all three new
+columns produce finite, distinct MASE, and the no-surviving-period guard raises cleanly.
+
 ## 2026-07-02 — Audit of the method suite (`bench/methods/`): flaws and gaps identified
 
 Did a full review of the method wrappers (`naive.py`, `classical.py`, `ml.py`, `dl.py`,

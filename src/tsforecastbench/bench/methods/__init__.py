@@ -4,6 +4,8 @@ from tsforecastbench.bench.methods.base import Forecaster
 from tsforecastbench.bench.methods.classical import (
     AutoARIMAForecaster,
     AutoETSForecaster,
+    MSTLAutoARIMAForecaster,
+    MSTLAutoETSForecaster,
     TBATSForecaster,
     ThetaForecaster,
 )
@@ -50,6 +52,8 @@ __all__ = [
     "LinearLagsExoForecaster",
     "LinearLagsForecaster",
     "MLPForecaster",
+    "MSTLAutoARIMAForecaster",
+    "MSTLAutoETSForecaster",
     "MeanBaseline",
     "NHITSForecaster",
     "PatchTSTForecaster",

@@ -42,7 +42,7 @@ If a 20-minute walkthrough first would help, Jesper can set one up.
 > built; see [`review_responses_pr2.md`](review_responses_pr2.md) A5.
 
 - Six cases implemented, five on real data, one (`surge_cuxhaven`) waiting on a manual GESLA archive download.
-- Nine methods running: four naive baselines (Mean, Persistence, SeasonalNaive, Climatology), two classical (AutoARIMA, AutoETS), three windowed ML (LinearLags = Ridge, LightGBM, MLP).
+- Methods running: four naive baselines (Mean, Persistence, SeasonalNaive, Climatology); classical (AutoARIMA and AutoETS as non-seasonal short-memory baselines, plus the seasonal classicals Theta, TBATS, and MSTL-ETS/MSTL-ARIMA — MSTL strips seasonality by decomposition before fitting a trend model); windowed ML (LinearLags = Ridge, LightGBM, CatBoost, MLP) with calendar/exogenous variants; and optional DL / foundation-model families.
 - Two output artefacts: the **cases × methods matrix** (MASE + skill vs persistence) and the **error-vs-lead-time curves** averaged over rolling origins.
 - Standard pipeline: long-format Parquet on disk, pandas in memory, fraction-or-calendar splits, NaN-masked metrics on gappy series.
 - CI runs on GitHub Actions; the repo is private under `DHI-Internal/timeseries-forecasting-benchmark`.

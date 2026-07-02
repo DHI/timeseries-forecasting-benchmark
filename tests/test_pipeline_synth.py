@@ -113,6 +113,20 @@ def test_dlinear_and_theta_run():
     assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
 
 
+def test_mstl_classicals_run():
+    """MSTL-ETS / MSTL-ARIMA fit a seasonal classical model and produce finite MASE."""
+    from tsforecastbench.bench.methods import (
+        MSTLAutoARIMAForecaster,
+        MSTLAutoETSForecaster,
+    )
+
+    res = run_case(get_case("discharge_flashy_catskills"),
+                   [MSTLAutoETSForecaster(), MSTLAutoARIMAForecaster()], prefer_synth=True)
+    assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
+    mase = res[res["metric"] == "MASE"]["value"]
+    assert mase.notna().all() and (mase > 0).all()
+
+
 def test_methods_package_imports_without_fm_deps():
     """The methods package (incl. the FM wrapper) must import without torch/chronos."""
     import tsforecastbench.bench.methods as m
