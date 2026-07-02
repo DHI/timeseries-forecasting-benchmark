@@ -8,6 +8,71 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-02 — Audit of the method suite (`bench/methods/`): flaws and gaps identified
+
+Did a full review of the method wrappers (`naive.py`, `classical.py`, `ml.py`, `dl.py`,
+`fm.py`, `nf_models.py`, `torchdl.py`) plus how the eval loops call them. Nothing here is
+fixed yet — this entry records what was found so the fixes can be prioritized deliberately.
+Highlights, roughly by severity:
+
+**Validity of cross-family conclusions**
+- Classical methods (AutoARIMA/AutoETS/AutoTheta) run non-seasonal (`season_length=1`)
+  by default and the pilot script never overrides it per case, while the ML methods get
+  calendar features and seasonal lags (168h etc.). The "classical vs ML" comparison is
+  therefore partly an artifact of deliberately de-seasonalized classicals. The cheap
+  remedy is an MSTL+Auto{ARIMA,ETS} method (statsforecast MSTL is fast and takes
+  multiple periods), and/or wiring `season_length` from case frequency where tractable.
+- Training budgets are asymmetric: statsforecast auto-selects model orders, while the
+  neural methods get fixed tiny budgets (500 steps in `nf_models.py`, 600 in
+  `torchdl.py`, no validation/early stopping). "DL underperforms" conclusions need this
+  caveat.
+- `MLPForecaster` feeds unscaled features (raw lags + dayofyear up to 366) to sklearn's
+  `MLPRegressor` with no `StandardScaler` — its scores likely measure missing
+  preprocessing rather than the architecture.
+- Chronos uses the predictive **median** as the point forecast, but the matrix scores
+  RMSE/MSE-based skill, for which the mean (which the pipeline returns and we discard)
+  is the optimal point. Slight systematic handicap on squared-error metrics.
+
+**Correctness / silent-failure issues**
+- `_complete_for_fit` is applied to the *full* frame (train+test) before slicing at the
+  origin, so linear interpolation across a gap spanning the origin, and mean-fill using
+  the full-series mean, leak test-period information into training history. Small in
+  magnitude but real, and it affects every method.
+- DLinear/N-HiTS/PatchTST silently fall back to persistence when the series is too
+  short to window, and report status "ok" under the method's name.
+- Fixed-horizon methods (DLinear, torch DL, neuralforecast) pad forecasts with the last
+  value when asked for a horizon longer than the trained one — relevant to
+  `run_leadtime_curve(max_horizon=...)`, where the padded tail would be scored as if the
+  model produced it.
+- The frequency-dispatch tables (`_default_season_length`, `_lags_for`,
+  `_date_features_for`, `_lookback_for`, `Climatology._key`) only know
+  {daily, hourly, 15-min, weekly} and fall back to silent generic defaults otherwise —
+  e.g. a 30-min case would get season_length 24 (a 12-hour "day", anti-phase seasonal
+  naive) and that same wrong season feeds the MASE denominator in the eval loop.
+- `Climatology` degenerates to the global mean for weekly data, and for hourly data keys
+  on hour-of-day only (no weekday) while 15-min data keys on weekday×hour — inconsistent.
+
+**API/design risks**
+- `predict(history=...)` is dead in every non-naive method: statsforecast, mlforecast,
+  neuralforecast, Chronos, DLinear, and torch DL all forecast from state captured at
+  `fit` time and ignore `history`. Correct today only because both eval loops refit per
+  origin; any future fit-once/predict-rolling usage would silently produce forecasts
+  anchored at train end. The contract in `base.py` should either be honored or narrowed.
+- The exogenous tier merges historical-only and known-future covariates and gives both
+  perfect future values, so "oracle exo" and "realistically available exo" cannot be
+  separated in results.
+- `is_probabilistic` exists but no probabilistic metric does; Chronos quantiles are
+  computed and discarded.
+- Duplication drift: the tz-strip/truncate boilerplate is copy-pasted 4× in
+  `classical.py`; `_lookback_for` exists in three near-copies that already disagree
+  (`dl.py` lacks the `max(base, 2*h)` floor the torch version has); `nf_models.py` is
+  unseeded while `torchdl.py`/MLP are seeded.
+
+**Suite gaps** — no ensemble-of-baselines column (cheap, usually embarrassingly strong),
+no MSTL/STL-based classical, single foundation model (chronos-bolt-small only), and the
+mlforecast methods are recursive-only while the DL methods are direct multi-output — a
+strategy confound between families.
+
 ## 2026-07-02 — Fixed rolling-origin selection collapsing onto the front of the test set
 
 `run_case_rolling` (`src/tsforecastbench/bench/eval/rolling.py`) is supposed to spread
