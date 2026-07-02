@@ -4,6 +4,7 @@ from tsforecastbench.bench.methods.base import Forecaster
 from tsforecastbench.bench.methods.classical import (
     AutoARIMAForecaster,
     AutoETSForecaster,
+    TBATSForecaster,
     ThetaForecaster,
 )
 from tsforecastbench.bench.methods.dl import DLinearForecaster
@@ -46,6 +47,7 @@ __all__ = [
     "PatchTSTForecaster",
     "Persistence",
     "SeasonalNaive",
+    "TBATSForecaster",
     "TFTForecaster",
     "ThetaForecaster",
     "TimesNetForecaster",

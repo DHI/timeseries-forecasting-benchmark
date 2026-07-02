@@ -97,6 +97,48 @@ class AutoETSForecaster(Forecaster):
         return pd.DataFrame({"ds": future, "y_hat": y_hat})
 
 
+class TBATSForecaster(Forecaster):
+    """TBATS (Trigonometric, Box-Cox, ARMA, Trend, Seasonal) via statsforecast.
+
+    Handles complex and multiple seasonal patterns via trigonometric terms.
+    season_length accepts an int or a list of ints (e.g. [24, 168] for
+    daily+weekly in hourly data). max_train_steps is set lower than other
+    classicals because TBATS fit cost is substantially higher.
+    """
+
+    name = "TBATS"
+
+    def __init__(self, season_length: int | list[int] = 1, max_train_steps: int = 3000):
+        self.season_length = season_length
+        self.max_train_steps = max_train_steps
+
+    def fit(self, case: Case, train: pd.DataFrame) -> None:
+        from statsforecast import StatsForecast
+        from statsforecast.models import TBATS
+
+        df = train[["unique_id", "ds", "y"]].copy()
+        if len(df) > self.max_train_steps:
+            df = df.iloc[-self.max_train_steps :]
+        ds = pd.to_datetime(df["ds"])
+        if ds.dt.tz is not None:
+            ds = ds.dt.tz_convert("UTC").dt.tz_localize(None)
+        df["ds"] = ds
+
+        self._sf = StatsForecast(
+            models=[TBATS(season_length=self.season_length)],
+            freq=case.freq,
+            n_jobs=1,
+        )
+        self._sf.fit(df)
+
+    def predict(self, case: Case, history: pd.DataFrame, horizon: int,
+                future_exog: pd.DataFrame | None = None) -> pd.DataFrame:
+        fcst = self._sf.predict(h=horizon)
+        y_hat = fcst["TBATS"].to_numpy().astype(np.float64)
+        future = self._future_index(case, history["ds"].max(), horizon)
+        return pd.DataFrame({"ds": future, "y_hat": y_hat})
+
+
 class ThetaForecaster(Forecaster):
     """Theta method (auto-optimized) via statsforecast — a strong, cheap classical
     benchmark, often the one to beat among non-ML methods. Non-seasonal by default."""
