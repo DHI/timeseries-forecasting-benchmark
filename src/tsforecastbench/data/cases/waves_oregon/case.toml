@@ -12,6 +12,7 @@ input_window = "14D"
 
 exogenous = ["wspd", "pres", "atmp", "wtmp"]
 exogenous_known_future = []
+necessary_exogenous = ["wspd"]
 static_attrs = ["lat", "lon"]
 data_type = "observed"
 split_mode = "fraction"

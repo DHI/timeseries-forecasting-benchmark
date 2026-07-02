@@ -12,6 +12,7 @@ input_window = "7D"
 
 exogenous = ["rain_gauge", "temp_air"]
 exogenous_known_future = ["rain_radar_nowcast"]
+necessary_exogenous = ["rain_gauge", "rain_radar_nowcast"]
 static_attrs = ["catchment_area_ha", "impervious_frac"]
 data_type = "observed"
 split_mode = "fraction"

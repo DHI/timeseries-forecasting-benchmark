@@ -134,7 +134,9 @@ def run_case(case: Case, methods: list[Forecaster], prefer_synth: bool = False) 
                 {
                     "case_id": case.id,
                     "domain": case.domain,
+                    "case_exo_tier": case.exo_tier,
                     "method": method.name,
+                    "uses_exogenous": method.uses_exogenous,
                     "horizon": case.horizon_primary,
                     "metric": metric_name,
                     "value": value,

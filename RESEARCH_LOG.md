@@ -8,6 +8,58 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-02 — Dropped `optional_exogenous` as a redundant stored field
+
+A case's exogenous columns end up described along two independent axes: timing
+(`exogenous` vs `exogenous_known_future`) and necessity (`necessary_exogenous` vs
+`optional_exogenous`, added earlier today). But given the fixed set of available columns
+and which ones are necessary, "optional" is always just the complement — storing it
+explicitly in every case.toml was pure duplication, and the validator that checked the
+two didn't overlap or leave gaps only existed to police that duplication.
+
+`Case.optional_exogenous` (`data/schema.py`) is now a derived property —
+`(exogenous ∪ exogenous_known_future) − necessary_exogenous` — not a TOML field.
+`necessary_exogenous` is the only exogenous-necessity field a case.toml declares; removed
+the now-unnecessary `optional_exogenous = [...]` line from all 9 case.toml files that had
+it. `Case.exo_tier` and everything downstream (`bench/eval/loop.py`'s `case_exo_tier`
+column) is unaffected — same values, one fewer place for a case author to get out of
+sync with itself.
+
+## 2026-07-02 — Structured exo-necessity fields, persisted as result metadata (not matrix aggregation)
+
+Follow-up to the prose-only necessity judgment recorded earlier today. Two decisions:
+
+**1. Promoted the necessity judgment into schema, not just prose.** Added
+`necessary_exogenous` / `optional_exogenous` fields to `Case` (`data/schema.py`), plus a
+model validator requiring every column in `exogenous` ∪ `exogenous_known_future` to be
+classified as exactly one of the two (no silent gaps, no double-classification). A derived
+`Case.exo_tier` property (`"none" | "optional" | "necessary"`) reads off these fields:
+`necessary` if any column is necessary, `optional` if only optional columns exist, `none`
+if there's no exogenous input at all. All 9 case.toml files with exogenous inputs were
+updated with the classification agreed on earlier; the 3 exo-free cases (`demand_ltown`,
+`discharge_saugeen`, `wwtp_influent_n2o_350k`) default to `"none"` with no change needed.
+
+**2. Rejected splitting the results matrix by tier, in favor of metadata-only labeling.**
+The original motivation (mixing exo-essential and exo-optional cases in one matrix is
+misleading) initially suggested computing a separate leaderboard/ranking per case tier,
+with univariate methods demoted to a "reference floor" on necessary-exo cases. That was
+wrong: this benchmark's matrix (`viz/matrix.py`) never aggregates or ranks methods — every
+case × method cell is shown raw, by design — and demoting some methods out of a ranking
+on some cases is aggregation by another name, just moved one level up. Partitioning cases
+into separate per-tier matrices was also rejected: several cases are deliberately grouped
+for cross-regime comparison regardless of tier (e.g. `discharge_snowmelt_yosemite`'s note
+that the three hydrology cases test "whether method ranking holds across slow / flashy /
+snowmelt dynamics," even though those three land in different exo tiers).
+
+Landed instead: `case.exo_tier` and each method's existing `uses_exogenous` flag
+(`bench/methods/base.py`) are now persisted as plain columns on every result row
+(`bench/eval/loop.py`), alongside `case_id`/`method`. No computation, no filtering, no
+new derived statistic — just metadata attached to the existing flat results table so
+downstream consumers can filter or facet by tier/exo-usage if they want to, without the
+benchmark itself ever declaring which methods "count" for which cases. The matrix
+visualization itself is unchanged for now; visually labeling exo-using method columns in
+`viz/matrix.py` is deferred to a later pass.
+
 ## 2026-07-02 — Recorded necessary-vs-optional exogenous judgment in case notes
 
 Mixing cases where exogenous input is domain-essential (e.g. forecasting storm surge

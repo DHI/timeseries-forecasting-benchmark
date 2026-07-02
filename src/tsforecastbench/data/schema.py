@@ -15,7 +15,7 @@ from typing import Literal
 
 import numpy as np
 import pandas as pd
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DATA_RAW = REPO_ROOT / "data" / "raw"
@@ -69,6 +69,11 @@ class Case(BaseModel):
     input_window: str
     exogenous: list[str] = Field(default_factory=list)
     exogenous_known_future: list[str] = Field(default_factory=list)
+    # Domain-expert judgment, not derivable from measured skill: which exogenous columns
+    # are necessary for a meaningful forecast (e.g. rain for a flood case). Everything
+    # else in `exogenous`/`exogenous_known_future` is implicitly optional — see
+    # `optional_exogenous` below and RESEARCH_LOG.md 2026-07-02.
+    necessary_exogenous: list[str] = Field(default_factory=list)
     static_attrs: list[str] = Field(default_factory=list)
     splits: Splits
     source: Source
@@ -80,6 +85,37 @@ class Case(BaseModel):
     # to series whose record doesn't cover the calendar window.
     split_mode: Literal["calendar", "fraction"] = "calendar"
     split_fraction: list[float] = Field(default_factory=lambda: [0.7, 0.85])
+
+    @model_validator(mode="after")
+    def _necessary_exogenous_is_available(self) -> "Case":
+        available = set(self.exogenous) | set(self.exogenous_known_future)
+        unavailable = set(self.necessary_exogenous) - available
+        if unavailable:
+            raise ValueError(
+                f"Case {self.id}: necessary_exogenous references {sorted(unavailable)}, "
+                "not present in exogenous/exogenous_known_future"
+            )
+        return self
+
+    @property
+    def optional_exogenous(self) -> list[str]:
+        """Exogenous columns not marked necessary — i.e. enrichment, not prerequisite."""
+        available = set(self.exogenous) | set(self.exogenous_known_future)
+        return sorted(available - set(self.necessary_exogenous))
+
+    @property
+    def exo_tier(self) -> Literal["none", "optional", "necessary"]:
+        """Domain-expert judgment of how essential exogenous input is to this case.
+
+        "necessary": at least one exogenous column is required for a meaningful forecast.
+        "optional": exogenous columns exist but are enrichments, not prerequisites.
+        "none": the case has no exogenous columns at all.
+        """
+        if self.necessary_exogenous:
+            return "necessary"
+        if self.optional_exogenous:
+            return "optional"
+        return "none"
 
     @property
     def parquet_path(self) -> Path:

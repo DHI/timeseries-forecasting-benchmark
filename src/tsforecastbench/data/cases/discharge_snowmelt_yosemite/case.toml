@@ -12,6 +12,7 @@ input_window = "30D"
 
 exogenous = ["temp_air", "precip"]
 exogenous_known_future = ["temp_air", "precip"]
+necessary_exogenous = ["temp_air"]
 static_attrs = ["lat", "lon"]
 data_type = "mixed"
 split_mode = "fraction"

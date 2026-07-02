@@ -12,6 +12,7 @@ input_window = "14D"
 
 exogenous = ["mslp", "u10", "v10"]
 exogenous_known_future = ["mslp", "u10", "v10"]
+necessary_exogenous = ["mslp", "u10", "v10"]
 static_attrs = ["lat", "lon"]
 data_type = "mixed"
 split_mode = "fraction"

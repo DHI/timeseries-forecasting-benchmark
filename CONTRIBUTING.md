@@ -39,7 +39,10 @@ Create `src/tsforecastbench/data/cases/<case_id>/` with:
 
 - `case.toml` — metadata validated into a `Case` (see `data/schema.py`): `id`, `domain`,
   `target`, `freq`, `horizon_primary`, `exogenous`, `splits` (or `split_mode="fraction"`),
-  and `source`.
+  and `source`. If `exogenous` (or `exogenous_known_future`) is non-empty, list which of
+  those columns are required for a meaningful forecast in `necessary_exogenous` (e.g. rain
+  for a flood case) — a domain-expert judgment. Everything else is implicitly optional
+  (`Case.optional_exogenous`, derived, not a TOML field). See `RESEARCH_LOG.md` (2026-07-02).
 - `synth.py` — `generate(case) -> pd.DataFrame` returning the canonical long format
   (`unique_id`, `ds` UTC, `y`, plus exogenous columns). This lets the pipeline and CI
   run before any real data exists.
