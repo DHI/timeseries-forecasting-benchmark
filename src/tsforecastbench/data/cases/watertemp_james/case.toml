@@ -1,6 +1,6 @@
 id = "watertemp_james"
 domain = "water_quality"
-notes = "Daily river water temperature at the James River at Cartersville, VA (USGS 02035000). Strongly air-temperature driven with a clear seasonal cycle; a water-quality / ecology case where the exogenous (ERA5 air temperature) carries most of the skill. Precipitation included as a secondary driver (storm cooling/mixing). Exogenous from Open-Meteo, perfect-forecast proxy."
+notes = "Daily river water temperature at the James River at Cartersville, VA (USGS 02035000). Strongly air-temperature driven with a clear seasonal cycle; a water-quality / ecology case where the exogenous (ERA5 air temperature) carries most of the skill. Precipitation included as a secondary driver (storm cooling/mixing). Exogenous from Open-Meteo, perfect-forecast proxy. Necessary exogenous: temp_air; optional: precip — per the primary/secondary distinction above."
 
 target = "water_temp"
 target_unit = "degC"

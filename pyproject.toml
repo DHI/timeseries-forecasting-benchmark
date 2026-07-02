@@ -17,6 +17,7 @@ dependencies = [
     "statsforecast>=1.7",
     "mlforecast>=0.13",
     "lightgbm>=4.3",
+    "catboost>=1.2",
     "scikit-learn>=1.4",
     "utilsforecast>=0.2",
     "tomli>=2.0; python_version < '3.11'",

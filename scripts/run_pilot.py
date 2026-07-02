@@ -20,6 +20,8 @@ from tsforecastbench.bench.eval import DEFAULT_ORIGINS, run_case, run_case_rolli
 from tsforecastbench.bench.methods import (
     AutoARIMAForecaster,
     AutoETSForecaster,
+    CatBoostExoForecaster,
+    CatBoostForecaster,
     Climatology,
     DLinearForecaster,
     LightGBMCalendarExoForecaster,
@@ -56,12 +58,14 @@ def build_methods():
         ThetaForecaster(),
         LinearLagsForecaster(),
         LightGBMForecaster(),
+        CatBoostForecaster(),
         MLPForecaster(),
         DLinearForecaster(),
         LinearLagsExoForecaster(),
         LightGBMExoForecaster(),
         LightGBMCalendarForecaster(),
         LightGBMCalendarExoForecaster(),
+        CatBoostExoForecaster(),
     ]
 
 

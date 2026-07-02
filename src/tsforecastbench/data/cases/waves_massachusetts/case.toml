@@ -1,6 +1,6 @@
 id = "waves_massachusetts"
 domain = "spectral_waves"
-notes = "Significant wave height at NDBC buoy 44013 (Boston / Massachusetts Bay, NW Atlantic). A fetch-limited wind-sea / nor'easter regime, deliberately contrasting the swell-dominated open-Pacific buoy waves_oregon (46050) — the same target and horizon across two wave climates tests whether method ranking is regime-robust. Exogenous: the buoy's own wind speed + pressure (known-future, perfect-forecast proxy for an NWP wind forecast) and air/water temperature."
+notes = "Significant wave height at NDBC buoy 44013 (Boston / Massachusetts Bay, NW Atlantic). A fetch-limited wind-sea / nor'easter regime, deliberately contrasting the swell-dominated open-Pacific buoy waves_oregon (46050) — the same target and horizon across two wave climates tests whether method ranking is regime-robust. Exogenous: the buoy's own wind speed + pressure (known-future, perfect-forecast proxy for an NWP wind forecast) and air/water temperature. Necessary exogenous: wspd (the direct physical generator of local wind-sea wave height); optional: pres, atmp, wtmp (correlated with storm activity but not a direct mechanical driver of wave height). Assumption, not yet validated against measured skill."
 
 target = "wvht"
 target_unit = "m"

@@ -16,6 +16,8 @@ from tsforecastbench.bench.eval import run_case  # noqa: E402
 from tsforecastbench.bench.eval.metrics import mae, mase, rmse, skill_score  # noqa: E402
 from tsforecastbench.bench.eval.rolling import run_leadtime_curve  # noqa: E402
 from tsforecastbench.bench.methods import (  # noqa: E402
+    CatBoostExoForecaster,
+    CatBoostForecaster,
     Climatology,
     LightGBMExoForecaster,
     LightGBMForecaster,
@@ -69,6 +71,11 @@ def test_lightgbm_runs_on_one_case():
     assert (res["status"] == "ok").all()
 
 
+def test_catboost_runs_on_one_case():
+    res = run_case(get_case("waves_oregon"), [CatBoostForecaster()], prefer_synth=True)
+    assert (res["status"] == "ok").all()
+
+
 def test_rolling_matrix_runs():
     from tsforecastbench.bench.eval import run_case_rolling
 
@@ -86,7 +93,7 @@ def test_rolling_matrix_runs():
 def test_exogenous_methods_run(cid):
     """Exogenous-aware windowed ML runs on every case that declares covariates."""
     case = get_case(cid)
-    methods = [LinearLagsExoForecaster(), LightGBMExoForecaster()]
+    methods = [LinearLagsExoForecaster(), LightGBMExoForecaster(), CatBoostExoForecaster()]
     res = run_case(case, methods, prefer_synth=True)
     assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
     assert all(m.uses_exogenous for m in methods)

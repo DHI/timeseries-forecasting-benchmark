@@ -174,6 +174,15 @@ class LightGBMForecaster(_WindowedMLBase):
         return LGBMRegressor(n_estimators=200, learning_rate=0.05, verbosity=-1)
 
 
+class CatBoostForecaster(_WindowedMLBase):
+    name = "CatBoost"
+
+    def _make_model(self):
+        from catboost import CatBoostRegressor
+
+        return CatBoostRegressor(iterations=200, learning_rate=0.05, verbose=False, allow_writing_files=False)
+
+
 class LinearLagsForecaster(_WindowedMLBase):
     name = "LinearLags"
 
@@ -217,4 +226,9 @@ class LightGBMCalendarExoForecaster(LightGBMCalendarForecaster):
 
 class LinearLagsExoForecaster(LinearLagsForecaster):
     name = "LinearLags+exo"
+    use_exogenous = True
+
+
+class CatBoostExoForecaster(CatBoostForecaster):
+    name = "CatBoost+exo"
     use_exogenous = True

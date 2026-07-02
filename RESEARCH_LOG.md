@@ -8,6 +8,72 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-02 — Recorded necessary-vs-optional exogenous judgment in case notes
+
+Mixing cases where exogenous input is domain-essential (e.g. forecasting storm surge
+without wind/pressure) with cases where it's a nice-to-have enrichment makes a single
+results matrix hard to read: a method's ranking on an exo-essential case isn't
+comparable to its ranking on a case where a good univariate baseline is plausible on
+its own. Decided to separate this in the eventual results view, split by whether a
+case's exogenous inputs are *necessary* or merely *optional* — a domain-expert
+judgment call, not something inferrable from measured skill deltas alone (a low
+measured lift from an exo method could mean "exo isn't needed" or could just mean the
+exo methods aren't good yet; those are different claims).
+
+As a first step, before touching schema or pipeline code, recorded that judgment call
+in prose in each case's `notes` field in `case.toml`, so it's reviewable independently
+of any code change:
+
+- **Extracted from existing notes** (the necessity claim was already implicit or
+  explicit in the case's original description): `surge_cuxhaven` (wind+pressure all
+  necessary — explicitly called "the physical surge drivers"), `watertemp_james`
+  (temp_air necessary, precip optional), `discharge_snowmelt_yosemite` (temp_air
+  necessary, precip optional), `groundwater_yorktown` (precip necessary; temp_air
+  marked optional as an assumption, since the original note doesn't credit it with
+  skill either way).
+- **Fresh domain judgment** (no prior necessity claim in the note, so flagged as an
+  assumption pending validation): `discharge_flashy_catskills` (precip necessary,
+  temp_air optional), `discharge_lowland_denmark` (nothing necessary — the
+  groundwater-dominated baseflow is the deliberate exo-available-but-not-essential
+  contrast case), `sewerlevel_bellinge` (rain_gauge/rain_radar_nowcast necessary,
+  temp_air optional), `waves_massachusetts` and `waves_oregon` (wspd necessary as the
+  direct physical driver of wind-sea wave height; pres/atmp/wtmp optional).
+- `demand_ltown`, `discharge_saugeen`, and `wwtp_influent_n2o_350k` have no exogenous
+  inputs at all, so trivially have no necessary exogenous columns.
+
+This is prose only — no schema or eval-pipeline change yet. The planned next step is
+to promote this into structured `necessary_exogenous` / `optional_exogenous` fields in
+`schema.py` (derived from the union `exogenous` field methods already consume) and use
+`len(necessary_exogenous) > 0` to split the results matrix. Several of the "fresh
+judgment" calls above are genuinely arguable (e.g. whether `discharge_lowland_denmark`
+should have zero necessary columns, or whether pressure should count as necessary
+for the wave cases) and may get revised before that structured version lands.
+
+## 2026-07-02 — Added CatBoost to the windowed-ML method set
+
+Added `CatBoost` and `CatBoost+exo` to the windowed-ML column family
+(`bench/methods/ml.py`), alongside the existing `LightGBM`/`LinearLags`/`MLP` methods.
+CatBoost slots into the shared `_WindowedMLBase` lag + calendar feature pipeline exactly
+like `LightGBMForecaster` — it only supplies its own `_make_model()` (a
+`CatBoostRegressor` with `iterations=200`, `learning_rate=0.05`, matching LightGBM's
+`n_estimators=200`/`learning_rate=0.05` so the two GBDT methods are compared on
+roughly equal training budget). `allow_writing_files=False` is set on the regressor so
+runs don't leave `catboost_info/` log directories scattered around the repo.
+
+Registered the two new classes in `bench/methods/__init__.py` and `scripts/run_pilot.py`
+(both the univariate and `+exo` variants, following the Tier-1/Tier-2 pattern used for
+the other windowed-ML methods), added `catboost>=1.2` to `pyproject.toml` core
+dependencies, and mirrored the existing LightGBM smoke tests in
+`tests/test_pipeline_synth.py`. Verified with a synthetic pilot run
+(`run_pilot.py --synth --cases waves_oregon --fast`) that both new columns produce
+`ok` status alongside the rest of the matrix.
+
+This gives the benchmark a second GBDT implementation to compare against LightGBM —
+useful since CatBoost's ordered-boosting scheme handles the lag/calendar feature set
+differently and can behave better or worse depending on how noisy a given case's
+covariates are. No methodology change; this is a straightforward "add another column"
+addition to the existing Tier-1/Tier-2 windowed-ML family.
+
 ## 2026-07-02 — Backfilling this log from the scoping documents
 
 *Meta note: this entry and the ones below it were written today, reconstructing the

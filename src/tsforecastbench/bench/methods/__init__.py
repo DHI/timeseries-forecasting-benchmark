@@ -10,6 +10,8 @@ from tsforecastbench.bench.methods.classical import (
 from tsforecastbench.bench.methods.dl import DLinearForecaster
 from tsforecastbench.bench.methods.fm import ChronosForecaster
 from tsforecastbench.bench.methods.ml import (
+    CatBoostExoForecaster,
+    CatBoostForecaster,
     LightGBMCalendarExoForecaster,
     LightGBMCalendarForecaster,
     LightGBMExoForecaster,
@@ -34,6 +36,8 @@ from tsforecastbench.bench.methods.torchdl import NHITSForecaster, PatchTSTForec
 __all__ = [
     "AutoARIMAForecaster",
     "AutoETSForecaster",
+    "CatBoostExoForecaster",
+    "CatBoostForecaster",
     "ChronosForecaster",
     "Climatology",
     "DLinearForecaster",

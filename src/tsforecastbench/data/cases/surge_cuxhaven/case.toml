@@ -1,6 +1,6 @@
 id = "surge_cuxhaven"
 domain = "storm_surge"
-notes = "Hourly non-tidal residual (observed sea level minus tide prediction) at the Cuxhaven Steubenhoft GESLA gauge (German Bight). Exogenous: ERA5 mean sea-level pressure + 10-m wind components, fetched at the station point via Open-Meteo (credential-free). Wind and pressure are the physical surge drivers and are listed as known-future: at forecast time they would come from an NWP forecast; here the reanalysis is used as a perfect-forecast proxy. Record trimmed to 2000-2024 so ERA5 forcing covers the whole series."
+notes = "Hourly non-tidal residual (observed sea level minus tide prediction) at the Cuxhaven Steubenhoft GESLA gauge (German Bight). Exogenous: ERA5 mean sea-level pressure + 10-m wind components, fetched at the station point via Open-Meteo (credential-free). Wind and pressure are the physical surge drivers and are listed as known-future: at forecast time they would come from an NWP forecast; here the reanalysis is used as a perfect-forecast proxy. Record trimmed to 2000-2024 so ERA5 forcing covers the whole series. Necessary exogenous: mslp, u10, v10 (all three, per the driver statement above); no optional exogenous inputs."
 
 target = "residual_m"
 target_unit = "m"
