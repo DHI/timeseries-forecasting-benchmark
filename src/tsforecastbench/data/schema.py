@@ -87,7 +87,7 @@ class Case(BaseModel):
     split_fraction: list[float] = Field(default_factory=lambda: [0.7, 0.85])
 
     @model_validator(mode="after")
-    def _necessary_exogenous_is_available(self) -> "Case":
+    def _necessary_exogenous_is_available(self) -> Case:
         available = set(self.exogenous) | set(self.exogenous_known_future)
         unavailable = set(self.necessary_exogenous) - available
         if unavailable:
