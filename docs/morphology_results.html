@@ -64,7 +64,7 @@ td.best-cell{font-weight:700}
 tr:last-child td{border-bottom:none}
 tr:hover td{background:rgba(39,102,163,.04)}
 
-/* entropy bar inside cell */
+/* feature bar inside cell */
 .ent-wrap{display:flex;align-items:center;gap:.4rem}
 .ent-bar-bg{flex:1;height:5px;background:#DDE8F2;border-radius:2px;min-width:40px}
 .ent-bar{height:5px;border-radius:2px;background:var(--accent);opacity:.75}
@@ -112,11 +112,11 @@ footer{border-top:1px solid var(--rule);padding-top:1.25rem;color:var(--muted);f
 <header>
   <div class="eyebrow">TSForecastBench · Morphology Analysis</div>
   <h1>Do morphologically similar cases have similar forecasting results?</h1>
-  <p class="subtitle">Analysing whether the 7-feature morphological embedding predicts method performance across 12 benchmark cases and 14 forecasting methods.</p>
+  <p class="subtitle">Analysing whether the 6-feature morphological embedding predicts method performance across 12 benchmark cases and 15 forecasting methods.</p>
   <div class="meta-row">
     <div class="meta-item"><div class="value">12</div><div class="label">Benchmark cases</div></div>
-    <div class="meta-item"><div class="value">14</div><div class="label">Methods</div></div>
-    <div class="meta-item"><div class="value">7</div><div class="label">Morphology features</div></div>
+    <div class="meta-item"><div class="value">15</div><div class="label">Methods</div></div>
+    <div class="meta-item"><div class="value">6</div><div class="label">Morphology features</div></div>
     <div class="meta-item"><div class="value">3</div><div class="label">Significant findings</div></div>
   </div>
 </header>
@@ -127,30 +127,30 @@ footer{border-top:1px solid var(--rule);padding-top:1.25rem;color:var(--muted);f
   <div class="findings">
     <div class="fc">
       <div class="fnum">Finding 1</div>
-      <div class="fstat">r = −0.05</div>
-      <div class="fdesc">Morphological distance does not predict method-ranking agreement. Spearman correlation between morphological distance and rank-vector distance: p = 0.67.</div>
+      <div class="fstat">ρ = +0.09</div>
+      <div class="fdesc">Morphological distance does not predict method-ranking agreement. Spearman correlation between morphological distance and rank-vector distance: p = 0.50.</div>
     </div>
     <div class="fc">
       <div class="fnum">Finding 2</div>
-      <div class="fstat mid">r = +0.57</div>
-      <div class="fdesc">Spectral entropy is the strongest predictor of overall case difficulty (best achievable MASE). Suggestive at p = 0.055; significant for AutoETS alone (p = 0.033).</div>
+      <div class="fstat mid">ρ = −0.57</div>
+      <div class="fdesc">Seasonal strength is the strongest predictor of overall case difficulty (best achievable MASE). Stronger seasonality → easier to forecast. Suggestive at p = 0.051.</div>
     </div>
     <div class="fc strong">
       <div class="fnum">Finding 3 — strongest</div>
-      <div class="fstat sig">r = +0.74 **</div>
+      <div class="fstat sig">ρ = +0.74 **</div>
       <div class="fdesc">exog_r2_gain strongly predicts the MASE improvement from adding exogenous variables to LightGBM (p = 0.006). The feature does what it promises.</div>
     </div>
   </div>
   <div class="callout">
     <div class="clabel">Bottom line</div>
-    <p style="max-width:100%;margin:0;font-size:14px">Morphological similarity is a weak global predictor of shared method rankings — cases that look alike do not systematically prefer the same methods. Two features break through: <strong>spectral entropy</strong> tracks how hard a case is overall, and <strong>exog_r2_gain</strong> reliably flags when exogenous-aware methods will outperform their univariate counterparts. The sample (n = 12) is underpowered for most correlations, so the null results should be read as "inconclusive" rather than "no effect."</p>
+    <p style="max-width:100%;margin:0;font-size:14px">Morphological similarity is a weak global predictor of shared method rankings — cases that look alike do not systematically prefer the same methods. Two features break through: <strong>seasonal strength</strong> tracks how hard a case is overall (stronger seasonality → lower MASE), and <strong>exog_r2_gain</strong> reliably flags when exogenous-aware methods will outperform their univariate counterparts. The sample (n = 12) is underpowered for most correlations, so the null results should be read as "inconclusive" rather than "no effect."</p>
   </div>
 </section>
 
 <section id="mase">
-  <h2>MASE matrix — cases ordered by spectral entropy (↓ = more disordered)</h2>
+  <h2>MASE matrix — cases ordered by seasonal strength (↓ = less seasonal)</h2>
   <div class="rule"></div>
-  <p style="margin-bottom:1rem">Color encodes MASE: <span style="background:#C1DDCF;padding:.1rem .4rem;border-radius:2px;font-size:12px">low (good)</span> → <span style="background:#FAE0CC;padding:.1rem .4rem;border-radius:2px;font-size:12px">high (bad)</span>. Bold = row minimum. Cases with lower entropy (more structured) are concentrated toward the bottom and tend to have more green cells.</p>
+  <p style="margin-bottom:1rem">Color encodes MASE: <span style="background:#C1DDCF;padding:.1rem .4rem;border-radius:2px;font-size:12px">low (good)</span> → <span style="background:#FAE0CC;padding:.1rem .4rem;border-radius:2px;font-size:12px">high (bad)</span>. Bold = row minimum. Cases with stronger seasonality (top) tend to have more green cells; weakly-seasonal cases (bottom) are generally harder to forecast.</p>
   <div class="tscroll">
     <table id="mase-table"></table>
   </div>
@@ -166,16 +166,15 @@ footer{border-top:1px solid var(--rule);padding-top:1.25rem;color:var(--muted);f
       <th>Feature</th><th>Spearman ρ</th><th>p-value</th><th>Direction</th>
     </tr></thead>
     <tbody>
-      <tr><td class="feat">spectral_entropy</td><td class="r-pos">+0.566</td><td class="p-sig">0.055 *</td><td class="feat" style="color:var(--muted);font-family:system-ui">Higher entropy → harder to forecast</td></tr>
-      <tr><td class="feat">seasonal_strength</td><td class="r-neg">−0.448</td><td>0.144</td><td class="feat" style="color:var(--muted);font-family:system-ui">Stronger seasonality → easier</td></tr>
-      <tr><td class="feat">acf1</td><td class="r-neg">−0.441</td><td>0.152</td><td class="feat" style="color:var(--muted);font-family:system-ui">Higher autocorrelation → easier</td></tr>
-      <tr><td class="feat">kurtosis</td><td class="r-pos">+0.336</td><td>0.286</td><td class="feat" style="color:var(--muted);font-family:system-ui">Heavier tails → harder</td></tr>
-      <tr><td class="feat">boxcox_lambda</td><td class="r-neg">−0.273</td><td>0.391</td><td class="feat" style="color:var(--muted);font-family:system-ui">Less skew → easier</td></tr>
+      <tr><td class="feat">seasonal_strength</td><td class="r-neg">−0.573</td><td class="p-sig">0.051 *</td><td class="feat" style="color:var(--muted);font-family:system-ui">Stronger seasonality → easier to forecast</td></tr>
+      <tr><td class="feat">hurst</td><td class="r-neg">−0.455</td><td>0.138</td><td class="feat" style="color:var(--muted);font-family:system-ui">Stronger persistence → easier</td></tr>
+      <tr><td class="feat">phase_consistency</td><td class="r-pos">+0.441</td><td>0.152</td><td class="feat" style="color:var(--muted);font-family:system-ui">Inconsistent phase timing → harder</td></tr>
+      <tr><td class="feat">l_skewness</td><td class="r-pos">+0.420</td><td>0.175</td><td class="feat" style="color:var(--muted);font-family:system-ui">Right-skewed distributions → harder</td></tr>
       <tr><td class="feat">exog_r2_gain</td><td class="r-neg">−0.162</td><td>0.615</td><td class="feat" style="color:var(--muted);font-family:system-ui">Not predictive of overall difficulty</td></tr>
       <tr><td class="feat">trend_strength</td><td class="r-pos">+0.105</td><td>0.746</td><td class="feat" style="color:var(--muted);font-family:system-ui">No clear relationship</td></tr>
     </tbody>
   </table>
-  <p style="margin-top:.75rem;font-size:12.5px;color:var(--muted)">Note: acf1 also correlates positively with Mean MASE (ρ = +0.50, p = 0.095) — highly autocorrelated cases make the mean baseline look especially poor, inflating the denominator of MASE-like metrics relative to the unconditional mean.</p>
+  <p style="margin-top:.75rem;font-size:12.5px;color:var(--muted)">Note: l_skewness also correlates with Mean MASE (ρ = +0.61, p = 0.036) — right-skewed series with occasional extreme values make the unconditional mean baseline look especially poor, inflating the MASE denominator.</p>
 </section>
 
 <section id="charts">
@@ -188,8 +187,8 @@ footer{border-top:1px solid var(--rule);padding-top:1.25rem;color:var(--muted);f
       <canvas id="c1" width="360" height="260"></canvas>
     </div>
     <div class="ccard">
-      <div class="ctitle">Spectral entropy vs best achievable MASE</div>
-      <div class="cstat">ρ = +0.566, p = 0.055 *</div>
+      <div class="ctitle">Seasonal strength vs best achievable MASE</div>
+      <div class="cstat">ρ = −0.573, p = 0.051 *</div>
       <canvas id="c2" width="360" height="260"></canvas>
     </div>
   </div>
@@ -198,7 +197,7 @@ footer{border-top:1px solid var(--rule);padding-top:1.25rem;color:var(--muted);f
 <section id="pairs">
   <h2>Morphologically closest pairs — do they agree on method rankings?</h2>
   <div class="rule"></div>
-  <p>The five closest pairs in standardised morphological feature space, ranked by Euclidean distance. Kendall τ measures agreement between the 14-method rank vectors. The weak τ values confirm Finding 1: morphological proximity does not guarantee shared method preferences.</p>
+  <p>The five closest pairs in standardised morphological feature space, ranked by Euclidean distance. Kendall τ measures agreement between the 15-method rank vectors. The weak τ values confirm Finding 1: morphological proximity does not guarantee shared method preferences.</p>
   <br>
   <table class="ptable">
     <thead><tr>
@@ -206,42 +205,42 @@ footer{border-top:1px solid var(--rule);padding-top:1.25rem;color:var(--muted);f
     </tr></thead>
     <tbody>
       <tr>
-        <td>Saugeen Q</td><td>Yosemite Q</td>
-        <td class="mono">0.84</td>
+        <td>Bellinge sewer</td><td>WWTP N₂O</td>
+        <td class="mono">1.51</td>
         <td><span class="tau-chip tau-weak">τ = +0.19</span></td>
-        <td style="font-size:12.5px;color:var(--muted)">Closest pair; near-random rank agreement</td>
-      </tr>
-      <tr>
-        <td>MA waves</td><td>WWTP N₂O</td>
-        <td class="mono">0.88</td>
-        <td><span class="tau-chip tau-weak">τ = +0.19</span></td>
-        <td style="font-size:12.5px;color:var(--muted)">Similar morphology, very different domains</td>
+        <td style="font-size:12.5px;color:var(--muted)">Closest pair; strong seasonality and Hurst but near-random rank agreement</td>
       </tr>
       <tr>
         <td>MA waves</td><td>OR waves</td>
-        <td class="mono">0.95</td>
+        <td class="mono">1.67</td>
         <td><span class="tau-chip tau-mod">τ = +0.34</span></td>
         <td style="font-size:12.5px;color:var(--muted)">Same domain and physics — modest agreement</td>
       </tr>
       <tr>
-        <td>OR waves</td><td>WWTP N₂O</td>
-        <td class="mono">1.55</td>
-        <td><span class="tau-chip tau-mod">τ = +0.34</span></td>
-        <td style="font-size:12.5px;color:var(--muted)">Rank agreement despite larger morph distance</td>
+        <td>Saugeen Q</td><td>Yosemite Q</td>
+        <td class="mono">1.68</td>
+        <td><span class="tau-chip tau-weak">τ = +0.19</span></td>
+        <td style="font-size:12.5px;color:var(--muted)">Similar morphology; near-random rank agreement</td>
+      </tr>
+      <tr>
+        <td>Yorktown GW</td><td>James R. temp</td>
+        <td class="mono">1.71</td>
+        <td><span class="tau-chip tau-mod">τ = +0.56</span></td>
+        <td style="font-size:12.5px;color:var(--muted)">Strong rank agreement — both are smooth, persistent series where statistical methods excel</td>
       </tr>
       <tr>
         <td>DK lowland Q</td><td>Yorktown GW</td>
-        <td class="mono">1.57</td>
+        <td class="mono">1.83</td>
         <td><span class="tau-chip tau-strong">τ = +0.63</span></td>
-        <td style="font-size:12.5px;color:var(--muted)">Best rank agreement — both are slow, smooth series where statistical methods excel</td>
+        <td style="font-size:12.5px;color:var(--muted)">Best rank agreement — slow, high-Hurst series with very similar method preference profiles</td>
       </tr>
     </tbody>
   </table>
 </section>
 
 <footer>
-  <p><strong>Data:</strong> 12 benchmark cases · 14 forecasting methods · MASE metric · rolling-origin evaluation. Morphological features computed via <code>scripts/compute_morphology.py</code>; results from <code>results/pilot_metrics.parquet</code>.</p>
-  <p style="margin-top:.4rem"><strong>Caveat:</strong> n = 12 is severely underpowered. Correlations with p &gt; 0.1 should be treated as inconclusive. The exog_r2_gain finding (p = 0.006) survives multiple-testing scrutiny; others do not.</p>
+  <p><strong>Data:</strong> 12 benchmark cases · 15 forecasting methods · MASE metric · rolling-origin evaluation. Morphological features (6 selected from 13 candidates) computed via <code>scripts/compute_features_all.py</code>; results from <code>results/pilot_metrics.parquet</code>. Feature selection rationale in <code>notebooks/feature_selection.py</code>.</p>
+  <p style="margin-top:.4rem"><strong>Caveat:</strong> n = 12 is severely underpowered. Correlations with p &gt; 0.1 should be treated as inconclusive. The exog_r2_gain finding (p = 0.006) survives multiple-testing scrutiny; the seasonal_strength finding (p = 0.051) is suggestive but borderline.</p>
 </footer>
 
 </div>
@@ -249,18 +248,18 @@ footer{border-top:1px solid var(--rule);padding-top:1.25rem;color:var(--muted);f
 <script>
 // ── Data ──────────────────────────────────────────────────────────────────────
 const cases = [
-  {label:"Catskills Q",    entropy:0.906, mase:{Mean:1.111,Pers:0.795,SN:1.219,Clim:1.066,ARIMA:0.904,ETS:0.925,Theta:0.920,LinL:0.948,LinLx:0.738,LGB:1.454,LGBx:0.463,DLin:0.970,MLP:0.910,Chr:0.731}},
-  {label:"L-Town demand",  entropy:0.889, mase:{Mean:0.733,Pers:0.840,SN:0.904,Clim:0.625,ARIMA:0.762,ETS:0.743,Theta:0.815,LinL:0.654,LinLx:0.654,LGB:0.551,LGBx:0.551,DLin:0.623,MLP:0.678,Chr:0.517}},
-  {label:"Cuxhaven surge", entropy:0.735, mase:{Mean:0.956,Pers:0.723,SN:0.914,Clim:0.956,ARIMA:0.845,ETS:0.703,Theta:0.723,LinL:0.801,LinLx:0.638,LGB:0.855,LGBx:0.573,DLin:0.790,MLP:1.160,Chr:0.819}},
-  {label:"WWTP N₂O",       entropy:0.682, mase:{Mean:0.685,Pers:0.725,SN:0.624,Clim:0.571,ARIMA:0.634,ETS:0.725,Theta:0.724,LinL:0.584,LinLx:0.584,LGB:0.378,LGBx:0.378,DLin:0.527,MLP:0.581,Chr:0.382}},
-  {label:"Saugeen Q",      entropy:0.667, mase:{Mean:1.211,Pers:0.980,SN:1.121,Clim:1.140,ARIMA:1.041,ETS:1.034,Theta:0.980,LinL:1.023,LinLx:1.023,LGB:1.126,LGBx:1.126,DLin:1.054,MLP:1.162,Chr:0.942}},
-  {label:"MA waves",       entropy:0.639, mase:{Mean:1.429,Pers:1.115,SN:1.621,Clim:1.430,ARIMA:1.149,ETS:1.139,Theta:1.115,LinL:1.167,LinLx:1.268,LGB:1.077,LGBx:0.881,DLin:1.140,MLP:1.254,Chr:1.098}},
-  {label:"Bellinge sewer", entropy:0.626, mase:{Mean:0.988,Pers:0.308,SN:0.267,Clim:1.017,ARIMA:0.476,ETS:0.304,Theta:0.308,LinL:0.249,LinLx:0.223,LGB:0.235,LGBx:0.201,DLin:0.516,MLP:2.001,Chr:0.307}},
-  {label:"OR waves",       entropy:0.538, mase:{Mean:1.321,Pers:0.773,SN:0.834,Clim:1.320,ARIMA:0.822,ETS:0.855,Theta:0.767,LinL:0.721,LinLx:0.595,LGB:0.737,LGBx:0.553,DLin:0.776,MLP:0.613,Chr:0.713}},
-  {label:"Yosemite Q",     entropy:0.496, mase:{Mean:2.489,Pers:0.759,SN:1.575,Clim:1.514,ARIMA:1.003,ETS:0.697,Theta:0.757,LinL:1.033,LinLx:1.086,LGB:0.637,LGBx:0.462,DLin:1.042,MLP:0.821,Chr:0.821}},
-  {label:"DK lowland Q",   entropy:0.407, mase:{Mean:0.762,Pers:0.394,SN:0.924,Clim:0.566,ARIMA:0.406,ETS:0.394,Theta:0.394,LinL:0.416,LinLx:0.326,LGB:0.387,LGBx:0.326,DLin:0.406,MLP:0.475,Chr:0.384}},
-  {label:"Yorktown GW",    entropy:0.347, mase:{Mean:1.016,Pers:0.324,SN:1.354,Clim:0.583,ARIMA:0.242,ETS:0.216,Theta:0.324,LinL:0.269,LinLx:0.230,LGB:0.265,LGBx:0.265,DLin:0.286,MLP:0.336,Chr:0.159}},
-  {label:"James R. temp",  entropy:0.107, mase:{Mean:3.250,Pers:0.615,SN:1.224,Clim:0.936,ARIMA:0.578,ETS:0.615,Theta:0.615,LinL:0.486,LinLx:0.233,LGB:0.494,LGBx:0.244,DLin:0.548,MLP:0.664,Chr:0.579}},
+  {label:"WWTP N₂O",       ss:0.966, mase:{Mean:0.685,Pers:0.725,SN:0.624,Clim:0.571,ARIMA:0.634,ETS:0.725,TBATS:0.408,Theta:0.724,LinL:0.584,LinLx:0.584,LGB:0.378,LGBx:0.378,DLin:0.527,MLP:0.581,Chr:0.382}},
+  {label:"James R. temp",  ss:0.953, mase:{Mean:3.250,Pers:0.615,SN:1.224,Clim:0.936,ARIMA:0.578,ETS:0.615,TBATS:0.579,Theta:0.615,LinL:0.486,LinLx:0.233,LGB:0.494,LGBx:0.244,DLin:0.548,MLP:0.664,Chr:0.579}},
+  {label:"Bellinge sewer", ss:0.939, mase:{Mean:0.988,Pers:0.308,SN:0.267,Clim:1.017,ARIMA:0.476,ETS:0.304,TBATS:0.302,Theta:0.308,LinL:0.249,LinLx:0.223,LGB:0.235,LGBx:0.201,DLin:0.516,MLP:2.001,Chr:0.307}},
+  {label:"L-Town demand",  ss:0.869, mase:{Mean:0.733,Pers:0.840,SN:0.904,Clim:0.625,ARIMA:0.762,ETS:0.743,TBATS:0.624,Theta:0.815,LinL:0.654,LinLx:0.654,LGB:0.551,LGBx:0.551,DLin:0.623,MLP:0.678,Chr:0.517}},
+  {label:"Yorktown GW",    ss:0.488, mase:{Mean:1.016,Pers:0.324,SN:1.354,Clim:0.583,ARIMA:0.242,ETS:0.216,TBATS:0.378,Theta:0.324,LinL:0.269,LinLx:0.230,LGB:0.265,LGBx:0.265,DLin:0.286,MLP:0.336,Chr:0.159}},
+  {label:"OR waves",       ss:0.471, mase:{Mean:1.321,Pers:0.773,SN:0.834,Clim:1.320,ARIMA:0.822,ETS:0.855,TBATS:0.823,Theta:0.767,LinL:0.721,LinLx:0.595,LGB:0.737,LGBx:0.553,DLin:0.776,MLP:0.613,Chr:0.713}},
+  {label:"Saugeen Q",      ss:0.437, mase:{Mean:1.211,Pers:0.980,SN:1.121,Clim:1.140,ARIMA:1.041,ETS:1.034,TBATS:2.024,Theta:0.980,LinL:1.023,LinLx:1.023,LGB:1.126,LGBx:1.126,DLin:1.054,MLP:1.162,Chr:0.942}},
+  {label:"DK lowland Q",   ss:0.428, mase:{Mean:0.762,Pers:0.394,SN:0.924,Clim:0.566,ARIMA:0.406,ETS:0.394,TBATS:0.372,Theta:0.394,LinL:0.416,LinLx:0.326,LGB:0.387,LGBx:0.326,DLin:0.406,MLP:0.475,Chr:0.384}},
+  {label:"Yosemite Q",     ss:0.420, mase:{Mean:2.489,Pers:0.759,SN:1.575,Clim:1.514,ARIMA:1.003,ETS:0.697,TBATS:0.758,Theta:0.757,LinL:1.033,LinLx:1.086,LGB:0.637,LGBx:0.462,DLin:1.042,MLP:0.821,Chr:0.821}},
+  {label:"Catskills Q",    ss:0.312, mase:{Mean:1.111,Pers:0.795,SN:1.219,Clim:1.066,ARIMA:0.904,ETS:0.925,TBATS:0.938,Theta:0.920,LinL:0.948,LinLx:0.738,LGB:1.454,LGBx:0.463,DLin:0.970,MLP:0.910,Chr:0.731}},
+  {label:"MA waves",       ss:0.127, mase:{Mean:1.429,Pers:1.115,SN:1.621,Clim:1.430,ARIMA:1.149,ETS:1.139,TBATS:1.158,Theta:1.115,LinL:1.167,LinLx:1.268,LGB:1.077,LGBx:0.881,DLin:1.140,MLP:1.254,Chr:1.098}},
+  {label:"Cuxhaven surge", ss:0.082, mase:{Mean:0.956,Pers:0.723,SN:0.914,Clim:0.956,ARIMA:0.845,ETS:0.703,TBATS:0.827,Theta:0.723,LinL:0.801,LinLx:0.638,LGB:0.855,LGBx:0.573,DLin:0.790,MLP:1.160,Chr:0.819}},
 ];
 
 const methods = [
@@ -268,9 +267,10 @@ const methods = [
   {key:"Pers", label:"Pers.",  group:"base"},
   {key:"SN",   label:"S.Naive",group:"base"},
   {key:"Clim", label:"Clim.",  group:"base"},
-  {key:"ARIMA",label:"ARIMA",  group:"stat", sep:true},
-  {key:"ETS",  label:"ETS",    group:"stat"},
-  {key:"Theta",label:"Theta",  group:"stat"},
+  {key:"ARIMA", label:"ARIMA",  group:"stat", sep:true},
+  {key:"ETS",   label:"ETS",    group:"stat"},
+  {key:"TBATS", label:"TBATS",  group:"stat"},
+  {key:"Theta", label:"Theta",  group:"stat"},
   {key:"LinL", label:"LinL",   group:"ml",   sep:true},
   {key:"LinLx",label:"+exo",   group:"ml"},
   {key:"LGB",  label:"LGB",    group:"ml"},
@@ -304,7 +304,7 @@ function maColor(v) {
   const tbl = document.getElementById('mase-table');
 
   // --- group header row ---
-  const groupCounts = {base:4, stat:3, ml:6, found:1};
+  const groupCounts = {base:4, stat:4, ml:6, found:1};
   const groupLabels = {base:'Baselines', stat:'Statistical', ml:'Machine Learning', found:'Foundation'};
   const groupClass  = {base:'gr-base', stat:'gr-stat', ml:'gr-ml', found:'gr-found'};
   let gRow = `<tr><th colspan="2" class="case-th" style="background:#E4ECF4"></th>`;
@@ -314,7 +314,7 @@ function maColor(v) {
   gRow += '</tr>';
 
   // --- method header row ---
-  let mRow = `<tr><th class="case-th">Case</th><th class="ent-th" style="background:#E4ECF4">Entropy</th>`;
+  let mRow = `<tr><th class="case-th">Case</th><th class="ent-th" style="background:#E4ECF4">Seas. str.</th>`;
   for (const m of methods) {
     const sepClass = m.sep ? ' sep' : '';
     mRow += `<th class="${groupClass[m.group]}${sepClass}">${m.label}</th>`;
@@ -328,9 +328,9 @@ function maColor(v) {
     const vals = methods.map(m => c.mase[m.key]);
     const minV = Math.min(...vals);
     let row = `<tr><td class="case-td">${c.label}</td>`;
-    // entropy cell with bar
-    const barW = Math.round(c.entropy * 100);
-    row += `<td class="ent-td"><div class="ent-wrap"><div class="ent-bar-bg"><div class="ent-bar" style="width:${barW}%"></div></div><span class="ent-num">${c.entropy.toFixed(2)}</span></div></td>`;
+    // seasonal-strength cell with bar
+    const barW = Math.round(c.ss * 100);
+    row += `<td class="ent-td"><div class="ent-wrap"><div class="ent-bar-bg"><div class="ent-bar" style="width:${barW}%"></div></div><span class="ent-num">${c.ss.toFixed(2)}</span></div></td>`;
     for (const m of methods) {
       const v = c.mase[m.key];
       const isBest = Math.abs(v - minV) < 0.0005;
@@ -360,15 +360,36 @@ function drawScatter(canvasId, pts, xLabel, yLabel, opts={}) {
   const pw = W - pad.l - pad.r;
   const ph = H - pad.t - pad.b;
 
-  const xs = pts.map(p=>p[0]), ys = pts.map(p=>p[1]);
-  const xmin = opts.xmin !== undefined ? opts.xmin : Math.min(...xs);
-  const xmax = opts.xmax !== undefined ? opts.xmax : Math.max(...xs);
+  const logX  = opts.logX  || false;
+  const xFloor = opts.xFloor || 1e-3;   // floor for zero values on log scale
+
+  const rawXs = pts.map(p=>p[0]), ys = pts.map(p=>p[1]);
+  const tX = x => logX ? Math.log10(Math.max(x, xFloor)) : x;
+
+  const rawXmin = opts.xmin !== undefined ? opts.xmin : Math.min(...rawXs);
+  const rawXmax = opts.xmax !== undefined ? opts.xmax : Math.max(...rawXs);
+  const xmin = tX(Math.max(rawXmin, xFloor));
+  const xmax = tX(rawXmax);
   const ymin = opts.ymin !== undefined ? opts.ymin : Math.min(...ys);
   const ymax = opts.ymax !== undefined ? opts.ymax : Math.max(...ys);
   const xr = xmax - xmin || 1, yr = ymax - ymin || 1;
 
-  const px = x => pad.l + (x - xmin) / xr * pw;
+  const px = x => pad.l + (tX(x) - xmin) / xr * pw;
   const py = y => pad.t + ph - (y - ymin) / yr * ph;
+
+  // x tick positions
+  let xTicksRaw;
+  if (logX) {
+    xTicksRaw = [];
+    const expLo = Math.ceil(xmin - 1e-9);
+    const expHi = Math.floor(xmax + 1e-9);
+    for (let e = expLo; e <= expHi; e++) xTicksRaw.push(Math.pow(10, e));
+    // add a half-decade near the top if it fits
+    const halfTop = Math.pow(10, expHi) * 5;
+    if (tX(halfTop) <= xmax + 0.01) xTicksRaw.push(halfTop);
+  } else {
+    xTicksRaw = Array.from({length:5}, (_,i) => rawXmin + i/4 * (rawXmax - rawXmin));
+  }
 
   // grid
   ctx.strokeStyle = '#E0E9F2';
@@ -376,24 +397,26 @@ function drawScatter(canvasId, pts, xLabel, yLabel, opts={}) {
   for (let i=0; i<=4; i++) {
     const yv = ymin + i/4 * yr;
     ctx.beginPath(); ctx.moveTo(pad.l, py(yv)); ctx.lineTo(pad.l+pw, py(yv)); ctx.stroke();
-    const xv = xmin + i/4 * xr;
+  }
+  for (const xv of xTicksRaw) {
     ctx.beginPath(); ctx.moveTo(px(xv), pad.t); ctx.lineTo(px(xv), pad.t+ph); ctx.stroke();
   }
 
-  // regression line (simple least squares)
+  // regression line (least squares in transformed x space)
+  const txs = rawXs.map(tX);
   const n = pts.length;
-  const mx = xs.reduce((a,b)=>a+b,0)/n;
+  const mx = txs.reduce((a,b)=>a+b,0)/n;
   const my = ys.reduce((a,b)=>a+b,0)/n;
-  const num = xs.reduce((s,x,i)=>s+(x-mx)*(ys[i]-my),0);
-  const den = xs.reduce((s,x)=>s+(x-mx)**2,0);
+  const num = txs.reduce((s,x,i)=>s+(x-mx)*(ys[i]-my),0);
+  const den = txs.reduce((s,x)=>s+(x-mx)**2,0);
   const slope = num/den;
   const intercept = my - slope*mx;
   ctx.strokeStyle = '#2766A3';
   ctx.lineWidth = 1.5;
   ctx.setLineDash([4,3]);
   ctx.beginPath();
-  ctx.moveTo(px(xmin), py(slope*xmin+intercept));
-  ctx.lineTo(px(xmax), py(slope*xmax+intercept));
+  ctx.moveTo(pad.l,      py(slope*xmin+intercept));
+  ctx.lineTo(pad.l+pw,   py(slope*xmax+intercept));
   ctx.stroke();
   ctx.setLineDash([]);
 
@@ -440,9 +463,9 @@ function drawScatter(canvasId, pts, xLabel, yLabel, opts={}) {
     ctx.fillText(yv.toFixed(2), pad.l - 4, py(yv) + 3);
   }
   ctx.textAlign = 'center';
-  for (let i=0; i<=4; i++) {
-    const xv = xmin + i/4 * xr;
-    ctx.fillText(xv.toFixed(2), px(xv), pad.t + ph + 14);
+  for (const xv of xTicksRaw) {
+    const lbl = logX ? xv.toString() : xv.toFixed(2);
+    ctx.fillText(lbl, px(xv), pad.t + ph + 14);
   }
 }
 
@@ -450,36 +473,36 @@ function drawScatter(canvasId, pts, xLabel, yLabel, opts={}) {
 const exogData = [
   [0.000, 0.000, null,          false],
   [0.509, 0.991, "Catskills Q", true ],
-  [0.020, 0.061, null,          false],
+  [0.023, 0.060, null,          false],
   [0.000, 0.000, null,          false],
-  [0.012, 0.175, null,          false],
+  [0.012, 0.174, null,          false],
   [0.000, 0.000, null,          false],
-  [0.003, 0.034, null,          false],
-  [0.003, 0.282, "Cuxhaven",   false],
-  [0.006, 0.250, "James R.",   false],
+  [0.002, 0.034, null,          false],
+  [0.003, 0.281, "Cuxhaven",   false],
+  [0.005, 0.249, "James R.",   false],
   [0.004, 0.196, null,          false],
   [0.002, 0.184, null,          false],
   [0.000, 0.000, null,          false],
 ];
 
-// ── Chart 2: spectral_entropy vs best MASE ────────────────────────────────────
-const entropyData = [
-  [0.906, 0.463, null,          false],
-  [0.889, 0.517, "L-Town",     false],
-  [0.735, 0.573, null,          false],
-  [0.682, 0.378, null,          false],
-  [0.667, 0.942, "Saugeen",    true ],
-  [0.639, 0.881, "MA waves",   true ],
-  [0.626, 0.201, null,          false],
-  [0.538, 0.553, null,          false],
-  [0.496, 0.462, null,          false],
-  [0.407, 0.326, null,          false],
-  [0.347, 0.159, null,          false],
-  [0.107, 0.233, null,          false],
+// ── Chart 2: seasonal_strength vs best MASE ───────────────────────────────────
+const ssData = [
+  [0.966, 0.378, "WWTP N₂O",   true ],
+  [0.953, 0.233, null,          false],
+  [0.939, 0.201, null,          false],
+  [0.869, 0.517, null,          false],
+  [0.488, 0.159, null,          false],
+  [0.471, 0.553, null,          false],
+  [0.437, 0.942, "Saugeen Q",  true ],
+  [0.428, 0.326, null,          false],
+  [0.420, 0.462, null,          false],
+  [0.312, 0.463, null,          false],
+  [0.127, 0.881, "MA waves",   false],
+  [0.082, 0.573, null,          false],
 ];
 
 window.addEventListener('load', () => {
-  drawScatter('c1', exogData, 'exog_r2_gain', 'MASE reduction (LGB→LGB+exo)', {xmin:0, xmax:0.55, ymin:0, ymax:1.1});
-  drawScatter('c2', entropyData, 'Spectral entropy', 'Best achievable MASE', {xmin:0, xmax:1, ymin:0, ymax:1.1});
+  drawScatter('c1', exogData, 'exog_r2_gain', 'MASE reduction (LGB→LGB+exo)', {xmax:0.55, ymin:0, ymax:1.1, logX:true, xFloor:0.001});
+  drawScatter('c2', ssData, 'Seasonal strength', 'Best achievable MASE', {xmin:0, xmax:1, ymin:0, ymax:1.1});
 });
 </script>
