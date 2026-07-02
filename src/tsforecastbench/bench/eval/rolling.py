@@ -24,6 +24,26 @@ from tsforecastbench.bench.methods.naive import _default_season_length
 from tsforecastbench.data.schema import Case
 
 
+def _select_rolling_origins(
+    test_start: int, last_origin: int, raw_y: np.ndarray, H: int, n_origins: int
+) -> list[int]:
+    """Pick up to `n_origins` origins spread across [test_start, last_origin].
+
+    Oversamples candidates, drops any whose horizon window is <50% observed, then
+    evenly downsamples the survivors back to `n_origins` — evenly, not by truncating
+    the sorted list — so a few dropped candidates near the end don't collapse the
+    selection onto the front of the range.
+    """
+    cand = np.unique(np.linspace(test_start, last_origin, max(n_origins * 2, n_origins)).astype(int))
+    valid = [o for o in cand if np.isfinite(raw_y[o : o + H]).mean() >= 0.5]
+    if not valid:
+        return [int(cand[0])]
+    if len(valid) <= n_origins:
+        return valid
+    idx = np.unique(np.linspace(0, len(valid) - 1, n_origins).astype(int))
+    return [valid[i] for i in idx]
+
+
 def run_case_rolling(
     case: Case,
     methods: list[Forecaster],
@@ -56,11 +76,7 @@ def run_case_rolling(
     last_origin = len(full) - H
     if last_origin <= test_start:
         raise ValueError(f"Case {case.id}: test span too short for horizon {H}")
-    # candidate origins, keeping only those whose horizon window is >=50% observed
-    cand = np.unique(np.linspace(test_start, last_origin, max(n_origins * 2, n_origins)).astype(int))
-    origins = [o for o in cand if np.isfinite(raw_y[o : o + H]).mean() >= 0.5][:n_origins]
-    if not origins:
-        origins = [int(cand[0])]
+    origins = _select_rolling_origins(test_start, last_origin, raw_y, H, n_origins)
 
     season = _default_season_length(case.freq)
     y_pre = full_fit["y"].iloc[:test_start].to_numpy(dtype=float)

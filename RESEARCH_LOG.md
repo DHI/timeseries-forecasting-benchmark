@@ -8,6 +8,38 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-02 — Fixed rolling-origin selection collapsing onto the front of the test set
+
+`run_case_rolling` (`src/tsforecastbench/bench/eval/rolling.py`) is supposed to spread
+`n_origins` forecast cutoffs across the whole test period so pooled errors reflect
+performance throughout test, not just at one point in time. The origin-selection code
+built `2 * n_origins` candidates evenly spaced across `[test_start, last_origin]`,
+filtered out any whose horizon window was <50% observed, then took `[:n_origins]` —
+i.e. truncated the sorted, filtered list to its first `n_origins` entries. Since the
+list was sorted ascending, "first n_origins of 2n evenly-spaced points" is the front
+~50% of the range, not a spread sample. On a real case
+(`discharge_lowland_denmark`, `H=7`, test range 1241–1453) this meant the last origin
+used was ~1347 instead of 1453 — only 46% of the usable test range was ever scored,
+and the tail of the test set (where any regime shift or trend change would show up)
+was silently ignored. This bites hardest exactly when `horizon << len(test)`, since
+that's when the true usable origin range is nearly the whole test set. Note
+`run_leadtime_curve` in the same file was not affected — it samples origins directly
+via `linspace(test_start, last_origin, n_origins)` with no oversample-then-truncate step.
+
+Fixed by extracting the logic into `_select_rolling_origins()`: oversample as before,
+filter for the 50%-observed criterion, but then evenly downsample the *filtered*
+list back to `n_origins` (via `linspace` over indices into the survivors) instead of
+truncating it. Added `tests/test_rolling.py` covering the regression case (small `H`
+relative to test length), a case with some candidates dropped for missing data, the
+fewer-than-`n_origins`-valid case, and the all-filtered-out fallback. Verified on
+`discharge_lowland_denmark` that origins now span the full `[1241, 1453]` range.
+
+This changes which points get scored, so `run_case_rolling` metrics (MAE/RMSE/MASE/
+skill scores) will shift for any case where `horizon_primary << len(test)` — the
+change should generally make the metric more representative, not just different, but
+any published matrix numbers generated before this fix should be treated as based on
+only the first half of each case's test period.
+
 ## 2026-07-02 — Added missing `discharge_saugeen` case doc and EDA panel
 
 `docs/cases/` had 11 pages for the 12 cases under `src/tsforecastbench/data/cases/` —
