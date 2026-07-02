@@ -63,7 +63,7 @@ def _(mo):
 
 @app.cell
 def _(REPO_ROOT, mo, np, pd):
-    _CSV = REPO_ROOT / "results" / "morphology_features_all.csv"
+    _CSV = REPO_ROOT / "results" / "morphology_features.csv"
 
     ALL_FEATURE_COLS = [
         "acf1", "trend_strength", "seasonal_strength", "spectral_entropy",
@@ -310,9 +310,9 @@ def _(mo):
         the wave and surge series from the discharge series and is uncorrelated with Hurst.
         Asymmetry index is dropped for parsimony.
 
-        ### Selected features (5, N/p = 2.4)
+        ### Selected features (4, N/p = 3.0)
 
-        `seasonal_strength`, `hurst`, `trend_strength`, `phase_dispersion`, `l_skewness`
+        `seasonal_strength`, `hurst`, `amplitude_dispersion`, `l_skewness`
 
         Together these cover: periodicity, seasonal timing reliability, long-range memory,
         monotonic drift, and distributional asymmetry — one representative per distinct
@@ -333,7 +333,7 @@ def _(mo):
 @app.cell
 def _(ALL_FEATURE_COLS, FEATURE_LABELS, mo):
     label_to_key = {FEATURE_LABELS[c]: c for c in ALL_FEATURE_COLS}
-    _default_keys = ["seasonal_strength", "hurst", "trend_strength", "phase_dispersion", "l_skewness"]
+    _default_keys = ["seasonal_strength", "hurst", "amplitude_dispersion", "l_skewness"]
     _default_labels = [FEATURE_LABELS[k] for k in _default_keys]
 
     feature_selector = mo.ui.multiselect(

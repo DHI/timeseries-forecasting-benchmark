@@ -23,7 +23,7 @@ def _(mo):
     Pick any case from the dropdown below: every plot, the structural
     decomposition, and the full feature table re-compute for that case. The goal
     is to *see* what each feature is measuring so the numbers in
-    `results/morphology_features_all.csv` stop being opaque.
+    `results/morphology_features.csv` stop being opaque.
 
     ## The trend / seasonal features in one line
 
@@ -440,7 +440,7 @@ def _(mo):
     ### Where does this case sit?
 
     Each panel below is one feature. The box shows the spread of that feature
-    **across all cases** in `results/morphology_features_all.csv`; the red line is
+    **across all cases** in `results/morphology_features.csv`; the red line is
     the **selected case**. A red line far to one side of the box is what makes this
     case morphologically distinctive on that axis — the same intuition the taxonomy
     clustering runs on.
@@ -455,7 +455,7 @@ def _(F, case, mo, np, pd, plt, y):
     _feats = F.compute_features_all(y)
     _cols = list(_feats.keys())
 
-    _csv = Path(F.__file__).resolve().parents[3] / "results" / "morphology_features_all.csv"
+    _csv = Path(F.__file__).resolve().parents[3] / "results" / "morphology_features.csv"
     if _csv.exists():
         _pop = pd.read_csv(_csv)
     else:

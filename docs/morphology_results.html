@@ -238,7 +238,7 @@ footer{border-top:1px solid var(--rule);padding-top:1.25rem;color:var(--muted);f
 </section>
 
 <footer>
-  <p><strong>Data:</strong> 12 benchmark cases · 14 forecasting methods · MASE metric · rolling-origin evaluation. Morphological features (5 selected from 13 candidates) computed via <code>scripts/compute_features_all.py</code> → <code>results/morphology_features.csv</code>; method results from <code>docs/figures/benchmark/matrix_mase.png</code>. Feature selection rationale in <code>notebooks/feature_selection.py</code>.</p>
+  <p><strong>Data:</strong> 12 benchmark cases · 14 forecasting methods · MASE metric · rolling-origin evaluation. Morphological features (4 selected from 13 candidates) computed via <code>scripts/compute_morphology.py</code> → <code>results/morphology_features.csv</code>; method results from <code>docs/figures/benchmark/matrix_mase.png</code>. Feature selection rationale in <code>notebooks/feature_selection.py</code>.</p>
   <p style="margin-top:.4rem"><strong>Caveat:</strong> n = 12 is severely underpowered. Correlations with p &gt; 0.1 should be treated as inconclusive. The exog_r2_gain finding (p = 0.004) and the l_skewness vs mean MASE finding (p = 0.036) survive at α = 0.05; the previously-reported seasonal_strength signal has weakened to non-significance under the revised feature definitions.</p>
 </footer>
 

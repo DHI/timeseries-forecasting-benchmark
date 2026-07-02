@@ -8,8 +8,7 @@ import pandas as pd
 from tsforecastbench.morphology.features import compute_features_all, detect_periods, period_for_freq
 
 # ---------------------------------------------------------------------------
-# Gap-handling thresholds (shared by compute_morphology.py and
-# compute_features_all.py so both scripts use identical behaviour).
+# Gap-handling thresholds used by compute_morphology.py.
 # ---------------------------------------------------------------------------
 # Gaps of at most max(GAP_INTERP_MIN, period * GAP_INTERP_FRAC) consecutive
 # NaN steps are filled by linear interpolation. Longer gaps become segment

@@ -1,10 +1,14 @@
-"""Compute the 4-feature morphological vector for all benchmark cases and
-produce a PCA biplot.
+"""Compute morphological features for all benchmark cases and produce a PCA biplot.
+
+All 13 candidate features are computed and saved (plus exog_r2_gain and domain).
+FEATURE_COLS selects the 4-feature subset used for the PCA taxonomy biplot.
 
 Outputs
 -------
-results/morphology_features.csv        raw feature table (case × 4 features)
-docs/figures/morphology/pca_biplot.png PCA biplot — 2-component PCA (PC1/PC2)
+results/morphology_features.csv        full feature table (case × 13 features
+                                       + exog_r2_gain + domain)
+docs/figures/morphology/pca_biplot.png PCA biplot — 2-component PCA on FEATURE_COLS
+docs/figures/morphology/exog_r2_gain.png external-forcing dependence bar chart
 
 Usage
 -----
@@ -31,6 +35,14 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from tsforecastbench.data.registry import discover_cases
+from tsforecastbench.morphology import (
+    GAP_INTERP_FRAC,
+    GAP_INTERP_MIN,
+    MIN_SEGMENT_ABS,
+    MIN_SEGMENT_FRAC,
+    aggregate_features,
+    gap_aware_segments,
+)
 from tsforecastbench.morphology.features import (
     compute_features_all,
     exog_r2_gain,
@@ -40,6 +52,7 @@ from tsforecastbench.morphology.features import (
 RESULTS_DIR = REPO_ROOT / "results"
 FIG_DIR = REPO_ROOT / "docs" / "figures" / "morphology"
 
+# The 4 features used for the PCA taxonomy biplot.
 FEATURE_COLS = [
     "seasonal_strength",
     "hurst",
@@ -50,25 +63,30 @@ FEATURE_COLS = [
 # Friendly display names for the loading arrows in the biplot. Keys must match
 # FEATURE_COLS.
 FEATURE_LABELS = {
-    "seasonal_strength": "seasonal",
+    "seasonal_strength": "Seasonal\nstrength",
     "hurst": "Hurst",
-    "amplitude_dispersion": "amplitude\ndispersion",
+    "amplitude_dispersion": "Amplitude\ndispersion",
     "l_skewness": "L-skewness",
 }
 
-# ---------------------------------------------------------------------------
-# Gap-handling thresholds
-# ---------------------------------------------------------------------------
-# Gaps of at most (max(GAP_INTERP_MIN, period * GAP_INTERP_FRAC)) consecutive
-# NaN steps are filled by linear interpolation before feature computation.
-# Longer gaps become segment boundaries.
-GAP_INTERP_FRAC: float = 1 / 12
-GAP_INTERP_MIN: int = 3
-
-# Segments shorter than max(MIN_SEGMENT_ABS, period * MIN_SEGMENT_FRAC) are
-# excluded from feature aggregation.
-MIN_SEGMENT_FRAC: float = 1 / 4
-MIN_SEGMENT_ABS: int = 20
+# Column order for the output CSV (all 13 candidates + exog_r2_gain + domain).
+_ALL_COLS = [
+    "acf1",
+    "trend_strength",
+    "seasonal_strength",
+    "spectral_entropy",
+    "boxcox_lambda",
+    "kurtosis",
+    "hurst",
+    "perm_entropy",
+    "amplitude_dispersion",
+    "phase_dispersion",
+    "asymmetry",
+    "l_skewness",
+    "zero_proportion",
+    "exog_r2_gain",
+    "domain",
+]
 
 
 # ---------------------------------------------------------------------------
@@ -81,98 +99,6 @@ def _horizon_steps(case) -> int:
     h = pd.Timedelta(case.horizon_primary)
     f = pd.Timedelta(case.freq)
     return max(1, int(round(h / f)))
-
-
-def _gap_aware_segments(
-    case,
-    period: int,
-    gap_interp_max: int,
-    min_segment_len: int,
-) -> tuple[list[np.ndarray], list[np.ndarray | None]]:
-    """Return gap-handled training segments as parallel lists (y_segs, X_segs).
-
-    Short gaps (≤ gap_interp_max consecutive NaN steps) are filled by linear
-    interpolation in both y and exogenous columns.  Longer gaps become segment
-    boundaries.  Segments shorter than min_segment_len are discarded.
-    """
-    df = case.load()
-    train = case.split_frame(df)["train"].copy()
-
-    # --- interpolate short gaps in y ---
-    y_s = train["y"].copy()
-    is_nan = y_s.isna().to_numpy()
-    # identify contiguous NaN run boundaries
-    padded = np.concatenate(([False], is_nan, [False])).view(np.int8)
-    edges = np.flatnonzero(np.diff(padded))
-    nan_starts = edges[0::2]
-    nan_ends = edges[1::2]  # exclusive
-
-    short_gap_mask = np.zeros(len(y_s), dtype=bool)
-    for s, e in zip(nan_starts, nan_ends):
-        if (e - s) <= gap_interp_max:
-            short_gap_mask[s:e] = True
-
-    if short_gap_mask.any():
-        # temporarily mark short-gap positions; interpolate fills them
-        y_s = y_s.copy()
-        y_s[short_gap_mask] = np.nan  # already NaN, but explicit
-        y_s = y_s.interpolate(method="linear", limit_direction="both")
-        train["y"] = y_s
-
-        if case.exogenous:
-            for col in case.exogenous:
-                s_col = train[col].copy()
-                s_col[short_gap_mask] = np.nan
-                s_col = s_col.interpolate(method="linear", limit_direction="both")
-                if s_col.isna().any():
-                    s_col = s_col.fillna(s_col.mean())
-                train[col] = s_col
-
-    # --- split at remaining NaN positions ---
-    notna = train["y"].notna().to_numpy()
-    # find starts/ends of contiguous True runs
-    padded2 = np.concatenate(([False], notna, [False])).view(np.int8)
-    edges2 = np.flatnonzero(np.diff(padded2))
-    seg_starts = edges2[0::2]
-    seg_ends = edges2[1::2]  # exclusive
-
-    y_segs: list[np.ndarray] = []
-    X_segs: list[np.ndarray | None] = []
-
-    for s, e in zip(seg_starts, seg_ends):
-        if (e - s) < min_segment_len:
-            continue
-        y_seg = train["y"].iloc[s:e].to_numpy(dtype=float)
-        y_segs.append(y_seg)
-        if not case.exogenous:
-            X_segs.append(None)
-        else:
-            X_seg = train[case.exogenous].iloc[s:e].to_numpy(dtype=float)
-            col_means = np.nanmean(X_seg, axis=0)
-            for j in range(X_seg.shape[1]):
-                bad = np.isnan(X_seg[:, j])
-                if bad.any():
-                    X_seg[bad, j] = col_means[j]
-            X_segs.append(X_seg)
-
-    return y_segs, X_segs
-
-
-# ---------------------------------------------------------------------------
-# Feature aggregation helpers
-# ---------------------------------------------------------------------------
-
-
-def _aggregate_features(
-    feat_dicts: list[dict[str, float]],
-    lengths: list[int],
-) -> dict[str, float]:
-    """Length-weighted average of per-segment feature dicts."""
-    total = sum(lengths)
-    agg: dict[str, float] = {}
-    for key in feat_dicts[0]:
-        agg[key] = sum(d[key] * w for d, w in zip(feat_dicts, lengths)) / total
-    return agg
 
 
 def _compute_features_segmented(
@@ -194,7 +120,7 @@ def _compute_features_segmented(
         gains.append(exog_r2_gain(y_seg, X_seg, period, n_exog_lags, poly_degree=2))
         lengths.append(len(y_seg))
 
-    feats = _aggregate_features(feat_dicts, lengths)
+    feats = aggregate_features(feat_dicts, lengths)
     total = sum(lengths)
     gain = sum(g * w for g, w in zip(gains, lengths)) / total
     return feats, gain
@@ -405,7 +331,7 @@ def main() -> int:
         period = period_for_freq(case.freq)
         gap_interp_max = max(GAP_INTERP_MIN, int(period * GAP_INTERP_FRAC))
         min_segment_len = max(MIN_SEGMENT_ABS, int(period * MIN_SEGMENT_FRAC))
-        y_segs, X_segs = _gap_aware_segments(case, period, gap_interp_max, min_segment_len)
+        y_segs, X_segs = gap_aware_segments(case, period, gap_interp_max, min_segment_len)
         if not y_segs:
             print(f"[{case_id}] no segments meet min_segment_len={min_segment_len} — skipping.")
             continue
@@ -420,15 +346,19 @@ def main() -> int:
         exog_gains[case_id] = gain
         records[case_id] = feats
         domains[case_id] = case.domain
-        print("  ".join(f"{k}={v:+.3f}" for k, v in feats.items()) + f"  exog_r2_gain={gain:+.3f}")
+        print(
+            "  ".join(f"{k}={feats[k]:+.3f}" for k in FEATURE_COLS) + f"  exog_r2_gain={gain:+.3f}"
+        )
 
     if not records:
         print("No cases with processed parquet found — nothing to do.")
         return 1
 
-    features_df = pd.DataFrame.from_dict(records, orient="index")[FEATURE_COLS]
+    features_df = pd.DataFrame.from_dict(records, orient="index")
     features_df.index.name = "case_id"
     features_df["exog_r2_gain"] = pd.Series(exog_gains)
+    features_df["domain"] = pd.Series(domains)
+    features_df = features_df[[c for c in _ALL_COLS if c in features_df.columns]]
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     csv_path = RESULTS_DIR / "morphology_features.csv"
