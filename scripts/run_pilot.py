@@ -30,6 +30,7 @@ from tsforecastbench.bench.methods import (
     MLPForecaster,
     Persistence,
     SeasonalNaive,
+    TBATSForecaster,
     ThetaForecaster,
 )
 from tsforecastbench.bench.viz import render_matrix
@@ -49,6 +50,7 @@ def build_methods():
         Climatology(),
         AutoARIMAForecaster(),
         AutoETSForecaster(),
+        TBATSForecaster(),
         ThetaForecaster(),
         LinearLagsForecaster(),
         LightGBMForecaster(),
