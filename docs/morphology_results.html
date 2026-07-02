@@ -112,12 +112,12 @@ footer{border-top:1px solid var(--rule);padding-top:1.25rem;color:var(--muted);f
 <header>
   <div class="eyebrow">TSForecastBench · Morphology Analysis</div>
   <h1>Do morphologically similar cases have similar forecasting results?</h1>
-  <p class="subtitle">Analysing whether the revised 5-feature morphological embedding predicts method performance across 12 benchmark cases and 14 forecasting methods.</p>
+  <p class="subtitle">Analysing whether the 6-feature morphological embedding (amplitude dispersion, permutation entropy, Hurst, seasonal strength, kurtosis, L-skewness) predicts method performance across 12 benchmark cases and 14 forecasting methods.</p>
   <div class="meta-row">
     <div class="meta-item"><div class="value">12</div><div class="label">Benchmark cases</div></div>
     <div class="meta-item"><div class="value">14</div><div class="label">Methods</div></div>
-    <div class="meta-item"><div class="value">5</div><div class="label">Morphology features</div></div>
-    <div class="meta-item"><div class="value">2</div><div class="label">Significant findings</div></div>
+    <div class="meta-item"><div class="value">6</div><div class="label">Morphology features</div></div>
+    <div class="meta-item"><div class="value">1</div><div class="label">Significant findings</div></div>
   </div>
 </header>
 
@@ -127,23 +127,23 @@ footer{border-top:1px solid var(--rule);padding-top:1.25rem;color:var(--muted);f
   <div class="findings">
     <div class="fc">
       <div class="fnum">Finding 1</div>
-      <div class="fstat">ρ = +0.11</div>
-      <div class="fdesc">Morphological distance does not predict method-ranking agreement. Spearman correlation between morphological distance and Kendall-τ rank agreement across all 66 case pairs: p = 0.38.</div>
+      <div class="fstat">ρ = +0.16</div>
+      <div class="fdesc">Morphological distance does not predict method-ranking agreement. Spearman correlation between morphological distance and Kendall-τ rank agreement across all 66 case pairs: p = 0.21.</div>
     </div>
     <div class="fc">
       <div class="fnum">Finding 2</div>
       <div class="fstat mid">ρ = +0.61 *</div>
       <div class="fdesc">L-skewness is the strongest predictor of overall case difficulty (mean MASE). Right-skewed series — those with occasional large spikes — are harder to forecast on average. Significant at p = 0.036.</div>
     </div>
-    <div class="fc strong">
-      <div class="fnum">Finding 3 — strongest</div>
-      <div class="fstat sig">ρ = +0.77 **</div>
-      <div class="fdesc">exog_r2_gain strongly predicts the MASE improvement from adding exogenous variables to LightGBM (p = 0.004). The feature does what it promises.</div>
+    <div class="fc">
+      <div class="fnum">Finding 3</div>
+      <div class="fstat">ρ = +0.29</div>
+      <div class="fdesc">Kurtosis does not significantly predict difficulty (p = 0.37 vs best MASE). It does identify the spikiest series — Bellinge sewer (κ = 381) and Catskills Q (κ = 261) — but high spike frequency does not translate to harder forecasting.</div>
     </div>
   </div>
   <div class="callout">
     <div class="clabel">Bottom line</div>
-    <p style="max-width:100%;margin:0;font-size:14px">Morphological similarity remains a weak global predictor of shared method rankings — cases that look alike do not systematically prefer the same methods. Under the revised feature set, <strong>seasonal_strength is no longer a significant difficulty signal</strong> (ρ = −0.40, p = 0.20); the difficulty signal that survives is <strong>l_skewness</strong>, which tracks mean MASE (right-skewed, spiky series are harder). The headline result is unchanged and slightly stronger: <strong>exog_r2_gain</strong> reliably flags when exogenous-aware methods will outperform their univariate counterparts (ρ = +0.77). Separately, the benchmark itself is decisive — <strong>every one of the 12 cases is won by an exogenous-aware ML method or by Chronos-Bolt</strong>, never by a pure univariate baseline. The sample (n = 12) is underpowered, so null results should be read as "inconclusive" rather than "no effect."</p>
+    <p style="max-width:100%;margin:0;font-size:14px">Morphological similarity remains a weak global predictor of shared method rankings — cases that look alike do not systematically prefer the same methods. Within the 6-feature set (amplitude dispersion, permutation entropy, Hurst, seasonal strength, kurtosis, L-skewness), <strong>only l_skewness reaches significance</strong>: right-skewed, spiky series are harder on average (ρ = +0.61, p = 0.036 vs mean MASE). No feature significantly predicts the <em>best achievable</em> MASE. Kurtosis characterises the most extreme series — Bellinge sewer (κ = 381) and Catskills Q (κ = 261) — but does not translate into difficulty. Adding kurtosis to the feature space also breaks up the formerly closest pair (Bellinge/MA waves), since their kurtosis values diverge sharply (381 vs 11). Separately, the benchmark itself is decisive — <strong>every one of the 12 cases is won by an exogenous-aware ML method or by Chronos-Bolt</strong>, never by a pure univariate baseline. The sample (n = 12) is underpowered, so null results should be read as "inconclusive" rather than "no effect."</p>
   </div>
 </section>
 
@@ -168,12 +168,13 @@ footer{border-top:1px solid var(--rule);padding-top:1.25rem;color:var(--muted);f
     <tbody>
       <tr><td class="feat">hurst</td><td class="r-neg">−0.434</td><td>0.158</td><td class="feat" style="color:var(--muted);font-family:system-ui">Stronger persistence → easier</td></tr>
       <tr><td class="feat">l_skewness</td><td class="r-pos">+0.427</td><td>0.166</td><td class="feat" style="color:var(--muted);font-family:system-ui">Right-skewed → harder (significant vs mean MASE)</td></tr>
-      <tr><td class="feat">seasonal_strength</td><td class="r-neg">−0.399</td><td>0.198</td><td class="feat" style="color:var(--muted);font-family:system-ui">Weaker than before — no longer significant</td></tr>
-      <tr><td class="feat">amplitude_dispersion</td><td class="r-pos">+0.154</td><td>0.632</td><td class="feat" style="color:var(--muted);font-family:system-ui">New feature — not predictive of difficulty</td></tr>
-      <tr><td class="feat">exog_r2_gain</td><td class="r-neg">−0.169</td><td>0.599</td><td class="feat" style="color:var(--muted);font-family:system-ui">Not predictive of overall difficulty</td></tr>
+      <tr><td class="feat">seasonal_strength</td><td class="r-neg">−0.399</td><td>0.198</td><td class="feat" style="color:var(--muted);font-family:system-ui">Stronger seasonality → easier, but not significant</td></tr>
+      <tr><td class="feat">kurtosis</td><td class="r-pos">+0.287</td><td>0.365</td><td class="feat" style="color:var(--muted);font-family:system-ui">Identifies spiky series (Bellinge κ=381, Catskills κ=261) — not predictive of difficulty</td></tr>
+      <tr><td class="feat">amplitude_dispersion</td><td class="r-pos">+0.154</td><td>0.632</td><td class="feat" style="color:var(--muted);font-family:system-ui">Not predictive of difficulty</td></tr>
+      <tr><td class="feat">perm_entropy</td><td class="r-pos">+0.242</td><td>0.449</td><td class="feat" style="color:var(--muted);font-family:system-ui">Higher randomness not predictive of difficulty</td></tr>
     </tbody>
   </table>
-  <p style="margin-top:.75rem;font-size:12.5px;color:var(--muted)">Note: no feature reaches significance against the <em>best achievable</em> MASE at this sample size. The one significant difficulty relationship is <strong>l_skewness vs Mean MASE</strong> (ρ = +0.61, p = 0.036) — right-skewed series with occasional extreme values are harder for every method on average, not just for the best one.</p>
+  <p style="margin-top:.75rem;font-size:12.5px;color:var(--muted)">Note: no feature reaches significance against the <em>best achievable</em> MASE at this sample size. The one significant difficulty relationship is <strong>l_skewness vs Mean MASE</strong> (ρ = +0.61, p = 0.036) — right-skewed series with occasional extreme values are harder for every method on average, not just for the best one. Kurtosis (ρ = +0.28, p = 0.38) and permutation entropy (ρ = +0.24, p = 0.45) are both inconclusive.</p>
 </section>
 
 <section id="charts">
@@ -181,8 +182,8 @@ footer{border-top:1px solid var(--rule);padding-top:1.25rem;color:var(--muted);f
   <div class="rule"></div>
   <div class="charts">
     <div class="ccard">
-      <div class="ctitle">exog_r2_gain vs LightGBM+exo improvement (ΔMASE)</div>
-      <div class="cstat">ρ = +0.767, p = 0.004 **</div>
+      <div class="ctitle">Permutation entropy vs mean MASE (case difficulty)</div>
+      <div class="cstat">ρ = −0.133, p = 0.681 (n.s.)</div>
       <canvas id="c1" width="360" height="260"></canvas>
     </div>
     <div class="ccard">
@@ -204,42 +205,42 @@ footer{border-top:1px solid var(--rule);padding-top:1.25rem;color:var(--muted);f
     </tr></thead>
     <tbody>
       <tr>
-        <td>Bellinge sewer</td><td>MA waves</td>
-        <td class="mono">0.32</td>
-        <td><span class="tau-chip tau-weak">τ = +0.29</span></td>
-        <td style="font-size:12.5px;color:var(--muted)">By far the closest pair, yet one of the easiest cases (Bellinge, best 0.20) sits beside the hardest (MA waves, best 0.88) — weak rank agreement</td>
-      </tr>
-      <tr>
-        <td>Bellinge sewer</td><td>OR waves</td>
-        <td class="mono">1.03</td>
-        <td><span class="tau-chip tau-mod">τ = +0.42</span></td>
-        <td style="font-size:12.5px;color:var(--muted)">Modest agreement despite very different difficulty levels</td>
-      </tr>
-      <tr>
-        <td>DK lowland Q</td><td>OR waves</td>
-        <td class="mono">1.18</td>
-        <td><span class="tau-chip tau-strong">τ = +0.51</span></td>
-        <td style="font-size:12.5px;color:var(--muted)">Moderate agreement — both reward exogenous-aware linear/ML methods</td>
-      </tr>
-      <tr>
         <td>DK lowland Q</td><td>WWTP N₂O</td>
         <td class="mono">1.18</td>
         <td><span class="tau-chip tau-weak">τ = +0.16</span></td>
-        <td style="font-size:12.5px;color:var(--muted)">Near-random rank agreement despite morphological proximity</td>
+        <td style="font-size:12.5px;color:var(--muted)">Closest pair, yet near-random rank agreement — morphological proximity does not guarantee shared method preferences</td>
       </tr>
       <tr>
-        <td>OR waves</td><td>MA waves</td>
-        <td class="mono">1.24</td>
+        <td>DK lowland Q</td><td>OR waves</td>
+        <td class="mono">1.25</td>
+        <td><span class="tau-chip tau-strong">τ = +0.51</span></td>
+        <td style="font-size:12.5px;color:var(--muted)">Strongest rank agreement — both reward exogenous-aware linear/ML methods</td>
+      </tr>
+      <tr>
+        <td>MA waves</td><td>OR waves</td>
+        <td class="mono">1.29</td>
         <td><span class="tau-chip tau-mod">τ = +0.36</span></td>
-        <td style="font-size:12.5px;color:var(--muted)">Both wave cases, both won by LGB+x — yet only moderate rank agreement across the full method set</td>
+        <td style="font-size:12.5px;color:var(--muted)">Both wave cases, both won by LGB+x — yet only modest rank agreement across the full method set</td>
+      </tr>
+      <tr>
+        <td>OR waves</td><td>WWTP N₂O</td>
+        <td class="mono">1.60</td>
+        <td><span class="tau-chip tau-mod">τ = +0.35</span></td>
+        <td style="font-size:12.5px;color:var(--muted)">Modest agreement — both easy-to-moderate cases, different domains</td>
+      </tr>
+      <tr>
+        <td>L-Town demand</td><td>Saugeen Q</td>
+        <td class="mono">1.65</td>
+        <td><span class="tau-chip tau-weak">τ = −0.07</span></td>
+        <td style="font-size:12.5px;color:var(--muted)">Near-zero rank correlation — morphological proximity hides very different method preferences</td>
       </tr>
     </tbody>
   </table>
 </section>
 
 <footer>
-  <p><strong>Data:</strong> 12 benchmark cases · 14 forecasting methods · MASE metric · rolling-origin evaluation. Morphological features (4 selected from 13 candidates) computed via <code>scripts/compute_morphology.py</code> → <code>results/morphology_features.csv</code>; method results from <code>docs/figures/benchmark/matrix_mase.png</code>. Feature selection rationale in <code>notebooks/feature_selection.py</code>.</p>
-  <p style="margin-top:.4rem"><strong>Caveat:</strong> n = 12 is severely underpowered. Correlations with p &gt; 0.1 should be treated as inconclusive. The exog_r2_gain finding (p = 0.004) and the l_skewness vs mean MASE finding (p = 0.036) survive at α = 0.05; the previously-reported seasonal_strength signal has weakened to non-significance under the revised feature definitions.</p>
+  <p><strong>Data:</strong> 12 benchmark cases · 14 forecasting methods · MASE metric · rolling-origin evaluation. Morphological features (6: amplitude_dispersion, perm_entropy, hurst, seasonal_strength, kurtosis, l_skewness) computed via <code>scripts/compute_morphology.py</code> → <code>results/morphology_features.csv</code>; method results from <code>docs/figures/benchmark/matrix_mase.png</code>. Feature selection rationale in <code>notebooks/feature_selection.py</code>.</p>
+  <p style="margin-top:.4rem"><strong>Caveat:</strong> n = 12 is severely underpowered. Correlations with p &gt; 0.1 should be treated as inconclusive. Only the l_skewness vs mean MASE relationship (p = 0.036) survives at α = 0.05. Kurtosis, permutation entropy, and the remaining four features are inconclusive at this sample size. Kurtosis is dominated by two extreme cases (Bellinge κ = 381, Catskills κ = 261); standardisation limits but does not eliminate their influence on pairwise distances.</p>
 </footer>
 
 </div>
@@ -468,21 +469,21 @@ function drawScatter(canvasId, pts, xLabel, yLabel, opts={}) {
   }
 }
 
-// ── Chart 1: exog_r2_gain vs LGB+exo improvement ─────────────────────────────
-// [exog_r2_gain, ΔMASE(LGB→LGB+exo), label, highlight]
-const exogData = [
-  [0.0000, 0.000, null,        false],
-  [0.5087, 0.990, "Catskills", true ],
-  [0.0228, 0.060, null,        false],
-  [0.0000, 0.000, null,        false],
-  [0.0120, 0.180, null,        false],
-  [0.0002, 0.000, null,        false],
-  [0.0025, 0.040, null,        false],
-  [0.0031, 0.280, "Cuxhaven",  false],
-  [0.0054, 0.250, "James R.",  false],
-  [0.0040, 0.200, null,        false],
-  [0.0023, 0.190, null,        false],
-  [0.0000, 0.000, null,        false],
+// ── Chart 1: perm_entropy vs mean MASE ───────────────────────────────────────
+// [perm_entropy, mean MASE, label, highlight] — cases ordered by mean MASE
+const permData = [
+  [0.5449, 0.420, "Yorktown",  true ],
+  [0.9328, 0.469, null,        false],
+  [0.9659, 0.530, null,        false],
+  [0.9536, 0.578, null,        false],
+  [0.9978, 0.689, null,        false],
+  [0.8717, 0.792, null,        false],
+  [0.9847, 0.814, null,        false],
+  [0.9043, 0.818, null,        false],
+  [0.8127, 0.940, null,        false],
+  [0.8051, 1.049, "Yosemite",  false],
+  [0.8720, 1.068, "Saugeen",   false],
+  [0.9461, 1.206, "MA waves",  false],
 ];
 
 // ── Chart 2: l_skewness vs mean MASE ──────────────────────────────────────────
@@ -503,7 +504,7 @@ const lsData = [
 ];
 
 window.addEventListener('load', () => {
-  drawScatter('c1', exogData, 'exog_r2_gain', 'MASE reduction (LGB→LGB+exo)', {xmax:0.55, ymin:0, ymax:1.1, logX:true, xFloor:0.001});
+  drawScatter('c1', permData, 'Permutation entropy', 'Mean MASE (case difficulty)', {xmin:0.50, xmax:1.02, ymin:0.35, ymax:1.30});
   drawScatter('c2', lsData, 'L-skewness', 'Mean MASE (case difficulty)', {xmin:-0.05, xmax:0.6, ymin:0.4, ymax:1.25});
 });
 </script>

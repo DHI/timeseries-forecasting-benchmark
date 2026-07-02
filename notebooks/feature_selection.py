@@ -446,6 +446,49 @@ def _(
 
 
 @app.cell
+def _(feature_selector, features_df, label_to_key, pd):
+    from sklearn.cluster import KMeans
+    from sklearn.metrics import silhouette_score
+    from sklearn.preprocessing import RobustScaler
+
+
+    _selected_labels = feature_selector.value
+    _selected_keys = [label_to_key[lbl] for lbl in _selected_labels]
+    morphology_features = features_df[_selected_keys].copy()
+
+    scaler = RobustScaler()
+    morphology_features = scaler.fit_transform(morphology_features)
+
+
+    # -------------------------------------
+    # Determine the best number of clusters
+    # -------------------------------------
+    scores = {}
+
+    # With 12 samples, testing 2-6 clusters is reasonable
+    for k in range(2, 6):
+        model = KMeans(n_clusters=k, random_state=42)
+        labels = model.fit_predict(morphology_features)
+
+        score = silhouette_score(morphology_features, labels)
+        scores[k] = score
+
+    best_k = max(scores, key=scores.get)
+
+    print(f"\nBest number of clusters: {best_k}")
+
+    # -------------------------------------
+    # Final model
+    # -------------------------------------
+    kmeans = KMeans(n_clusters=best_k, random_state=42)
+
+    morphology_features = pd.DataFrame(morphology_features, columns=_selected_keys, index=features_df.index)
+    morphology_features["cluster"] = kmeans.fit_predict(morphology_features)
+    morphology_features["cluster"]
+    return
+
+
+@app.cell
 def _(feature_selector):
     _selected = feature_selector.value
     _n = len(_selected)
