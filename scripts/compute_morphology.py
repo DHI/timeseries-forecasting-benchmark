@@ -58,6 +58,20 @@ FEATURE_LABELS = {
     "l_skewness": "L-skewness",
 }
 
+# ---------------------------------------------------------------------------
+# Gap-handling thresholds
+# ---------------------------------------------------------------------------
+# Gaps of at most (max(GAP_INTERP_MIN, period * GAP_INTERP_FRAC)) consecutive
+# NaN steps are filled by linear interpolation before feature computation.
+# Longer gaps become segment boundaries.
+GAP_INTERP_FRAC: float = 1 / 12
+GAP_INTERP_MIN:  int   = 3
+
+# Segments shorter than max(MIN_SEGMENT_ABS, period * MIN_SEGMENT_FRAC) are
+# excluded from feature aggregation.
+MIN_SEGMENT_FRAC: float = 1 / 4
+MIN_SEGMENT_ABS:  int   = 20
+
 
 # ---------------------------------------------------------------------------
 # Data helpers
@@ -71,25 +85,122 @@ def _horizon_steps(case) -> int:
     return max(1, int(round(h / f)))
 
 
-def _extract_train_data(case) -> tuple[np.ndarray, np.ndarray | None]:
-    """Return (y_train, X_exog_train) from the training split.
+def _gap_aware_segments(
+    case,
+    period: int,
+    gap_interp_max: int,
+    min_segment_len: int,
+) -> tuple[list[np.ndarray], list[np.ndarray | None]]:
+    """Return gap-handled training segments as parallel lists (y_segs, X_segs).
 
-    Exogenous NaNs are filled with column means.
-    Returns None for the exog array when the case has no exogenous variables.
+    Short gaps (≤ gap_interp_max consecutive NaN steps) are filled by linear
+    interpolation in both y and exogenous columns.  Longer gaps become segment
+    boundaries.  Segments shorter than min_segment_len are discarded.
     """
     df = case.load()
-    train = case.split_frame(df)["train"]
-    mask = train["y"].notna()
-    y = train.loc[mask, "y"].to_numpy(dtype=float)
-    if not case.exogenous:
-        return y, None
-    X = train.loc[mask, case.exogenous].to_numpy(dtype=float)
-    col_means = np.nanmean(X, axis=0)
-    for j in range(X.shape[1]):
-        nan_idx = np.isnan(X[:, j])
-        if nan_idx.any():
-            X[nan_idx, j] = col_means[j]
-    return y, X
+    train = case.split_frame(df)["train"].copy()
+
+    # --- interpolate short gaps in y ---
+    y_s = train["y"].copy()
+    is_nan = y_s.isna().to_numpy()
+    # identify contiguous NaN run boundaries
+    padded = np.concatenate(([False], is_nan, [False])).view(np.int8)
+    edges = np.flatnonzero(np.diff(padded))
+    nan_starts = edges[0::2]
+    nan_ends   = edges[1::2]  # exclusive
+
+    short_gap_mask = np.zeros(len(y_s), dtype=bool)
+    for s, e in zip(nan_starts, nan_ends):
+        if (e - s) <= gap_interp_max:
+            short_gap_mask[s:e] = True
+
+    if short_gap_mask.any():
+        # temporarily mark short-gap positions; interpolate fills them
+        y_s = y_s.copy()
+        y_s[short_gap_mask] = np.nan  # already NaN, but explicit
+        y_s = y_s.interpolate(method="linear", limit_direction="both")
+        train["y"] = y_s
+
+        if case.exogenous:
+            for col in case.exogenous:
+                s_col = train[col].copy()
+                s_col[short_gap_mask] = np.nan
+                s_col = s_col.interpolate(method="linear", limit_direction="both")
+                if s_col.isna().any():
+                    s_col = s_col.fillna(s_col.mean())
+                train[col] = s_col
+
+    # --- split at remaining NaN positions ---
+    notna = train["y"].notna().to_numpy()
+    # find starts/ends of contiguous True runs
+    padded2 = np.concatenate(([False], notna, [False])).view(np.int8)
+    edges2  = np.flatnonzero(np.diff(padded2))
+    seg_starts = edges2[0::2]
+    seg_ends   = edges2[1::2]  # exclusive
+
+    y_segs: list[np.ndarray]          = []
+    X_segs: list[np.ndarray | None]   = []
+
+    for s, e in zip(seg_starts, seg_ends):
+        if (e - s) < min_segment_len:
+            continue
+        y_seg = train["y"].iloc[s:e].to_numpy(dtype=float)
+        y_segs.append(y_seg)
+        if not case.exogenous:
+            X_segs.append(None)
+        else:
+            X_seg = train[case.exogenous].iloc[s:e].to_numpy(dtype=float)
+            col_means = np.nanmean(X_seg, axis=0)
+            for j in range(X_seg.shape[1]):
+                bad = np.isnan(X_seg[:, j])
+                if bad.any():
+                    X_seg[bad, j] = col_means[j]
+            X_segs.append(X_seg)
+
+    return y_segs, X_segs
+
+
+# ---------------------------------------------------------------------------
+# Feature aggregation helpers
+# ---------------------------------------------------------------------------
+
+
+def _aggregate_features(
+    feat_dicts: list[dict[str, float]],
+    lengths: list[int],
+) -> dict[str, float]:
+    """Length-weighted average of per-segment feature dicts."""
+    total = sum(lengths)
+    agg: dict[str, float] = {}
+    for key in feat_dicts[0]:
+        agg[key] = sum(d[key] * w for d, w in zip(feat_dicts, lengths)) / total
+    return agg
+
+
+def _compute_features_segmented(
+    y_segs: list[np.ndarray],
+    X_segs: list[np.ndarray | None],
+    period: int,
+    seasonal_periods: list[int],
+    n_exog_lags: int,
+) -> tuple[dict[str, float], float]:
+    """Compute morphological features and exog_r2_gain across all segments.
+
+    Returns (feature_dict, exog_gain) aggregated by length-weighted average.
+    """
+    feat_dicts: list[dict[str, float]] = []
+    gains: list[float] = []
+    lengths: list[int] = []
+
+    for y_seg, X_seg in zip(y_segs, X_segs):
+        feat_dicts.append(compute_features_all(y_seg, period, seasonal_periods=seasonal_periods))
+        gains.append(exog_r2_gain(y_seg, X_seg, period, n_exog_lags, poly_degree=2))
+        lengths.append(len(y_seg))
+
+    feats = _aggregate_features(feat_dicts, lengths)
+    total = sum(lengths)
+    gain  = sum(g * w for g, w in zip(gains, lengths)) / total
+    return feats, gain
 
 
 # ---------------------------------------------------------------------------
@@ -284,16 +395,24 @@ def main() -> int:
         if not case.parquet_path.exists():
             print(f"[{case_id}] no parquet — skipping.")
             continue
-        print(f"[{case_id}] computing ...", end="  ", flush=True)
-        y, X_exog = _extract_train_data(case)
         period = period_for_freq(case.freq)
         seasonal_periods = seasonal_periods_for_freq(case.freq)
-        feats = compute_features_all(y, period, seasonal_periods=seasonal_periods)
+        gap_interp_max  = max(GAP_INTERP_MIN,  int(period * GAP_INTERP_FRAC))
+        min_segment_len = max(MIN_SEGMENT_ABS, int(period * MIN_SEGMENT_FRAC))
+        y_segs, X_segs = _gap_aware_segments(case, period, gap_interp_max, min_segment_len)
+        if not y_segs:
+            print(f"[{case_id}] no segments meet min_segment_len={min_segment_len} — skipping.")
+            continue
+        n_segs = len(y_segs)
+        print(f"[{case_id}] {n_segs} seg(s), gap_interp_max={gap_interp_max} ...", end="  ", flush=True)
         n_exog_lags = min(_horizon_steps(case), 30)
-        exog_gains[case_id] = exog_r2_gain(y, X_exog, period, n_exog_lags, poly_degree=2)
+        feats, gain = _compute_features_segmented(
+            y_segs, X_segs, period, seasonal_periods, n_exog_lags
+        )
+        exog_gains[case_id] = gain
         records[case_id] = feats
         domains[case_id] = case.domain
-        print("  ".join(f"{k}={v:+.3f}" for k, v in feats.items()) + f"  exog_r2_gain={exog_gains[case_id]:+.3f}")
+        print("  ".join(f"{k}={v:+.3f}" for k, v in feats.items()) + f"  exog_r2_gain={gain:+.3f}")
 
     if not records:
         print("No cases with processed parquet found — nothing to do.")
