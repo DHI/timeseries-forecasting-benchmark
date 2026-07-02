@@ -41,6 +41,7 @@ CASE_HINTS = {
     "watertemp_james":     {"overlay": "temp_air",          "overlay_kind": "line",  "zoom": "365D", "target_label": "Water temp (C)"},
     "sewerlevel_bellinge": {"overlay": "rain_gauge",        "overlay_kind": "rain",  "zoom": "14D",  "target_label": "Sewer level (m)"},
     "demand_ltown":         {"overlay": None,                "overlay_kind": None,    "zoom": "14D",  "target_label": "Inlet flow (L/s)"},
+    "discharge_saugeen":    {"overlay": None,                "overlay_kind": None,    "zoom": "730D", "target_label": "Discharge (m3/s)"},
     "wwtp_influent_n2o_350k":        {"overlay": None,                "overlay_kind": None,    "zoom": "14D",  "target_label": "Influent flow"},
     "surge_cuxhaven":    {"overlay": "mslp",              "overlay_kind": "line",  "zoom": "30D",  "target_label": "Residual (m)"},
     "waves_oregon":           {"overlay": "wspd",              "overlay_kind": "line",  "zoom": "30D",  "target_label": "H_s (m)"},

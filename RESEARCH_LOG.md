@@ -8,6 +8,23 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-02 — Added missing `discharge_saugeen` case doc and EDA panel
+
+`docs/cases/` had 11 pages for the 12 cases under `src/tsforecastbench/data/cases/` —
+`discharge_saugeen` was implemented (case.toml, download.py, synth.py) but never got a
+docs page, and was also missing from `scripts/case_eda.py`'s `CASE_HINTS` (so no EDA
+figure existed) and from the case table in `docs/README.md`.
+
+Added the `discharge_saugeen` entry to `CASE_HINTS` (no overlay — it's exogenous-free,
+so the panel falls back to the 7-day rolling-mean trend line like `demand_ltown`),
+regenerated `docs/figures/cases/discharge_saugeen_eda.png`, wrote
+`docs/cases/discharge_saugeen.md`, and added the case to the `docs/README.md` table.
+Framed the doc around its role in the suite: it's the deliberate univariate control
+against the three exogenous hydrology cases (`discharge_lowland_denmark`,
+`discharge_flashy_catskills`, `discharge_snowmelt_yosemite`) — same kind of target,
+no forcing covariates, so it isolates pure autoregressive/seasonal skill. No case
+behavior changed; this is docs/tooling catch-up only.
+
 ## 2026-07-02 — Dropped `optional_exogenous` as a redundant stored field
 
 A case's exogenous columns end up described along two independent axes: timing
