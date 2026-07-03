@@ -38,7 +38,9 @@ def _parse_tsf(path: Path) -> pd.Series:
         if in_data:
             # Format: series_name:start_timestamp:v1,v2,...
             # Timestamps use hyphens in the time part (e.g. "1915-01-01 00-00-00")
-            parts = stripped.split(":")
+            parts = stripped.split(":", 2)
+            if len(parts) != 3:
+                raise ValueError(f"Malformed TSF data row in {path}: {stripped[:120]}")
             start_str = parts[1].strip().split(" ")[0]  # keep only the date part
             start = pd.Timestamp(start_str, tz="UTC")
             values = [
