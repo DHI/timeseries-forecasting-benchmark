@@ -17,6 +17,7 @@ import pandas as pd
 
 from tsforecastbench.bench.methods.base import Forecaster
 from tsforecastbench.data.schema import Case
+from tsforecastbench.data.seasonality import dominant_period, normalize_freq
 
 
 def _date_features_for(freq: str) -> list[str]:
@@ -30,60 +31,57 @@ def _date_features_for(freq: str) -> list[str]:
     return ["dayofweek", "month"]
 
 
-def _sincos_features_for(freq: str) -> list:
-    """Sin/cos encoding of the dominant seasonal period for the given frequency.
+# Position-in-cycle from calendar fields for the canonical (freq, period) pairs: exact
+# across leap years and DST-free naive timestamps, unlike an epoch-anchored step count.
+_CANONICAL_POSITIONS = {
+    ("1d", 7): lambda ds: ds.dayofweek,
+    ("1d", 365): lambda ds: ds.dayofyear - 1,
+    ("1h", 12): lambda ds: ds.hour % 12,
+    ("1h", 24): lambda ds: ds.hour,
+    ("1h", 168): lambda ds: ds.dayofweek * 24 + ds.hour,
+    ("15min", 96): lambda ds: ds.hour * 4 + ds.minute // 15,
+    ("15min", 672): lambda ds: ds.dayofweek * 96 + ds.hour * 4 + ds.minute // 15,
+}
 
-    MLForecast passes a DatetimeIndex to each callable (no .dt accessor).
+
+def _sincos_features_for(case: Case) -> list:
+    """Sin/cos encoding of the case's declared dominant period ([] -> no cyclic features).
+
+    MLForecast passes a DatetimeIndex to each callable (no .dt accessor) and names the
+    feature column after the callable's __name__.
     """
-    f = freq.lower()
-    if f in {"1d", "d"}:
+    p = dominant_period(case.seasonalities)
+    if p == 1:
+        return []
+    pos = _CANONICAL_POSITIONS.get((normalize_freq(case.freq), p))
+    if pos is None:
+        # Non-canonical period: position = epoch-anchored step count modulo p, identical
+        # at fit and predict time because both use the same naive timestamps.
+        step_ns = pd.Timedelta(pd.tseries.frequencies.to_offset(case.freq)).value
 
-        def sin_week(ds):
-            return np.sin(2 * np.pi * ds.dayofweek / 7)
+        def pos(ds, _step_ns=step_ns, _p=p):
+            return (ds.asi8 // _step_ns) % _p
 
-        def cos_week(ds):
-            return np.cos(2 * np.pi * ds.dayofweek / 7)
+    def sin_feat(ds):
+        return np.sin(2 * np.pi * pos(ds) / p)
 
-        return [sin_week, cos_week]
-    if f in {"1h", "h"}:
+    def cos_feat(ds):
+        return np.cos(2 * np.pi * pos(ds) / p)
 
-        def sin_day(ds):
-            return np.sin(2 * np.pi * ds.hour / 24)
-
-        def cos_day(ds):
-            return np.cos(2 * np.pi * ds.hour / 24)
-
-        return [sin_day, cos_day]
-    if f in {"15min", "15t"}:
-
-        def sin_d15(ds):
-            pos = ds.hour * 4 + ds.minute // 15
-            return np.sin(2 * np.pi * pos / 96)
-
-        def cos_d15(ds):
-            pos = ds.hour * 4 + ds.minute // 15
-            return np.cos(2 * np.pi * pos / 96)
-
-        return [sin_d15, cos_d15]
-
-    def sin_fb(ds):
-        return np.sin(2 * np.pi * ds.dayofweek / 7)
-
-    def cos_fb(ds):
-        return np.cos(2 * np.pi * ds.dayofweek / 7)
-
-    return [sin_fb, cos_fb]
+    sin_feat.__name__ = f"sin{p}"
+    cos_feat.__name__ = f"cos{p}"
+    return [sin_feat, cos_feat]
 
 
-def _lags_for(freq: str) -> list[int]:
-    f = freq.lower()
-    if f in {"1d", "d"}:
-        return [1, 2, 3, 7, 14, 30]
-    if f in {"1h", "h"}:
-        return [1, 2, 3, 6, 12, 24, 48, 168]
-    if f in {"15min", "15t"}:
-        return [1, 2, 4, 8, 16, 96]
-    return [1, 2, 3]
+def _lags_for(case: Case) -> list[int]:
+    """Uniform geometric memory ladder plus the case's declared seasonal periods.
+
+    The ladder is recent autoregressive state, identical for every case and frequency —
+    it makes no cycle claim (the regressor is free to ignore any lag). Seasonal structure
+    enters only through the declared periods, keeping the case.toml the single source of
+    seasonal configuration."""
+    ladder = [1, 2, 4, 8, 16, 32]
+    return sorted(set(ladder) | set(case.seasonalities))
 
 
 def _exo_cols(case: Case) -> list[str]:
@@ -145,12 +143,12 @@ class _WindowedMLBase(Forecaster):
 
         date_feats = list(_date_features_for(case.freq))
         if self.use_calendar:
-            date_feats += _sincos_features_for(case.freq)
+            date_feats += _sincos_features_for(case)
 
         self._fcst = MLForecast(
             models=[self._make_model()],
             freq=case.freq,
-            lags=_lags_for(case.freq),
+            lags=_lags_for(case),
             date_features=date_feats,
         )
         self._fcst.fit(df, static_features=[])
