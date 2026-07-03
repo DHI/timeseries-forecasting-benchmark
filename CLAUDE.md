@@ -18,6 +18,12 @@ going forward. Skip trivial or purely mechanical changes (typo fixes, file moves
 dependency bumps). Create the file if it doesn't exist yet. New entries go at the top, under
 the "newest first" marker.
 
+## Code formatting
+
+CI runs `uv run ruff check .` and fails the build on any lint violation. Before committing,
+run `uv run ruff check --fix .` and `uv run ruff format .` and confirm `uv run ruff check .`
+passes clean. Do this for every commit that touches Python files, not just at the end of a task.
+
 ## Commit hygiene
 
 When implementing a non-trivial change, split the work into a sequence of small, focused

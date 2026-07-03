@@ -163,7 +163,7 @@ class TBATSForecaster(Forecaster):
         # TBATS's own positivity check can still trip and re-disable its Box-Cox with a
         # UserWarning even though we've already handled the transform. Pass
         # use_boxcox=False explicitly in that case to get the same outcome silently.
-        use_boxcox = False if self._pt is not None else True
+        use_boxcox = not (self._pt is not None)
         self._sf = StatsForecast(
             models=[TBATS(season_length=season_length, use_boxcox=use_boxcox)],
             freq=case.freq,
