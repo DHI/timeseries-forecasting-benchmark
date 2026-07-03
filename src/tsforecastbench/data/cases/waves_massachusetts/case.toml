@@ -6,6 +6,7 @@ target = "wvht"
 target_unit = "m"
 
 freq = "1h"
+seasonalities = [12, 24]
 horizon_primary = "24h"
 horizons_eval = ["6h", "24h", "48h"]
 input_window = "14D"

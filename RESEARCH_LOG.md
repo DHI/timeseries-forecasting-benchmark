@@ -8,6 +8,60 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-03 — Per-case curated `seasonalities` replace the freq → seasonality map
+
+Seasonal periods were hardcoded per sampling frequency (`_default_season_length` /
+`_seasonal_periods`): every hourly case was assumed to carry 24 h/168 h cycles, every daily
+case 7 d/365 d. That assumption encodes human-activity calendars and is wrong for much of the
+environmental half of the benchmark — waves and de-tided surge have no diurnal cycle, rivers
+have no work week — and it wasn't just cosmetic: the map configured SeasonalNaive, TBATS,
+AutoTheta, MSTL and the ML feature pipeline, **and set the MASE denominator**, so cross-case
+MASE comparisons were distorted by how well each case happened to match the calendar.
+
+**Decision.** Each case now declares `seasonalities` in its case.toml — periods in steps,
+dominant first, `[]` = explicitly non-seasonal. The field is *required* and is the single
+source of truth during the train/predict cycle; the freq maps are deleted, with no fallback
+path. Values are fixed once, at curation time, from train-split evidence; deviating from the
+detection proposal requires a justification in the case notes.
+
+**Detection rule** (`data/seasonality.py`, reviewed interactively in
+`notebooks/seasonality.py`): candidates come from a fixed physically motivated menu per
+frequency (daily {7, 365}; hourly {12, 24, 168}; 15-min {96, 672}), so spectral noise can
+never mint an arbitrary period. A candidate is accepted when the train split holds ≥ 2 full
+cycles, its periodogram peak exceeds 10× the median power of the surrounding octave band
+(robust to the red spectra of environmental series), and the ACF at that lag clears 0.1.
+The ACF floor was calibrated down from 0.15 on real-case evidence: demand_ltown's
+unmistakable diurnal cycle (spectral ratio ≈ 740) sits at ACF(24) ≈ 0.10 because heavy
+high-frequency noise dilutes the ACF while the periodogram concentrates the cycle in one bin.
+
+**Committed values** (train-split evidence: spectral ratio / ACF at lag):
+
+| case | seasonalities | notes on evidence |
+|---|---|---|
+| demand_ltown (1h) | [24, 168] | 24: 739/0.10; 168: 32/0.12 — classic demand calendar |
+| wwtp_influent_n2o_350k (1h) | [24, 12] | 12 is the bimodal daily shape (2nd harmonic), kept as evidence says |
+| surge_cuxhaven (1h) | [12] | semidiurnal residual (tide–surge interaction); **no** 24 h cycle (6.9/0.41 rejected) |
+| waves_massachusetts (1h) | [12, 24] | tidal modulation dominant + diurnal (sea-breeze) signal |
+| waves_oregon (1h) | [12] | tidal modulation only; 24 rejected (5.2) |
+| sewerlevel_bellinge (15min) | [96] | daily cycle clear; weekly (672) rejected (2.2) |
+| discharge_flashy_catskills (1D) | [] | rain-driven flashy creek: annual rejected (6.0/0.04) — genuinely non-seasonal |
+| discharge_lowland_denmark (1D) | [365] | annual only |
+| discharge_snowmelt_yosemite (1D) | [365] | annual (snowmelt) only; 7 rejected |
+| discharge_saugeen (1D) | [365, 7] | genuine **weekly spectral line** (14.5/0.56 over 2374 cycles) — consistent with weekly dam-regulation |
+| groundwater_yorktown (1D) | [365] | annual only |
+| watertemp_james (1D) | [365, 7] | annual dominant (546/0.94); weekly line (20/0.95) — plausibly anthropogenic thermal effluent |
+
+Two upstream assumptions did not survive contact with the data: hourly cases are *not*
+generally diurnal (3 of 5 have tidal 12 h structure instead of, or ahead of, 24 h), and one
+daily case is genuinely non-seasonal. The declared-non-seasonal case makes SeasonalNaive and
+MSTL honestly inapplicable there (they raise instead of producing a strawman column), and its
+MASE falls back to persistence scaling.
+
+**Going forward.** New cases must declare `seasonalities` (schema enforces it); run the
+notebook, review the evidence table, commit the proposal or justify the deviation in the case
+notes. MASE values shift on cases where the declared dominant differs from the old freq
+default — expected, that is the point.
+
 ## 2026-07-03 — Silencing a spurious TBATS Box-Cox warning
 
 `scripts/run_pilot.py` was emitting a `UserWarning: Data contains zero or negative values,
