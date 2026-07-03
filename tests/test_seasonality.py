@@ -20,6 +20,72 @@ from tsforecastbench.data.seasonality import (  # noqa: E402
 RNG = np.random.default_rng(7)
 
 
+def _case_kwargs(**overrides) -> dict:
+    base = dict(
+        id="dummy",
+        domain="test",
+        target="y",
+        freq="1h",
+        seasonalities=[24, 168],
+        horizon_primary="24h",
+        input_window="7D",
+        splits={"train_end": "2020-01-01", "val_end": "2021-01-01", "test_end": "2022-01-01"},
+        source={"name": "test"},
+    )
+    base.update(overrides)
+    return base
+
+
+# --- schema -----------------------------------------------------------------
+
+
+def test_case_accepts_declared_seasonalities():
+    from tsforecastbench.data.schema import Case
+
+    assert Case(**_case_kwargs()).seasonalities == [24, 168]
+
+
+def test_case_accepts_explicitly_nonseasonal():
+    from tsforecastbench.data.schema import Case
+
+    assert Case(**_case_kwargs(seasonalities=[])).seasonalities == []
+
+
+def test_case_requires_seasonalities():
+    import pytest
+
+    from tsforecastbench.data.schema import Case
+
+    kwargs = _case_kwargs()
+    del kwargs["seasonalities"]
+    with pytest.raises(ValueError):
+        Case(**kwargs)
+
+
+def test_case_rejects_period_below_two_steps():
+    import pytest
+
+    from tsforecastbench.data.schema import Case
+
+    with pytest.raises(ValueError, match=">= 2 steps"):
+        Case(**_case_kwargs(seasonalities=[1, 24]))
+
+
+def test_case_rejects_duplicate_periods():
+    import pytest
+
+    from tsforecastbench.data.schema import Case
+
+    with pytest.raises(ValueError, match="unique"):
+        Case(**_case_kwargs(seasonalities=[24, 24]))
+
+
+def test_declared_order_is_preserved_dominant_first():
+    from tsforecastbench.data.schema import Case
+
+    assert Case(**_case_kwargs(seasonalities=[365, 7])).seasonalities == [365, 7]
+
+
 def _sine(n: int, period: float, amp: float = 1.0) -> np.ndarray:
     return amp * np.sin(2 * np.pi * np.arange(n) / period)
 
