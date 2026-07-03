@@ -68,7 +68,14 @@ def test_baselines_run(cid):
     methods = [MeanBaseline(), Persistence(), SeasonalNaive(), Climatology()]
     res = run_case(case, methods, prefer_synth=True)
     assert len(res) == len(methods) * 5  # MAE, RMSE, MASE, Skill_vs_Persistence, Skill_vs_Mean
-    assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
+    if case.seasonalities:
+        assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
+    else:
+        # A declared-non-seasonal case makes SeasonalNaive honestly inapplicable (it
+        # would duplicate Persistence); every other baseline still runs.
+        sn = res["method"] == "SeasonalNaive"
+        assert (res.loc[~sn, "status"] == "ok").all()
+        assert res.loc[sn, "status"].str.contains("non-seasonal").all()
 
 
 def test_lightgbm_runs_on_one_case():
@@ -129,13 +136,22 @@ def test_mstl_classicals_run():
     )
 
     res = run_case(
-        get_case("discharge_flashy_catskills"),
+        get_case("discharge_lowland_denmark"),
         [MSTLAutoETSForecaster(), MSTLAutoARIMAForecaster()],
         prefer_synth=True,
     )
     assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
     mase = res[res["metric"] == "MASE"]["value"]
     assert mase.notna().all() and (mase > 0).all()
+
+
+def test_mstl_is_honestly_inapplicable_on_declared_nonseasonal_case():
+    from tsforecastbench.bench.methods import MSTLAutoETSForecaster
+
+    res = run_case(
+        get_case("discharge_flashy_catskills"), [MSTLAutoETSForecaster()], prefer_synth=True
+    )
+    assert res["status"].str.contains("MSTL inapplicable").all()
 
 
 def test_methods_package_imports_without_fm_deps():

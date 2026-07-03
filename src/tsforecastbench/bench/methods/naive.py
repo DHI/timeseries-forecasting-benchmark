@@ -7,6 +7,7 @@ import pandas as pd
 
 from tsforecastbench.bench.methods.base import Forecaster
 from tsforecastbench.data.schema import Case
+from tsforecastbench.data.seasonality import dominant_period
 
 
 def _default_season_length(freq: str) -> int:
@@ -83,7 +84,12 @@ class SeasonalNaive(Forecaster):
         self.season_length = season_length
 
     def fit(self, case: Case, train: pd.DataFrame) -> None:
-        self._s = self.season_length or _default_season_length(case.freq)
+        self._s = self.season_length or dominant_period(case.seasonalities)
+        if self._s == 1:
+            raise ValueError(
+                f"Case {case.id} is declared non-seasonal (seasonalities = []) — "
+                "SeasonalNaive would degenerate into a duplicate Persistence column"
+            )
         self._tail = train["y"].tail(self._s).to_numpy()
 
     def predict(

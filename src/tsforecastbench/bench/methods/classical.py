@@ -115,7 +115,8 @@ class TBATSForecaster(Forecaster):
 
     Handles complex and multiple seasonal patterns via trigonometric terms.
     season_length accepts an int, a list of ints (e.g. [24, 168] for
-    daily+weekly in hourly data), or None to auto-detect from case.freq.
+    daily+weekly in hourly data), or None to use the case's declared
+    dominant period (1, non-seasonal, when seasonalities = []).
     max_train_steps is set lower than other classicals because TBATS fit
     cost is substantially higher.
 
@@ -135,12 +136,12 @@ class TBATSForecaster(Forecaster):
         from statsforecast import StatsForecast
         from statsforecast.models import TBATS
 
-        from tsforecastbench.bench.methods.naive import _default_season_length
+        from tsforecastbench.data.seasonality import dominant_period
 
         season_length = (
             self.season_length
             if self.season_length is not None
-            else _default_season_length(case.freq)
+            else dominant_period(case.seasonalities)
         )
 
         df = train[["unique_id", "ds", "y"]].copy()
@@ -194,9 +195,10 @@ class ThetaForecaster(Forecaster):
     decomposition (deseasonalize, fit, re-seasonalize) rather than a costly seasonal
     state, so — unlike AutoARIMA/AutoETS here — wiring the case's seasonal period in is
     tractable at any frequency and is standard practice (the M3/M4 seasonally-adjusted
-    Theta). season_length=None resolves to the frequency's default period; pass an int to
-    override, or 1 to force a non-seasonal fit. AutoTheta still runs its own seasonality
-    test and only deseasonalizes when the series warrants it.
+    Theta). season_length=None resolves to the case's declared dominant period (1, i.e.
+    non-seasonal, when the case declares seasonalities = []); pass an int to override.
+    AutoTheta still runs its own seasonality test and only deseasonalizes when the series
+    warrants it.
     """
 
     name = "Theta"
@@ -209,12 +211,12 @@ class ThetaForecaster(Forecaster):
         from statsforecast import StatsForecast
         from statsforecast.models import AutoTheta
 
-        from tsforecastbench.bench.methods.naive import _default_season_length
+        from tsforecastbench.data.seasonality import dominant_period
 
         season_length = (
             self.season_length
             if self.season_length is not None
-            else _default_season_length(case.freq)
+            else dominant_period(case.seasonalities)
         )
 
         df = train[["unique_id", "ds", "y"]].copy()
@@ -255,10 +257,11 @@ class _MSTLBase(Forecaster):
     across frequencies with large or multiple seasonal periods (168h weekly, 365d yearly)
     that native seasonal ARIMA/ETS cannot afford.
 
-    Periods come from `_seasonal_periods(case.freq)` but are filtered to those the training
-    series is long enough to support (STL needs >=2 full cycles). If none survive, MSTL is
-    genuinely inapplicable and fit raises rather than silently degenerating into the plain
-    non-seasonal trend forecaster (which would just duplicate the AutoARIMA/AutoETS column).
+    Periods come from the case's declared `seasonalities`, filtered to those the training
+    series is long enough to support (STL needs >=2 full cycles). If the case is declared
+    non-seasonal or none survive, MSTL is genuinely inapplicable and fit raises rather than
+    silently degenerating into the plain non-seasonal trend forecaster (which would just
+    duplicate the AutoARIMA/AutoETS column).
     """
 
     name = "MSTL"
@@ -271,8 +274,6 @@ class _MSTLBase(Forecaster):
         from statsforecast import StatsForecast
         from statsforecast.models import MSTL
 
-        from tsforecastbench.bench.methods.naive import _seasonal_periods
-
         df = train[["unique_id", "ds", "y"]].copy()
         if len(df) > self.max_train_steps:
             df = df.iloc[-self.max_train_steps :]
@@ -281,11 +282,13 @@ class _MSTLBase(Forecaster):
             ds = ds.dt.tz_convert("UTC").dt.tz_localize(None)
         df["ds"] = ds
 
-        periods = [p for p in _seasonal_periods(case.freq) if len(df) >= 2 * p]
+        if not case.seasonalities:
+            raise ValueError(f"MSTL inapplicable: case {case.id} is declared non-seasonal")
+        periods = sorted(p for p in case.seasonalities if len(df) >= 2 * p)
         if not periods:
             raise ValueError(
-                f"MSTL inapplicable: no seasonal period with >=2 cycles in {len(df)} train points "
-                f"(candidates {_seasonal_periods(case.freq)} for freq {case.freq})"
+                f"MSTL inapplicable: no declared period with >=2 cycles in {len(df)} train "
+                f"points (declared {case.seasonalities})"
             )
         # MSTL takes an int for a single period or a list for multiple.
         season_length = periods[0] if len(periods) == 1 else periods
