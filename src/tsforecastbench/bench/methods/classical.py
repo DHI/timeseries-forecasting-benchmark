@@ -18,6 +18,8 @@ Two tractability choices, both standard practice:
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import pandas as pd
 
@@ -170,7 +172,13 @@ class TBATSForecaster(Forecaster):
             freq=case.freq,
             n_jobs=1,
         )
-        self._sf.fit(df)
+        # TBATS's internal optimizer transiently overflows float64 while probing
+        # inadmissible parameter candidates it goes on to reject; harmless noise.
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore", message="overflow encountered in square", category=RuntimeWarning
+            )
+            self._sf.fit(df)
 
     def predict(
         self,
