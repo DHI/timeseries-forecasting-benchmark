@@ -80,6 +80,16 @@ def test_detects_annual_cycle_in_daily_series():
     assert proposed_seasonalities(evidence) == [365]
 
 
+def test_genuine_cycle_in_heavy_noise_is_accepted_despite_diluted_acf():
+    # A real cycle buried in strong high-frequency noise concentrates in one periodogram
+    # bin (huge spectral ratio) while its ACF is diluted to ~0.1 (regression: demand_ltown).
+    y = _sine(24 * 90, period=24) + 2.0 * RNG.standard_normal(24 * 90)
+
+    evidence = detect_candidates(y, "1h")
+
+    assert 24 in proposed_seasonalities(evidence)
+
+
 def test_white_noise_accepts_nothing():
     evidence = detect_candidates(RNG.standard_normal(24 * 90), "1h")
 

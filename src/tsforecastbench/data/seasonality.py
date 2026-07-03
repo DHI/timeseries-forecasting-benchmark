@@ -36,10 +36,13 @@ CANDIDATE_MENU: dict[str, tuple[int, ...]] = {
 # POWER_RATIO_MIN x the median power of its local frequency neighborhood, and the ACF at
 # the candidate lag clears ACF_MIN. The spectral ratio is the discriminator (red-noise
 # persistence inflates ACF at any modest lag but produces no local spectral peak); the
-# ACF floor guards against isolated periodogram artifacts.
+# ACF floor guards against isolated periodogram artifacts. The floor is deliberately
+# low: a genuine cycle buried in heavy high-frequency noise concentrates in a single
+# periodogram bin but its ACF is diluted toward zero (demand_ltown's unmistakable
+# diurnal cycle — spectral ratio ~700 — sits at ACF(24) ~= 0.10).
 MIN_CYCLES = 2
 POWER_RATIO_MIN = 10.0
-ACF_MIN = 0.15
+ACF_MIN = 0.1
 
 
 def normalize_freq(freq: str) -> str:
