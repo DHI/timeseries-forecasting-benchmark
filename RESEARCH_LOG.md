@@ -8,6 +8,28 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-03 — Silencing a spurious TBATS Box-Cox warning
+
+`scripts/run_pilot.py` was emitting a `UserWarning: Data contains zero or negative values,
+disabling Box-Cox transformation` from `statsforecast`'s TBATS implementation on some cases
+(e.g. `watertemp_james`, whose `water_temp` target dips to -0.1°C).
+
+**What was going on.** `TBATSForecaster.fit` already has logic for this: when the raw target
+contains non-positive values, it pre-applies a Yeo-Johnson power transform (which, unlike
+Box-Cox, is defined for negative/zero inputs) before handing the series to TBATS, and TBATS's
+own internal Box-Cox is then expected to be a no-op. The problem is that Yeo-Johnson with
+`standardize=False` is not a positivity-guaranteeing transform — it can (and did, for values
+already near zero) leave some transformed points at or below zero. TBATS's model-selection
+code checks for that itself (`use_boxcox in (True, None) and np.any(y <= 0)`) and, on the
+default `use_boxcox=True`, warns and disables Box-Cox internally — redundant with what we'd
+already decided, just noisy.
+
+**What was decided and why.** Pass `use_boxcox=False` to `TBATS(...)` explicitly whenever our
+own Yeo-Johnson pre-transform was applied (`self._pt is not None`), so TBATS's positivity
+check never fires. This produces the identical fit (Box-Cox off either way) without the
+warning. When the raw data is already strictly positive, `use_boxcox` is left at its default
+(`True`) so TBATS can still decide for itself whether a Box-Cox transform helps.
+
 ## 2026-07-03 — Gap handling: one materialized policy (cap + longest-segment trim)
 
 Consolidated how missing target data is handled. Previously there were **two** layers: the
