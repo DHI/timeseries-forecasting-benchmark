@@ -37,7 +37,7 @@ def _select_rolling_origins(
     cand = np.unique(
         np.linspace(test_start, last_origin, max(n_origins * 2, n_origins)).astype(int)
     )
-    valid = [o for o in cand if np.isfinite(raw_y[o : o + H]).mean() >= 0.5]
+    valid = [int(o) for o in cand if np.isfinite(raw_y[o : o + H]).mean() >= 0.5]
     if not valid:
         return [int(cand[0])]
     if len(valid) <= n_origins:
