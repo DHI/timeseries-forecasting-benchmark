@@ -1,9 +1,10 @@
 """Rolling-origin evaluation producing error-vs-lead-time curves.
 
 For each of `n_origins` cutoffs spaced across the test period, fit each method on the
-history up to the cutoff (gaps imputed) and forecast `horizon` steps. Errors are
-collected per lead time and averaged over all origins, giving the canonical
-"skill degrades with lead time" curve used to compare methods.
+curated history up to the cutoff and forecast `horizon` steps. Errors are collected per
+lead time and averaged over all origins, giving the canonical "skill degrades with lead
+time" curve used to compare methods. Scoring uses only genuinely observed points (the
+curated frame's `y_observed` mask); filled points never enter a metric.
 
 Refit-per-origin is honest but costs more for ARIMA/LightGBM; keep n_origins modest
 for those, or run the cheap baselines (Mean/Persistence/SeasonalNaive/Climatology)
@@ -18,7 +19,7 @@ import numpy as np
 import pandas as pd
 
 from tsforecastbench.bench.eval.config import DEFAULT_ORIGINS
-from tsforecastbench.bench.eval.loop import _complete_for_fit, _horizon_to_steps
+from tsforecastbench.bench.eval.loop import _horizon_to_steps, _raw_y
 from tsforecastbench.bench.methods.base import Forecaster
 from tsforecastbench.bench.methods.naive import _default_season_length
 from tsforecastbench.data.schema import Case
@@ -60,7 +61,7 @@ def run_case_rolling(
     `loop.run_case` (case_id, domain, method, horizon, metric, value, seconds,
     frac_finite_test, status) so the matrix renderer is unchanged.
     """
-    df = case.load(prefer_synth=prefer_synth)
+    df = case.load(prefer_synth=prefer_synth, curated=True)
     splits = case.split_frame(df)
     train_val = pd.concat([splits["train"], splits["val"]], ignore_index=True)
     test = splits["test"]
@@ -70,9 +71,9 @@ def run_case_rolling(
 
     H = _horizon_to_steps(case.horizon_primary, case.freq)
     exo_cols = list(dict.fromkeys([*case.exogenous, *case.exogenous_known_future]))
-    full_fit = _complete_for_fit(full, ["y", *exo_cols])
+    full_fit = full  # curated: the target is already complete within the span
     exo_present = [c for c in exo_cols if c in full_fit.columns]
-    raw_y = full["y"].to_numpy(dtype=float)
+    raw_y = _raw_y(full)
 
     test_start = len(train_val)
     last_origin = len(full) - H
@@ -160,7 +161,7 @@ def run_leadtime_curve(
     Columns: case_id, method, lead, MAE, RMSE, bias, n_origins.
     `lead` is in steps (1 = first step ahead).
     """
-    df = case.load(prefer_synth=prefer_synth)
+    df = case.load(prefer_synth=prefer_synth, curated=True)
     splits = case.split_frame(df)
     train_val = pd.concat([splits["train"], splits["val"]], ignore_index=True)
     test = splits["test"]
@@ -170,8 +171,7 @@ def run_leadtime_curve(
 
     H = _horizon_to_steps(max_horizon or case.horizon_primary, case.freq)
     exo_cols = list(dict.fromkeys([*case.exogenous, *case.exogenous_known_future]))
-    fit_cols = ["y", *exo_cols]
-    full_fit = _complete_for_fit(full, fit_cols)
+    full_fit = full  # curated: the target is already complete within the span
     exo_present = [c for c in exo_cols if c in full_fit.columns]
 
     test_start = len(train_val)
@@ -180,7 +180,7 @@ def run_leadtime_curve(
         raise ValueError(f"Case {case.id}: test span too short for horizon {H}")
     origins = np.unique(np.linspace(test_start, last_origin, n_origins).astype(int))
 
-    raw_y = full["y"].to_numpy(dtype=float)  # for honest scoring (keeps NaN)
+    raw_y = _raw_y(full)  # for honest scoring (filled points masked back to NaN)
     rows: list[dict] = []
     for method in methods:
         # accumulate errors per lead

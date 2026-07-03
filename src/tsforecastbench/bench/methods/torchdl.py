@@ -142,8 +142,7 @@ class _TorchDLBase(Forecaster):
         self._H = _horizon_to_steps(case.horizon_primary, case.freq)
         self._L = _lookback_for(case.freq, self._H)
 
-        y = pd.to_numeric(train["y"], errors="coerce").interpolate(limit_direction="both")
-        y = y.bfill().ffill().to_numpy(dtype=np.float32)
+        y = pd.to_numeric(train["y"], errors="coerce").to_numpy(dtype=np.float32)
         if len(y) > _MAX_TRAIN:
             y = y[-_MAX_TRAIN:]
         self._last_window = y[-self._L :].copy()

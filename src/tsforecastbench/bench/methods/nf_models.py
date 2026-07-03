@@ -54,8 +54,7 @@ class _NFBase(Forecaster):
         if len(df) > _MAX_TRAIN:
             df = df.iloc[-_MAX_TRAIN:]
         df["ds"] = _naive_ds(df["ds"]).to_numpy()
-        df["y"] = pd.to_numeric(df["y"], errors="coerce").interpolate(limit_direction="both")
-        df = df.dropna(subset=["y"])
+        df["y"] = pd.to_numeric(df["y"], errors="coerce")
 
         model_cls = getattr(nfm, self.model_name)
         model = model_cls(

@@ -3,8 +3,33 @@
 ```
 data/
   raw/<case_id>/        # source downloads (zips, CSVs, NetCDF, ERA5 cache, ...) - GITIGNORED
-  processed/<case_id>.parquet   # canonical long-format series the benchmark reads - COMMITTED (~15 MB total)
+  processed/<case_id>.parquet   # canonical long-format series, gaps and all - COMMITTED (~15 MB total)
+  curated/<case_id>.parquet     # benchmark-ready series the eval loops read - COMMITTED
   manifest.json         # SHA-256 + row count per processed case (written by downloads) - COMMITTED
+  curated/manifest.json # gap policy outcome per case (cap, gaps, span) - COMMITTED
+```
+
+## processed vs curated
+
+`processed/` is the canonical record straight from the sources: a regular time grid with
+real gaps left as NaN. It is what EDA, case review, and reports read, so the true gap
+structure stays visible.
+
+`curated/` is what the **benchmark eval loops** read (`Case.load(curated=True)`). It applies
+one uniform gap policy — see `src/tsforecastbench/data/curate.py` and the RESEARCH_LOG:
+
+- **Small gaps** (≤ a per-case cap, the lag where the target's autocorrelation drops below
+  0.8, bounded by one seasonal cycle) are linearly interpolated.
+- **Large gaps** are hard boundaries — never bridged. The record is split into contiguous
+  segments and only the **longest** is kept.
+- A **`y_observed`** boolean column marks genuine observations, so the target is complete
+  enough for any method to fit while scoring still counts only measured points.
+
+Rebuild it after downloading or refreshing data, or after changing the policy:
+
+```bash
+uv run python scripts/curate_data.py            # all cases
+uv run python scripts/curate_data.py waves_oregon
 ```
 
 ## Why processed is committed
@@ -34,6 +59,7 @@ Or everything at once:
 
 ```bash
 uv run python scripts/download_all.py
+uv run python scripts/curate_data.py   # refresh data/curated/ from the new processed/
 ```
 
 **Most cases fetch automatically with no credentials**: USGS NWIS (the `usgs_*` cases),

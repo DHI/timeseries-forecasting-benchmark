@@ -135,13 +135,13 @@ class _WindowedMLBase(Forecaster):
         df["ds"] = _naive_ds(df["ds"]).to_numpy()
         for c in self._exo:
             df[c] = pd.to_numeric(df[c], errors="coerce")
-        # last known covariate value, used to fill any future gaps at predict time
+        # Last known covariate value — the predict-time fallback when a future exogenous
+        # value is missing from the perfect-forecast proxy (not training gap-fill: the
+        # curated frame already delivers complete exogenous columns within the span).
         self._last_exo = {
             c: float(df[c].ffill().iloc[-1]) if c in df and df[c].notna().any() else 0.0
             for c in self._exo
         }
-        if self._exo:
-            df[self._exo] = df[self._exo].ffill().fillna(0.0)
 
         date_feats = list(_date_features_for(case.freq))
         if self.use_calendar:

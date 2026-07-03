@@ -147,15 +147,15 @@ def _(go, mo, scores):
 
 @app.cell
 def _(case, mo, np, pd):
-    from tsforecastbench.bench.eval.loop import _complete_for_fit, _horizon_to_steps
+    from tsforecastbench.bench.eval.loop import _horizon_to_steps, _raw_y
 
-    df_full = case.load().sort_values("ds").reset_index(drop=True)
+    df_full = case.load(curated=True).sort_values("ds").reset_index(drop=True)
     splits_ex = case.split_frame(df_full)
     train_val_ex = pd.concat([splits_ex["train"], splits_ex["val"]], ignore_index=True)
     full = pd.concat([train_val_ex, splits_ex["test"]], ignore_index=True)
     exo = list(dict.fromkeys([*case.exogenous, *case.exogenous_known_future]))
-    full_fit = _complete_for_fit(full, ["y", *exo])
-    raw_y = full["y"].to_numpy(dtype=float)
+    full_fit = full  # curated: the target is already complete within the span
+    raw_y = _raw_y(full)
     H = _horizon_to_steps(case.horizon_primary, case.freq)
     test_start = len(train_val_ex)
 
