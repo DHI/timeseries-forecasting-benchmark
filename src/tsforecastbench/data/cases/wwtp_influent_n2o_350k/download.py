@@ -27,13 +27,21 @@ from tsforecastbench.data.registry import get_case
 DATASET_URL = "https://data.mendeley.com/datasets/xmbxhscgpr/1"
 
 CONFIG = {
-    "tabular_match": "",     # empty -> first CSV/XLSX found
+    "tabular_match": "",  # empty -> first CSV/XLSX found
     # We want INFLUENT wastewater flow. Many WWTP SCADA exports also contain AIR FLOW,
     # GAS FLOW, effluent flow etc. - so use a positive-include list ranked by preference
     # AND an exclude list, rather than a substring match on "flow" alone.
     "flow_col_include": [
-        "INFLUENT.FLOW", "INF.FLOW", "Q_INFLUENT", "WW.FLOW", "WASTEWATER",
-        "RAW.FLOW", "INLET.FLOW", "influent_flow", "flow_in", "Qin",
+        "INFLUENT.FLOW",
+        "INF.FLOW",
+        "Q_INFLUENT",
+        "WW.FLOW",
+        "WASTEWATER",
+        "RAW.FLOW",
+        "INLET.FLOW",
+        "influent_flow",
+        "flow_in",
+        "Qin",
     ],
     "flow_col_exclude": ["AIR", "GAS", "BLOWER", "EFFLUENT", "EFF.", "SLUDGE", "RECIRC"],
     "flow_col_override": "INLET.Q value",  # pinned after inspecting aved_raw.csv (49 cols)
@@ -49,11 +57,11 @@ def _gather_tabular(raw_dir):
         extract_dir = raw_dir / "extracted"
         with zipfile.ZipFile(z) as zf:
             zf.extractall(extract_dir)
-    for p in list(raw_dir.rglob("*.csv")) + list(raw_dir.rglob("*.xlsx")) + list(raw_dir.rglob("*.xls")):
+    for p in (
+        list(raw_dir.rglob("*.csv")) + list(raw_dir.rglob("*.xlsx")) + list(raw_dir.rglob("*.xls"))
+    ):
         out.append(p)
     return sorted(out)
-
-
 
 
 def _pick_flow(cols) -> str | None:
@@ -75,11 +83,13 @@ def _pick_flow(cols) -> str | None:
                 best, best_rank = c, i
     return best
 
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--list", action="store_true")
-    p.add_argument("--columns", action="store_true",
-                   help="Print column names of the chosen file and exit")
+    p.add_argument(
+        "--columns", action="store_true", help="Print column names of the chosen file and exit"
+    )
     args = p.parse_args(argv)
 
     case = get_case("wwtp_influent_n2o_350k")
@@ -114,11 +124,20 @@ def main(argv: list[str] | None = None) -> int:
         print(f"\n{len(raw.columns)} columns in {src_path.name}")
         return 0
 
-    dcol = next((c for c in raw.columns for cand in CONFIG["date_col_candidates"]
-                 if cand.lower() == c.lower()), None)
+    dcol = next(
+        (
+            c
+            for c in raw.columns
+            for cand in CONFIG["date_col_candidates"]
+            if cand.lower() == c.lower()
+        ),
+        None,
+    )
     fcol = _pick_flow(raw.columns)
     if dcol is None or fcol is None:
-        print(f"[wwtp_influent_n2o_350k] could not auto-detect date/flow. Columns: {list(raw.columns)}")
+        print(
+            f"[wwtp_influent_n2o_350k] could not auto-detect date/flow. Columns: {list(raw.columns)}"
+        )
         print("Run with --columns to see them all, then set CONFIG['flow_col_override'].")
         return 1
     print(f"[wwtp_influent_n2o_350k] using flow column: {fcol}")
@@ -134,7 +153,9 @@ def main(argv: list[str] | None = None) -> int:
     out = out.dropna(subset=["ds"]).sort_values("ds")
     out = _io.resample_regular(out, case.freq)
     path = _io.write_canonical(case, out)
-    print(f"[wwtp_influent_n2o_350k] wrote {path} ({len(out)} rows) from {src_path.name} col {fcol}")
+    print(
+        f"[wwtp_influent_n2o_350k] wrote {path} ({len(out)} rows) from {src_path.name} col {fcol}"
+    )
     return 0
 
 

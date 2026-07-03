@@ -51,8 +51,13 @@ class AutoARIMAForecaster(Forecaster):
         )
         self._sf.fit(df)
 
-    def predict(self, case: Case, history: pd.DataFrame, horizon: int,
-                future_exog: pd.DataFrame | None = None) -> pd.DataFrame:
+    def predict(
+        self,
+        case: Case,
+        history: pd.DataFrame,
+        horizon: int,
+        future_exog: pd.DataFrame | None = None,
+    ) -> pd.DataFrame:
         fcst = self._sf.predict(h=horizon)
         y_hat = fcst["AutoARIMA"].to_numpy().astype(np.float64)
         last_ds = history["ds"].max()
@@ -92,8 +97,13 @@ class AutoETSForecaster(Forecaster):
         )
         self._sf.fit(df)
 
-    def predict(self, case: Case, history: pd.DataFrame, horizon: int,
-                future_exog: pd.DataFrame | None = None) -> pd.DataFrame:
+    def predict(
+        self,
+        case: Case,
+        history: pd.DataFrame,
+        horizon: int,
+        future_exog: pd.DataFrame | None = None,
+    ) -> pd.DataFrame:
         fcst = self._sf.predict(h=horizon)
         y_hat = fcst["AutoETS"].to_numpy().astype(np.float64)
         future = self._future_index(case, history["ds"].max(), horizon)
@@ -127,7 +137,11 @@ class TBATSForecaster(Forecaster):
 
         from tsforecastbench.bench.methods.naive import _default_season_length
 
-        season_length = self.season_length if self.season_length is not None else _default_season_length(case.freq)
+        season_length = (
+            self.season_length
+            if self.season_length is not None
+            else _default_season_length(case.freq)
+        )
 
         df = train[["unique_id", "ds", "y"]].copy()
         if len(df) > self.max_train_steps:
@@ -152,8 +166,13 @@ class TBATSForecaster(Forecaster):
         )
         self._sf.fit(df)
 
-    def predict(self, case: Case, history: pd.DataFrame, horizon: int,
-                future_exog: pd.DataFrame | None = None) -> pd.DataFrame:
+    def predict(
+        self,
+        case: Case,
+        history: pd.DataFrame,
+        horizon: int,
+        future_exog: pd.DataFrame | None = None,
+    ) -> pd.DataFrame:
         fcst = self._sf.predict(h=horizon)
         y_hat = fcst["TBATS"].to_numpy().astype(np.float64)
         if self._pt is not None:
@@ -188,7 +207,9 @@ class ThetaForecaster(Forecaster):
         from tsforecastbench.bench.methods.naive import _default_season_length
 
         season_length = (
-            self.season_length if self.season_length is not None else _default_season_length(case.freq)
+            self.season_length
+            if self.season_length is not None
+            else _default_season_length(case.freq)
         )
 
         df = train[["unique_id", "ds", "y"]].copy()
@@ -199,13 +220,20 @@ class ThetaForecaster(Forecaster):
             ds = ds.dt.tz_convert("UTC").dt.tz_localize(None)
         df["ds"] = ds
         self._sf = StatsForecast(
-            models=[AutoTheta(season_length=season_length)], freq=case.freq, n_jobs=1,
+            models=[AutoTheta(season_length=season_length)],
+            freq=case.freq,
+            n_jobs=1,
         )
         self._sf.fit(df)
         self._col = "AutoTheta"
 
-    def predict(self, case: Case, history: pd.DataFrame, horizon: int,
-                future_exog: pd.DataFrame | None = None) -> pd.DataFrame:
+    def predict(
+        self,
+        case: Case,
+        history: pd.DataFrame,
+        horizon: int,
+        future_exog: pd.DataFrame | None = None,
+    ) -> pd.DataFrame:
         fcst = self._sf.predict(h=horizon)
         y_hat = fcst[self._col].to_numpy().astype(np.float64)
         future = self._future_index(case, history["ds"].max(), horizon)
@@ -258,14 +286,21 @@ class _MSTLBase(Forecaster):
         season_length = periods[0] if len(periods) == 1 else periods
 
         self._sf = StatsForecast(
-            models=[MSTL(season_length=season_length, trend_forecaster=self._make_trend_forecaster())],
+            models=[
+                MSTL(season_length=season_length, trend_forecaster=self._make_trend_forecaster())
+            ],
             freq=case.freq,
             n_jobs=1,
         )
         self._sf.fit(df)
 
-    def predict(self, case: Case, history: pd.DataFrame, horizon: int,
-                future_exog: pd.DataFrame | None = None) -> pd.DataFrame:
+    def predict(
+        self,
+        case: Case,
+        history: pd.DataFrame,
+        horizon: int,
+        future_exog: pd.DataFrame | None = None,
+    ) -> pd.DataFrame:
         fcst = self._sf.predict(h=horizon)
         y_hat = fcst["MSTL"].to_numpy().astype(np.float64)
         future = self._future_index(case, history["ds"].max(), horizon)

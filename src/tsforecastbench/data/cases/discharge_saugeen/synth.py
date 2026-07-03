@@ -41,9 +41,11 @@ def generate(case: Case, seed: int = 12) -> pd.DataFrame:
     discharge = baseflow + 0.4 * rain_contribution + rng.normal(0, 0.5, n).clip(-1.0, None)
     discharge = np.clip(discharge, 0.5, None)
 
-    return pd.DataFrame({
-        "unique_id": [case.id] * n,
-        "ds": idx,
-        "y": discharge.astype(np.float64),
-        "discharge": discharge.astype(np.float64),
-    })
+    return pd.DataFrame(
+        {
+            "unique_id": [case.id] * n,
+            "ds": idx,
+            "y": discharge.astype(np.float64),
+            "discharge": discharge.astype(np.float64),
+        }
+    )

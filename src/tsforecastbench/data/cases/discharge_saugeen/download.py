@@ -74,12 +74,14 @@ def main() -> int:
         f"{series.notna().mean():.0%} finite"
     )
 
-    df = pd.DataFrame({
-        "unique_id": case.id,
-        "ds": series.index,
-        "y": series.to_numpy(),
-        "discharge": series.to_numpy(),
-    })
+    df = pd.DataFrame(
+        {
+            "unique_id": case.id,
+            "ds": series.index,
+            "y": series.to_numpy(),
+            "discharge": series.to_numpy(),
+        }
+    )
 
     path = _io.write_canonical(case, df)
     print(f"[discharge_saugeen] wrote {path} ({len(df)} rows)")

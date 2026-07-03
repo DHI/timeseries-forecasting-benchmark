@@ -34,7 +34,9 @@ def _select_rolling_origins(
     the sorted list — so a few dropped candidates near the end don't collapse the
     selection onto the front of the range.
     """
-    cand = np.unique(np.linspace(test_start, last_origin, max(n_origins * 2, n_origins)).astype(int))
+    cand = np.unique(
+        np.linspace(test_start, last_origin, max(n_origins * 2, n_origins)).astype(int)
+    )
     valid = [o for o in cand if np.isfinite(raw_y[o : o + H]).mean() >= 0.5]
     if not valid:
         return [int(cand[0])]
@@ -114,7 +116,9 @@ def run_case_rolling(
             metrics = {
                 "MAE": float(np.mean(np.abs(a - p))),
                 "RMSE": float(np.sqrt(mse)),
-                "MASE": float(np.mean(np.abs(a - p)) / naive_scale) if naive_scale else float("nan"),
+                "MASE": float(np.mean(np.abs(a - p)) / naive_scale)
+                if naive_scale
+                else float("nan"),
                 "Skill_vs_Persistence": 1.0 - mse / float(np.mean((a - ref_p) ** 2)),
                 "Skill_vs_Mean": 1.0 - mse / float(np.mean((a - ref_m) ** 2)),
             }
@@ -124,13 +128,22 @@ def run_case_rolling(
             status = f"error: {type(exc).__name__}: {str(exc)[:70]}"
         seconds = time.perf_counter() - t0
         for metric_name, value in metrics.items():
-            records.append({
-                "case_id": case.id, "domain": case.domain, "method": method.name,
-                "horizon": case.horizon_primary, "metric": metric_name, "value": value,
-                "seconds": seconds, "frac_finite_test": float(len(a) / max(1, len(origins) * H))
-                if isinstance(a, np.ndarray) else 0.0,
-                "status": status, "n_origins": n_ok,
-            })
+            records.append(
+                {
+                    "case_id": case.id,
+                    "domain": case.domain,
+                    "method": method.name,
+                    "horizon": case.horizon_primary,
+                    "metric": metric_name,
+                    "value": value,
+                    "seconds": seconds,
+                    "frac_finite_test": float(len(a) / max(1, len(origins) * H))
+                    if isinstance(a, np.ndarray)
+                    else 0.0,
+                    "status": status,
+                    "n_origins": n_ok,
+                }
+            )
         print(f"  {method.name:>18s}: {status[:50]:<50s} ({n_ok} origins, {seconds:.1f}s)")
     return pd.DataFrame(records)
 
