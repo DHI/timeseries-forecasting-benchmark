@@ -8,6 +8,35 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-03 — Periodogram-peak suggestions for off-menu seasonalities
+
+The seasonality curation notebook (`notebooks/seasonality.py`) could only evidence periods a
+human already thought to ask about: the fixed `CANDIDATE_MENU` per frequency, plus whatever the
+reviewer typed into the extra-candidates box. That menu is deliberately narrow (calendar-driven
+cycles), so a case with a genuinely different physical driver — e.g. `waves_oregon`'s swell,
+which periodograms as a peak at 17 h, distinct from its declared 12 h tidal cycle — had no way
+to surface unless someone happened to already suspect 17 h and type it in.
+
+**Decision.** Added `suggest_peak_candidates()` to `data/seasonality.py`: it finds local maxima
+in the train-split periodogram, applies the same prominence bar as `detect_candidates`
+(spectral ratio ≥ 10×, ≥ 2 full cycles), and drops anything within 10% of a menu/excluded
+period as spectral leakage rather than an independent cycle. It deliberately skips the ACF
+check and returns up to 5 ranked suggestions — advisory only, not run through full acceptance.
+The notebook now displays these suggestions next to the evidence table; the reviewer copies a
+promising one into the extra-candidates box to get its full ACF/power-ratio evidence before
+deciding whether to commit it. This keeps the single-source-of-truth model intact (`seasonalities`
+in case.toml is still only ever set from full accepted evidence) while removing the requirement
+that a human pre-guess every candidate period.
+
+**Verified against `waves_oregon`**: the fixed menu evidence (12 accepted, 24/168 rejected)
+matches its already-committed `[12]`. Peak suggestions on the same train split return
+`[17, 57, 38, 14, 50]` — 17 was the case that prompted this, and 11/13 (leakage of the on-menu
+12 h cycle) are correctly excluded rather than double-counted.
+
+**Going forward.** Suggestions are a discovery aid, not an acceptance path — nothing gets
+added to a case's declared `seasonalities` without running through `detect_candidates`'
+ACF + power-ratio thresholds and a written justification per the existing curation process.
+
 ## 2026-07-03 — Per-case curated `seasonalities` replace the freq → seasonality map
 
 Seasonal periods were hardcoded per sampling frequency (`_default_season_length` /
