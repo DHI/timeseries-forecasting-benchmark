@@ -31,8 +31,10 @@ ACF_THRESHOLD = 0.8
 
 
 def _season_ceiling(freq: str) -> int:
-    """Dominant seasonal period in steps — the upper bound on the gap cap so a fill can
-    never span a whole cycle. Mirrors bench.methods.naive._default_season_length."""
+    """Typical dominant period in steps for the frequency — the upper bound on the gap
+    cap so a fill can never span a whole cycle. Deliberately freq-based, not declared:
+    curation produces the very data the per-case `seasonalities` evidence is measured
+    on, so it cannot depend on that field (and it never feeds train/predict)."""
     f = freq.lower()
     if f in {"15min", "15t"}:
         return 96

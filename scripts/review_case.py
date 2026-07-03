@@ -42,7 +42,6 @@ from tsforecastbench.bench.methods.naive import (  # noqa: E402
     MeanBaseline,
     Persistence,
     SeasonalNaive,
-    _default_season_length,
 )
 from tsforecastbench.data.registry import discover_cases  # noqa: E402
 from tsforecastbench.data.schema import Case  # noqa: E402
@@ -456,14 +455,14 @@ def check_config(case: Case, df: pd.DataFrame) -> list[Check]:
     checks: list[Check] = []
     # horizon must fit the test window
     horizon_steps = _horizon_to_steps(case.horizon_primary, case.freq)
-    season = _default_season_length(case.freq)
+    seasons = case.seasonalities
     checks.append(
         Check(
             "horizon",
             PASS,
             f"Primary horizon {case.horizon_primary} = {horizon_steps} steps; "
-            f"default season {season} steps.",
-            {"horizon_steps": horizon_steps, "season": season},
+            f"declared seasonalities {seasons if seasons else '[] (non-seasonal)'}.",
+            {"horizon_steps": horizon_steps, "seasonalities": seasons},
         )
     )
     # required columns
