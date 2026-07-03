@@ -164,6 +164,57 @@ def detect_candidates(
     return evidence
 
 
+def suggest_peak_candidates(
+    y: np.ndarray,
+    freq: str,
+    exclude: tuple[int, ...] = (),
+    max_candidates: int = 5,
+) -> list[int]:
+    """Periods (in steps) at local periodogram maxima that aren't already on the fixed
+    menu for `freq` — a discovery aid for cycles the menu doesn't anticipate (e.g. a
+    site-specific swell period). Ranked by spectral ratio, filtered to >= MIN_CYCLES full
+    cycles and a spectral ratio clearing POWER_RATIO_MIN (the same prominence bar
+    `detect_candidates` applies) so ordinary periodogram noise doesn't get surfaced.
+    Peaks within 10% of a menu/excluded/more-prominent period are dropped as spectral
+    leakage of that already-covered cycle, not an independent one.
+
+    This is advisory only: it does not run the ACF acceptance check from
+    `detect_candidates`. The reviewer adds a promising suggestion to the notebook's
+    extra-candidates box to get its full evidence before deciding whether to accept it.
+    """
+    from scipy.signal import periodogram
+
+    yd = _fill_and_detrend(y)
+    freqs, power = periodogram(yd, fs=1.0)
+    skip = set(CANDIDATE_MENU.get(normalize_freq(freq), ())) | set(exclude)
+
+    is_peak = np.zeros(len(power), dtype=bool)
+    is_peak[1:-1] = (power[1:-1] > power[:-2]) & (power[1:-1] > power[2:])
+    peak_idx = np.where(is_peak & (freqs > 0))[0]
+
+    scored: list[tuple[int, float]] = []
+    for i in peak_idx:
+        period = round(1.0 / freqs[i])
+        if (
+            period < 2
+            or len(yd) / period < MIN_CYCLES
+            or any(abs(period - s) / s <= 0.1 for s in skip)
+        ):
+            continue
+        ratio = _spectral_ratio(freqs, power, period)
+        if np.isfinite(ratio) and ratio >= POWER_RATIO_MIN:
+            scored.append((period, ratio))
+    scored.sort(key=lambda t: -t[1])
+
+    suggestions: list[int] = []
+    for period, _ in scored:
+        if all(abs(period - p) / p > 0.1 for p in suggestions):
+            suggestions.append(period)
+        if len(suggestions) >= max_candidates:
+            break
+    return suggestions
+
+
 def proposed_seasonalities(evidence: list[CandidateEvidence]) -> list[int]:
     """Accepted periods ordered dominant-first (descending spectral prominence) — the
     value to review and commit as `seasonalities` in the case.toml.

@@ -25,6 +25,7 @@ def _():
         detect_candidates,
         normalize_freq,
         proposed_seasonalities,
+        suggest_peak_candidates,
     )
     from tsforecastbench.data.seasonality import (
         _acf_at as acf_at,
@@ -47,6 +48,7 @@ def _():
         pd,
         periodogram,
         proposed_seasonalities,
+        suggest_peak_candidates,
     )
 
 
@@ -103,6 +105,27 @@ def _(case, detect_candidates, extra_candidates, proposed_seasonalities, train):
     evidence = detect_candidates(train["y"].to_numpy(), case.freq, extra_candidates)
     proposed = proposed_seasonalities(evidence)
     return evidence, proposed
+
+
+@app.cell
+def _(case, extra_candidates, suggest_peak_candidates, train):
+    peak_suggestions = suggest_peak_candidates(
+        train["y"].to_numpy(), case.freq, exclude=extra_candidates
+    )
+    return (peak_suggestions,)
+
+
+@app.cell
+def _(mo, peak_suggestions):
+    mo.md(
+        f"**Periodogram peak suggestions** (outside the fixed menu, not yet evidenced): "
+        f"`{peak_suggestions}`  \n"
+        "Copy a promising one into the extra-candidates box above to run it through the "
+        "full ACF / power-ratio evidence check."
+        if peak_suggestions
+        else "No periodogram peaks found outside the fixed menu."
+    )
+    return
 
 
 @app.cell

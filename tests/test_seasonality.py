@@ -15,6 +15,7 @@ from tsforecastbench.data.seasonality import (  # noqa: E402
     dominant_period,
     mase_season_for,
     proposed_seasonalities,
+    suggest_peak_candidates,
 )
 
 RNG = np.random.default_rng(7)
@@ -209,3 +210,41 @@ def test_detection_tolerates_interior_nans():
     evidence = detect_candidates(y, "1h")
 
     assert proposed_seasonalities(evidence) == [24]
+
+
+# --- peak suggestions --------------------------------------------------------
+
+
+def test_suggests_off_menu_peak():
+    # 17 is not on the 1h menu (12, 24, 168), so this cycle can only surface as a
+    # periodogram-peak suggestion, not through the menu-based detect_candidates.
+    y = _sine(17 * 100, period=17) + 0.1 * RNG.standard_normal(17 * 100)
+
+    assert 17 in suggest_peak_candidates(y, "1h")
+
+
+def test_suggestions_exclude_menu_periods():
+    y = _sine(24 * 90, period=24) + 0.3 * RNG.standard_normal(24 * 90)
+
+    assert 24 not in suggest_peak_candidates(y, "1h")
+
+
+def test_suggestions_exclude_caller_supplied_periods():
+    y = _sine(17 * 100, period=17) + 0.1 * RNG.standard_normal(17 * 100)
+
+    assert 17 not in suggest_peak_candidates(y, "1h", exclude=(17,))
+
+
+def test_white_noise_suggests_nothing():
+    y = RNG.standard_normal(24 * 90)
+
+    assert suggest_peak_candidates(y, "1h") == []
+
+
+def test_suggestions_drop_leakage_near_a_menu_period():
+    # A 13-step candidate is spectral leakage of the on-menu 12-step cycle (within 10%),
+    # not an independent seasonality, so it should not be suggested.
+    y = _sine(12 * 200, period=12) + 0.1 * RNG.standard_normal(12 * 200)
+
+    assert 13 not in suggest_peak_candidates(y, "1h")
+    assert 11 not in suggest_peak_candidates(y, "1h")
