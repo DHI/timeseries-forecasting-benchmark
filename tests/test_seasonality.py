@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
@@ -14,6 +15,7 @@ from tsforecastbench.data.seasonality import (  # noqa: E402
     detect_candidates,
     dominant_period,
     mase_season_for,
+    position_in_cycle,
     proposed_seasonalities,
     suggest_peak_candidates,
 )
@@ -35,6 +37,47 @@ def _case_kwargs(**overrides) -> dict:
     )
     base.update(overrides)
     return base
+
+
+# --- position_in_cycle ------------------------------------------------------
+
+
+def test_position_in_cycle_canonical_hourly_is_hour_of_day():
+    idx = pd.date_range("2020-03-01", periods=50, freq="1h")
+    assert list(position_in_cycle("1h", 24, idx)) == [t % 24 for t in range(50)]
+
+
+def test_position_in_cycle_canonical_daily_is_weekday():
+    # 2020-01-06 is a Monday (dayofweek 0).
+    idx = pd.date_range("2020-01-06", periods=9, freq="1d")
+    assert list(position_in_cycle("1d", 7, idx)) == [0, 1, 2, 3, 4, 5, 6, 0, 1]
+
+
+def test_position_in_cycle_normalizes_freq_alias():
+    idx = pd.date_range("2020-03-01", periods=30, freq="1h")
+    assert np.array_equal(position_in_cycle("H", 24, idx), position_in_cycle("1h", 24, idx))
+
+
+def test_position_in_cycle_noncanonical_period_falls_back_to_step_count():
+    # A period not in the canonical menu keys on an epoch-anchored step count: contiguous
+    # 0..p-1 that wraps at p, so every position is populated and stays within range.
+    idx = pd.date_range("2020-01-01", periods=40, freq="1h")
+    pos = position_in_cycle("1h", 13, idx)
+    assert set(pos.tolist()) == set(range(13))
+    assert pos.min() == 0 and pos.max() == 12
+
+
+def test_position_in_cycle_bounded_below_period():
+    idx = pd.date_range("2020-01-01", periods=1000, freq="15min")
+    for period in (96, 672, 100):  # two canonical, one epoch-fallback
+        pos = position_in_cycle("15min", period, idx)
+        assert pos.min() >= 0 and pos.max() < period
+
+
+def test_position_in_cycle_is_deterministic_across_calls():
+    # Fit and predict must derive the same position for the same timestamp.
+    idx = pd.date_range("2021-07-01 03:00", periods=200, freq="1h")
+    assert np.array_equal(position_in_cycle("1h", 168, idx), position_in_cycle("1h", 168, idx))
 
 
 # --- schema -----------------------------------------------------------------
