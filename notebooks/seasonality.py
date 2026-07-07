@@ -132,6 +132,7 @@ def _(
     grid_resolution,
     mo,
     normalize_freq,
+    pd,
     np,
     periodogram,
     train,
@@ -189,29 +190,43 @@ def _(
             line={"width": 2.0, "color": "#1f77b4"},
         )
     )
+    # Draw each marker as a vertical trace (not add_vline, whose shapes can't be hovered) so
+    # hovering anywhere along the line reports its period in steps. The line spans the full
+    # data range in y; the period label is kept as a paper-anchored annotation. On a log x
+    # axis traces take raw frequency but annotations take log10(frequency).
+    _yv = np.concatenate([_p[_p > 0], (10.0**_binned)[np.isfinite(_binned)]])
+    _yline = np.geomspace(float(_yv.min()), float(_yv.max()), 50)
+
+    def _vline(_freq, _period, _color, _dash, _pos):
+
+        _hover_tooltip_value = np.round(pd.Timedelta(case.freq).seconds * _period / 3600 / 24, 1)
+        _fig.add_trace(
+            go.Scattergl(
+                x=np.full(_yline.size, _freq),
+                y=_yline,
+                mode="lines",
+                line={"color": _color, "dash": _dash},
+                showlegend=False,
+                # hovertemplate=f"{_period} steps<extra></extra>",
+                hovertemplate=f"{_hover_tooltip_value} days<extra></extra>",
+            )
+        )
+        _fig.add_annotation(
+            x=np.log10(_freq),
+            y=1.0 if _pos == "top" else 0.0,
+            yref="paper",
+            yanchor="bottom" if _pos == "top" else "top",
+            text=f"{_period}",
+            showarrow=False,
+            font={"color": _color, "size": 10},
+        )
+
     for _period in _menu:  # grey — fixed physically-motivated candidate menu
-        _fig.add_vline(
-            x=1.0 / _period,
-            line_dash="dot",
-            line_color="gray",
-            annotation_text=f"{_period}",
-            annotation_position="top",
-        )
+        _vline(1.0 / _period, _period, "gray", "dot", "top")
     for _period, _pf in zip(_peak_periods, _peak_freqs, strict=True):  # yellow — find_peaks peaks
-        _fig.add_vline(
-            x=_pf,
-            line_color="gold",
-            annotation_text=f"{_period}",
-            annotation_position="bottom",
-        )
+        _vline(_pf, _period, "gold", "solid", "bottom")
     for _period in extra_candidates:  # orange — manually entered extra candidates
-        _fig.add_vline(
-            x=1.0 / _period,
-            line_dash="dash",
-            line_color="darkorange",
-            annotation_text=f"{_period}",
-            annotation_position="top",
-        )
+        _vline(1.0 / _period, _period, "darkorange", "dash", "top")
     _fig.update_xaxes(type="log", title="frequency (1/steps)")
     _fig.update_yaxes(type="log", title="power")
     _fig.update_layout(title="Train-split periodogram", height=400, showlegend=True)
