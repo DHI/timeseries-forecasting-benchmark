@@ -25,18 +25,9 @@ run `uv run ruff check --fix .` and `uv run ruff format .` and confirm `uv run r
 passes clean. Do this for every commit that touches Python files, not just at the end of a task.
 
 ## Commit hygiene
+Before implementing any non-trivial code change, or before running any git commit, consult the `jap-commit-preferences` skill.
 
-When implementing a non-trivial change, split the work into a sequence of small, focused
-commits instead of one large commit at the end. Each commit should represent one logical step
-(e.g. add a helper, wire it in, update call sites, add tests) and should leave the repo in a
-working state.
+## Writing style
 
-- Commit as you go, once each logical step is complete, rather than batching everything into
-  a single commit at the end of the task.
-- Write succinct, informative commit messages: a short imperative summary line, plus a body
-  only if the "why" isn't obvious from the diff.
-- When planning a big/non-trivial change, ask for confirmation before implementing as usual —
-  and as part of that confirmation, explicitly ask whether the user wants you to handle
-  committing the work yourself as a sequence of small commits along the way. Only commit
-  without asking again during that task if they say yes; otherwise leave committing to them
-  (see the git safety rules above).
+Before producing any prose output (explanations, docs, comments, commit messages, summaries), consult the `japr-writing-skill` skill and apply it — even if this instruction doesn't look like a "writing" task on the surface.
+
