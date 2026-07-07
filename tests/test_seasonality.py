@@ -157,6 +157,36 @@ def test_genuine_cycle_in_heavy_noise_is_accepted_despite_diluted_acf():
     assert 24 in proposed_seasonalities(evidence)
 
 
+def test_mstl_corroborates_when_acf_is_too_diluted_to_pass_alone():
+    # Heavier noise than the ACF-dilution case above: raw-lag ACF drops below ACF_MIN,
+    # but MSTL's LOESS-smoothed seasonal component still separates the cycle from iid
+    # noise, so it corroborates the spectral peak and the candidate is still accepted.
+    # Uses its own RNG (not the shared module-level RNG) so it doesn't perturb the draw
+    # sequence other tests rely on.
+    rng = np.random.default_rng(11)
+    y = _sine(24 * 90, period=24) + 4.0 * rng.standard_normal(24 * 90)
+
+    evidence = detect_candidates(y, "1h")
+
+    e24 = next(e for e in evidence if e["period"] == 24)
+    assert e24["acf"] < 0.1
+    assert e24["mstl_strength"] >= 0.05
+    assert e24["accepted"]
+
+
+def test_mstl_strength_is_nan_when_period_too_long_for_the_sample_window():
+    # 600 doesn't fit MIN_CYCLES within MSTL_SAMPLE_ROWS=1000, so MSTL is skipped for it
+    # even though the full training split easily supports it; evidence falls back to ACF.
+    rng = np.random.default_rng(12)
+    y = _sine(600 * 5, period=600, amp=5.0) + 0.1 * rng.standard_normal(600 * 5)
+
+    evidence = detect_candidates(y, "1D", extra_candidates=(600,))
+
+    e600 = next(e for e in evidence if e["period"] == 600)
+    assert np.isnan(e600["mstl_strength"])
+    assert e600["accepted"]
+
+
 def test_white_noise_accepts_nothing():
     evidence = detect_candidates(RNG.standard_normal(24 * 90), "1h")
 
