@@ -19,6 +19,7 @@ from __future__ import annotations
 from typing import TypedDict
 
 import numpy as np
+import pandas as pd
 
 # Physically motivated candidate periods (in steps) per sampling frequency: tidal/semi-
 # diurnal, diurnal, weekly for sub-daily data; weekly, annual for daily data. Detection
@@ -78,6 +79,36 @@ def normalize_freq(freq: str) -> str:
 def dominant_period(seasonalities: list[int]) -> int:
     """Dominant declared period (first element by convention); 1 if non-seasonal."""
     return seasonalities[0] if seasonalities else 1
+
+
+# Position-in-cycle from calendar fields for the canonical (freq, period) pairs: exact
+# across leap years and DST-free naive timestamps, unlike an epoch-anchored step count.
+_CANONICAL_POSITIONS = {
+    ("1d", 7): lambda idx: idx.dayofweek,
+    ("1d", 365): lambda idx: idx.dayofyear - 1,
+    ("1h", 12): lambda idx: idx.hour % 12,
+    ("1h", 24): lambda idx: idx.hour,
+    ("1h", 168): lambda idx: idx.dayofweek * 24 + idx.hour,
+    ("15min", 96): lambda idx: idx.hour * 4 + idx.minute // 15,
+    ("15min", 672): lambda idx: idx.dayofweek * 96 + idx.hour * 4 + idx.minute // 15,
+}
+
+
+def position_in_cycle(freq: str, period: int, idx: pd.DatetimeIndex) -> np.ndarray:
+    """Integer position `0..period-1` of each timestamp within a cycle of `period` steps.
+
+    Canonical (freq, period) pairs read the position off calendar fields — exact across
+    leap years and DST-free naive timestamps; any other period falls back to an epoch-
+    anchored step count modulo `period`, which matches at fit and predict time because
+    both use the same naive timestamps. This is the single position-in-cycle rule shared
+    by the sin/cos ML features and the Climatology baseline, so both key on the case's
+    declared seasonality the same way at every frequency.
+    """
+    calendar_pos = _CANONICAL_POSITIONS.get((normalize_freq(freq), period))
+    if calendar_pos is not None:
+        return np.asarray(calendar_pos(idx))
+    step_ns = pd.Timedelta(pd.tseries.frequencies.to_offset(freq)).value
+    return (idx.asi8 // step_ns) % period
 
 
 def mase_season_for(seasonalities: list[int], n_train: int) -> int:
