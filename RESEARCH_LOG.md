@@ -8,6 +8,43 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-07 — Climatology baseline now keys on the declared dominant seasonality (issue #54)
+
+The `Climatology` baseline (mean target by seasonal position) chose its lookup key from a
+frequency-dispatch table: day-of-year for daily data, hour-of-day for hourly, weekday x hour
+for sub-daily. The consequence was that how hard a baseline it is changed with the sampling
+rate rather than with the series' actual seasonal structure — weekly data collapsed to the
+global mean, hourly data ignored the weekday, and only 15-minute data used both weekday and
+hour. Because skill scores are usually read against a climatology- or seasonal-naive-style
+reference, that made cross-frequency comparisons of skill inconsistent for a reason unrelated
+to the series.
+
+**Decision.** Key `Climatology` on the position within the case's dominant declared period
+(`case.seasonalities`), the same single source of truth the seasonal methods (SeasonalNaive,
+MSTL, the ML sin/cos features) already read. The rule is now identical at every frequency:
+one bucket per position in the dominant cycle. Options considered and their outcomes:
+
+- *Keying granularity.* Chose the **dominant** declared period over the longest declared one.
+  The dominant period is what SeasonalNaive and the sin/cos features already use, so all
+  seasonal components of the suite now key the same way. The longest-period alternative would
+  have preserved the old sub-daily weekday x hour richness but diverged from the rest of the
+  suite and produced sparser per-bucket means.
+- *Non-seasonal cases.* A case declared non-seasonal (`seasonalities = []`) has no cycle to
+  key on, so every timestamp shares one bucket and the baseline equals the global training
+  mean. Chose this over raising (as SeasonalNaive does) so the naive ensemble stays intact;
+  Climatology simply coincides with the Mean baseline there, which is the honest answer.
+
+**Implementation.** The position-in-cycle logic (canonical (freq, period) -> calendar-field
+positions, with an epoch-anchored step-count fallback for non-canonical periods) was extracted
+from the ML feature code into `seasonality.position_in_cycle` and is now shared by both the ML
+sin/cos features and `Climatology`; the ML methods are unchanged in behaviour. Unit tests cover
+the helper (canonical pairs, epoch fallback, bounds, determinism) and the two Climatology paths
+(periodic forecast in the dominant period; global mean when non-seasonal).
+
+**Impact.** Only `Climatology`'s own predictions change — it is scored as a method but is not
+used as a skill-score reference, so no other method's skill numbers move. The Climatology rows
+and the naive-ensemble median in `docs/RESULTS.md` need regenerating on the next benchmark run.
+
 ## 2026-07-07 — Added a PACF panel to the seasonality notebook, alongside ACF
 
 The seasonality curation notebook's ACF plot showed peaks repeating at every multiple of a
