@@ -16,6 +16,7 @@ def _():
     import numpy as np
     import pandas as pd
     import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
     from scipy.signal import find_peaks, periodogram
     from scipy.stats import binned_statistic
 
@@ -47,6 +48,7 @@ def _():
         find_peaks,
         get_case,
         go,
+        make_subplots,
         mstl_decompose,
         normalize_freq,
         np,
@@ -55,6 +57,25 @@ def _():
         periodogram,
         proposed_seasonalities,
     )
+
+
+@app.cell
+def _(go):
+    # Minimal look shared by every figure: white background, no grid, and all four
+    # spines drawn in black (mirror=True closes the box). Template axis defaults
+    # cascade to every axis, so make_subplots figures pick it up on all rows too.
+    _axis = {
+        "showgrid": False,
+        "zeroline": False,
+        "showline": True,
+        "linecolor": "black",
+        "mirror": True,
+        "ticks": "outside",
+    }
+    plot_template = go.layout.Template(
+        layout={"plot_bgcolor": "white", "paper_bgcolor": "white", "xaxis": _axis, "yaxis": _axis}
+    )
+    return (plot_template,)
 
 
 @app.cell
@@ -135,6 +156,7 @@ def _(
     pd,
     np,
     periodogram,
+    plot_template,
     train,
 ):
     _yd = fill_and_detrend(train["y"].to_numpy())
@@ -231,7 +253,9 @@ def _(
         _vline(1.0 / _period, _period, "darkorange", "dash", "top")
     _fig.update_xaxes(type="log", title="frequency (1/steps)")
     _fig.update_yaxes(type="log", title="power")
-    _fig.update_layout(title="Train-split periodogram", height=400, showlegend=True)
+    _fig.update_layout(
+        template=plot_template, title="Train-split periodogram", height=400, showlegend=True
+    )
 
     _info = mo.callout(
         mo.md(
@@ -365,23 +389,16 @@ def _(case, evidence, filled_frac, mo, pd, proposed):
 
 @app.cell
 def _(
-    CANDIDATE_MENU,
     acf_at,
-    case,
-    extra_candidates,
     fill_and_detrend,
     final_candidates,
     go,
-    normalize_freq,
     np,
+    plot_template,
     train,
 ):
     _yd = fill_and_detrend(train["y"].to_numpy())
-    _menu = (
-        sorted(final_candidates)
-        if final_candidates
-        else sorted(set(CANDIDATE_MENU.get(normalize_freq(case.freq), ())) | set(extra_candidates))
-    )
+    _menu = sorted(final_candidates)
     _max_lag = min(int(2.2 * max(_menu)) if _menu else 100, len(_yd) - 2)
     _lags = np.arange(1, _max_lag + 1)
     _acf = np.array([acf_at(_yd, int(lag)) for lag in _lags])
@@ -401,6 +418,7 @@ def _(
                 annotation_position="top",
             )
     _fig.update_layout(
+        template=plot_template,
         title="Train-split ACF (candidate lags marked)",
         xaxis_title="lag (steps)",
         yaxis_title="ACF",
@@ -411,32 +429,43 @@ def _(
 
 
 @app.cell
-def _(evidence, go, mo, mstl_decompose, np, train):
-    _periods = sorted(e["period"] for e in evidence if np.isfinite(e["mstl_strength"]))
+def _(final_candidates, go, make_subplots, mo, mstl_decompose, plot_template, train):
+    _periods = sorted(final_candidates)
     _fit = mstl_decompose(train["y"].to_numpy(), _periods) if _periods else None
 
     if _fit is None:
         _out = mo.md(
-            "No candidate is both plausible (periodogram + cycle count) and affordable "
-            "(fits >= 2 cycles within the sampled `MSTL_SAMPLE_ROWS` window) for an MSTL "
-            "decomposition."
+            "No final candidates entered above, or none fits >= 2 cycles within the "
+            "sampled `MSTL_SAMPLE_ROWS` window for an MSTL decomposition."
         )
     else:
         _decomposition, _fitted = _fit
-        _fig = go.Figure()
-        _fig.add_trace(go.Scattergl(y=_decomposition["trend"], mode="lines", name="trend"))
-        for _p in _fitted:
-            _col = "seasonal" if len(_fitted) == 1 else f"seasonal{_p}"
-            _fig.add_trace(
-                go.Scattergl(y=_decomposition[_col], mode="lines", name=f"seasonal({_p})")
-            )
-        _fig.add_trace(
-            go.Scattergl(y=_decomposition["remainder"], mode="lines", name="remainder", opacity=0.4)
+        _components = (
+            [("trend", "trend")]
+            + [
+                ("seasonal" if len(_fitted) == 1 else f"seasonal{_p}", f"seasonal({_p})")
+                for _p in _fitted
+            ]
+            + [("remainder", "remainder")]
         )
+        _fig = make_subplots(
+            rows=len(_components),
+            cols=1,
+            shared_xaxes=True,
+            subplot_titles=[_label for _, _label in _components],
+            vertical_spacing=0.35 / len(_components),
+        )
+        for _row, (_col, _label) in enumerate(_components, start=1):
+            _fig.add_trace(
+                go.Scattergl(y=_decomposition[_col], mode="lines", showlegend=False),
+                row=_row,
+                col=1,
+            )
+        _fig.update_xaxes(title_text="step (within sampled window)", row=len(_components), col=1)
         _fig.update_layout(
+            template=plot_template,
             title=f"MSTL decomposition (last {len(_decomposition)} train steps, periods {_fitted})",
-            xaxis_title="step (within sampled window)",
-            height=420,
+            height=160 * len(_components) + 100,
         )
         _out = _fig
     _out
