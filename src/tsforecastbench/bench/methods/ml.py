@@ -17,7 +17,7 @@ import pandas as pd
 
 from tsforecastbench.bench.methods.base import Forecaster
 from tsforecastbench.data.schema import Case
-from tsforecastbench.data.seasonality import dominant_period, normalize_freq
+from tsforecastbench.data.seasonality import dominant_period, position_in_cycle
 
 
 def _date_features_for(freq: str) -> list[str]:
@@ -31,42 +31,23 @@ def _date_features_for(freq: str) -> list[str]:
     return ["dayofweek", "month"]
 
 
-# Position-in-cycle from calendar fields for the canonical (freq, period) pairs: exact
-# across leap years and DST-free naive timestamps, unlike an epoch-anchored step count.
-_CANONICAL_POSITIONS = {
-    ("1d", 7): lambda ds: ds.dayofweek,
-    ("1d", 365): lambda ds: ds.dayofyear - 1,
-    ("1h", 12): lambda ds: ds.hour % 12,
-    ("1h", 24): lambda ds: ds.hour,
-    ("1h", 168): lambda ds: ds.dayofweek * 24 + ds.hour,
-    ("15min", 96): lambda ds: ds.hour * 4 + ds.minute // 15,
-    ("15min", 672): lambda ds: ds.dayofweek * 96 + ds.hour * 4 + ds.minute // 15,
-}
-
-
 def _sincos_features_for(case: Case) -> list:
     """Sin/cos encoding of the case's declared dominant period ([] -> no cyclic features).
 
     MLForecast passes a DatetimeIndex to each callable (no .dt accessor) and names the
-    feature column after the callable's __name__.
+    feature column after the callable's __name__. Position within the cycle comes from
+    the shared `position_in_cycle` helper, the same rule the Climatology baseline keys on.
     """
     p = dominant_period(case.seasonalities)
     if p == 1:
         return []
-    pos = _CANONICAL_POSITIONS.get((normalize_freq(case.freq), p))
-    if pos is None:
-        # Non-canonical period: position = epoch-anchored step count modulo p, identical
-        # at fit and predict time because both use the same naive timestamps.
-        step_ns = pd.Timedelta(pd.tseries.frequencies.to_offset(case.freq)).value
-
-        def pos(ds, _step_ns=step_ns, _p=p):
-            return (ds.asi8 // _step_ns) % _p
+    freq = case.freq
 
     def sin_feat(ds):
-        return np.sin(2 * np.pi * pos(ds) / p)
+        return np.sin(2 * np.pi * position_in_cycle(freq, p, ds) / p)
 
     def cos_feat(ds):
-        return np.cos(2 * np.pi * pos(ds) / p)
+        return np.cos(2 * np.pi * position_in_cycle(freq, p, ds) / p)
 
     sin_feat.__name__ = f"sin{p}"
     cos_feat.__name__ = f"cos{p}"
