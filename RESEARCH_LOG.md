@@ -8,6 +8,33 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-07 — Added a PACF panel to the seasonality notebook, alongside ACF
+
+The seasonality curation notebook's ACF plot showed peaks repeating at every multiple of a
+candidate period (e.g. lag 12, 24, 36... for a 12-step cycle) — expected behaviour for any
+persistent seasonal signal, but a real source of ambiguity given this project's
+`CANDIDATE_MENU`: within a frequency, the longer menu periods are exact integer multiples of
+the shorter ones (1h: 24 = 2x12, 168 = 14x12; 15min: 672 = 7x96). A strong semidiurnal (12h)
+cycle mechanically inflates ACF(24) whether or not an independent diurnal effect exists, so
+ACF alone can't tell a reviewer whether the longer candidate is corroborated or is just
+harmonic bleed-through from the shorter one.
+
+**Decision.** Added a second plot cell computing PACF (`statsmodels.tsa.stattools.pacf`,
+Yule-Walker, unadjusted — new `_pacf` helper in `seasonality.py`) over the same lag range,
+plotted the same way as the existing ACF cell (candidate lags marked, `±2/sqrt(n)`
+significance band). Unlike ACF, PACF at a given lag nets out the shorter lags already
+regressed out, so a candidate that's a multiple of a shorter one only spikes if it carries
+information beyond what the shorter cycle already explains. This makes the notebook's ACF/PACF
+pair diagnostic for exactly the multiple-of-menu-period case, without changing what
+`detect_candidates()` accepts — PACF is reviewer-facing only; the acceptance gate still uses
+ACF (paired with MSTL strength) as documented in `seasonality.py`, since PACF's max lag is
+capped at under half the sample size (Yule-Walker requirement) and its "cutoff" interpretation
+is only clean for AR-type dependence, not guaranteed for arbitrary periodic shapes.
+
+Added `statsmodels` as an explicit dependency (`pyproject.toml`) — it was previously only
+pulled in transitively via `statsforecast`'s MSTL wrapper, but is now imported directly by
+`tsforecastbench.data.seasonality._pacf`.
+
 ## 2026-07-07 — Interactive periodogram + find_peaks in the seasonality notebook
 
 The seasonality curation notebook (`notebooks/seasonality.py`) previously buried the periodogram
