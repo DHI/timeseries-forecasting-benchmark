@@ -98,7 +98,7 @@ def _(mo):
         step=50,
         value=150,
         label="Log-frequency grid resolution M (bins; higher = finer / more peaks)",
-        full_width=True,
+        full_width=False,
     )
     # One text input per scipy.signal.find_peaks parameter; blank = leave unset (None).
     # On the log grid a bin is a fixed frequency ratio, so distance/width finally transfer
@@ -199,7 +199,9 @@ def _(
 
     def _vline(_freq, _period, _color, _dash, _pos):
 
-        _hover_tooltip_value = np.round(pd.Timedelta(case.freq).seconds * _period / 3600 / 24, 1)
+        _hover_tooltip_value = np.round(
+            (pd.Timedelta(case.freq) * _period).total_seconds() / 3600 / 24, 1
+        )
         _fig.add_trace(
             go.Scattergl(
                 x=np.full(_yline.size, _freq),
@@ -265,7 +267,13 @@ def _(
             mo.md(_peaks_note),
         ]
     )
-    mo.vstack([_info, grid_resolution, _fig, _fp_box])
+    mo.vstack(
+        [
+            grid_resolution,
+            _fig,
+            mo.accordion({"Peak finding parameter tuning": _fp_box, "Plot info": _info}),
+        ]
+    )
     return
 
 
@@ -291,12 +299,42 @@ def _(
     case,
     detect_candidates,
     extra_candidates,
+    final_candidates,
     proposed_seasonalities,
     train,
 ):
-    evidence = detect_candidates(train["y"].to_numpy(), case.freq, extra_candidates)
+    evidence = detect_candidates(
+        train["y"].to_numpy(), case.freq, tuple(set(extra_candidates) | set(final_candidates))
+    )
+    if final_candidates:
+        evidence = [e for e in evidence if e["period"] in final_candidates]
     proposed = proposed_seasonalities(evidence)
     return evidence, proposed
+
+
+@app.cell
+def _(mo):
+    mo.md("""## Final candidate study
+            Insert below your chosen period candidates (steps, comma-separated)
+          """)
+    return
+
+
+@app.cell
+def _(mo):
+    final_input = mo.ui.text(
+        value="",
+    )
+    final_input
+    return (final_input,)
+
+
+@app.cell
+def _(final_input):
+    final_candidates = tuple(
+        int(tok) for tok in final_input.value.replace(" ", "").split(",") if tok
+    )
+    return (final_candidates,)
 
 
 @app.cell
@@ -332,13 +370,18 @@ def _(
     case,
     extra_candidates,
     fill_and_detrend,
+    final_candidates,
     go,
     normalize_freq,
     np,
     train,
 ):
     _yd = fill_and_detrend(train["y"].to_numpy())
-    _menu = sorted(set(CANDIDATE_MENU.get(normalize_freq(case.freq), ())) | set(extra_candidates))
+    _menu = (
+        sorted(final_candidates)
+        if final_candidates
+        else sorted(set(CANDIDATE_MENU.get(normalize_freq(case.freq), ())) | set(extra_candidates))
+    )
     _max_lag = min(int(2.2 * max(_menu)) if _menu else 100, len(_yd) - 2)
     _lags = np.arange(1, _max_lag + 1)
     _acf = np.array([acf_at(_yd, int(lag)) for lag in _lags])
