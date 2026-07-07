@@ -6,7 +6,7 @@ target = "discharge"
 target_unit = "m3/s"
 
 freq = "1D"
-seasonalities = [365, 7]
+seasonalities = [365]
 horizon_primary = "30D"
 horizons_eval = ["7D", "14D", "30D"]
 input_window = "60D"
