@@ -30,6 +30,7 @@ from tsforecastbench.bench.methods import (  # noqa: E402
 )
 from tsforecastbench.bench.viz import plot_leadtime_curve, render_matrix  # noqa: E402
 from tsforecastbench.data.registry import discover_cases, get_case  # noqa: E402
+from tsforecastbench.data.seasonality import dominant_period  # noqa: E402
 
 ALL_CASES = list(discover_cases())
 
@@ -78,6 +79,46 @@ def test_baselines_run(cid):
         sn = res["method"] == "SeasonalNaive"
         assert (res.loc[~sn, "status"] == "ok").all()
         assert res.loc[sn, "status"].str.contains("non-seasonal").all()
+
+
+def test_climatology_forecast_is_periodic_in_declared_dominant_period():
+    # Climatology keys on the case's dominant declared period, so its forecast repeats
+    # with that period regardless of frequency (issue #54). demand_ltown is hourly with a
+    # dominant period of 24, which keys on hour-of-day and cycles cleanly every 24 steps.
+    case = get_case("demand_ltown")
+    train = case.split_frame(case.synth())["train"]
+    period = dominant_period(case.seasonalities)
+
+    clim = Climatology()
+    clim.fit(case, train)
+    horizon = 2 * period + 5
+    preds = clim.predict(case, train, horizon)["y_hat"].to_numpy()
+    np.testing.assert_allclose(preds[:period], preds[period : 2 * period])
+
+
+def test_climatology_on_nonseasonal_case_is_global_mean():
+    # A declared-non-seasonal case has no cycle to key on, so every position collapses to
+    # one bucket and the forecast is the global training mean (decision B on issue #54).
+    from tsforecastbench.data.schema import Case
+
+    case = Case(
+        id="dummy",
+        domain="test",
+        target="y",
+        freq="1h",
+        seasonalities=[],
+        horizon_primary="6h",
+        input_window="24h",
+        splits={"train_end": "2020-01-01", "val_end": "2021-01-01", "test_end": "2022-01-01"},
+        source={"name": "test"},
+    )
+    ds = pd.date_range("2019-01-01", periods=240, freq="1h")
+    train = pd.DataFrame({"ds": ds, "y": np.arange(240, dtype=float)})
+
+    clim = Climatology()
+    clim.fit(case, train)
+    preds = clim.predict(case, train, 6)["y_hat"].to_numpy()
+    np.testing.assert_allclose(preds, train["y"].mean())
 
 
 def test_ensemble_baselines_run():

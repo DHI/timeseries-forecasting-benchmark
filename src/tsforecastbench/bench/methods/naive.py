@@ -7,7 +7,7 @@ import pandas as pd
 
 from tsforecastbench.bench.methods.base import Forecaster
 from tsforecastbench.data.schema import Case
-from tsforecastbench.data.seasonality import dominant_period
+from tsforecastbench.data.seasonality import dominant_period, position_in_cycle
 
 
 class MeanBaseline(Forecaster):
@@ -84,24 +84,23 @@ class SeasonalNaive(Forecaster):
 
 
 class Climatology(Forecaster):
-    """Mean value by seasonal position (day-of-year for daily, hour for hourly,
-    day-of-week x hour for sub-daily). A stronger 'no-skill' reference than Mean
-    for series with a stable seasonal/diurnal cycle.
+    """Mean target value by position within the case's dominant declared seasonal cycle
+    (`case.seasonalities`). Keying on the declared seasonality means the baseline has the
+    same meaning at every frequency, rather than shifting between day-of-year, hour, and
+    weekday x hour depending on the sampling rate. A non-seasonal case (`seasonalities =
+    []`) has no cycle to key on, so every timestamp shares one bucket and the baseline is
+    the global training mean. A stronger 'no-skill' reference than Mean for series with a
+    stable seasonal/diurnal cycle.
     """
 
     name = "Climatology"
 
     def _key(self, idx: pd.DatetimeIndex) -> np.ndarray:
-        f = self._freq
-        if f in {"1d", "d"}:
-            return idx.dayofyear.to_numpy()
-        if f in {"1h", "h"}:
-            return idx.hour.to_numpy()
-        # sub-daily: combine weekday and hour
-        return (idx.dayofweek * 24 + idx.hour).to_numpy()
+        return position_in_cycle(self._freq, self._period, idx)
 
     def fit(self, case: Case, train: pd.DataFrame) -> None:
-        self._freq = case.freq.lower()
+        self._freq = case.freq
+        self._period = dominant_period(case.seasonalities)
         idx = pd.DatetimeIndex(pd.to_datetime(train["ds"]))
         keys = self._key(idx)
         s = pd.Series(pd.to_numeric(train["y"], errors="coerce").to_numpy())
