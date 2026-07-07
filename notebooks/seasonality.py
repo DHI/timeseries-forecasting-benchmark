@@ -37,6 +37,9 @@ def _():
     from tsforecastbench.data.seasonality import (
         _mstl_decompose as mstl_decompose,
     )
+    from tsforecastbench.data.seasonality import (
+        _pacf as pacf_at_lags,
+    )
 
     return (
         CANDIDATE_MENU,
@@ -53,6 +56,7 @@ def _():
         normalize_freq,
         np,
         observed_mask,
+        pacf_at_lags,
         pd,
         periodogram,
         proposed_seasonalities,
@@ -425,6 +429,47 @@ def _(
         height=380,
     )
     _fig
+    return
+
+
+@app.cell
+def _(fill_and_detrend, final_candidates, go, mo, np, pacf_at_lags, plot_template, train):
+    _yd = fill_and_detrend(train["y"].to_numpy())
+    _menu = sorted(final_candidates)
+    _max_lag = min(int(2.2 * max(_menu)) if _menu else 100, len(_yd) // 2 - 1)
+    _lags = np.arange(1, _max_lag + 1)
+    _pacf = pacf_at_lags(_yd, _max_lag)
+
+    _fig = go.Figure()
+    _fig.add_trace(go.Scattergl(x=_lags, y=_pacf, mode="lines", name="PACF"))
+    _sig = 2.0 / np.sqrt(len(_yd))
+    _fig.add_hline(y=_sig, line_dash="dash", line_color="gray")
+    _fig.add_hline(y=-_sig, line_dash="dash", line_color="gray")
+    for _p in _menu:
+        if _p <= _max_lag:
+            _fig.add_vline(
+                x=_p,
+                line_dash="dot",
+                line_color="crimson",
+                annotation_text=f"{_p}",
+                annotation_position="top",
+            )
+    _fig.update_layout(
+        template=plot_template,
+        title="Train-split PACF (candidate lags marked)",
+        xaxis_title="lag (steps)",
+        yaxis_title="PACF",
+        height=380,
+    )
+    _note = mo.md(
+        "Unlike ACF, each lag here nets out the shorter lags already accounted for. A "
+        "candidate that's an exact multiple of a shorter, more prominent one already on "
+        "the menu (e.g. 24 = 2x12 on hourly data) should only spike here if it carries "
+        "seasonal information beyond what the shorter cycle already explains — otherwise "
+        "the ACF peak at that lag is just the shorter cycle's own persistence bleeding "
+        "through, not evidence of an independent period."
+    )
+    mo.vstack([_fig, _note])
     return
 
 

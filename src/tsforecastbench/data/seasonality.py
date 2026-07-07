@@ -123,6 +123,20 @@ def _acf_at(y: np.ndarray, lag: int) -> float:
     return float(np.mean((a - a.mean()) * (b - b.mean())) / (sa * sb))
 
 
+def _pacf(y: np.ndarray, max_lag: int) -> np.ndarray:
+    """Partial autocorrelation for lags 1..max_lag (Yule-Walker, unadjusted). Unlike
+    `_acf_at`, each lag's value nets out the shorter lags already regressed out — so a
+    candidate that's an exact multiple of a shorter, more prominent one already on the
+    menu (e.g. 24 = 2x12 on hourly data) only shows a partial-autocorrelation spike if it
+    carries information beyond what the shorter cycle already explains, rather than
+    inheriting a spike purely from the shorter cycle's own persistence (as ACF does).
+    Reviewer-facing diagnostic only — not part of the `detect_candidates` acceptance
+    gate, since Yule-Walker requires max_lag < half the sample size."""
+    from statsmodels.tsa.stattools import pacf
+
+    return pacf(y, nlags=max_lag, method="ywm")[1:]
+
+
 def _spectral_ratio(freqs: np.ndarray, power: np.ndarray, period: int) -> float:
     """Peak periodogram power within 2% of the candidate frequency, relative to the
     median power of the surrounding octave band (excluding the peak bins). The window
