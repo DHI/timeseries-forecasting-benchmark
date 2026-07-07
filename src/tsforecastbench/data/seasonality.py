@@ -9,9 +9,9 @@ The detection half is curation tooling, run once per case when the field is set 
 notebooks/seasonality.py): candidates come from a fixed, physically motivated menu per
 frequency and are accepted or rejected by evidence measured on the training split — a
 periodogram peak prominent against its local spectral neighborhood (robust to the red
-spectra typical of environmental series) cross-checked by the autocorrelation at that
-lag. The human reviews the evidence table and commits the accepted periods; nothing
-here is consulted at fit/predict time.
+spectra typical of environmental series), corroborated by either the autocorrelation at
+that lag or an MSTL seasonal-strength score. The human reviews the evidence table and
+commits the accepted periods; nothing here is consulted at fit/predict time.
 """
 
 from __future__ import annotations
@@ -33,16 +33,30 @@ CANDIDATE_MENU: dict[str, tuple[int, ...]] = {
 
 # Evidence thresholds (documented once, applied everywhere). A candidate is accepted
 # when the training split holds >= MIN_CYCLES full cycles, its periodogram peak exceeds
-# POWER_RATIO_MIN x the median power of its local frequency neighborhood, and the ACF at
-# the candidate lag clears ACF_MIN. The spectral ratio is the discriminator (red-noise
-# persistence inflates ACF at any modest lag but produces no local spectral peak); the
-# ACF floor guards against isolated periodogram artifacts. The floor is deliberately
-# low: a genuine cycle buried in heavy high-frequency noise concentrates in a single
-# periodogram bin but its ACF is diluted toward zero (demand_ltown's unmistakable
-# diurnal cycle — spectral ratio ~700 — sits at ACF(24) ~= 0.10).
+# POWER_RATIO_MIN x the median power of its local frequency neighborhood, and *either*
+# the ACF at the candidate lag clears ACF_MIN *or* its MSTL seasonal strength clears
+# MSTL_STRENGTH_MIN. The spectral ratio is the discriminator (red-noise persistence
+# inflates ACF at any modest lag but produces no local spectral peak); ACF/MSTL are two
+# independent ways to corroborate that the peak is a real cycle and not an artifact. The
+# ACF floor is deliberately low: a genuine cycle buried in heavy high-frequency noise
+# concentrates in a single periodogram bin but its ACF is diluted toward zero
+# (demand_ltown's unmistakable diurnal cycle — spectral ratio ~700 — sits at ACF(24)
+# ~= 0.10). MSTL's LOESS-smoothed seasonal component is far less diluted by iid noise,
+# so it can corroborate exactly the cases where ACF is weakest.
 MIN_CYCLES = 2
 POWER_RATIO_MIN = 10.0
 ACF_MIN = 0.1
+MSTL_STRENGTH_MIN = 0.05
+
+# MSTL is only run on candidates that already clear the periodogram+cycle gates above
+# (no point decomposing spectral noise), and only over the most recent MSTL_SAMPLE_ROWS
+# observations rather than the full training split: STL cost scales with n x period
+# (benchmarked: ~40s for n=100_000/period=672, ~0.1s for n=1_000/period=365), and 1000
+# rows still holds >= MIN_CYCLES for every period this project has ever declared (the
+# longest, 365, gets ~2.7 cycles). Periods too long to clear MIN_CYCLES within that
+# window are silently skipped (evidence falls back to ACF alone, as before MSTL existed)
+# rather than paying for a slow fit on a barely-resolved cycle.
+MSTL_SAMPLE_ROWS = 1000
 
 
 def normalize_freq(freq: str) -> str:
@@ -82,6 +96,7 @@ class CandidateEvidence(TypedDict):
     n_cycles: float
     power_ratio: float
     acf: float
+    mstl_strength: float
     accepted: bool
 
 
@@ -125,6 +140,49 @@ def _spectral_ratio(freqs: np.ndarray, power: np.ndarray, period: int) -> float:
     return peak / base
 
 
+def _mstl_decompose(y: np.ndarray, periods: list[int]) -> tuple[object, list[int]] | None:
+    """Interpolate the last MSTL_SAMPLE_ROWS observations and run one joint MSTL
+    decomposition (statsforecast's, a thin wrapper over `statsmodels.tsa.STL`) over the
+    subset of `periods` that clear MIN_CYCLES within that window — shortest period first,
+    so a longer period is decomposed against the residual left after shorter cycles are
+    already stripped out, discounting a period that's really just spectral leakage of a
+    shorter one. Returns `(decomposition_df, fitted_periods)`, or None if nothing in
+    `periods` is fittable or the series is too degenerate to interpolate."""
+    from statsforecast.mstl import mstl
+
+    sample = np.asarray(y, dtype=float)[-MSTL_SAMPLE_ROWS:]
+    finite = np.isfinite(sample)
+    if finite.sum() < 3:
+        return None
+    idx = np.arange(len(sample))
+    sample = np.interp(idx, idx[finite], sample[finite])
+
+    fittable = sorted(p for p in periods if len(sample) // p >= MIN_CYCLES)
+    if not fittable:
+        return None
+
+    decomposition = mstl(sample, period=fittable if len(fittable) > 1 else fittable[0])
+    return decomposition, fittable
+
+
+def _mstl_strengths(y: np.ndarray, periods: list[int]) -> dict[int, float]:
+    """Seasonal strength (Hyndman & Athanasopoulos: 1 - Var(remainder) / Var(remainder +
+    seasonal)) for each of `periods`, from `_mstl_decompose`. Periods that don't clear
+    MIN_CYCLES within the MSTL_SAMPLE_ROWS window are dropped from the result; returns {}
+    if none do or MSTL can't fit (degenerate series)."""
+    fit = _mstl_decompose(y, periods)
+    if fit is None:
+        return {}
+    decomposition, fittable = fit
+    remainder = decomposition["remainder"].to_numpy()
+    strengths: dict[int, float] = {}
+    for p in fittable:
+        seasonal = decomposition["seasonal" if len(fittable) == 1 else f"seasonal{p}"].to_numpy()
+        total_var = np.var(remainder + seasonal)
+        strengths[p] = max(0.0, 1.0 - np.var(remainder) / total_var) if total_var > 0 else 0.0
+    return strengths
+
+
 def detect_candidates(
     y: np.ndarray,
     freq: str,
@@ -139,17 +197,31 @@ def detect_candidates(
     yd = _fill_and_detrend(y)
     freqs, power = periodogram(yd, fs=1.0)
 
+    n_cycles_by_period = {p: len(yd) / p for p in candidates}
+    ratio_by_period = {p: _spectral_ratio(freqs, power, p) for p in candidates}
+    plausible = [
+        p
+        for p in candidates
+        if n_cycles_by_period[p] >= MIN_CYCLES
+        and np.isfinite(ratio_by_period[p])
+        and ratio_by_period[p] >= POWER_RATIO_MIN
+    ]
+    mstl_strength_by_period = _mstl_strengths(y, plausible)
+
     evidence: list[CandidateEvidence] = []
     for p in candidates:
-        n_cycles = len(yd) / p
-        ratio = _spectral_ratio(freqs, power, p)
+        n_cycles = n_cycles_by_period[p]
+        ratio = ratio_by_period[p]
         acf = _acf_at(yd, p)
+        strength = mstl_strength_by_period.get(p, float("nan"))
         accepted = (
             n_cycles >= MIN_CYCLES
             and np.isfinite(ratio)
             and ratio >= POWER_RATIO_MIN
-            and np.isfinite(acf)
-            and acf >= ACF_MIN
+            and (
+                (np.isfinite(acf) and acf >= ACF_MIN)
+                or (np.isfinite(strength) and strength >= MSTL_STRENGTH_MIN)
+            )
         )
         evidence.append(
             CandidateEvidence(
@@ -157,6 +229,7 @@ def detect_candidates(
                 n_cycles=round(n_cycles, 1),
                 power_ratio=float(ratio),
                 acf=float(acf),
+                mstl_strength=float(strength),
                 accepted=bool(accepted),
             )
         )

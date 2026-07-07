@@ -8,6 +8,72 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-07 — Interactive periodogram + find_peaks in the seasonality notebook
+
+The seasonality curation notebook (`notebooks/seasonality.py`) previously buried the periodogram
+near the bottom and surfaced off-menu peaks only as a static text list (from
+`suggest_peak_candidates()`) with no way to interrogate the spectrum. A reviewer who disagreed
+with the suggested peaks had no knobs to turn.
+
+**Decision.** Reworked the notebook so the periodogram sits immediately under the case dropdown
+and is fully interactive:
+
+- **Log-frequency resampling (the key idea).** `scipy.signal.periodogram` is uniform in
+  frequency, but seasonality lives in *period* on a log axis, where `p = 1/f` makes a single
+  frequency bin span `≈ p²/N` in period. The spectrum is therefore hugely over-resolved at
+  short periods (all the noise clutter) and under-resolved at long ones (for daily Catskills,
+  N≈1662, the annual peak at 365 falls *between* two bins that map to 415 and 332 — there is
+  no bin at 365). Worse, `find_peaks` works on array index, so `distance`/`width` mean
+  completely different things at each end of the spectrum. Fix: resample log-power onto a
+  **uniform log-frequency grid** and run detection there, where one bin = a fixed frequency
+  ratio (so `find_peaks` params finally transfer across the spectrum *and* across cases). The
+  single smoothing knob is now the grid resolution `M` (default 300; fewer bins = coarser =
+  only major peaks). Aggregation per log-bin **must be `max`, not mean/interpolation**: a mean
+  averages a sharp seasonal line (one raw bin among hundreds at the high-frequency end) into
+  the noise floor — tested, and it surfaced only broad red-noise humps, never the diurnal
+  line. `max` preserves the lines. Empty low-frequency bins (grid finer than the raw spectrum
+  there) are filled by interpolation.
+- **`find_peaks` on the resampled curve.** Peak detection runs `scipy.signal.find_peaks` on
+  the log-resampled curve, with a box below the plot exposing *every* `find_peaks` parameter
+  (`height`, `threshold`, `distance`, `prominence`, `width`, `wlen`, `rel_height`,
+  `plateau_size`) as text inputs (blank = unset). Editing any of them repaints the detected
+  peaks live. `distance` and `prominence` are pre-filled conservatively (`5`, `0.7`) so only
+  major peaks appear out of the box. Bad hyperparameters (e.g. `distance < 1`) are caught and
+  shown as a note instead of breaking the cell.
+- **Three marker colors.** Grey verticals = the fixed physically-motivated `CANDIDATE_MENU`
+  for the case frequency; yellow = `find_peaks` peaks on the resampled curve; orange = the
+  manually-entered extra candidates. An info callout above the plot explains why the grey
+  menu periods are the fixed acceptance set (spectral noise can't mint a meaningless period),
+  how to read a yellow peak with/without a grey line beside it, and warns that long-period
+  peaks are approximate (see limitation below).
+
+The static peak-suggestion text cell was removed (the interactive plot supersedes it). The
+library function `suggest_peak_candidates()` is left untouched — the registry/tests still use
+it, and it stays the non-interactive path.
+
+**Dead ends.** Two smoothing approaches were tried and dropped before log-resampling: a
+Gaussian `sigma`-in-bins filter and a zero-phase Butterworth low-pass. Both smooth in the
+*frequency* domain, so their one parameter (bins / normalised cutoff) is not comparable across
+cases whose spectra range ~1.3k→75k bins — no single default transferred, and heavy smoothing
+washed sharp seasonal lines into the red-noise decay. Log-resampling fixes the root cause
+(non-uniform period resolution) instead of masking it, and makes the resolution knob `M`
+scale-consistent by construction.
+
+**Limitation.** Resampling cannot manufacture resolution the periodogram never had: at low
+frequency the raw grid is sparse, so a long-period peak is only located to within a few
+percent (annual reads as ~360–375). Fine as a discovery aid; the exact period still comes from
+the menu / declared value, not the plot. The info callout states this.
+
+**Verified** across all cases: the resample + find_peaks pipeline runs on every train split
+(fast even on the 75k-bin `surge_cuxhaven` spectrum). At the default `M=300`, `distance=5`,
+`prominence=0.7`, the menu periods surface cleanly where they exist — `demand_ltown` → 12, 24,
+168; `discharge_saugeen` / `discharge_flashy_catskills` → ~370 (annual); `waves_oregon` → 17
+(its known swell period) — with per-case counts in the ~10–20 range.
+
+**Going forward.** This is curation tooling only — the interactive peaks are a discovery/
+inspection aid. Nothing enters a case's declared `seasonalities` without going through
+`detect_candidates`' ACF + power-ratio evidence and a written justification, exactly as before.
+
 ## 2026-07-03 — Periodogram-peak suggestions for off-menu seasonalities
 
 The seasonality curation notebook (`notebooks/seasonality.py`) could only evidence periods a
