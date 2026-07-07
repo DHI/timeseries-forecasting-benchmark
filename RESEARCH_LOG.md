@@ -256,6 +256,38 @@ relative metrics (MASE, skill), and is worth surfacing as a stratifying variable
 vs data-efficient methods) rather than suppressing. Re-run `curate_data.py` after any data
 refresh or a change to the ACF threshold / ceiling.
 
+## 2026-07-03 — Ensemble-of-baselines columns (issue #59)
+
+Closes the "no ensemble-of-baselines column" gap from the 2026-07-02 method-suite audit. A
+cheap combination of the naive baselines is often an embarrassingly strong reference; without
+it the matrix had no "hard to beat cheaply" column to calibrate how much the sophisticated
+methods actually buy.
+
+**What was added.** A generic `EnsembleForecaster` (`bench/methods/ensemble.py`) that
+composes existing `Forecaster` members — each already shares the fit/predict contract and
+emits the same future index — and combines their per-step forecasts. Two factory-built
+columns are registered in `run_pilot.py`, placed next to the naive baselines they draw from:
+
+- **EnsembleBaselines** — median of the four naive baselines (Mean, Persistence,
+  SeasonalNaive, Climatology).
+- **EnsembleBaselinesTheta** — the same four plus the fast classical Theta.
+
+**What was decided and why.** *Median, not mean*, as the combination rule: it is robust to a
+single member being badly off (e.g. Persistence during a spike) and is NaN-safe via
+`np.nanmedian`. *Two columns rather than one* so the matrix shows both the pure zero-cost
+reference and the naive+classical blend — the issue explicitly floated "baselines plus a
+classical method" as a variant, and the two bracket a useful range. A member that raises at
+predict time is dropped for that origin (the ensemble still forecasts from the survivors);
+only if all members fail does it raise, so the eval loop records it like any other failure.
+Placed in a new module rather than `naive.py` to keep that file dependency-light — the
+Theta blend imports from `classical.py`.
+
+**What it means going forward.** Early smoke run on `discharge_lowland_denmark` (synthetic,
+single hold-out) already shows the intended calibration signal: EnsembleBaselinesTheta beat
+persistence (skill ≈ 0.35) while the naive-only ensemble trailed it (≈ −1.6) on that flashy
+series — the naive median pulls toward the mean/climatology where persistence is strong. The
+column is doing its job; full rolling-origin numbers will come from the next pilot run.
+
 ## 2026-07-02 — Seasonal classical baselines: MSTL forecasters + seasonally-adjusted Theta (issue #46)
 
 Closes the "classical methods run non-seasonal by default" flaw from the method-suite audit

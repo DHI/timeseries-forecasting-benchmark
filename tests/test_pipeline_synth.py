@@ -25,6 +25,8 @@ from tsforecastbench.bench.methods import (  # noqa: E402
     MeanBaseline,
     Persistence,
     SeasonalNaive,
+    ensemble_baselines,
+    ensemble_baselines_theta,
 )
 from tsforecastbench.bench.viz import plot_leadtime_curve, render_matrix  # noqa: E402
 from tsforecastbench.data.registry import discover_cases, get_case  # noqa: E402
@@ -76,6 +78,32 @@ def test_baselines_run(cid):
         sn = res["method"] == "SeasonalNaive"
         assert (res.loc[~sn, "status"] == "ok").all()
         assert res.loc[sn, "status"].str.contains("non-seasonal").all()
+
+
+def test_ensemble_baselines_run():
+    case = get_case("discharge_lowland_denmark")
+    methods = [ensemble_baselines(), ensemble_baselines_theta()]
+    res = run_case(case, methods, prefer_synth=True)
+    assert len(res) == len(methods) * 5  # MAE, RMSE, MASE, Skill_vs_Persistence, Skill_vs_Mean
+    assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
+
+
+def test_ensemble_is_median_of_members():
+    case = get_case("discharge_lowland_denmark")
+    train = case.split_frame(case.synth())["train"]
+    horizon = 24
+
+    ens = ensemble_baselines()
+    ens.fit(case, train)
+    combined = ens.predict(case, train, horizon)["y_hat"].to_numpy()
+
+    member_preds = []
+    for member in ens.members:
+        member.fit(case, train)
+        member_preds.append(member.predict(case, train, horizon)["y_hat"].to_numpy())
+    expected = np.nanmedian(np.vstack(member_preds), axis=0)
+
+    np.testing.assert_allclose(combined, expected)
 
 
 def test_lightgbm_runs_on_one_case():

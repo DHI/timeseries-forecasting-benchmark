@@ -38,6 +38,8 @@ from tsforecastbench.bench.methods import (
     SeasonalNaive,
     TBATSForecaster,
     ThetaForecaster,
+    ensemble_baselines,
+    ensemble_baselines_theta,
 )
 from tsforecastbench.bench.viz import render_matrix
 from tsforecastbench.data.registry import discover_cases
@@ -54,6 +56,8 @@ def build_methods():
         Persistence(),
         SeasonalNaive(),
         Climatology(),
+        ensemble_baselines(),
+        ensemble_baselines_theta(),
         AutoARIMAForecaster(),
         AutoETSForecaster(),
         MSTLAutoETSForecaster(),
