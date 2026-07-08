@@ -17,7 +17,7 @@ def _():
     import pandas as pd
     import plotly.graph_objects as go
     from plotly.subplots import make_subplots
-    from scipy.signal import find_peaks, periodogram
+    from scipy.signal import periodogram
     from scipy.stats import binned_statistic
 
     from tsforecastbench.data.registry import discover_cases, get_case
@@ -49,7 +49,6 @@ def _():
         detect_candidates,
         discover_cases,
         fill_and_detrend,
-        find_peaks,
         get_case,
         go,
         make_subplots,
@@ -142,8 +141,8 @@ def _(mo):
 
 @app.cell
 def _(case, mo, pd, robust_period_candidates, train):
-    _result = robust_period_candidates(train["y"].to_numpy(), case.freq)
-    _candidates = _result["candidates"]
+    robust_result = robust_period_candidates(train["y"].to_numpy(), case.freq)
+    _candidates = robust_result["candidates"]
     if not _candidates:
         _discovery = mo.md("No periodic structure discovered (train split too short or flat).")
     else:
@@ -151,15 +150,10 @@ def _(case, mo, pd, robust_period_candidates, train):
             [
                 "period",
                 "spectral_ratio",
-                "prominence_bar",
-                "robust_amplitude",
-                "n_cycles",
                 "prominent",
                 "harmonic_of",
                 "approximate",
                 "menu_period",
-                "level",
-                "variance_fraction",
             ]
         ]
         _headline = [c["period"] for c in _candidates if c["prominent"] and not c["harmonic_of"]]
@@ -173,44 +167,28 @@ def _(case, mo, pd, robust_period_candidates, train):
                 mo.md(
                     f"**Prominent, non-harmonic periods:** `{_headline}`  \n"
                     f"**Menu periods not corroborated by discovery:** "
-                    f"`{_result['menu_periods_missing']}`"
+                    f"`{robust_result['menu_periods_missing']}`"
                 ),
             ]
         )
     _discovery
-    return
+    return (robust_result,)
 
 
 @app.cell
 def _(mo):
     # Resolution of the uniform log-frequency grid the periodogram is resampled onto (see
     # the periodogram cell). This is the single smoothing knob: fewer bins = coarser grid =
-    # only major peaks survive; more bins = finer grid = more structure (and more peaks).
+    # only major peaks survive; more bins = finer grid = more structure.
     grid_resolution = mo.ui.slider(
         start=50,
         stop=350,
         step=50,
         value=150,
-        label="Log-frequency grid resolution M (bins; higher = finer / more peaks)",
+        label="Log-frequency grid resolution M (bins; higher = finer)",
         full_width=False,
     )
-    # One text input per scipy.signal.find_peaks parameter; blank = leave unset (None).
-    # On the log grid a bin is a fixed frequency ratio, so distance/width finally transfer
-    # across cases. distance and prominence are pre-filled conservatively so only major
-    # peaks are found out of the box; loosen them (or raise M) to surface more.
-    find_peaks_ui = mo.ui.dictionary(
-        {
-            "height": mo.ui.text(label="height", placeholder="min power"),
-            "threshold": mo.ui.text(label="threshold", placeholder="Δ to neighbours"),
-            "distance": mo.ui.text(value="5", label="distance", placeholder="≥1 bin"),
-            "prominence": mo.ui.text(value="0.7", label="prominence", placeholder="min prominence"),
-            #            "width": mo.ui.text(label="width", placeholder="bins"),
-            #            "wlen": mo.ui.text(label="wlen", placeholder="bins"),
-            "rel_height": mo.ui.text(value="0.5", label="rel_height", placeholder="0-1"),
-            #            "plateau_size": mo.ui.text(label="plateau_size", placeholder="bins"),
-        }
-    )
-    return find_peaks_ui, grid_resolution
+    return (grid_resolution,)
 
 
 @app.cell
@@ -220,8 +198,6 @@ def _(
     case,
     extra_candidates,
     fill_and_detrend,
-    find_peaks,
-    find_peaks_ui,
     go,
     grid_resolution,
     mo,
@@ -230,6 +206,7 @@ def _(
     np,
     periodogram,
     plot_template,
+    robust_result,
     train,
 ):
     _yd = fill_and_detrend(train["y"].to_numpy())
@@ -238,12 +215,11 @@ def _(
 
     # The periodogram is uniform in frequency, but we reason about periods on a log axis:
     # it is wildly over-resolved at short periods (noise clutter) and under-resolved at long
-    # ones, and find_peaks works on array index so its distance/width mean different things
-    # at each end. Resample log-power (floor zeros so log10 stays finite) onto a uniform
+    # ones. Resample log-power (floor zeros so log10 stays finite) onto a uniform
     # log-frequency grid, taking the MAX per bin so sharp seasonal lines survive the
     # down-sampling (a mean averages them into the noise floor). Empty low-frequency bins —
-    # where the grid is finer than the raw spectrum — are filled by interpolation. find_peaks
-    # then runs on this evenly-spaced curve, where a bin is a fixed frequency ratio.
+    # where the grid is finer than the raw spectrum — are filled by interpolation. The result
+    # is the smoothed curve plotted alongside the raw periodogram.
     _pos = _p[_p > 0]
     _floor = _pos.min() if _pos.size else 1e-12
     _logp = np.log10(np.maximum(_p, _floor))
@@ -255,22 +231,7 @@ def _(
     _empty = ~np.isfinite(_binned)
     if _empty.any():
         _binned[_empty] = np.interp(_centers[_empty], _lf, _logp)
-    _grid_f = 10.0**_centers  # log-spaced frequency grid; find_peaks runs on _binned
-
-    _int_params = {"distance", "wlen", "plateau_size"}
-    _kwargs = {}
-    for _name, _tok in find_peaks_ui.value.items():
-        _tok = _tok.strip()
-        if not _tok:
-            continue
-        _kwargs[_name] = int(float(_tok)) if _name in _int_params else float(_tok)
-    try:
-        _peak_idx, _ = find_peaks(_binned, **_kwargs)
-        _err = None
-    except Exception as _e:  # bad hyperparameter (e.g. distance < 1) — show it, keep plotting
-        _peak_idx, _err = np.array([], dtype=int), str(_e)
-    _peak_freqs = _grid_f[_peak_idx]
-    _peak_periods = [round(1.0 / _pf) for _pf in _peak_freqs]
+    _grid_f = 10.0**_centers  # log-spaced frequency grid, used only for the smoothed curve
 
     _menu = sorted(CANDIDATE_MENU.get(normalize_freq(case.freq), ()))
 
@@ -320,8 +281,9 @@ def _(
 
     for _period in _menu:  # grey — fixed physically-motivated candidate menu
         _vline(1.0 / _period, _period, "gray", "dot", "top")
-    for _period, _pf in zip(_peak_periods, _peak_freqs, strict=True):  # yellow — find_peaks peaks
-        _vline(_pf, _period, "gold", "solid", "bottom")
+    for _c in robust_result["candidates"]:  # gold — RobustPeriod discovery
+        _dash = "solid" if _c["prominent"] else "dot"
+        _vline(1.0 / _c["period"], _c["period"], "gold", _dash, "bottom")
     for _period in extra_candidates:  # orange — manually entered extra candidates
         _vline(1.0 / _period, _period, "darkorange", "dash", "top")
     _fig.update_xaxes(type="log", title="frequency (1/steps)")
@@ -338,9 +300,10 @@ def _(
             "accepts periods from this fixed menu (plus justified per-case extras), so "
             "ordinary spectral noise can never mint a meaningless period into the benchmark "
             "metadata.  \n"
-            "**Yellow lines** are peaks `find_peaks` located on the log-resampled curve; "
-            "**orange lines** are the extra candidates typed above. A yellow peak sitting on "
-            "a grey line corroborates a menu period; a yellow peak with no grey line nearby "
+            "**Yellow lines** are periods the RobustPeriod discovery cell above found (solid = "
+            "clears its prominence bar, dotted = does not); "
+            "**orange lines** are the extra candidates typed above. A yellow line sitting on "
+            "a grey line corroborates a menu period; a yellow line with no grey line nearby "
             "flags an off-menu cycle worth adding as an extra candidate.  \n"
             "⚠️ *Long-period peaks are approximate*: a finite-length periodogram cannot "
             "resolve low frequencies finely, so an annual cycle may read as ~360-375. Treat a "
@@ -348,27 +311,11 @@ def _(
         ),
         kind="info",
     )
-    _peaks_note = (
-        f"⚠️ find_peaks error: {_err}"
-        if _err
-        else f"Detected peak periods (steps): `{sorted(set(_peak_periods))}`"
-    )
-    _fp_box = mo.vstack(
-        [
-            mo.md(
-                "**`scipy.signal.find_peaks` parameters** — blank leaves a parameter unset; "
-                "edit any of them to change which yellow peaks are detected on the "
-                "log-resampled curve."
-            ),
-            find_peaks_ui,
-            mo.md(_peaks_note),
-        ]
-    )
     mo.vstack(
         [
             grid_resolution,
             _fig,
-            mo.accordion({"Peak finding parameter tuning": _fp_box, "Plot info": _info}),
+            mo.accordion({"Plot info": _info}),
         ]
     )
     return
