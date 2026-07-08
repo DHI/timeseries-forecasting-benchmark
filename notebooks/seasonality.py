@@ -109,7 +109,7 @@ def _(discover_cases, mo):
         label="Extra candidate periods (steps, comma-separated; justify in case notes)",
         value="",
     )
-    mo.hstack([case_picker, extra_input], justify="start", gap=2)
+    case_picker
     return case_picker, extra_input
 
 
@@ -140,7 +140,7 @@ def _(mo):
 
 
 @app.cell
-def _(case, mo, pd, robust_period_candidates, train):
+def _(case, mo, pd, robust_period_candidates, extra_input, train):
     robust_result = robust_period_candidates(train["y"].to_numpy(), case.freq)
     _candidates = robust_result["candidates"]
     if not _candidates:
@@ -169,6 +169,7 @@ def _(case, mo, pd, robust_period_candidates, train):
                     f"**Menu periods not corroborated by discovery:** "
                     f"`{robust_result['menu_periods_missing']}`"
                 ),
+                extra_input,
             ]
         )
     _discovery
