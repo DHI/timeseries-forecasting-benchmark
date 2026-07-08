@@ -8,6 +8,26 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-08 — Non-seasonal MSTL test now builds its own non-seasonal case
+
+`test_mstl_is_honestly_inapplicable_on_declared_nonseasonal_case` checks that MSTL refuses to
+run when a case declares no seasonalities, rather than quietly collapsing into the plain
+non-seasonal trend model (which would just duplicate the AutoARIMA/AutoETS column). It used
+`discharge_flashy_catskills` as its non-seasonal example.
+
+That premise no longer holds. Since curation gave every one of the 12 cases a declared
+`seasonalities` list, no committed case is non-seasonal, so the test was exercising a seasonal
+case and MSTL correctly returned `ok`.
+
+**Decision.** Construct the non-seasonal case explicitly: `model_copy` the real case with
+`seasonalities` overridden to `[]`. The synthetic data is identical (the catskills generator
+does not read `seasonalities`), so the test still runs end-to-end through `run_case` and now
+reaches MSTL's `if not case.seasonalities` guard as intended.
+
+Worth flagging for collaborators: with all committed cases seasonal, the non-seasonal code
+paths — MSTL's inapplicability guard and the SeasonalNaive branch in `test_baselines_run` — are
+only ever hit by synthetic overrides, never by a real case in the suite.
+
 ## 2026-07-08 — Dominant period is now chosen at fit time by variance explained
 
 `dominant_period` previously returned the first entry of a case's declared `seasonalities`,
