@@ -12,6 +12,7 @@ from tsforecastbench.data.seasonality import dominant_period, position_in_cycle
 
 class MeanBaseline(Forecaster):
     name = "Mean"
+    family = "baseline"
 
     def fit(self, case: Case, train: pd.DataFrame) -> None:
         self._mean = float(train["y"].mean())
@@ -30,6 +31,7 @@ class MeanBaseline(Forecaster):
 
 class Persistence(Forecaster):
     name = "Persistence"
+    family = "baseline"
 
     def fit(self, case: Case, train: pd.DataFrame) -> None:
         pass
@@ -49,6 +51,7 @@ class Persistence(Forecaster):
 
 class SeasonalNaive(Forecaster):
     name = "SeasonalNaive"
+    family = "baseline"
 
     def __init__(self, season_length: int | None = None):
         self.season_length = season_length
@@ -94,6 +97,7 @@ class Climatology(Forecaster):
     """
 
     name = "Climatology"
+    family = "baseline"
 
     def _key(self, idx: pd.DatetimeIndex) -> np.ndarray:
         return position_in_cycle(self._freq, self._period, idx)

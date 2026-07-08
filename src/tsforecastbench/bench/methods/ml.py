@@ -94,6 +94,7 @@ class _WindowedMLBase(Forecaster):
     """
 
     name = "WindowedML"
+    family = "ml"
     max_train_steps: int | None = None
     use_exogenous: bool = False
     use_calendar: bool = False

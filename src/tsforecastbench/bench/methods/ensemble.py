@@ -30,6 +30,8 @@ class EnsembleForecaster(Forecaster):
     re-raised so the eval loop records it.
     """
 
+    family = "ensemble"
+
     def __init__(
         self,
         members: list[Forecaster],

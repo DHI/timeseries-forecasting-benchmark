@@ -42,6 +42,7 @@ def _moving_avg(x: np.ndarray, k: int) -> np.ndarray:
 
 class DLinearForecaster(Forecaster):
     name = "DLinear"
+    family = "deep_learning"
     max_samples: int = 8000
 
     def __init__(self, lookback: int | None = None, kernel: int = 25, alpha: float = 1.0):

@@ -29,6 +29,7 @@ from tsforecastbench.data.schema import Case
 
 class AutoARIMAForecaster(Forecaster):
     name = "AutoARIMA"
+    family = "classical"
 
     def __init__(self, season_length: int = 1, max_train_steps: int = 5000):
         self.season_length = season_length
@@ -75,6 +76,7 @@ class AutoETSForecaster(Forecaster):
     """
 
     name = "AutoETS"
+    family = "classical"
 
     def __init__(self, season_length: int = 1, max_train_steps: int = 5000):
         self.season_length = season_length
@@ -128,6 +130,7 @@ class TBATSForecaster(Forecaster):
     """
 
     name = "TBATS"
+    family = "classical"
 
     def __init__(self, season_length: int | list[int] | None = None, max_train_steps: int = 3000):
         self.season_length = season_length
@@ -209,6 +212,7 @@ class ThetaForecaster(Forecaster):
     """
 
     name = "Theta"
+    family = "classical"
 
     def __init__(self, season_length: int | None = None, max_train_steps: int = 8000):
         self.season_length = season_length
@@ -271,6 +275,7 @@ class _MSTLBase(Forecaster):
     """
 
     name = "MSTL"
+    family = "classical"
     max_train_steps = 8000
 
     def _make_trend_forecaster(self):

@@ -43,6 +43,7 @@ class ChronosForecaster(Forecaster):
     """
 
     name = "Chronos-Bolt"
+    family = "foundation_model"
     is_probabilistic = True
 
     def __init__(self, model_name: str = "amazon/chronos-bolt-small", context_length: int = 2048):

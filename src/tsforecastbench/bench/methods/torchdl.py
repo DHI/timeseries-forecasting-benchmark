@@ -125,6 +125,7 @@ def _make_modules():
 
 class _TorchDLBase(Forecaster):
     name = "TorchDL"
+    family = "deep_learning"
     max_steps = 600
     batch = 256
     lr = 1e-3

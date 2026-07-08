@@ -16,6 +16,10 @@ class Forecaster(ABC):
     # Methods that consume covariates set this True; the eval loop then passes the
     # horizon's exogenous values (a perfect-forecast proxy) to predict via future_exog.
     uses_exogenous: bool = False
+    # Coarse grouping (baseline/classical/ml/deep_learning/foundation_model/ensemble) used
+    # by the results viewer to filter/group methods. "unclassified" flags a method that
+    # forgot to set it, rather than silently disappearing from a family filter.
+    family: str = "unclassified"
 
     @abstractmethod
     def fit(self, case: Case, train: pd.DataFrame) -> None:

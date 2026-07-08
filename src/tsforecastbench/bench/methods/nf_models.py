@@ -40,6 +40,7 @@ class _NFBase(Forecaster):
     """Shared neuralforecast wrapper; subclasses name the model class + extra kwargs."""
 
     name = "NF"
+    family = "deep_learning"
     model_name = "NHITS"  # neuralforecast.models class name
     extra_kwargs: ClassVar[dict] = {}
 
