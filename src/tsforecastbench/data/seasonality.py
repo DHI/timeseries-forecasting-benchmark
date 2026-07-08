@@ -101,9 +101,6 @@ _SYM4_DEC_HI = np.array(
 # Huber knee for the robust periodogram/cleaning: 1.345 gives 95% efficiency under Gaussian
 # noise (the standard M-estimator tuning, and what the RobustPeriod reference uses).
 HUBER_ZETA = 1.345
-# Fisher g-test significance for a wavelet level's dominant spectral line to count as a real
-# cycle rather than filtered noise.
-FISHER_ALPHA = 0.05
 # Cap on the number of MODWT levels (each level ~doubles the period band); 11 reaches periods
 # of ~2000-4000 steps, past the longest cycle this project resolves (672).
 MODWT_MAX_LEVEL = 11
