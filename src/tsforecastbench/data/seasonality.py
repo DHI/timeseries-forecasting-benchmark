@@ -626,7 +626,10 @@ def robust_period_candidates(
             continue
         lo, hi = 2 ** (j + 1), 2 ** (j + 2)  # dyadic band of level j+1 (1-based)
         period = _band_period(details[j], lo, hi)
-        if period is None or period < 2:
+        # Period 2 is the Nyquist limit: sin(pi*t) is numerically zero at every integer
+        # sample, so the Huber periodogram's cos/sin design is degenerate there and the
+        # amplitude estimate is meaningless.
+        if period is None or period < 3:
             continue
         ratio = _spectral_ratio(freqs, power, period)
         if not np.isfinite(ratio):

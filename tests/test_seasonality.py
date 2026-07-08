@@ -503,6 +503,19 @@ def test_flags_a_harmonic_of_a_stronger_cycle():
     assert twelve["harmonic_of"] == 24
 
 
+def test_nyquist_alternating_series_yields_no_garbage_amplitude():
+    # A period-2 (Nyquist) cycle sits where the Huber periodogram's cos/sin design is
+    # degenerate: sin(pi*t) is numerically zero at every sample, so the fit returns an
+    # astronomically wrong amplitude (~1e11 for a unit signal). Such candidates are skipped.
+    rng = np.random.default_rng(3)  # a seed that surfaced a period-2 candidate before the guard
+    y = (-1.0) ** np.arange(400) + 0.3 * rng.standard_normal(400)
+
+    candidates = robust_period_candidates(y, "1h")["candidates"]
+
+    assert all(c["period"] != 2 for c in candidates)
+    assert all(c["robust_amplitude"] < 10.0 for c in candidates)
+
+
 def test_white_noise_yields_no_prominent_cycles():
     result = robust_period_candidates(RNG.standard_normal(24 * 90), "1h")
 
