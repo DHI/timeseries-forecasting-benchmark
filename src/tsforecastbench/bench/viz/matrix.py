@@ -13,7 +13,7 @@ from matplotlib.colors import TwoSlopeNorm
 # cell (e.g. an MLP at skill -16) would otherwise compress the whole colormap so every
 # meaningful difference looks identical. Cells beyond the clamp saturate to the end colour
 # while their true value is still written in the cell.
-_METRIC_CONFIG = {
+METRIC_CONFIG = {
     "MASE": {
         "cmap": "RdYlGn_r",
         "center": 1.0,
@@ -52,7 +52,7 @@ def render_matrix(
     vlo: float | None = None,
     vhi: float | None = None,
 ) -> plt.Figure:
-    cfg = _METRIC_CONFIG.get(
+    cfg = METRIC_CONFIG.get(
         metric, {"cmap": "viridis", "center": None, "label": metric, "fmt": "{:.3g}"}
     )
 
