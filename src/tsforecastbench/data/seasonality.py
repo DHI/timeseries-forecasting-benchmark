@@ -490,10 +490,15 @@ def _huber_clean(y: np.ndarray) -> np.ndarray:
     step — it pulls spikes and heavy-tailed excursions back to the bulk of the distribution so
     a few outliers can't dominate the spectrum, without touching the ordinary variation."""
     mu = np.median(y)
-    mad = np.median(np.abs(y - mu))
-    if mad <= 0:
+    scale = 1.4826 * np.median(np.abs(y - mu))
+    if scale <= 0:
+        # More than half the values are identical (flat, censored or zero-inflated series):
+        # the MAD is zero but spikes may remain, and returning the data uncleaned would let
+        # them dominate the spectrum. Fall back to the mean absolute deviation (Gaussian-
+        # consistent via sqrt(pi/2)), which is nonzero unless the series is constant.
+        scale = float(np.mean(np.abs(y - mu))) * np.sqrt(np.pi / 2)
+    if scale <= 0:
         return y - mu
-    scale = 1.4826 * mad
     return np.clip((y - mu) / scale, -HUBER_ZETA, HUBER_ZETA) * scale
 
 

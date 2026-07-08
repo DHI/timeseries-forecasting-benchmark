@@ -391,6 +391,15 @@ def test_huber_clean_pulls_in_spikes_but_keeps_the_cycle():
     assert np.corrcoef(cleaned, _sine(n, period=24))[0, 1] > 0.9
 
 
+def test_huber_clean_still_winsorises_when_the_mad_is_zero():
+    # A zero-inflated series (most values identical) has MAD 0; the cleaning must fall back
+    # to another scale and still pull the spikes in, not return the data untouched.
+    y = np.zeros(200)
+    y[::20] = 1000.0
+    cleaned = _huber_clean(y)
+    assert cleaned.max() < 300.0
+
+
 def test_huber_periodogram_recovers_amplitude_despite_outliers():
     n = 24 * 60
     amp = 3.0
