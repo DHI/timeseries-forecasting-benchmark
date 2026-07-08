@@ -279,13 +279,13 @@ def _spectral_ratio(freqs: np.ndarray, power: np.ndarray, period: int) -> float:
 
 def _mstl_decompose(y: np.ndarray, periods: list[int]) -> tuple[object, list[int]] | None:
     """Interpolate the last MSTL_SAMPLE_ROWS observations and run one joint MSTL
-    decomposition (statsforecast's, a thin wrapper over `statsmodels.tsa.STL`) over the
-    subset of `periods` that clear MIN_CYCLES within that window — shortest period first,
-    so a longer period is decomposed against the residual left after shorter cycles are
-    already stripped out, discounting a period that's really just spectral leakage of a
-    shorter one. Returns `(decomposition_df, fitted_periods)`, or None if nothing in
-    `periods` is fittable or the series is too degenerate to interpolate."""
-    from statsforecast.mstl import mstl
+    decomposition (`statsmodels.tsa.seasonal.MSTL`) over the subset of `periods` that
+    clear MIN_CYCLES within that window — shortest period first, so a longer period is
+    decomposed against the residual left after shorter cycles are already stripped out,
+    discounting a period that's really just spectral leakage of a shorter one. Returns
+    `(decomposition_result, fitted_periods)`, or None if nothing in `periods` is fittable
+    or the series is too degenerate to interpolate."""
+    from statsmodels.tsa.seasonal import MSTL
 
     sample = np.asarray(y, dtype=float)[-MSTL_SAMPLE_ROWS:]
     finite = np.isfinite(sample)
@@ -298,7 +298,9 @@ def _mstl_decompose(y: np.ndarray, periods: list[int]) -> tuple[object, list[int
     if not fittable:
         return None
 
-    decomposition = mstl(sample, period=fittable if len(fittable) > 1 else fittable[0])
+    decomposition = MSTL(
+        sample, periods=fittable, stl_kwargs=dict(robust=True, seasonal_deg=1)
+    ).fit()
     return decomposition, fittable
 
 
@@ -311,11 +313,15 @@ def _mstl_strengths(y: np.ndarray, periods: list[int]) -> dict[int, float]:
     if fit is None:
         return {}
     decomposition, fittable = fit
-    remainder = decomposition["remainder"].to_numpy()
+    remainder = np.asarray(decomposition.resid)
+    # A single fitted period comes back as a 1D array (one seasonal component); reshape
+    # to a (n, 1) column so the indexing below is uniform with the multi-period case.
+    seasonal = np.asarray(decomposition.seasonal)
+    if seasonal.ndim == 1:
+        seasonal = seasonal[:, None]
     strengths: dict[int, float] = {}
-    for p in fittable:
-        seasonal = decomposition["seasonal" if len(fittable) == 1 else f"seasonal{p}"].to_numpy()
-        total_var = np.var(remainder + seasonal)
+    for i, p in enumerate(fittable):
+        total_var = np.var(remainder + seasonal[:, i])
         strengths[p] = max(0.0, 1.0 - np.var(remainder) / total_var) if total_var > 0 else 0.0
     return strengths
 

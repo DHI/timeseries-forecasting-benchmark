@@ -8,6 +8,24 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-08 — Swapped statsforecast's MSTL wrapper for statsmodels' directly
+
+`_mstl_decompose` (used by `detect_candidates`'s MSTL-strength corroboration and by the
+seasonality curation notebook's decomposition plot) called `statsforecast.mstl.mstl`, a thin
+wrapper over `statsmodels.tsa.STL`. Since statsmodels exposes its own `MSTL` class directly and
+the wrapper added no behavior this code relied on, switched to calling
+`statsmodels.tsa.seasonal.MSTL` directly and dropped the indirection. `statsforecast` stays a
+dependency — `classical.py`'s MSTL-ETS/MSTL-ARIMA forecasters still use it for the actual
+forecasting models, which is a separate use from decomposition-for-evidence.
+
+One shape difference to note for anyone touching this code: statsforecast's wrapper returned a
+DataFrame with named columns (`seasonal`, or `seasonal{period}` per period, plus `remainder`);
+statsmodels' `MSTL(...).fit()` returns a `DecomposeResult` with `.trend`/`.seasonal`/`.resid`
+attributes, where `.seasonal` is a 1D array for a single period and a 2D array (columns in the
+order `periods` was passed) for multiple. `_mstl_strengths` and the notebook's decomposition
+plot were updated to index by position instead of by name. Behavior is otherwise unchanged —
+existing `test_seasonality.py` coverage of MSTL corroboration passes unmodified.
+
 ## 2026-07-08 — Audit of the RobustPeriod implementation: three weaknesses found and fixed
 
 Audited `robust_period_candidates` and its helpers with synthetic-data probes beyond the

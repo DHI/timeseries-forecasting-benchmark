@@ -543,7 +543,7 @@ def _(fill_and_detrend, final_candidates, go, mo, np, pacf_at_lags, plot_templat
 
 
 @app.cell
-def _(final_candidates, go, make_subplots, mo, mstl_decompose, plot_template, train):
+def _(final_candidates, go, make_subplots, mo, mstl_decompose, np, plot_template, train):
     _periods = sorted(final_candidates)
     _fit = mstl_decompose(train["y"].to_numpy(), _periods) if _periods else None
 
@@ -554,32 +554,32 @@ def _(final_candidates, go, make_subplots, mo, mstl_decompose, plot_template, tr
         )
     else:
         _decomposition, _fitted = _fit
-        _components = (
-            [("trend", "trend")]
-            + [
-                ("seasonal" if len(_fitted) == 1 else f"seasonal{_p}", f"seasonal({_p})")
-                for _p in _fitted
-            ]
-            + [("remainder", "remainder")]
+        _seasonal = np.asarray(_decomposition.seasonal)
+        if _seasonal.ndim == 1:
+            _seasonal = _seasonal[:, None]
+        _series = (
+            [("trend", np.asarray(_decomposition.trend))]
+            + [(f"seasonal({_p})", _seasonal[:, _i]) for _i, _p in enumerate(_fitted)]
+            + [("remainder", np.asarray(_decomposition.resid))]
         )
         _fig = make_subplots(
-            rows=len(_components),
+            rows=len(_series),
             cols=1,
             shared_xaxes=True,
-            subplot_titles=[_label for _, _label in _components],
-            vertical_spacing=0.35 / len(_components),
+            subplot_titles=[_label for _label, _ in _series],
+            vertical_spacing=0.35 / len(_series),
         )
-        for _row, (_col, _label) in enumerate(_components, start=1):
+        for _row, (_label, _values) in enumerate(_series, start=1):
             _fig.add_trace(
-                go.Scattergl(y=_decomposition[_col], mode="lines", showlegend=False),
+                go.Scattergl(y=_values, mode="lines", showlegend=False),
                 row=_row,
                 col=1,
             )
-        _fig.update_xaxes(title_text="step (within sampled window)", row=len(_components), col=1)
+        _fig.update_xaxes(title_text="step (within sampled window)", row=len(_series), col=1)
         _fig.update_layout(
             template=plot_template,
-            title=f"MSTL decomposition (last {len(_decomposition)} train steps, periods {_fitted})",
-            height=160 * len(_components) + 100,
+            title=f"MSTL decomposition (last {len(_series[0][1])} train steps, periods {_fitted})",
+            height=160 * len(_series) + 100,
         )
         _out = _fig
     _out
