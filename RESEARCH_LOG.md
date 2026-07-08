@@ -8,6 +8,51 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-08 — Audit of the RobustPeriod implementation: three weaknesses found and fixed
+
+Audited `robust_period_candidates` and its helpers with synthetic-data probes beyond the
+existing test suite. The core machinery checks out — MODWT energy preservation and band
+mapping, the biweight level ranking, the IRLS Huber periodogram, multi-cycle discovery under
+trend and spikes, harmonic flagging, and dedup all behave as designed. Three weaknesses were
+confirmed empirically and fixed in the same pass (each with a regression test):
+
+- **The `prominent` flag is not calibrated for series length.** `_spectral_ratio` takes the
+  *max* power over a ±2% window around the candidate frequency; that window holds
+  `0.04·n/period` Fourier bins, so on long series the max over many noise bins inflates the
+  ratio. On pure white noise at n=100k, period 24, a quarter of random draws cleared
+  POWER_RATIO_MIN=10; AR(1) noise (φ=0.99, n=20k) produced falsely prominent periods on 3 of
+  3 seeds. The discovery path is hit harder than the menu path because the tested period was
+  itself picked from the data's ACF (post-selection bias) and prominence is the only gate —
+  there is no ACF/MSTL corroboration like `detect_candidates` has. **Fix:** the bar is raised
+  by `log2` of the window's bin count (the max of k exponential-ish noise bins grows like
+  `ln k`, so this holds the noise clearance probability at its single-bin level), and each
+  candidate now reports its `prominence_bar` so the reviewer sees the margin, not just the
+  flag. An ACF second gate was considered and rejected: band-pass-filtered noise has in-band
+  ACF peaks by construction, so it would not discriminate. After the fix, white noise at
+  n=100k produces no prominent candidates on any seed tried, and AR(1) red noise is clean on
+  5 of 6 seeds — the survivor is a marginal 12.5 against a bar of 11.6 at period 240, driven
+  by the red-noise spectral slope itself rather than window width, and visibly marginal in
+  the evidence table. Genuine cycles sit orders of magnitude above the bar either way.
+- **Period-2 (Nyquist) candidates return garbage amplitudes.** At frequency 0.5 the sine
+  column of the Huber regression design is numerically zero, the normal equations are
+  near-singular, and `robust_amplitude` comes out around 10^11 for a unit-amplitude signal.
+  Reached through the full pipeline in 8 of 30 seeded runs on an alternating series. **Fix:**
+  discovery skips periods below 3. A period-2 cycle is below anything this benchmark declares,
+  and detection at the Nyquist edge is unreliable regardless (its ACF peak sits at a dyadic
+  band edge, so period 2 was also read as 4 or 6 depending on noise).
+- **`_huber_clean` silently does nothing when the MAD is zero** (more than half the values
+  identical — flat, censored, or zero-inflated series), returning the data uncleaned, so
+  spikes pass straight into the spectrum. **Fix:** the scale falls back to the mean absolute
+  deviation (Gaussian-consistent via `sqrt(pi/2)`), which is nonzero unless the series is
+  constant, restoring the winsorisation the method is named for.
+
+Minor notes, left as-is: subharmonics (integer multiples of a strong cycle, e.g. 48 under a pure 24)
+surface unflagged by `harmonic_of`, but come out non-prominent in practice; the
+`robust_period_candidates` docstring says "Huber-ACF" where `_band_period` computes a plain
+ACF of the Huber-cleaned series' coefficients; a period at exactly n/2 in a power-of-two
+band is caught by the level below (verified — found as 1023 for a true 1024), so the
+truncated top band self-heals.
+
 ## 2026-07-08 — RobustPeriod: data-driven seasonality discovery for curation
 
 The seasonality curation notebook (`notebooks/seasonality.py`) scored a fixed menu of
