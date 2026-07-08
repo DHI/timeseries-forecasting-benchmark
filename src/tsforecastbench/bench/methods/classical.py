@@ -140,15 +140,14 @@ class TBATSForecaster(Forecaster):
 
         from tsforecastbench.data.seasonality import dominant_period
 
-        season_length = (
-            self.season_length
-            if self.season_length is not None
-            else dominant_period(case.seasonalities)
-        )
-
         df = train[["unique_id", "ds", "y"]].copy()
         if len(df) > self.max_train_steps:
             df = df.iloc[-self.max_train_steps :]
+        season_length = (
+            self.season_length
+            if self.season_length is not None
+            else dominant_period(case.seasonalities, df["y"].to_numpy())
+        )
         ds = pd.to_datetime(df["ds"])
         if ds.dt.tz is not None:
             ds = ds.dt.tz_convert("UTC").dt.tz_localize(None)
@@ -221,15 +220,14 @@ class ThetaForecaster(Forecaster):
 
         from tsforecastbench.data.seasonality import dominant_period
 
-        season_length = (
-            self.season_length
-            if self.season_length is not None
-            else dominant_period(case.seasonalities)
-        )
-
         df = train[["unique_id", "ds", "y"]].copy()
         if len(df) > self.max_train_steps:
             df = df.iloc[-self.max_train_steps :]
+        season_length = (
+            self.season_length
+            if self.season_length is not None
+            else dominant_period(case.seasonalities, df["y"].to_numpy())
+        )
         ds = pd.to_datetime(df["ds"])
         if ds.dt.tz is not None:
             ds = ds.dt.tz_convert("UTC").dt.tz_localize(None)

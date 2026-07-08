@@ -8,6 +8,45 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-08 — Dominant period is now chosen at fit time by variance explained
+
+`dominant_period` previously returned the first entry of a case's declared `seasonalities`,
+trusting the curation-time order (most-prominent first). In a rolling evaluation each fold
+fits on a different window, and the globally dominant cycle is not always the one a given
+window shows most strongly. So the single period the seasonal methods key on — SeasonalNaive's
+tile length, Climatology's bucketing, the ML sin/cos feature, and the default `season_length`
+for TBATS and Theta — was fixed offline rather than matched to the data actually in hand.
+
+**Decision.** Pick the dominant period at fit time: among the declared periods, choose the one
+whose sinusoid explains the most variance of the detrended training target, measured on the
+fold's own window. Options considered:
+
+- *How to score a period.* Chose the **R² of a single sinusoid** (sin + cos at the period) over
+  two alternatives. A per-cycle-position seasonal mean (the "arbitrary shape" that Climatology
+  forecasts with) is degenerate for ranking here: our declared periods are almost always
+  multiples of each other (12|24, 24|168, 96|672), so the longer period's buckets refine the
+  shorter one's and mechanically explain at least as much variance — raw explained variance would
+  always pick the longest period. An ANOVA F-statistic corrects that length bias but still needs
+  many cycles to estimate one mean per bucket, and the long periods are exactly where a fold holds
+  fewest cycles. The single sinusoid uses two parameters regardless of period, so it compares
+  periods fairly and stays stable with few cycles, and it is phase-invariant (both sin and cos are
+  fit), so it needs only the target values — no timestamps or frequency. It also matches what the
+  ML feature then encodes: one harmonic at the dominant period.
+- *Support.* Assumed, not enforced. A period a case cannot support must not be declared in its
+  case.toml; `dominant_period` does not filter on cycle count. It falls back to the first declared
+  period only when the target is too degenerate to detrend (fewer than three finite points).
+- *Scope.* Climatology's forecast is unchanged in shape — it still keys on the per-position mean
+  (arbitrary shape) at whatever period is chosen. The sinusoid is only the yardstick for picking
+  the period, never the model of the cycle. `mase_season_for` (the MASE denominator) still walks
+  the committed order and is left as-is; the case.toml order still records curation prominence and
+  feeds that function.
+
+**Impact.** Predictions can move for any case with more than one declared seasonality —
+SeasonalNaive, Climatology, the ML methods, TBATS, and Theta may key on a different period per
+fold than the committed first entry. Single-seasonality and non-seasonal cases are unaffected
+(the lone period, or 1, is returned without scoring). `docs/RESULTS.md` needs regenerating on the
+next benchmark run for the multi-seasonality cases.
+
 ## 2026-07-07 — Climatology baseline now keys on the declared dominant seasonality (issue #54)
 
 The `Climatology` baseline (mean target by seasonal position) chose its lookup key from a

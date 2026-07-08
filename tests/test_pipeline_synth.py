@@ -82,12 +82,13 @@ def test_baselines_run(cid):
 
 
 def test_climatology_forecast_is_periodic_in_declared_dominant_period():
-    # Climatology keys on the case's dominant declared period, so its forecast repeats
-    # with that period regardless of frequency (issue #54). demand_ltown is hourly with a
-    # dominant period of 24, which keys on hour-of-day and cycles cleanly every 24 steps.
+    # Climatology keys on the case's dominant period, so its forecast repeats with that
+    # period regardless of frequency (issue #54). demand_ltown is hourly; its strong
+    # hour-of-day swing makes 24 the period that explains the most variance, so
+    # dominant_period selects 24 and the forecast cycles cleanly every 24 steps.
     case = get_case("demand_ltown")
     train = case.split_frame(case.synth())["train"]
-    period = dominant_period(case.seasonalities)
+    period = dominant_period(case.seasonalities, train["y"].to_numpy())
 
     clim = Climatology()
     clim.fit(case, train)

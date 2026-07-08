@@ -137,12 +137,31 @@ def _sine(n: int, period: float, amp: float = 1.0) -> np.ndarray:
 # --- resolution -------------------------------------------------------------
 
 
-def test_dominant_period_is_first_element():
-    assert dominant_period([24, 168]) == 24
+def test_dominant_period_picks_period_that_explains_most_variance():
+    n = 24 * 60
+    y = _sine(n, period=168, amp=3.0) + _sine(n, period=24, amp=0.5)
+    # 168 dominates even though 24 is declared first.
+    assert dominant_period([24, 168], y) == 168
+
+
+def test_dominant_period_picks_first_when_it_explains_most_variance():
+    n = 24 * 60
+    y = _sine(n, period=24, amp=3.0) + _sine(n, period=168, amp=0.5)
+    assert dominant_period([24, 168], y) == 24
+
+
+def test_dominant_period_of_single_declared_period_is_that_period():
+    # A lone declared period is returned without scoring, whatever the target looks like.
+    assert dominant_period([24], RNG.standard_normal(500)) == 24
 
 
 def test_dominant_period_of_nonseasonal_case_is_one():
-    assert dominant_period([]) == 1
+    assert dominant_period([], RNG.standard_normal(500)) == 1
+
+
+def test_dominant_period_falls_back_to_first_when_target_is_degenerate():
+    # Too few finite points to detrend -> keep the curated most-prominent-first order.
+    assert dominant_period([24, 168], np.array([1.0, 2.0])) == 24
 
 
 def test_mase_season_uses_dominant_when_train_holds_two_cycles():

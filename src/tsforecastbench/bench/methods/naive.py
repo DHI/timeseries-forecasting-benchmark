@@ -54,7 +54,7 @@ class SeasonalNaive(Forecaster):
         self.season_length = season_length
 
     def fit(self, case: Case, train: pd.DataFrame) -> None:
-        self._s = self.season_length or dominant_period(case.seasonalities)
+        self._s = self.season_length or dominant_period(case.seasonalities, train["y"].to_numpy())
         if self._s == 1:
             raise ValueError(
                 f"Case {case.id} is declared non-seasonal (seasonalities = []) — "
@@ -100,7 +100,7 @@ class Climatology(Forecaster):
 
     def fit(self, case: Case, train: pd.DataFrame) -> None:
         self._freq = case.freq
-        self._period = dominant_period(case.seasonalities)
+        self._period = dominant_period(case.seasonalities, train["y"].to_numpy())
         idx = pd.DatetimeIndex(pd.to_datetime(train["ds"]))
         keys = self._key(idx)
         s = pd.Series(pd.to_numeric(train["y"], errors="coerce").to_numpy())
