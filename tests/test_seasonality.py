@@ -523,6 +523,27 @@ def test_white_noise_yields_no_prominent_cycles():
     assert set(result["menu_periods_missing"]) == {12, 24, 168}
 
 
+def test_long_series_white_noise_yields_no_prominent_cycles():
+    # The spectral-peak window spans ~0.04*n/period Fourier bins, and the ratio takes the max
+    # over them: at n=100k a fixed bar let that max clear POWER_RATIO_MIN on a quarter of pure-
+    # noise draws. The size-adjusted prominence bar must keep long noise non-prominent.
+    y = np.random.default_rng(0).standard_normal(100_000)
+
+    assert _prominent_periods(robust_period_candidates(y, "1h")) == []
+
+
+def test_red_noise_yields_no_prominent_cycles():
+    # Strongly persistent AR(1) noise is the classic seasonality decoy on environmental data;
+    # discovery may list its bumps but must not flag them prominent.
+    from scipy.signal import lfilter
+
+    for seed in (0, 3):
+        e = np.random.default_rng(seed).standard_normal(20_000)
+        ar = lfilter([1.0], [1.0, -0.99], e)
+
+        assert _prominent_periods(robust_period_candidates(ar, "1h")) == []
+
+
 def test_long_period_is_flagged_approximate():
     # An annual cycle seen over only six years (< 10 cycles) is resolution-limited, so it is
     # flagged approximate even though it is found; with many cycles the flag clears.

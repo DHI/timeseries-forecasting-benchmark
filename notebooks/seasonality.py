@@ -128,7 +128,9 @@ def _(mo):
     cycle's size in the target's own units).
 
     Every period found is listed, ranked by prominence — nothing is auto-accepted. `prominent`
-    marks periods clearing the same attention bar the menu evidence uses; `harmonic_of` marks a
+    marks periods whose spectral ratio clears `prominence_bar` (the menu evidence's attention
+    bar, raised with the width of the spectral peak window so a long series can't fake
+    prominence out of noise); `harmonic_of` marks a
     shorter period that is just an integer fraction of a stronger one (e.g. 12 under 24, not a
     separate cycle); `approximate` marks a long period the window holds too few cycles of to
     pin down precisely; `menu_period` shows the nearest fixed-menu period for reference only.
@@ -149,6 +151,7 @@ def _(case, mo, pd, robust_period_candidates, train):
             [
                 "period",
                 "spectral_ratio",
+                "prominence_bar",
                 "robust_amplitude",
                 "n_cycles",
                 "prominent",

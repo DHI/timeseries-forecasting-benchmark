@@ -252,15 +252,23 @@ def _pacf(y: np.ndarray, max_lag: int) -> np.ndarray:
     return pacf(y, nlags=max_lag, method="ywm")[1:]
 
 
+def _peak_window(freqs: np.ndarray, period: int) -> np.ndarray:
+    """Boolean mask of the periodogram bins within 2% of the candidate frequency (at
+    minimum the single nearest bin) — the window `_spectral_ratio` takes its peak over."""
+    f0 = 1.0 / period
+    in_peak = np.abs(freqs - f0) <= 0.02 * f0
+    if not in_peak.any():
+        in_peak[np.argmin(np.abs(freqs - f0))] = True
+    return in_peak
+
+
 def _spectral_ratio(freqs: np.ndarray, power: np.ndarray, period: int) -> float:
     """Peak periodogram power within 2% of the candidate frequency, relative to the
     median power of the surrounding octave band (excluding the peak bins). The window
     is deliberately tight: widening it inflates the max over more noise bins, which is
     how red-noise variance fakes a peak."""
     f0 = 1.0 / period
-    in_peak = np.abs(freqs - f0) <= 0.02 * f0
-    if not in_peak.any():
-        in_peak[np.argmin(np.abs(freqs - f0))] = True
+    in_peak = _peak_window(freqs, period)
     peak = float(power[in_peak].max())
     neighborhood = (freqs >= f0 / 2) & (freqs <= 2 * f0) & ~in_peak & (freqs > 0)
     base = float(np.median(power[neighborhood])) if neighborhood.any() else float("nan")
@@ -561,6 +569,7 @@ def _band_period(coeffs: np.ndarray, lo: int, hi: int) -> int | None:
 class RobustCandidate(TypedDict):
     period: int
     spectral_ratio: float
+    prominence_bar: float
     robust_amplitude: float
     n_cycles: float
     level: int
@@ -593,7 +602,9 @@ def robust_period_candidates(
     periodogram at that frequency.
 
     Returns every candidate found, ranked by spectral prominence — nothing is accepted or
-    rejected. Each is flagged `prominent` (clears POWER_RATIO_MIN, the attention bar),
+    rejected. Each is flagged `prominent` (clears `prominence_bar`: POWER_RATIO_MIN plus
+    log2 of the Fourier-bin count of the peak window, so the max over a wide window on a
+    long series can't fake prominence out of noise),
     `harmonic_of` (a shorter period that is an integer fraction of a more prominent one, e.g.
     12 under 24), `approximate` (fewer than 10 cycles in the window, so the period is
     resolution-limited), and `menu_period` (the nearest fixed-menu period within 10%, for
@@ -634,17 +645,23 @@ def robust_period_candidates(
         ratio = _spectral_ratio(freqs, power, period)
         if not np.isfinite(ratio):
             continue
+        # The peak window spans ~0.04*n/period Fourier bins, and the spectral ratio takes
+        # the max over them; on noise alone that max grows like ln(bins), so a fixed bar
+        # would let long series mint spurious prominence. Raising the bar by log2(bins)
+        # holds the noise clearance probability at its single-bin level.
+        bar = POWER_RATIO_MIN + np.log2(int(_peak_window(freqs, period).sum()))
         huber_power = _huber_periodogram_at(yc, 1.0 / period)
         n_cycles = n / period
         raw.append(
             RobustCandidate(
                 period=period,
                 spectral_ratio=float(ratio),
+                prominence_bar=round(float(bar), 1),
                 robust_amplitude=float(np.sqrt(4.0 * huber_power / n)),
                 n_cycles=round(n_cycles, 1),
                 level=j + 1,
                 variance_fraction=round(variances[j] / vmax, 3) if vmax > 0 else 0.0,
-                prominent=bool(ratio >= POWER_RATIO_MIN),
+                prominent=bool(ratio >= bar),
                 approximate=bool(n_cycles < 10),
                 harmonic_of=None,
                 menu_period=None,
