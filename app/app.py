@@ -18,6 +18,13 @@ import streamlit as st
 from data import FAMILY_ORDER, load_case_notes, load_metrics, ordered_cases, ordered_methods
 from tsforecastbench.bench.viz import METRIC_CONFIG
 
+DOMAIN_KEY_DICT = {
+    "groundwater": "GrW",
+    "hydrology": "Hyd",
+    "urban_drainage": "UrD",
+    "water_distribution": "WaD",
+}
+
 
 def pd_isna(v) -> bool:
     return v is None or (isinstance(v, float) and np.isnan(v))
@@ -159,12 +166,6 @@ def render_matrix(df, metric: str, case_ids: list[str], methods: list[str]) -> g
     for x in _group_boundaries(col_order, family_of):
         fig.add_shape(type="line", x0=x, x1=x, y0=-0.5, y1=n_rows - 0.5, line=boundary_line)
 
-    domain_key_dict = {
-        "groundwater": "GrW",
-        "hydrology": "Hyd",
-        "urban_drainage": "UrD",
-        "water_distribution": "WaD",
-    }
     for pos, label in _group_labels(col_order, family_of):
         fig.add_annotation(
             x=pos,
@@ -174,7 +175,7 @@ def render_matrix(df, metric: str, case_ids: list[str], methods: list[str]) -> g
             yshift=10,
             text=f"<b>{label.replace('_', '<br>').capitalize()}</b>",
             showarrow=False,
-            font={"size": 11},
+            font={"size": 14},
         )
     for pos, label in _group_labels(row_order, domain_of):
         fig.add_annotation(
@@ -183,9 +184,9 @@ def render_matrix(df, metric: str, case_ids: list[str], methods: list[str]) -> g
             xref="paper",
             yref="y",
             xshift=-90,
-            text=f"<b>{domain_key_dict[label]}</b>",
+            text=f"<b>{DOMAIN_KEY_DICT[label]}</b>",
             showarrow=False,
-            font={"size": 12},
+            font={"size": 14},
             textangle=-90,
         )
 
@@ -217,7 +218,24 @@ def main() -> None:
         metric = st.selectbox("Metric", metric_options, index=0)
 
         all_domains = sorted(df["domain"].dropna().unique())
-        domains = st.multiselect("Domains", all_domains, default=all_domains)
+        st.markdown(
+            "Domains",
+            # help="Domain abbreviations: "
+            # + ", ".join(
+            #     f"{DOMAIN_KEY_DICT.get(d, d)} = {d.replace('_', ' ').capitalize()}"
+            #     for d in all_domains
+            # ),
+        )
+        domains = [
+            d
+            for d in all_domains
+            if st.checkbox(
+                DOMAIN_KEY_DICT.get(d, d),
+                value=True,
+                help=d.replace("_", " ").capitalize(),
+                key=f"domain_{d}",
+            )
+        ]
 
         all_cases = sorted(df.loc[df["domain"].isin(domains), "case_id"].unique())
         # Commenting for now, in case we want to filter by domain only, not by individual cases. Can be re-enabled if needed.
