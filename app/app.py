@@ -131,7 +131,7 @@ def render_matrix(df, metric: str, case_ids: list[str], methods: list[str]) -> g
             "horizon: %{customdata[4]}"
             "<extra></extra>"
         ),
-        colorbar={"title": metric},
+        colorbar={"title": metric, "len": 0.6},
     )
     if cfg.get("center") is not None:
         center = cfg["center"]
@@ -153,45 +153,50 @@ def render_matrix(df, metric: str, case_ids: list[str], methods: list[str]) -> g
     domain_of = df_metric.drop_duplicates("case_id").set_index("case_id")["domain"].to_dict()
     family_of = df_metric.drop_duplicates("method").set_index("method")["family"].to_dict()
 
+    boundary_line = {"color": "white", "width": 4}
     for y in _group_boundaries(row_order, domain_of):
-        fig.add_shape(
-            type="line", x0=-0.5, x1=n_cols - 0.5, y0=y, y1=y, line={"color": "black", "width": 1.5}
-        )
+        fig.add_shape(type="line", x0=-0.5, x1=n_cols - 0.5, y0=y, y1=y, line=boundary_line)
     for x in _group_boundaries(col_order, family_of):
-        fig.add_shape(
-            type="line", x0=x, x1=x, y0=-0.5, y1=n_rows - 0.5, line={"color": "black", "width": 1.5}
-        )
+        fig.add_shape(type="line", x0=x, x1=x, y0=-0.5, y1=n_rows - 0.5, line=boundary_line)
 
+    domain_key_dict = {
+        "groundwater": "GrW",
+        "hydrology": "Hyd",
+        "urban_drainage": "UrD",
+        "water_distribution": "WaD",
+    }
     for pos, label in _group_labels(col_order, family_of):
         fig.add_annotation(
             x=pos,
-            y=1.0,
+            y=0.9,
             xref="x",
             yref="paper",
             yshift=10,
-            text=f"<b>{label}</b>",
+            text=f"<b>{label.replace('_', '<br>').capitalize()}</b>",
             showarrow=False,
             font={"size": 11},
         )
     for pos, label in _group_labels(row_order, domain_of):
         fig.add_annotation(
-            x=0.0,
+            x=0.05,
             y=pos,
             xref="paper",
             yref="y",
             xshift=-90,
-            text=f"<b>{label}</b>",
+            text=f"<b>{domain_key_dict[label]}</b>",
             showarrow=False,
-            font={"size": 11},
+            font={"size": 12},
             textangle=-90,
         )
 
     fig.update_layout(
-        height=max(400, 40 * n_rows + 120),
+        height=max(600, 40 * n_rows + 120),
         margin={"l": 140, "t": 60, "r": 20, "b": 80},
-        xaxis={"side": "bottom", "tickangle": -35},
-        yaxis={"autorange": "reversed"},
+        xaxis={"side": "bottom", "tickangle": -35, "constrain": "domain"},
+        yaxis={"autorange": "reversed", "scaleanchor": "x", "scaleratio": 1},
     )
+    fig.update_xaxes(showticklabels=False)
+    fig.update_yaxes(showticklabels=False)
     return fig
 
 
@@ -215,7 +220,8 @@ def main() -> None:
         domains = st.multiselect("Domains", all_domains, default=all_domains)
 
         all_cases = sorted(df.loc[df["domain"].isin(domains), "case_id"].unique())
-        cases = st.multiselect("Cases", all_cases, default=all_cases)
+        # Commenting for now, in case we want to filter by domain only, not by individual cases. Can be re-enabled if needed.
+        # cases = st.multiselect("Cases", all_cases, default=all_cases)
 
         all_families = [f for f in FAMILY_ORDER if f in df["family"].unique()] + sorted(
             set(df["family"].unique()) - set(FAMILY_ORDER)
@@ -223,13 +229,14 @@ def main() -> None:
         families = st.multiselect("Method families", all_families, default=all_families)
 
         all_methods = sorted(df.loc[df["family"].isin(families), "method"].unique())
-        methods = st.multiselect("Methods", all_methods, default=all_methods)
+        # Commenting for now, in case we want to filter by family only, not by individual methods. Can be re-enabled if needed.
+        # methods = st.multiselect("Methods", all_methods, default=all_methods)
 
-    if not cases or not methods:
-        st.warning("Select at least one case and one method to render the matrix.")
-        return
+    # if not cases or not methods:
+    #     st.warning("Select at least one case and one method to render the matrix.")
+    #     return
 
-    fig = render_matrix(df, metric, cases, methods)
+    fig = render_matrix(df, metric, all_cases, all_methods)
     event = st.plotly_chart(
         fig, width="stretch", on_select="rerun", selection_mode="points", key="matrix_chart"
     )
