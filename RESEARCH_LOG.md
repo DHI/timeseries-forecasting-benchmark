@@ -8,6 +8,48 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-08 — Interactive results-matrix app (Streamlit + Plotly)
+
+Added `app/app.py`, a local Streamlit app that renders the same case x method grid as the
+static `results/pilot_matrix_*.png` plots, but interactively: hover a tile for the metric value
+plus run diagnostics (status, n_origins, frac_finite_test, runtime, horizon), switch between
+MASE / Skill_vs_Persistence / Skill_vs_Mean / MAE / RMSE from a sidebar dropdown, and filter or
+remove rows and columns by case, domain, method, or method family. Rows are grouped by domain
+and columns by method family, each with a separator line and label, rather than using tile
+color for domain — tile color is already the metric value, and a second color channel for
+domain would fight it.
+
+Two pipeline-adjacent changes support this:
+
+- **Every `Forecaster` subclass now declares a `family`** (baseline / classical / ml /
+  deep_learning / foundation_model / ensemble) in `methods/*.py`. The app builds a
+  `method name -> family` lookup by importing the method classes directly rather than adding a
+  `family` column to `pilot_metrics.parquet` — the pilot run takes hours, and family is a
+  property of the method, not of a specific run, so there's no reason to force a rerun just to
+  attach it to old data.
+- **`matrix.py`'s `_METRIC_CONFIG` (colormap, center, clamp range per metric) is now public
+  (`METRIC_CONFIG`)** and imported by the app, so the interactive heatmap and the static PNG
+  always agree on how each metric is colored — one definition instead of two that could drift.
+
+Clicking a cell opens a detail panel with that case's `results/case_review/<case_id>.md` notes
+(when they exist) and a forecast-preview chart. The chart is placeholder data — the eval
+pipeline (`bench/eval/rolling.py`) pools actual-vs-predicted arrays into metrics and discards
+them, so there's currently no persisted per-case, per-method forecast to show. The panel layout
+is real; wiring it to real forecasts means persisting them during the pilot run first, which is
+a separate, larger change deferred for now.
+
+Run with `uv run --extra app streamlit run app/app.py` (added `streamlit` + `plotly` under an
+optional `app` dependency group, kept out of the default install since only this viewer needs
+them).
+
+Verification note: this sandbox can't launch a real browser (headless Chromium needs system
+libraries that require root, and there's no passwordless sudo here), so the app was verified
+with Streamlit's own headless `AppTest` harness — it runs the real app script and checks the
+widget tree and state transitions (metric switch, family-filter cascade, reload) — plus direct
+calls to the figure-building and formatting functions. Visual appearance (colors, separator
+placement, tooltip rendering) has not been screenshot-verified; worth a manual look before
+relying on it.
+
 ## 2026-07-08 — Swapped statsforecast's MSTL wrapper for statsmodels' directly
 
 `_mstl_decompose` (used by `detect_candidates`'s MSTL-strength corroboration and by the
