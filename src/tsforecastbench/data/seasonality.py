@@ -554,3 +554,120 @@ def _band_period(coeffs: np.ndarray, lo: int, hi: int) -> int | None:
     if len(peaks) == 0:
         return int(band_lags[int(np.argmax(band_acf))])
     return int(band_lags[peaks[int(np.argmax(props["peak_heights"]))]])
+
+
+class RobustCandidate(TypedDict):
+    period: int
+    spectral_ratio: float
+    robust_amplitude: float
+    n_cycles: float
+    level: int
+    variance_fraction: float
+    prominent: bool
+    approximate: bool
+    harmonic_of: int | None
+    menu_period: int | None
+
+
+class RobustPeriodResult(TypedDict):
+    candidates: list[RobustCandidate]
+    menu_periods_missing: list[int]
+
+
+def robust_period_candidates(
+    y: np.ndarray,
+    freq: str,
+    var_floor: float = 0.02,
+) -> RobustPeriodResult:
+    """Discover the periodic structure of `y` from the data alone (RobustPeriod, Wen et al.
+    2021), knowing nothing about the case's declared seasonalities.
+
+    The series is linearly detrended and Huber-cleaned (robust to trend and spikes), then a
+    MODWT splits it into dyadic frequency bands so coexisting cycles land in different levels.
+    Each level with real energy contributes its dominant in-band period (from the Huber-ACF),
+    scored by two independent measures: `spectral_ratio` — the peak's prominence over its local
+    spectral neighborhood, the same red-noise-robust discriminator `detect_candidates` uses —
+    and `robust_amplitude`, the cycle's amplitude in the units of `y` from the exact Huber
+    periodogram at that frequency.
+
+    Returns every candidate found, ranked by spectral prominence — nothing is accepted or
+    rejected. Each is flagged `prominent` (clears POWER_RATIO_MIN, the attention bar),
+    `harmonic_of` (a shorter period that is an integer fraction of a more prominent one, e.g.
+    12 under 24), `approximate` (fewer than 10 cycles in the window, so the period is
+    resolution-limited), and `menu_period` (the nearest fixed-menu period within 10%, for
+    reference — not a target). `menu_periods_missing` lists menu periods no prominent candidate
+    corroborates. The reviewer reads the evidence and decides what to log."""
+    menu = sorted(CANDIDATE_MENU.get(normalize_freq(freq), ()))
+    empty: RobustPeriodResult = {"candidates": [], "menu_periods_missing": list(menu)}
+    try:
+        yd = _fill_and_detrend(y)
+    except ValueError:
+        return empty
+    yc = _huber_clean(yd)
+    n = len(yc)
+    # Go as deep as the data supports: the deepest band's lower edge (2**level) must still hold
+    # >= MIN_CYCLES cycles, so level <= log2(n / MIN_CYCLES). Capped at MODWT_MAX_LEVEL.
+    level = min(int(np.floor(np.log2(n / MIN_CYCLES))), MODWT_MAX_LEVEL) if n >= 16 else 0
+    if level < 1:
+        return empty
+
+    details, _ = _modwt(yc, level)
+    variances = np.array([_biweight_midvariance(w) for w in details])
+    vmax = float(variances.max()) if variances.size else 0.0
+    freqs = np.fft.rfftfreq(n)
+    power = np.abs(np.fft.rfft(yc)) ** 2
+    power[0] = 0.0
+
+    raw: list[RobustCandidate] = []
+    for j in range(level):
+        if vmax > 0 and variances[j] < var_floor * vmax:
+            continue
+        lo, hi = 2 ** (j + 1), 2 ** (j + 2)  # dyadic band of level j+1 (1-based)
+        period = _band_period(details[j], lo, hi)
+        if period is None or period < 2:
+            continue
+        ratio = _spectral_ratio(freqs, power, period)
+        if not np.isfinite(ratio):
+            continue
+        huber_power = _huber_periodogram_at(yc, 1.0 / period)
+        n_cycles = n / period
+        raw.append(
+            RobustCandidate(
+                period=period,
+                spectral_ratio=float(ratio),
+                robust_amplitude=float(np.sqrt(4.0 * huber_power / n)),
+                n_cycles=round(n_cycles, 1),
+                level=j + 1,
+                variance_fraction=round(variances[j] / vmax, 3) if vmax > 0 else 0.0,
+                prominent=bool(ratio >= POWER_RATIO_MIN),
+                approximate=bool(n_cycles < 10),
+                harmonic_of=None,
+                menu_period=None,
+            )
+        )
+
+    # De-duplicate the same cycle surfacing at adjacent levels: keep the most prominent within
+    # the 10% window (the rule `proposed_seasonalities` uses).
+    raw.sort(key=lambda c: -c["spectral_ratio"])
+    candidates: list[RobustCandidate] = []
+    for c in raw:
+        if all(abs(c["period"] - k["period"]) / k["period"] > ROBUST_PROXIMITY for k in candidates):
+            candidates.append(c)
+
+    for c in candidates:
+        # Harmonic: a shorter period that is ~1/k of a strictly more prominent one.
+        for other in candidates:
+            if other["spectral_ratio"] <= c["spectral_ratio"]:
+                continue
+            if any(
+                abs(c["period"] * k - other["period"]) / other["period"] <= 0.06 for k in (2, 3, 4)
+            ):
+                c["harmonic_of"] = other["period"]
+                break
+        near = [m for m in menu if abs(c["period"] - m) / m <= ROBUST_PROXIMITY]
+        if near:
+            c["menu_period"] = min(near, key=lambda m: abs(c["period"] - m))
+
+    corroborated = {c["menu_period"] for c in candidates if c["prominent"] and c["menu_period"]}
+    missing = [m for m in menu if m not in corroborated]
+    return {"candidates": candidates, "menu_periods_missing": missing}
