@@ -7,6 +7,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
@@ -340,3 +341,35 @@ def test_suggestions_drop_leakage_near_a_menu_period():
 
     assert 13 not in suggest_peak_candidates(y, "1h")
     assert 11 not in suggest_peak_candidates(y, "1h")
+
+
+# --- RobustPeriod: MODWT -----------------------------------------------------
+
+from tsforecastbench.data.seasonality import (  # noqa: E402
+    _biweight_midvariance,
+    _modwt,
+)
+
+
+def test_modwt_preserves_energy():
+    # The MODWT is an energy-preserving transform: the sum of squared detail coefficients
+    # across all levels plus the squared final scaling coefficients equals the input energy.
+    # This is the tightest single check that the hardcoded sym4 filter bank is correct.
+    for n in (256, 2556, 5000):
+        x = RNG.standard_normal(n)
+        level = min(int(np.floor(np.log2(n / 4))), 11)
+        details, scaling = _modwt(x, level)
+        energy_out = float(np.sum(details**2) + np.sum(scaling**2))
+        assert energy_out == pytest.approx(float(np.sum(x**2)), rel=1e-9)
+
+
+def test_modwt_localises_period_to_its_dyadic_band():
+    # A cycle of period P concentrates its energy in the level whose band [2**j, 2**(j+1)]
+    # contains P: period 24 -> level 4 ([16, 32]), period 168 -> level 7 ([128, 256]).
+    n = 24 * 7 * 40
+    y = _sine(n, period=24) + 0.7 * _sine(n, period=168)
+    details, _ = _modwt(y, 9)
+    variances = [_biweight_midvariance(w) for w in details]
+    assert int(np.argmax(variances)) + 1 == 4
+    # The runner-up energy level holds the weekly cycle.
+    assert int(np.argsort(variances)[-2]) + 1 == 7

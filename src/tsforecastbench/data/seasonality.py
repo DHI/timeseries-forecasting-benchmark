@@ -62,6 +62,55 @@ MSTL_STRENGTH_MIN = 0.05
 # rather than paying for a slow fit on a barely-resolved cycle.
 MSTL_SAMPLE_ROWS = 1000
 
+# --- RobustPeriod discovery constants (curation tooling) --------------------
+# The detection above scores a fixed menu of periods. RobustPeriod (Wen et al., SIGMOD 2021)
+# is the complementary discovery half: it finds periods from the data itself — robust to
+# outliers, trend, and red noise, and able to separate coexisting cycles — so an off-menu
+# site-specific period (a swell period, a control-cycle) surfaces without a human eyeballing
+# a periodogram. See `robust_period_candidates` for the pipeline and the reconciliation with
+# CANDIDATE_MENU.
+
+# sym4 (least-asymmetric Daubechies, 8-tap) decomposition filter bank, hardcoded so the MODWT
+# needs no wavelet dependency. Values are PyWavelets' `Wavelet("sym4").dec_lo/.dec_hi`; the
+# energy-preservation test guards against a transcription error.
+_SYM4_DEC_LO = np.array(
+    [
+        -0.07576571478927333,
+        -0.02963552764599851,
+        0.49761866763201545,
+        0.8037387518059161,
+        0.29785779560527736,
+        -0.09921954357684722,
+        -0.012603967262037833,
+        0.0322231006040427,
+    ]
+)
+_SYM4_DEC_HI = np.array(
+    [
+        -0.0322231006040427,
+        -0.012603967262037833,
+        0.09921954357684722,
+        0.29785779560527736,
+        -0.8037387518059161,
+        0.49761866763201545,
+        0.02963552764599851,
+        -0.07576571478927333,
+    ]
+)
+
+# Huber knee for the robust periodogram/cleaning: 1.345 gives 95% efficiency under Gaussian
+# noise (the standard M-estimator tuning, and what the RobustPeriod reference uses).
+HUBER_ZETA = 1.345
+# Fisher g-test significance for a wavelet level's dominant spectral line to count as a real
+# cycle rather than filtered noise.
+FISHER_ALPHA = 0.05
+# Cap on the number of MODWT levels (each level ~doubles the period band); 11 reaches periods
+# of ~2000-4000 steps, past the longest cycle this project resolves (672).
+MODWT_MAX_LEVEL = 11
+# Proximity for snapping a discovered period to a menu period and for de-duplicating the same
+# cycle found at adjacent wavelet levels — the 10% rule `proposed_seasonalities` already uses.
+ROBUST_PROXIMITY = 0.1
+
 
 def normalize_freq(freq: str) -> str:
     """Canonical key for a pandas-style frequency string ("1D", "h", "15T" ...)."""
@@ -385,3 +434,54 @@ def proposed_seasonalities(evidence: list[CandidateEvidence]) -> list[int]:
         if all(abs(e["period"] - p) / p > 0.1 for p in proposed):
             proposed.append(e["period"])
     return proposed
+
+
+# --- RobustPeriod discovery -------------------------------------------------
+
+
+def _modwt(x: np.ndarray, level: int) -> tuple[np.ndarray, np.ndarray]:
+    """Maximal-overlap discrete wavelet transform of `x` to `level` levels (sym4 filters).
+
+    Returns `(W, V)` where `W[j-1]` is the level-`j` detail coefficients and `V` the final
+    scaling coefficients, all the same length as `x`. Unlike the ordinary DWT, the MODWT is
+    shift-invariant and defined for any length, so a level's coefficients line up with the
+    original samples — which is what lets a periodicity be localised to the level whose dyadic
+    band (periods `2**j .. 2**(j+1)`) contains it. Each level is a circular convolution with
+    the filter dilated by `2**(j-1)` (the a-trous scheme), computed via FFT so the whole
+    transform is O(n log n)."""
+    n = len(x)
+    h = _SYM4_DEC_HI / np.sqrt(2.0)
+    g = _SYM4_DEC_LO / np.sqrt(2.0)
+    taps = np.arange(len(h))
+    v = np.asarray(x, dtype=float)
+    details = []
+    for j in range(1, level + 1):
+        idx = (2 ** (j - 1) * taps) % n  # dilated-filter support, wrapped circularly
+        filt_h = np.zeros(n)
+        filt_g = np.zeros(n)
+        np.add.at(filt_h, idx, h)
+        np.add.at(filt_g, idx, g)
+        vf = np.fft.fft(v)
+        details.append(np.real(np.fft.ifft(vf * np.fft.fft(filt_h))))
+        v = np.real(np.fft.ifft(vf * np.fft.fft(filt_g)))
+    return np.array(details), v
+
+
+def _biweight_midvariance(x: np.ndarray, c: float = 9.0) -> float:
+    """Tukey biweight midvariance: a robust variance that all but ignores outliers (points
+    past `c` MADs get zero weight). Used to rank wavelet levels by how much genuine energy
+    each carries without a few spikes inflating the ranking (Beers et al. 1990)."""
+    m = np.median(x)
+    mad = np.median(np.abs(x - m))
+    if mad <= 0:
+        return 0.0
+    u = (x - m) / (c * mad)
+    mask = np.abs(u) < 1.0
+    if not mask.any():
+        return 0.0
+    um = u[mask]
+    num = np.sum((x[mask] - m) ** 2 * (1 - um**2) ** 4)
+    den = np.sum((1 - um**2) * (1 - 5 * um**2))
+    if den == 0:
+        return 0.0
+    return float(len(x) * num / den**2)
