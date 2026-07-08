@@ -216,11 +216,13 @@ def test_mstl_classicals_run():
 
 
 def test_mstl_is_honestly_inapplicable_on_declared_nonseasonal_case():
+    # Every committed case now declares seasonalities, so we build a non-seasonal variant
+    # explicitly: same synthetic data, seasonalities overridden to []. MSTL must then report
+    # itself inapplicable rather than degenerating into the plain non-seasonal trend model.
     from tsforecastbench.bench.methods import MSTLAutoETSForecaster
 
-    res = run_case(
-        get_case("discharge_flashy_catskills"), [MSTLAutoETSForecaster()], prefer_synth=True
-    )
+    case = get_case("discharge_flashy_catskills").model_copy(update={"seasonalities": []})
+    res = run_case(case, [MSTLAutoETSForecaster()], prefer_synth=True)
     assert res["status"].str.contains("MSTL inapplicable").all()
 
 
