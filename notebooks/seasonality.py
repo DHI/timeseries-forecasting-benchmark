@@ -27,6 +27,7 @@ def _():
         detect_candidates,
         normalize_freq,
         proposed_seasonalities,
+        robust_period_candidates,
     )
     from tsforecastbench.data.seasonality import (
         _acf_at as acf_at,
@@ -60,6 +61,7 @@ def _():
         pd,
         periodogram,
         proposed_seasonalities,
+        robust_period_candidates,
     )
 
 
@@ -110,6 +112,70 @@ def _(discover_cases, mo):
     )
     mo.hstack([case_picker, extra_input], justify="start", gap=2)
     return case_picker, extra_input
+
+
+@app.cell
+def _(mo):
+    mo.md("""
+    ## RobustPeriod discovery (data-driven)
+
+    Before the menu-based evidence below, this reads the seasonal structure **straight from the
+    train split**, assuming nothing about the case — a robust, multi-period detector
+    ([RobustPeriod](https://arxiv.org/abs/2002.09535), Wen et al. 2021). The series is
+    detrended and Huber-cleaned (so a trend or a few spikes can't mislead it), split into dyadic
+    frequency bands by a wavelet transform (so coexisting cycles separate), and each band's
+    dominant period is scored by **spectral prominence** and its **robust amplitude** (the
+    cycle's size in the target's own units).
+
+    Every period found is listed, ranked by prominence — nothing is auto-accepted. `prominent`
+    marks periods clearing the same attention bar the menu evidence uses; `harmonic_of` marks a
+    shorter period that is just an integer fraction of a stronger one (e.g. 12 under 24, not a
+    separate cycle); `approximate` marks a long period the window holds too few cycles of to
+    pin down precisely; `menu_period` shows the nearest fixed-menu period for reference only.
+    Use this to spot cycles the menu doesn't anticipate, then enter the ones worth studying in
+    the final-candidate box further down.
+    """)
+    return
+
+
+@app.cell
+def _(case, mo, pd, robust_period_candidates, train):
+    _result = robust_period_candidates(train["y"].to_numpy(), case.freq)
+    _candidates = _result["candidates"]
+    if not _candidates:
+        _discovery = mo.md("No periodic structure discovered (train split too short or flat).")
+    else:
+        _df = pd.DataFrame(_candidates)[
+            [
+                "period",
+                "spectral_ratio",
+                "robust_amplitude",
+                "n_cycles",
+                "prominent",
+                "harmonic_of",
+                "approximate",
+                "menu_period",
+                "level",
+                "variance_fraction",
+            ]
+        ]
+        _headline = [c["period"] for c in _candidates if c["prominent"] and not c["harmonic_of"]]
+        _discovery = mo.vstack(
+            [
+                mo.ui.table(
+                    _df.round(2),
+                    selection=None,
+                    label="RobustPeriod discovery — ranked by spectral prominence",
+                ),
+                mo.md(
+                    f"**Prominent, non-harmonic periods:** `{_headline}`  \n"
+                    f"**Menu periods not corroborated by discovery:** "
+                    f"`{_result['menu_periods_missing']}`"
+                ),
+            ]
+        )
+    _discovery
+    return
 
 
 @app.cell
