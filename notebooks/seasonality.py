@@ -538,7 +538,7 @@ def _(fill_and_detrend, final_candidates, go, mo, np, pacf_at_lags, plot_templat
         "the ACF peak at that lag is just the shorter cycle's own persistence bleeding "
         "through, not evidence of an independent period."
     )
-    mo.vstack([_fig, _note])
+    mo.accordion({"PACF": mo.vstack([_fig, _note])})
     return
 
 

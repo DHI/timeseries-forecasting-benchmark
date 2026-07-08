@@ -299,7 +299,7 @@ def _mstl_decompose(y: np.ndarray, periods: list[int]) -> tuple[object, list[int
         return None
 
     decomposition = MSTL(
-        sample, periods=fittable, stl_kwargs=dict(robust=True, seasonal_deg=1)
+        sample, periods=fittable, iterate=10, stl_kwargs=dict(robust=True, seasonal_deg=1)
     ).fit()
     return decomposition, fittable
 
