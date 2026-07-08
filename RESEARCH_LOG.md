@@ -8,6 +8,52 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-08 — RobustPeriod: data-driven seasonality discovery for curation
+
+The seasonality curation notebook (`notebooks/seasonality.py`) scored a fixed menu of
+physically motivated periods per frequency and, for off-menu cycles, ranked raw periodogram
+peaks (`suggest_peak_candidates`). Raw peaks are fragile on environmental data: red-noise
+variance, occasional spikes, and two blurred-together cycles all fool them, so the off-menu
+half leaned heavily on a human reading scattered plots. We wanted a principled discovery step.
+
+**Decision.** Implement RobustPeriod (Wen et al., SIGMOD 2021) in-repo as a discovery pass in
+`data/seasonality.py` (`robust_period_candidates`). The series is linearly detrended and
+Huber-winsorised (robust to trend and spikes), decomposed by an FFT-based MODWT into dyadic
+frequency bands so coexisting cycles land in separate levels, and each energised level
+contributes its dominant in-band period (read off a Wiener-Khinchin autocorrelation). Every
+candidate is scored by spectral prominence (the same red-noise-robust ratio the menu evidence
+uses) and by a robust amplitude from the exact Huber periodogram, then returned ranked, with
+flags for harmonics, resolution-limited long periods, and the nearest menu period.
+
+**Two deviations from the paper, both deliberate:**
+- *Huber periodogram.* The paper's Huber periodogram is a per-frequency robust regression
+  (O(n²) over all Fourier frequencies) — infeasible on our 100k–150k-point cases. We compute
+  the cheap FFT periodogram of the Huber-cleaned signal for peak-finding, and evaluate the
+  exact Huber M-estimate (solved by IRLS, same optimum as the paper's ADMM for this convex
+  two-parameter fit) only at each level's candidate peak frequency. This uses the real robust
+  estimator where it decides the outcome and runs in under a second on the largest case.
+- *Fisher's g-test dropped.* The paper applies Fisher's g-test per wavelet level. Empirically
+  it flags every level significant, even on white noise: a band-pass-filtered level is not
+  white and its periodogram ordinates are correlated, so the test's white-noise null is
+  grossly violated. We gate on spectral prominence instead (and rank by it); wavelet variance
+  ranking plus the prominence bar cleanly separate real cycles from noise and harmonics.
+
+**Validation, and a correction to how we judge it.** We do *not* validate against the
+`seasonalities` already declared in each case.toml — that list came from the old tooling plus
+human judgment, so matching it is circular. Judged instead by whether the tool honestly
+surfaces the periodic structure in the data: on `demand_ltown` it ranks 24, 12 (flagged a
+harmonic of 24), and ~168 far above everything else; on `surge_cuxhaven` it finds a strong
+off-menu 4 h cycle (a plausible shallow-water M6 tidal overtide); on `waves_oregon` it reports
+only weak, broad structure — the honest answer for broadband swell. Notably the declared list
+is not gospel: `demand_ltown`'s 12 h cycle (spectral ratio ~1200) is strongly present but
+undeclared, while its declared 96 has a ratio of ~5.
+
+**Going forward.** Discovery is advisory and semi-automated: the reviewer reads the ranked
+evidence and decides what to log. `suggest_peak_candidates` is left in place for now; retiring
+it is a possible follow-up. Confirmation tests (Friedman/QS on position-in-cycle) were scoped
+out of this pass and remain a candidate next step to turn "prominent" into a formal per-period
+verdict.
+
 ## 2026-07-08 — Non-seasonal MSTL test now builds its own non-seasonal case
 
 `test_mstl_is_honestly_inapplicable_on_declared_nonseasonal_case` checks that MSTL refuses to
