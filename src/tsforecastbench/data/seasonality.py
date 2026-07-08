@@ -485,3 +485,72 @@ def _biweight_midvariance(x: np.ndarray, c: float = 9.0) -> float:
     if den == 0:
         return 0.0
     return float(len(x) * num / den**2)
+
+
+def _huber_clean(y: np.ndarray) -> np.ndarray:
+    """Winsorise `y` at the Huber knee: standardise by median and (consistent) MAD, clip the
+    standardised series to +-HUBER_ZETA, and rescale. This is RobustPeriod's preprocessing
+    step — it pulls spikes and heavy-tailed excursions back to the bulk of the distribution so
+    a few outliers can't dominate the spectrum, without touching the ordinary variation."""
+    mu = np.median(y)
+    mad = np.median(np.abs(y - mu))
+    if mad <= 0:
+        return y - mu
+    scale = 1.4826 * mad
+    return np.clip((y - mu) / scale, -HUBER_ZETA, HUBER_ZETA) * scale
+
+
+def _huber_periodogram_at(y: np.ndarray, freq: float, max_iter: int = 25) -> float:
+    """RobustPeriod's Huber periodogram at a single frequency: `P = (n/4)|β̂|²` where β̂ fits a
+    cos/sin pair at `freq` to `y` under Huber loss (Wen et al. Eq. 6/8). Solved by IRLS, which
+    reaches the same optimum as the paper's ADMM for this convex two-parameter fit. Evaluating
+    the exact robust estimate only at a candidate peak frequency — rather than at every Fourier
+    frequency, which is O(n²) — is what keeps it affordable on long series. `√(4P/n)` recovers
+    the cycle's robust amplitude in the units of `y`."""
+    n = len(y)
+    t = np.arange(n)
+    w = 2 * np.pi * freq
+    design = np.column_stack([np.cos(w * t), np.sin(w * t)])
+    beta, *_ = np.linalg.lstsq(design, y, rcond=None)
+    for _ in range(max_iter):
+        resid = y - design @ beta
+        scale = 1.4826 * np.median(np.abs(resid - np.median(resid)))
+        if scale <= 0:
+            break
+        u = resid / scale
+        weight = np.ones(n)
+        big = np.abs(u) > HUBER_ZETA
+        weight[big] = HUBER_ZETA / np.abs(u[big])
+        beta_new = np.linalg.solve(design.T @ (weight[:, None] * design), design.T @ (weight * y))
+        if np.max(np.abs(beta_new - beta)) < 1e-8:
+            beta = beta_new
+            break
+        beta = beta_new
+    return float(n / 4.0 * (beta[0] ** 2 + beta[1] ** 2))
+
+
+def _band_period(coeffs: np.ndarray, lo: int, hi: int) -> int | None:
+    """Dominant period of one MODWT level, read off the autocorrelation of its coefficients:
+    the lag of the tallest ACF peak within the level's dyadic band `[lo, hi]`. The ACF (via the
+    Wiener-Khinchin theorem — the inverse transform of the power spectrum) gives an exact
+    integer lag, so short periods land precisely; a level whose band holds no ACF peak falls
+    back to the strongest in-band lag. Returns None if the band is empty or degenerate."""
+    from scipy.signal import find_peaks
+
+    n = len(coeffs)
+    power = np.abs(np.fft.rfft(coeffs)) ** 2
+    power[0] = 0.0
+    acf = np.fft.irfft(power, n=n)[: n // 2]
+    if acf[0] <= 0:
+        return None
+    acf = acf / acf[0]
+    lags = np.arange(len(acf))
+    in_band = (lags >= lo) & (lags <= hi)
+    if not in_band.any():
+        return None
+    band_lags = lags[in_band]
+    band_acf = acf[in_band]
+    peaks, props = find_peaks(band_acf, height=0.05)
+    if len(peaks) == 0:
+        return int(band_lags[int(np.argmax(band_acf))])
+    return int(band_lags[peaks[int(np.argmax(props["peak_heights"]))]])

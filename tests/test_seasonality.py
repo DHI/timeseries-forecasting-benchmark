@@ -346,7 +346,10 @@ def test_suggestions_drop_leakage_near_a_menu_period():
 # --- RobustPeriod: MODWT -----------------------------------------------------
 
 from tsforecastbench.data.seasonality import (  # noqa: E402
+    _band_period,
     _biweight_midvariance,
+    _huber_clean,
+    _huber_periodogram_at,
     _modwt,
 )
 
@@ -373,3 +376,35 @@ def test_modwt_localises_period_to_its_dyadic_band():
     assert int(np.argmax(variances)) + 1 == 4
     # The runner-up energy level holds the weekly cycle.
     assert int(np.argsort(variances)[-2]) + 1 == 7
+
+
+# --- RobustPeriod: robust estimators -----------------------------------------
+
+
+def test_huber_clean_pulls_in_spikes_but_keeps_the_cycle():
+    n = 24 * 40
+    y = _sine(n, period=24)
+    y[::97] += 50.0  # sparse large spikes
+    cleaned = _huber_clean(y)
+    # The spikes are winsorised to near the bulk range, but the cycle is preserved.
+    assert cleaned.max() < 5.0
+    assert np.corrcoef(cleaned, _sine(n, period=24))[0, 1] > 0.9
+
+
+def test_huber_periodogram_recovers_amplitude_despite_outliers():
+    n = 24 * 60
+    amp = 3.0
+    clean = amp * np.sin(2 * np.pi * np.arange(n) / 24)
+    spiked = clean.copy()
+    spiked[::50] += 40.0  # outliers that would wreck an ordinary (least-squares) periodogram
+    power = _huber_periodogram_at(spiked, 1.0 / 24)
+    recovered_amp = np.sqrt(4.0 * power / n)
+    assert recovered_amp == pytest.approx(amp, rel=0.15)
+
+
+def test_band_period_reads_period_within_the_band():
+    n = 24 * 80
+    coeffs = _sine(n, period=24)
+    assert _band_period(coeffs, 16, 32) == 24
+    # A period outside the queried band is not returned; the strongest in-band lag is.
+    assert _band_period(coeffs, 100, 200) != 24
