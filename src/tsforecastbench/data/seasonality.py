@@ -2,8 +2,11 @@
 
 The benchmark has a single source of truth for seasonal periods: the `seasonalities`
 field each case declares in its case.toml (periods in steps of the case frequency,
-dominant period first, `[]` = non-seasonal). The resolution helpers here are the only
-seasonality logic that runs during the method train/predict cycle.
+curated most-prominent first, `[]` = non-seasonal). Which declared period dominates a
+given training window is re-selected at fit time by variance explained (see
+`dominant_period`); the committed order is what curation records and what
+`mase_season_for` walks. The resolution helpers here are the only seasonality logic that
+runs during the method train/predict cycle.
 
 The detection half is curation tooling, run once per case when the field is set (see
 notebooks/seasonality.py): candidates come from a fixed, physically motivated menu per
@@ -76,9 +79,44 @@ def normalize_freq(freq: str) -> str:
     return aliases.get(f, f)
 
 
-def dominant_period(seasonalities: list[int]) -> int:
-    """Dominant declared period (first element by convention); 1 if non-seasonal."""
-    return seasonalities[0] if seasonalities else 1
+def _variance_explained(yd: np.ndarray, period: int) -> float:
+    """R^2 of `yd` regressed on one sinusoid (sin + cos) at `period` steps: the portion of
+    variance a signal of that period explains. Uses two parameters regardless of period, so
+    it is comparable across periods (unlike a per-position seasonal mean, whose parameter
+    count grows with the period and mechanically favours the longest one), and is phase-
+    invariant because both sin and cos are fit, so it needs no calendar anchoring."""
+    n = len(yd)
+    t = np.arange(n)
+    ang = 2 * np.pi * t / period
+    design = np.column_stack([np.sin(ang), np.cos(ang), np.ones(n)])
+    coef, *_ = np.linalg.lstsq(design, yd, rcond=None)
+    resid = yd - design @ coef
+    ss_tot = float(np.sum((yd - yd.mean()) ** 2))
+    if ss_tot <= 0:
+        return 0.0
+    return 1.0 - float(resid @ resid) / ss_tot
+
+
+def dominant_period(seasonalities: list[int], y: np.ndarray) -> int:
+    """Dominant declared period, chosen at fit time by variance explained on `y`; 1 if
+    non-seasonal. Among the periods a case declares, the dominant one is whichever sinusoid
+    of that period explains the most variance of the detrended training target — measured
+    per fold, so each training window keys on the cycle it actually shows most strongly
+    rather than on a fixed order baked in at curation time. Ties break to the earlier
+    declared period (the curated most-prominent order). Callers guarantee every declared
+    period is supported by the window; an unsupportable period must not be declared in the
+    case.toml. Falls back to the first declared period when the target is too degenerate to
+    detrend."""
+    if not seasonalities:
+        return 1
+    if len(seasonalities) == 1:
+        return int(seasonalities[0])
+    try:
+        yd = _fill_and_detrend(y)
+    except ValueError:
+        return int(seasonalities[0])
+    scores = [_variance_explained(yd, p) for p in seasonalities]
+    return int(seasonalities[int(np.argmax(scores))])
 
 
 # Position-in-cycle from calendar fields for the canonical (freq, period) pairs: exact
