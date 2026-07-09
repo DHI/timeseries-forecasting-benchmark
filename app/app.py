@@ -9,11 +9,10 @@ Run with: uv run --extra app streamlit run app/app.py
 
 from __future__ import annotations
 
-import hashlib
-
 import numpy as np
 import plotly.graph_objects as go
 import streamlit as st
+from snapshot import render_snapshots
 
 from data import FAMILY_ORDER, load_case_notes, load_metrics, ordered_cases, ordered_methods
 from tsforecastbench.bench.viz import METRIC_CONFIG
@@ -67,19 +66,6 @@ def _group_labels(ordered_keys: list[str], key_of: dict[str, str]) -> list[tuple
             labels.append(((start + i - 1) / 2, key_of[ordered_keys[start]]))
             start = i
     return labels
-
-
-def _dummy_forecast(case_id: str, method: str, horizon_steps: int = 24):
-    """Deterministic placeholder actual/predicted series, seeded by (case, method).
-
-    Standing in until the eval pipeline persists real per-origin forecasts (see
-    RESEARCH_LOG.md) — the detail panel layout is real, the data behind it isn't.
-    """
-    digest = hashlib.sha256(f"{case_id}:{method}".encode()).hexdigest()
-    rng = np.random.default_rng(int(digest[:8], 16))
-    actual = 100 + np.cumsum(rng.normal(0, 1, horizon_steps))
-    predicted = actual + rng.normal(0, 3, horizon_steps)
-    return actual, predicted
 
 
 def render_matrix(df, metric: str, case_ids: list[str], methods: list[str]) -> go.Figure:
@@ -276,12 +262,7 @@ def main() -> None:
             "per-origin forecasts yet, so this scaffolds the layout rather than showing "
             "real predictions."
         )
-        actual, predicted = _dummy_forecast(case_id, method)
-        detail_fig = go.Figure()
-        detail_fig.add_scatter(y=actual, name="actual (placeholder)", mode="lines")
-        detail_fig.add_scatter(y=predicted, name="predicted (placeholder)", mode="lines")
-        detail_fig.update_layout(height=300, margin={"l": 20, "t": 20, "r": 20, "b": 20})
-        st.plotly_chart(detail_fig, width="stretch")
+        st.plotly_chart(render_snapshots(case_id, method), width="stretch")
     with col_notes:
         st.caption("Case review notes")
         notes = load_case_notes(case_id)
