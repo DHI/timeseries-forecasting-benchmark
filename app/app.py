@@ -15,10 +15,18 @@ from __future__ import annotations
 
 import numpy as np
 import plotly.graph_objects as go
-from dash import Dash, Input, Output, dcc, html
-from snapshot import render_snapshots
+from dash import ALL, Dash, Input, Output, State, ctx, dcc, html
+from dash.exceptions import PreventUpdate
+from snapshot import METHOD_COLORS, render_snapshots
 
-from data import FAMILY_ORDER, load_case_notes, load_metrics, ordered_cases, ordered_methods
+from data import (
+    FAMILY_ORDER,
+    load_case_notes,
+    load_metrics,
+    load_snapshots,
+    ordered_cases,
+    ordered_methods,
+)
 from tsforecastbench.bench.viz import METRIC_CONFIG
 
 DOMAIN_KEY_DICT = {
@@ -281,9 +289,14 @@ app.layout = html.Div(
                 html.H1("Benchmark results matrix"),
                 dcc.Graph(id="matrix"),
                 html.Hr(),
+                dcc.Store(id="snapshot-selection", data={"case_id": None, "methods": []}),
                 html.Div(
                     id="snapshot-hint",
-                    children="Click a cell in the matrix to see case notes and a forecast preview.",
+                    children=(
+                        "Click a matrix cell to see its case notes and real forecast "
+                        "snapshots. Click more cells in the same row to overlay other "
+                        "methods on the same origins."
+                    ),
                     style={"color": "#666"},
                 ),
                 html.Div(
@@ -292,20 +305,29 @@ app.layout = html.Div(
                     children=[
                         html.H2(id="snapshot-title"),
                         html.Div(
+                            style={
+                                "display": "flex",
+                                "gap": "8px",
+                                "alignItems": "center",
+                                "flexWrap": "wrap",
+                                "marginBottom": "8px",
+                            },
+                            children=[
+                                html.Span(id="snapshot-chips", style={"display": "contents"}),
+                                html.Button(
+                                    "Clear",
+                                    id="clear-btn",
+                                    n_clicks=0,
+                                    style={"marginLeft": "auto"},
+                                ),
+                            ],
+                        ),
+                        html.Div(
                             style={"display": "flex", "gap": "16px"},
                             children=[
                                 html.Div(
                                     style={"flex": "2", "minWidth": "0"},
-                                    children=[
-                                        html.P(
-                                            "Forecast preview — placeholder data. The eval "
-                                            "pipeline doesn't persist per-origin forecasts yet, "
-                                            "so this scaffolds the layout rather than showing "
-                                            "real predictions.",
-                                            style={"color": "#666", "fontSize": "0.9em"},
-                                        ),
-                                        dcc.Graph(id="snapshot-graph"),
-                                    ],
+                                    children=[dcc.Graph(id="snapshot-graph")],
                                 ),
                                 html.Div(
                                     style={"flex": "1", "minWidth": "0"},
@@ -345,30 +367,123 @@ def update_matrix(metric, domains, families, n_reload):
     return render_matrix(df, metric, case_ids, methods)
 
 
+def _method_chips(methods: list[str]) -> list:
+    """One removable chip per selected method, colour-matched to its forecast line."""
+    chips = []
+    for i, method in enumerate(methods):
+        color = METHOD_COLORS[i % len(METHOD_COLORS)]
+        chips.append(
+            html.Button(
+                [
+                    html.Span(
+                        style={
+                            "display": "inline-block",
+                            "width": "10px",
+                            "height": "10px",
+                            "borderRadius": "50%",
+                            "backgroundColor": color,
+                            "marginRight": "6px",
+                        }
+                    ),
+                    f"{method}  ✕",
+                ],
+                id={"type": "method-chip", "method": method},
+                n_clicks=0,
+                title="Remove from overlay",
+                style={
+                    "border": f"1px solid {color}",
+                    "borderRadius": "14px",
+                    "padding": "2px 10px",
+                    "background": "white",
+                    "cursor": "pointer",
+                    "fontSize": "0.85em",
+                },
+            )
+        )
+    return chips
+
+
+EMPTY_SELECTION = {"case_id": None, "methods": []}
+
+
+def next_selection(trigger, trigger_value, click_data: dict | None, sel: dict) -> dict:
+    """Pure transition for the overlay selection — the logic behind `update_selection`,
+    factored out of Dash's callback context so it can be reasoned about and tested.
+
+    `trigger` is the triggering component id (a str, or a pattern-matching dict for a
+    method chip); `trigger_value` is that input's value. Raises `PreventUpdate` when the
+    event shouldn't change the selection.
+    """
+    sel = sel or EMPTY_SELECTION
+
+    if trigger == "clear-btn":
+        return dict(EMPTY_SELECTION)
+
+    # Removing a method via its chip. Rebuilding chips on every render also fires this
+    # callback with all-None n_clicks; act only on a genuine click (a truthy value).
+    if isinstance(trigger, dict) and trigger.get("type") == "method-chip":
+        if not trigger_value:
+            raise PreventUpdate
+        methods = [m for m in sel["methods"] if m != trigger["method"]]
+        return {"case_id": sel["case_id"], "methods": methods} if methods else dict(EMPTY_SELECTION)
+
+    points = (click_data or {}).get("points") or []
+    if not points:
+        raise PreventUpdate
+    case_id, method = points[0]["y"], points[0]["x"]
+    if case_id != sel["case_id"]:
+        return {"case_id": case_id, "methods": [method]}
+    methods = (
+        [m for m in sel["methods"] if m != method]
+        if method in sel["methods"]
+        else [*sel["methods"], method]
+    )
+    return {"case_id": case_id, "methods": methods} if methods else dict(EMPTY_SELECTION)
+
+
+@app.callback(
+    Output("snapshot-selection", "data"),
+    Input("matrix", "clickData"),
+    Input("clear-btn", "n_clicks"),
+    Input({"type": "method-chip", "method": ALL}, "n_clicks"),
+    State("snapshot-selection", "data"),
+    prevent_initial_call=True,
+)
+def update_selection(click_data, clear_clicks, chip_clicks, sel):
+    """Maintain the {case_id, methods} overlay selection.
+
+    Same-row clicks accumulate methods (re-click removes, when Plotly re-fires it); a
+    click in a different row resets to that case; chip clicks and Clear remove methods.
+    """
+    return next_selection(ctx.triggered_id, ctx.triggered[0]["value"], click_data, sel)
+
+
 @app.callback(
     Output("snapshot-title", "children"),
     Output("snapshot-graph", "figure"),
     Output("snapshot-notes", "children"),
+    Output("snapshot-chips", "children"),
     Output("snapshot-panel", "style"),
     Output("snapshot-hint", "style"),
-    Input("matrix", "clickData"),
+    Input("snapshot-selection", "data"),
+    Input("reload-btn", "n_clicks"),
 )
-def update_snapshot(click_data):
-    points = (click_data or {}).get("points") or []
-    if not points:
-        hint_style = {"color": "#666"}
-        return "", go.Figure(), "", {"display": "none"}, hint_style
+def render_panel(sel, n_reload):
+    sel = sel or {}
+    case_id, methods = sel.get("case_id"), sel.get("methods") or []
+    if not case_id or not methods:
+        return "", go.Figure(), "", [], {"display": "none"}, {"color": "#666"}
 
-    point = points[0]
-    case_id, method = point["y"], point["x"]
     notes = load_case_notes(case_id)
     notes_children = (
         dcc.Markdown(notes) if notes else html.Em(f"No case_review notes found for {case_id}.")
     )
+    title = f"{case_id} — {', '.join(methods)}"
     return (
-        f"{case_id} x {method}",
-        render_snapshots(case_id, method),
+        title,
+        render_snapshots(case_id, methods, load_snapshots(n_reload or 0)),
         notes_children,
+        _method_chips(methods),
         {"display": "block"},
         {"display": "none"},
     )

@@ -1,123 +1,164 @@
-"""Dummy forecast-snapshot panel for the results-matrix app.
+"""Forecast-snapshot panel for the results-matrix app.
 
-Renders, for one case x method cell, a row of `N_SNAPSHOTS` small charts each showing the
-actual series around one forecast-origin timestamp with the (placeholder) predicted values
-overlaid — the interactive analogue of `app/snapshot_example.py`'s static matplotlib figure.
+Draws, for one case, a grid of small charts — one per rolling-origin snapshot the eval
+pipeline persisted to `results/pilot_snapshots.parquet`. Each panel shows the case's real
+actual series around a forecast origin with one predicted line per selected method
+overlaid, so several methods can be compared on the same origins by clicking cells along a
+matrix row.
 
-The eval pipeline doesn't persist per-origin forecasts yet (see RESEARCH_LOG.md), so the
-actual/predicted values here are deterministic placeholders, seeded by case/method/origin so
-repeated clicks are stable. `freq` and `horizon_primary` are the case's real values (from the
-case registry), so the time axis and horizon length are accurate even though the series
-values aren't.
+The grid is capped at `MAX_COLS` columns and stacks rows until every stored origin is
+placed. Actuals are not stored in the snapshot artifact; they're reloaded from the case's
+curated series so the target lives in exactly one place.
 """
 
 from __future__ import annotations
 
-import hashlib
+import math
+from functools import cache
 
-import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 from tsforecastbench.data.registry import get_case
 
-N_SNAPSHOTS = 3
-N_ACTUAL_POINTS = 300
+MAX_COLS = 3
+
+ACTUAL_COLOR = "black"
+# Method identity is the thing being compared across overlaid lines, so colour encodes it
+# (Actual stays black). Palette is colourblind-safe (Wong 2011, dropping its low-contrast
+# yellow) and cycles if more methods are overlaid than it has entries.
+METHOD_COLORS = ["#0072B2", "#D55E00", "#009E73", "#CC79A7", "#56B4E9", "#E69F00", "#8B008B"]
 
 
-def _seeded_rng(*parts: str) -> np.random.Generator:
-    digest = hashlib.sha256(":".join(parts).encode()).hexdigest()
-    return np.random.default_rng(int(digest[:8], 16))
+def _horizon_steps(case) -> int:
+    return int(pd.Timedelta(case.horizon_primary) // pd.Timedelta(case.freq))
 
 
-def _dummy_actual_series(case_id: str, freq: str, n_points: int = N_ACTUAL_POINTS) -> pd.Series:
-    """Placeholder actual series for a case, shared across methods (real actuals don't
-    depend on which method is being inspected)."""
-    rng = _seeded_rng(case_id)
-    values = np.sin(np.linspace(0, 4 * np.pi, n_points)) + rng.normal(0, 0.3, n_points)
-    index = pd.date_range(start="2023-01-01", periods=n_points, freq=freq)
-    return pd.Series(values, index=index)
-
-
-def _dummy_predicted(
-    case_id: str, method: str, start: pd.Timestamp, horizon_steps: int, freq: str
-) -> pd.Series:
-    rng = _seeded_rng(case_id, method, str(start))
-    index = pd.date_range(start=start, periods=horizon_steps, freq=freq)
-    values = np.sin(np.linspace(0, 2 * np.pi, horizon_steps)) + rng.normal(0, 0.5, horizon_steps)
-    return pd.Series(values, index=index)
-
-
-def _snapshot_starts(
-    actual_index: pd.DatetimeIndex,
-    horizon_steps: int,
-    n_history: int,
-    n_snapshots: int = N_SNAPSHOTS,
-) -> list[pd.Timestamp]:
-    """`n_snapshots` evenly spaced forecast-origin timestamps, each with room for
-    `n_history` steps of history before and `horizon_steps` of predictions after."""
-    valid_positions = list(range(n_history, len(actual_index) - horizon_steps))
-    if not valid_positions:
-        valid_positions = [min(n_history, len(actual_index) - 1)]
-    picks = np.linspace(0, len(valid_positions) - 1, n_snapshots).round().astype(int)
-    return [actual_index[valid_positions[p]] for p in picks]
-
-
-def render_snapshots(case_id: str, method: str) -> go.Figure:
-    """Plotly panel of `N_SNAPSHOTS` forecast-origin snapshots for one case x method cell."""
+@cache
+def _actual_series(case_id: str) -> pd.Series:
+    """The case's real curated target, indexed by timestamp. Cached: curated data is
+    static, and the same series is reused across every origin panel and re-click."""
     case = get_case(case_id)
-    horizon_steps = pd.Timedelta(case.horizon_primary) // pd.Timedelta(case.freq)
+    df = case.load(curated=True)
+    return pd.Series(df["y"].to_numpy(dtype=float), index=pd.DatetimeIndex(df["ds"]))
+
+
+def _empty_fig(message: str) -> go.Figure:
+    fig = go.Figure()
+    fig.add_annotation(text=message, showarrow=False, font={"size": 14})
+    fig.update_layout(
+        height=300,
+        plot_bgcolor="white",
+        paper_bgcolor="white",
+        xaxis={"visible": False},
+        yaxis={"visible": False},
+    )
+    return fig
+
+
+def render_snapshots(case_id: str, methods: list[str], preds: pd.DataFrame) -> go.Figure:
+    """Grid of forecast-origin snapshots for one case, overlaying each of `methods`.
+
+    `preds` is the snapshot artifact (see `data.load_snapshots`); origins come from it, so
+    every method shares the same panels and the overlays line up.
+    """
+    case_preds = preds[preds["case_id"] == case_id]
+    if case_preds.empty:
+        return _empty_fig(f"No stored forecasts for {case_id} (needs a rolling pilot run).")
+
+    origins = case_preds[["origin_id", "origin_ds"]].drop_duplicates().sort_values("origin_id")
+    origins = list(origins.itertuples(index=False))
+
+    case = get_case(case_id)
+    horizon_steps = _horizon_steps(case)
     n_history = max(horizon_steps // 4, 1)
+    step = pd.Timedelta(case.freq)
+    actual = _actual_series(case_id)
 
-    actual = _dummy_actual_series(case_id, case.freq)
-    starts = _snapshot_starts(actual.index, horizon_steps, n_history)
+    n = len(origins)
+    n_cols = min(MAX_COLS, n)
+    n_rows = math.ceil(n / n_cols)
 
-    fig = make_subplots(rows=1, cols=len(starts), shared_yaxes=True)
-    for i, start in enumerate(starts):
-        predicted = _dummy_predicted(case_id, method, start, horizon_steps, case.freq)
-        window_start = start - n_history * pd.Timedelta(case.freq)
-        window = actual.loc[window_start : predicted.index[-1]]
-        show_legend = i == 0
+    titles = [pd.Timestamp(o.origin_ds).strftime("%Y-%m-%d %H:%M") for o in origins]
+    fig = make_subplots(
+        rows=n_rows,
+        cols=n_cols,
+        shared_yaxes="all",
+        subplot_titles=titles,
+        vertical_spacing=0.12,
+        horizontal_spacing=0.04,
+    )
 
+    color_of = {m: METHOD_COLORS[i % len(METHOD_COLORS)] for i, m in enumerate(methods)}
+
+    for i, origin in enumerate(origins):
+        row, col = i // n_cols + 1, i % n_cols + 1
+        first_panel = i == 0
+        origin_ds = pd.Timestamp(origin.origin_ds)
+        origin_preds = case_preds[case_preds["origin_id"] == origin.origin_id]
+
+        last_pred_ds = pd.Timestamp(origin_preds["ds"].max())
+        window = actual.loc[origin_ds - n_history * step : last_pred_ds]
         fig.add_trace(
             go.Scatter(
                 x=window.index,
-                y=window.values,
+                y=window.to_numpy(),
                 name="Actual",
                 mode="lines",
-                line={"color": "black"},
-                legendgroup="actual",
-                showlegend=show_legend,
+                line={"color": ACTUAL_COLOR, "width": 2},
+                legendgroup="Actual",
+                showlegend=first_panel,
             ),
-            row=1,
-            col=i + 1,
-        )
-        fig.add_trace(
-            go.Scatter(
-                x=predicted.index,
-                y=predicted.values,
-                name="Predicted",
-                mode="lines",
-                line={"color": "orangered"},
-                legendgroup="predicted",
-                showlegend=show_legend,
-            ),
-            row=1,
-            col=i + 1,
-        )
-        fig.add_vline(
-            x=start,
-            line={"color": "gray", "dash": "dash"},
-            annotation_text="Prediction start",
-            annotation_font={"color": "gray", "size": 10},
-            row=1,
-            col=i + 1,
+            row=row,
+            col=col,
         )
 
+        for method in methods:
+            mpred = origin_preds[origin_preds["method"] == method].sort_values("ds")
+            if mpred.empty:
+                continue
+            fig.add_trace(
+                go.Scatter(
+                    x=pd.DatetimeIndex(mpred["ds"]),
+                    y=mpred["y_hat"].to_numpy(dtype=float),
+                    name=method,
+                    mode="lines",
+                    line={"color": color_of[method], "width": 2},
+                    legendgroup=method,
+                    showlegend=first_panel,
+                ),
+                row=row,
+                col=col,
+            )
+
+        fig.add_vline(
+            x=origin_ds,
+            line={"color": "#888888", "dash": "dash", "width": 1},
+            row=row,
+            col=col,
+        )
+
+    fig.update_xaxes(
+        showgrid=False, zeroline=False, showline=True, linecolor="black", ticks="outside"
+    )
+    fig.update_yaxes(
+        showgrid=False, zeroline=False, showline=True, linecolor="black", ticks="outside"
+    )
     fig.update_layout(
-        height=320,
-        margin={"l": 40, "t": 20, "r": 20, "b": 40},
-        legend={"orientation": "h", "y": -0.15},
+        height=240 * n_rows + 60,
+        margin={"l": 50, "t": 60, "r": 20, "b": 40},
+        plot_bgcolor="white",
+        paper_bgcolor="white",
+        font={"family": "system-ui, sans-serif"},
+        legend={
+            "orientation": "h",
+            "yanchor": "bottom",
+            "y": 1.02,
+            "xanchor": "left",
+            "x": 0,
+            "bgcolor": "rgba(0,0,0,0)",
+            "borderwidth": 0,
+        },
     )
     return fig

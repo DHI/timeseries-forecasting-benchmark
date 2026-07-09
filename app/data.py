@@ -20,7 +20,13 @@ from tsforecastbench.bench import methods as _methods
 REPO_ROOT = Path(__file__).resolve().parent.parent
 RESULTS_DIR = REPO_ROOT / "results"
 METRICS_PATH = RESULTS_DIR / "pilot_metrics.parquet"
+SNAPSHOTS_PATH = RESULTS_DIR / "pilot_snapshots.parquet"
 CASE_REVIEW_DIR = RESULTS_DIR / "case_review"
+
+# Columns of the snapshot artifact written by the rolling eval (see
+# tsforecastbench.bench.eval.rolling.SNAPSHOT_COLUMNS). Kept here so an empty frame has
+# the right shape when the artifact is missing (e.g. an old results set, or a --fast run).
+SNAPSHOT_COLUMNS = ["case_id", "method", "origin_id", "origin_ds", "ds", "y_hat"]
 
 # Display order for method families (left-to-right column grouping) and case domains
 # (top-to-bottom row grouping). Anything not listed sorts after, alphabetically.
@@ -65,6 +71,21 @@ def load_metrics(version: int = 0) -> pd.DataFrame:
     family_map = _method_family_map()
     df["family"] = df["method"].map(family_map).fillna("unclassified")
     return df
+
+
+@cache
+def load_snapshots(version: int = 0) -> pd.DataFrame:
+    """Load pilot_snapshots.parquet — the per-origin forecasts the rolling eval persists.
+
+    Returns an empty (correctly-typed) frame when the artifact is absent, so the app still
+    runs against a results set produced before snapshots existed (or a --fast run, which
+    doesn't emit them). `version` works like `load_metrics`: bump it to land on a fresh
+    cache key and re-read after a new run. Treat the result as read-only (shared cache).
+    """
+    del version
+    if not SNAPSHOTS_PATH.exists():
+        return pd.DataFrame(columns=SNAPSHOT_COLUMNS)
+    return pd.read_parquet(SNAPSHOTS_PATH)
 
 
 def ordered_cases(df: pd.DataFrame) -> list[str]:
