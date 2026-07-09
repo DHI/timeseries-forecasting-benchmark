@@ -706,7 +706,7 @@ def render_case_panel(sel):
     if not case_id:
         return "", go.Figure(), "", {**_CASE_PANEL_STYLE, "display": "none"}
     return (
-        case_id,
+        case_id.replace("_", " ").upper(),
         render_training_snapshot(case_id),
         dcc.Markdown(case_summary(case_id)),
         {**_CASE_PANEL_STYLE, "display": "flex"},
@@ -733,7 +733,7 @@ def render_panel(sel, n_reload):
     notes_children = (
         dcc.Markdown(notes) if notes else html.Em(f"No case_review notes found for {case_id}.")
     )
-    title = f"{case_id} — {', '.join(methods)}"
+    title = f"(Test) Prediction Snapshots — {', '.join(methods)}"
     return (
         title,
         render_snapshots(case_id, methods, load_snapshots(n_reload or 0)),
