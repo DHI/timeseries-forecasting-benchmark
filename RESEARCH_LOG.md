@@ -8,6 +8,38 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-09 — Multi-snapshot forecast panel for the results-matrix app
+
+The results-matrix app's cell-click detail panel (added 2026-07-08, see below) showed one
+flat placeholder line with no time axis and no sense of where a forecast started. Replaced it
+with `app/snapshot.py`, a Plotly panel of 3 forecast-origin snapshots side by side — each one
+a short window of actual values with the predicted values overlaid and a dashed line marking
+where the forecast starts. The layout follows `app/snapshot_example.py`, a matplotlib sketch
+the design was worked out in first.
+
+Two decisions worth recording:
+
+- **Plotly, not matplotlib.** The sketch used matplotlib, but the rest of the app (the matrix
+  heatmap, and the chart this replaces) is Plotly, so Plotly keeps the panel interactive and
+  visually consistent with everything else on the page.
+- **Fixed 3 evenly-spaced snapshots**, not a user-configurable count. Nothing yet needs more
+  than a quick visual sense of forecast behavior at a few points, so a slider or input box
+  would be a control with no real use.
+
+The actual/predicted values are still placeholders (per-origin forecasts aren't persisted by
+the eval pipeline yet — same gap noted in the 2026-07-08 entry), but the time axis is real:
+`freq` and `horizon_primary` are pulled from each case's `case.toml` via the case registry, so
+an hourly case shows an hourly axis and the right horizon length, and a daily case shows a
+daily one. Swapping in real forecasts later should only mean rewriting the two data-generating
+functions in `app/snapshot.py`; the panel layout and the app wiring shouldn't need to change.
+
+Verification note: same limitation as the 2026-07-08 entry — this sandbox can't screenshot a
+real browser. Checked instead by rendering the figure directly and inspecting its structure
+(trace count and colors, one dashed vline and "Prediction start" annotation per subplot,
+correct x-axis range for both an hourly case and a daily case) and confirming repeated calls
+with the same case/method produce byte-identical output. Worth a manual look in a browser
+before relying on the visual layout.
+
 ## 2026-07-08 — Interactive results-matrix app (Streamlit + Plotly)
 
 Added `app/app.py`, a local Streamlit app that renders the same case x method grid as the
