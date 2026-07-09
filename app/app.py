@@ -1,17 +1,21 @@
 """Interactive viewer for the benchmark results matrix.
 
 Reads `results/pilot_metrics.parquet` and renders the same case x method grid as the
-static `results/pilot_matrix_*.png` plots, but with hover detail, row/column filtering
-(including by domain/method-family), and a metric switcher.
+static `results/pilot_matrix_*.png` plots, but with hover detail, domain/method-family
+filtering, and a metric switcher. Clicking a cell opens a snapshot panel with forecast
+examples and the case-review notes for that case x method pair.
 
-Run with: uv run --extra app streamlit run app/app.py
+Built on Dash: the matrix is a `dcc.Graph`, and a click callback reads the cell's
+`clickData` to populate the snapshot panel — no selection-event workarounds needed.
+
+Run with: uv run --extra app python app/app.py
 """
 
 from __future__ import annotations
 
 import numpy as np
 import plotly.graph_objects as go
-import streamlit as st
+from dash import Dash, Input, Output, dcc, html
 from snapshot import render_snapshots
 
 from data import FAMILY_ORDER, load_case_notes, load_metrics, ordered_cases, ordered_methods
@@ -146,22 +150,6 @@ def render_matrix(df, metric: str, case_ids: list[str], methods: list[str]) -> g
 
     fig = go.Figure(go.Heatmap(**heatmap_kwargs))
 
-    # Plotly's Heatmap trace has no `selectPoints` module, so it can never emit a
-    # selection event — Streamlit's on_select would never fire for a click on a cell.
-    # Overlay an invisible, selectable Scatter marker per cell (same categorical grid) so
-    # clicks land on something that supports selection; it carries no visual weight.
-    fig.add_trace(
-        go.Scatter(
-            x=[x for _ in row_order for x in col_order],
-            y=[y for y in row_order for _ in col_order],
-            mode="markers",
-            marker={"size": 24, "color": "rgba(0,0,0,0)"},
-            hoverinfo="skip",
-            showlegend=False,
-            name="_click_target",
-        )
-    )
-
     n_rows, n_cols = len(row_order), len(col_order)
     domain_of = df_metric.drop_duplicates("case_id").set_index("case_id")["domain"].to_dict()
     family_of = df_metric.drop_duplicates("method").set_index("method")["family"].to_dict()
@@ -207,90 +195,177 @@ def render_matrix(df, metric: str, case_ids: list[str], methods: list[str]) -> g
     return fig
 
 
-def main() -> None:
-    st.set_page_config(page_title="Benchmark results matrix", layout="wide")
-    st.title("Benchmark results matrix")
+def _empty_fig(message: str) -> go.Figure:
+    fig = go.Figure()
+    fig.add_annotation(text=message, showarrow=False, font={"size": 16})
+    fig.update_layout(
+        height=300,
+        xaxis={"visible": False},
+        yaxis={"visible": False},
+    )
+    return fig
 
-    if "reload_version" not in st.session_state:
-        st.session_state.reload_version = 0
 
-    with st.sidebar:
-        st.header("Controls")
-        if st.button("Reload data"):
-            st.session_state.reload_version += 1
-        df = load_metrics(st.session_state.reload_version)
+def _domain_options(df) -> list[dict]:
+    return [
+        {"label": d.replace("_", " ").capitalize(), "value": d}
+        for d in sorted(df["domain"].dropna().unique())
+    ]
 
-        metric_options = [m for m in METRIC_CONFIG if m in df["metric"].unique()]
-        metric = st.selectbox("Metric", metric_options, index=0)
 
-        all_domains = sorted(df["domain"].dropna().unique())
-        st.markdown(
-            "Domains",
-            # help="Domain abbreviations: "
-            # + ", ".join(
-            #     f"{DOMAIN_KEY_DICT.get(d, d)} = {d.replace('_', ' ').capitalize()}"
-            #     for d in all_domains
-            # ),
-        )
-        domains = [
-            d
-            for d in all_domains
-            if st.checkbox(
-                DOMAIN_KEY_DICT.get(d, d),
-                value=True,
-                help=d.replace("_", " ").capitalize(),
-                key=f"domain_{d}",
-            )
-        ]
-
-        all_cases = sorted(df.loc[df["domain"].isin(domains), "case_id"].unique())
-        # Commenting for now, in case we want to filter by domain only, not by individual cases. Can be re-enabled if needed.
-        # cases = st.multiselect("Cases", all_cases, default=all_cases)
-
-        all_families = [f for f in FAMILY_ORDER if f in df["family"].unique()] + sorted(
-            set(df["family"].unique()) - set(FAMILY_ORDER)
-        )
-        families = st.multiselect("Method families", all_families, default=all_families)
-
-        all_methods = sorted(df.loc[df["family"].isin(families), "method"].unique())
-        # Commenting for now, in case we want to filter by family only, not by individual methods. Can be re-enabled if needed.
-        # methods = st.multiselect("Methods", all_methods, default=all_methods)
-
-    # if not cases or not methods:
-    #     st.warning("Select at least one case and one method to render the matrix.")
-    #     return
-
-    fig = render_matrix(df, metric, all_cases, all_methods)
-    event = st.plotly_chart(
-        fig, width="stretch", on_select="rerun", selection_mode="points", key="matrix_chart"
+def _family_options(df) -> list[str]:
+    return [f for f in FAMILY_ORDER if f in df["family"].unique()] + sorted(
+        set(df["family"].unique()) - set(FAMILY_ORDER)
     )
 
-    st.divider()
-    points = (event.get("selection") or {}).get("points", []) if event else []
+
+app = Dash(__name__, title="Benchmark results matrix")
+
+_df0 = load_metrics(0)
+_metric_options = [m for m in METRIC_CONFIG if m in _df0["metric"].unique()]
+_domain_opts = _domain_options(_df0)
+_family_opts = _family_options(_df0)
+
+_SIDEBAR_STYLE = {
+    "width": "260px",
+    "flex": "0 0 260px",
+    "padding": "16px",
+    "borderRight": "1px solid #ddd",
+    "boxSizing": "border-box",
+}
+_LABEL_STYLE = {"fontWeight": "bold", "marginTop": "16px", "display": "block"}
+
+app.layout = html.Div(
+    style={"display": "flex", "fontFamily": "system-ui, sans-serif"},
+    children=[
+        html.Div(
+            style=_SIDEBAR_STYLE,
+            children=[
+                html.H3("Controls"),
+                html.Button("Reload data", id="reload-btn", n_clicks=0),
+                html.Label("Metric", style=_LABEL_STYLE),
+                dcc.Dropdown(
+                    id="metric",
+                    options=_metric_options,
+                    value=_metric_options[0] if _metric_options else None,
+                    clearable=False,
+                ),
+                html.Label("Domains", style=_LABEL_STYLE),
+                dcc.Checklist(
+                    id="domains",
+                    options=_domain_opts,
+                    value=[o["value"] for o in _domain_opts],
+                    labelStyle={"display": "block"},
+                ),
+                html.Label("Method families", style=_LABEL_STYLE),
+                dcc.Dropdown(
+                    id="families",
+                    options=_family_opts,
+                    value=_family_opts,
+                    multi=True,
+                ),
+            ],
+        ),
+        html.Div(
+            style={"flex": "1", "padding": "16px", "minWidth": "0"},
+            children=[
+                html.H1("Benchmark results matrix"),
+                dcc.Graph(id="matrix"),
+                html.Hr(),
+                html.Div(
+                    id="snapshot-hint",
+                    children="Click a cell in the matrix to see case notes and a forecast preview.",
+                    style={"color": "#666"},
+                ),
+                html.Div(
+                    id="snapshot-panel",
+                    style={"display": "none"},
+                    children=[
+                        html.H2(id="snapshot-title"),
+                        html.Div(
+                            style={"display": "flex", "gap": "16px"},
+                            children=[
+                                html.Div(
+                                    style={"flex": "2", "minWidth": "0"},
+                                    children=[
+                                        html.P(
+                                            "Forecast preview — placeholder data. The eval "
+                                            "pipeline doesn't persist per-origin forecasts yet, "
+                                            "so this scaffolds the layout rather than showing "
+                                            "real predictions.",
+                                            style={"color": "#666", "fontSize": "0.9em"},
+                                        ),
+                                        dcc.Graph(id="snapshot-graph"),
+                                    ],
+                                ),
+                                html.Div(
+                                    style={"flex": "1", "minWidth": "0"},
+                                    children=[
+                                        html.P(
+                                            "Case review notes",
+                                            style={"color": "#666", "fontSize": "0.9em"},
+                                        ),
+                                        html.Div(id="snapshot-notes"),
+                                    ],
+                                ),
+                            ],
+                        ),
+                    ],
+                ),
+            ],
+        ),
+    ],
+)
+
+
+@app.callback(
+    Output("matrix", "figure"),
+    Input("metric", "value"),
+    Input("domains", "value"),
+    Input("families", "value"),
+    Input("reload-btn", "n_clicks"),
+)
+def update_matrix(metric, domains, families, n_reload):
+    df = load_metrics(n_reload or 0)
+    if not metric or not domains or not families:
+        return _empty_fig("Select a metric, at least one domain, and one method family.")
+    case_ids = sorted(df.loc[df["domain"].isin(domains), "case_id"].unique())
+    methods = sorted(df.loc[df["family"].isin(families), "method"].unique())
+    if not case_ids or not methods:
+        return _empty_fig("No cases or methods match the current filters.")
+    return render_matrix(df, metric, case_ids, methods)
+
+
+@app.callback(
+    Output("snapshot-title", "children"),
+    Output("snapshot-graph", "figure"),
+    Output("snapshot-notes", "children"),
+    Output("snapshot-panel", "style"),
+    Output("snapshot-hint", "style"),
+    Input("matrix", "clickData"),
+)
+def update_snapshot(click_data):
+    points = (click_data or {}).get("points") or []
     if not points:
-        st.caption("Click a cell in the matrix to see case notes and a forecast preview.")
-        return
+        hint_style = {"color": "#666"}
+        return "", go.Figure(), "", {"display": "none"}, hint_style
 
     point = points[0]
     case_id, method = point["y"], point["x"]
-    st.subheader(f"{case_id} x {method}")
-
-    col_chart, col_notes = st.columns([2, 1])
-    with col_chart:
-        st.caption(
-            "Forecast preview — placeholder data. The eval pipeline doesn't persist "
-            "per-origin forecasts yet, so this scaffolds the layout rather than showing "
-            "real predictions."
-        )
-        st.plotly_chart(render_snapshots(case_id, method), width="stretch")
-    with col_notes:
-        st.caption("Case review notes")
-        notes = load_case_notes(case_id)
-        if notes:
-            st.markdown(notes)
-        else:
-            st.info(f"No case_review notes found for `{case_id}`.")
+    notes = load_case_notes(case_id)
+    notes_children = (
+        dcc.Markdown(notes)
+        if notes
+        else html.Em(f"No case_review notes found for {case_id}.")
+    )
+    return (
+        f"{case_id} x {method}",
+        render_snapshots(case_id, method),
+        notes_children,
+        {"display": "block"},
+        {"display": "none"},
+    )
 
 
 if __name__ == "__main__":
-    main()
+    app.run(debug=True, port=8050)

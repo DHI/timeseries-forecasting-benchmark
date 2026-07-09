@@ -10,10 +10,10 @@ memory at load time.
 from __future__ import annotations
 
 import inspect
+from functools import cache
 from pathlib import Path
 
 import pandas as pd
-import streamlit as st
 
 from tsforecastbench.bench import methods as _methods
 
@@ -52,13 +52,13 @@ def _rank(order: list[str]):
     return lambda value: order.index(value) if value in order else len(order)
 
 
-@st.cache_data
+@cache
 def load_metrics(version: int = 0) -> pd.DataFrame:
     """Load pilot_metrics.parquet and join each method's family.
 
-    `version` has no effect on the result; bump it (e.g. from a sidebar reload button)
-    to bust the Streamlit cache and pick up a pilot run that finished after the app
-    started.
+    `version` has no effect on the result; bump it (e.g. from a reload button) to land
+    on a fresh cache key and re-read a pilot run that finished after the app started.
+    Callers must treat the returned frame as read-only (it's a shared cached object).
     """
     del version
     df = pd.read_parquet(METRICS_PATH)
