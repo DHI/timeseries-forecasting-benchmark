@@ -524,6 +524,13 @@ app.layout = html.Div(
 )
 
 
+def _n_rows_for(df, metric: str, case_ids: list[str], methods: list[str]) -> int:
+    df_metric = df[
+        (df["metric"] == metric) & df["case_id"].isin(case_ids) & df["method"].isin(methods)
+    ]
+    return len(ordered_cases(df_metric))
+
+
 @app.callback(
     Output("matrix", "figure"),
     Output("matrix-row", "style"),
@@ -537,14 +544,22 @@ def update_matrix(metric, domains, families, n_reload, selection):
     df = load_metrics(n_reload or 0)
     if not metric or not domains or not families:
         fig = _empty_fig("Select a metric, at least one domain, and one method family.")
+        return fig, {**_MATRIX_ROW_STYLE, "height": f"{fig.layout.height}px"}
+
+    methods = sorted(df.loc[df["family"].isin(families), "method"].unique())
+    case_ids = sorted(df.loc[df["domain"].isin(domains), "case_id"].unique())
+    if not case_ids or not methods:
+        fig = _empty_fig("No cases or methods match the current filters.")
+        n_rows = 0
     else:
-        case_ids = sorted(df.loc[df["domain"].isin(domains), "case_id"].unique())
-        methods = sorted(df.loc[df["family"].isin(families), "method"].unique())
-        if not case_ids or not methods:
-            fig = _empty_fig("No cases or methods match the current filters.")
-        else:
-            fig, n_rows = render_matrix(df, metric, case_ids, methods, selection)
-            return fig, {**_MATRIX_ROW_STYLE, "height": f"{CELL * n_rows + MATRIX_MARGIN}px"}
+        fig, n_rows = render_matrix(df, metric, case_ids, methods, selection)
+
+    # Floor the row's height to whatever it would be with every domain checked, so
+    # narrowing the domain filter can't shrink the case panel below a readable size.
+    all_case_ids = sorted(df["case_id"].unique())
+    floor_rows = _n_rows_for(df, metric, all_case_ids, methods) if methods else 0
+    height = CELL * max(n_rows, floor_rows) + MATRIX_MARGIN
+    return fig, {**_MATRIX_ROW_STYLE, "height": f"{height}px"}
     return fig, {**_MATRIX_ROW_STYLE, "height": f"{fig.layout.height}px"}
 
 
