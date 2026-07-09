@@ -33,12 +33,6 @@ CI runs `uv run ruff check .` and fails the build on any lint violation. Before 
 run `uv run ruff check --fix .` and `uv run ruff format .` and confirm `uv run ruff check .`
 passes clean. Do this for every commit that touches Python files, not just at the end of a task.
 
-## Code formatting
-
-CI runs `uv run ruff check .` and fails the build on any lint violation. Before committing,
-run `uv run ruff check --fix .` and `uv run ruff format .` and confirm `uv run ruff check .`
-passes clean. Do this for every commit that touches Python files, not just at the end of a task.
-
 ## Commit hygiene
 Before implementing any non-trivial code change, or before running any git commit, consult the `jap-commit-preferences` skill.
 
