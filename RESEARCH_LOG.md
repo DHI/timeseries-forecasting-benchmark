@@ -8,6 +8,33 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-09 — Two app bugs found on first real-browser test, both pre-existing
+
+First manual, real-browser test of the results-matrix app surfaced two bugs, neither
+introduced by the same-day snapshot-panel work (see below) — both were already there and
+just hadn't been exercised in a browser yet (the 2026-07-08 entry flagged this gap directly:
+only headless checks had run so far).
+
+- **`DOMAIN_KEY_DICT` only covered 4 of the 8 real domains.** `spectral_waves`, `storm_surge`,
+  `wastewater_treatment`, and `water_quality` cases (added earlier, well before this app
+  existed) crashed the matrix's row-label annotation with a `KeyError`. Filled in the missing
+  abbreviations and made the lookup fall back to the plain domain name instead of raising, so
+  a future new domain degrades gracefully rather than crashing the app.
+- **Clicking a matrix cell did nothing at all.** Traced this to Plotly.js itself: a `Heatmap`
+  trace has no `selectPoints` module (checked directly in the bundled `plotly.js` source —
+  `bar`, `scatter`, `box`, and others each register one; `heatmap` doesn't), so it can never
+  emit the selection event Streamlit's `on_select="rerun"` depends on. No amount of
+  app-level configuration would have fixed this — the trace type itself can't be selected.
+  Fixed by overlaying an invisible `Scatter` marker on each cell, aligned to the same
+  categorical grid, purely to catch clicks; `Scatter` does support selection, and the marker
+  is fully transparent so nothing changes visually.
+
+Both were caught by having the user click through the running app rather than relying on
+headless checks — worth doing that earlier next time a Streamlit+Plotly interaction is added,
+since headless test harnesses can confirm the Python side is wired correctly without ever
+catching a client-side limitation like the heatmap one above.
+
+## 2026-07-09 — Multi-snapshot forecast panel for the results-matrix app
 ## 2026-07-09 — Multi-snapshot forecast panel for the results-matrix app
 
 The results-matrix app's cell-click detail panel (added 2026-07-08, see below) showed one
