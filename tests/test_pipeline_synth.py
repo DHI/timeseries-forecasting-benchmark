@@ -163,12 +163,17 @@ def test_rolling_matrix_runs():
 
     case = get_case("discharge_flashy_catskills")
     methods = [Persistence(), LightGBMExoForecaster()]
-    res = run_case_rolling(case, methods, n_origins=6, prefer_synth=True)
+    res, snaps = run_case_rolling(case, methods, n_origins=6, prefer_synth=True)
     assert len(res) == len(methods) * 5
     assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
     # pooled rolling score is finite and persistence skill-vs-itself is ~0
     pers = res[(res.method == "Persistence") & (res.metric == "Skill_vs_Persistence")]["value"]
     assert abs(float(pers.iloc[0])) < 1e-6
+    # snapshots: full predicted series per method x origin, aligned on shared origins
+    assert set(snaps.columns) == {"case_id", "method", "origin_id", "origin_ds", "ds", "y_hat"}
+    assert set(snaps["method"].unique()) == {m.name for m in methods}
+    per_method_origins = snaps.groupby("method")["origin_id"].apply(lambda s: sorted(s.unique()))
+    assert per_method_origins.iloc[0] == per_method_origins.iloc[1]
 
 
 @pytest.mark.parametrize("cid", ["surge_cuxhaven", "waves_oregon", "discharge_lowland_denmark"])
