@@ -8,6 +8,41 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-09 — Moved the results-matrix app from Streamlit to Dash
+
+The results-matrix app was built on Streamlit + Plotly, and cell-click-to-snapshot was the
+sore spot. The root cause is structural, not a config mistake: Plotly's `Heatmap` trace has
+no selection module, so Streamlit's `on_select="rerun"` never fires for a heatmap click. The
+earlier workaround (overlay an invisible `Scatter` per cell just to catch clicks) worked but
+was fragile — it stacked on top of reversed axes, square-cell anchoring, and paper-referenced
+annotations, all of which are places where the click round-trip can stop lining up.
+
+Rather than keep patching that layer, moved the app to **Dash**, where a heatmap emits
+`clickData` natively and a callback reads the clicked cell directly — the pattern Dash is
+built for. This also fits where the app is heading: as more linked panels get added (real
+forecast snapshots, richer per-cell detail), Dash's explicit input→output callbacks handle
+interdependent panels more cleanly than Streamlit's top-to-bottom rerun model.
+
+What changed:
+- `app.py` rewritten as a Dash app. The invisible-scatter click hack is gone; the matrix is
+  a plain `dcc.Graph` heatmap, and a `clickData` callback drives the snapshot panel and notes.
+- `data.py` and `snapshot.py` carried over almost untouched — they only ever built pandas
+  frames and `go.Figure` objects, which are framework-agnostic. The one Streamlit coupling was
+  `@st.cache_data` on `load_metrics`; swapped it for stdlib `functools.cache`, keeping the same
+  `version`-based cache-busting for the reload button.
+- Dependencies: the `app` extra now pulls `dash` instead of `streamlit`.
+- Run command is now `uv run --extra app python app/app.py` (was `streamlit run app/app.py`).
+
+Verified end-to-end: the server boots and serves, the matrix renders as a single heatmap
+trace (no scatter overlay), and a simulated cell click populates the snapshot figure and
+case notes while toggling the panel's visibility. The snapshot data is still the seeded
+placeholder from the prior work — the pipeline doesn't persist per-origin forecasts yet — so
+that stays scaffolding, but the click path it hangs off is now solid.
+
+One known limit of the reload button: it re-reads the parquet and redraws with the current
+filters, so new cases within existing domains/families show up, but a brand-new domain or
+family won't appear in the filter widgets until the app is restarted.
+
 ## 2026-07-09 — Two app bugs found on first real-browser test, both pre-existing
 
 First manual, real-browser test of the results-matrix app surfaced two bugs, neither
