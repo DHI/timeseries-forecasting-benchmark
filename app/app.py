@@ -84,7 +84,40 @@ def _group_labels(ordered_keys: list[str], key_of: dict[str, str]) -> list[tuple
     return labels
 
 
-def render_matrix(df, metric: str, case_ids: list[str], methods: list[str]) -> go.Figure:
+def _selection_shapes(
+    selection: dict | None, row_order: list[str], col_order: list[str]
+) -> list[dict]:
+    """Outline shapes for the selected case's clicked cells, one per selected method,
+    colour-matched to that method's chip/forecast line (see `_method_chips`)."""
+    selection = selection or {}
+    case_id, methods = selection.get("case_id"), selection.get("methods") or []
+    if case_id not in row_order:
+        return []
+    y = row_order.index(case_id)
+    shapes = []
+    for i, method in enumerate(methods):
+        if method not in col_order:
+            continue
+        x = col_order.index(method)
+        color = METHOD_COLORS[i % len(METHOD_COLORS)]
+        shapes.append(
+            {
+                "type": "rect",
+                "x0": x - 0.5,
+                "x1": x + 0.5,
+                "y0": y - 0.5,
+                "y1": y + 0.5,
+                "line": {"color": color, "width": 3},
+                "fillcolor": "rgba(0,0,0,0)",
+                "layer": "above",
+            }
+        )
+    return shapes
+
+
+def render_matrix(
+    df, metric: str, case_ids: list[str], methods: list[str], selection: dict | None = None
+) -> go.Figure:
     df_metric = df[
         (df["metric"] == metric) & df["case_id"].isin(case_ids) & df["method"].isin(methods)
     ]
@@ -131,11 +164,12 @@ def render_matrix(df, metric: str, case_ids: list[str], methods: list[str]) -> g
         textfont={"size": 10},
         customdata=customdata,
         hovertemplate=(
-            "<b>%{y}</b> x <b>%{x}</b><br>"
-            f"{metric}: %{{z:{_d3_format(fmt)}}}<br>"
-            "status: %{customdata[0]}<br>"
-            "n_origins: %{customdata[1]}<br>"
-            "frac_finite_test: %{customdata[2]}<br>"
+            "<b>%{y}</b><br>"
+            "method: %{x}<br>"
+            # f"{metric}: %{{z:{_d3_format(fmt)}}}<br>"
+            # "status: %{customdata[0]}<br>"
+            # "n_origins: %{customdata[1]}<br>"
+            # "frac_finite_test: %{customdata[2]}<br>"
             "runtime: %{customdata[3]}<br>"
             "horizon: %{customdata[4]}"
             "<extra></extra>"
@@ -167,6 +201,8 @@ def render_matrix(df, metric: str, case_ids: list[str], methods: list[str]) -> g
         fig.add_shape(type="line", x0=-0.5, x1=n_cols - 0.5, y0=y, y1=y, line=boundary_line)
     for x in _group_boundaries(col_order, family_of):
         fig.add_shape(type="line", x0=x, x1=x, y0=-0.5, y1=n_rows - 0.5, line=boundary_line)
+    for shape in _selection_shapes(selection, row_order, col_order):
+        fig.add_shape(**shape)
 
     for pos, label in _group_labels(col_order, family_of):
         fig.add_annotation(
@@ -368,8 +404,9 @@ app.layout = html.Div(
     Input("domains", "value"),
     Input("families", "value"),
     Input("reload-btn", "n_clicks"),
+    Input("snapshot-selection", "data"),
 )
-def update_matrix(metric, domains, families, n_reload):
+def update_matrix(metric, domains, families, n_reload, selection):
     df = load_metrics(n_reload or 0)
     if not metric or not domains or not families:
         return _empty_fig("Select a metric, at least one domain, and one method family.")
@@ -377,7 +414,7 @@ def update_matrix(metric, domains, families, n_reload):
     methods = sorted(df.loc[df["family"].isin(families), "method"].unique())
     if not case_ids or not methods:
         return _empty_fig("No cases or methods match the current filters.")
-    return render_matrix(df, metric, case_ids, methods)
+    return render_matrix(df, metric, case_ids, methods, selection)
 
 
 def _method_chips(methods: list[str]) -> list:
