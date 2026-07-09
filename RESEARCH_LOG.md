@@ -8,6 +8,52 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-09 — Persist real per-origin forecasts and overlay methods in the results app
+
+The results-matrix app drew forecast snapshots from seeded random placeholders because the
+eval pipeline only ever saved metrics, not the forecasts behind them. This replaces the
+placeholders with the real predictions and adds a way to compare methods on the same case.
+
+What changed on the compute side:
+- `run_case_rolling` already refits each method at a set of rolling origins spread across the
+  test period and forecasts the full horizon at each, then threw those series away after
+  pooling the errors into the matrix metrics. It now keeps them and returns them next to the
+  metrics as a tidy frame: `(case_id, method, origin_id, origin_ds, ds, y_hat)`. The full
+  horizon is kept (before the observed-point mask), so a forecast line stays continuous even
+  where the actual has gaps.
+- The pilot writes these to `results/pilot_snapshots.parquet`, saved incrementally like the
+  metrics so a long run is never all-or-nothing. Single hold-out (`--fast`) runs don't emit
+  snapshots; the viewer shows a short note for those cases instead.
+- The origins are chosen once per case, before the method loop, so `origin_id`/`origin_ds`
+  match across methods. That shared origin set is what lets the app line up several methods'
+  forecasts on the same panel.
+
+What changed in the app:
+- The snapshot panel now shows each case's real curated actual with one predicted line per
+  selected method. Panels are laid out on a grid capped at three columns that stacks rows
+  until every stored origin is shown (eight origins → a 3×3 grid).
+- Clicking cells along a matrix row (same case, different methods) adds each method's forecast
+  to the same panels, colour-coded, with a removable chip per method and a Clear button. A
+  click in a different row resets to that case. Removal goes through the chips rather than a
+  second click on the cell, because Plotly doesn't re-fire `clickData` when you click the same
+  cell twice — so re-click toggling can't be relied on.
+- Actuals are reloaded from the case's curated series rather than copied into the snapshot
+  artifact, so the target series stays in one place. The app already loads each case for its
+  frequency and horizon, so this adds only a parquet read.
+
+Design note: the actuals-live-vs-stored choice was the main fork. Storing them would make
+`results/` self-contained and shareable without the curated data, at the cost of duplicating
+the target. Since the app runs inside the repo, where the curated data is already present, the
+no-duplication option won.
+
+Verified: the full test suite passes (the rolling test now unpacks the tuple and checks that
+origins align across methods); the snapshot renderer produces the expected grid, traces, and
+legend for single- and multi-method selections and a clean note when a case has no stored
+forecasts; the selection logic was pulled into a pure `next_selection` helper and checked
+across the accumulate / toggle-off / reset-on-new-row / chip-remove / clear paths; and the
+Dash server boots and serves its layout and callback graph. A fresh pilot run regenerates the
+snapshot artifact so the app shows real forecasts.
+
 ## 2026-07-09 — Moved the results-matrix app from Streamlit to Dash
 
 The results-matrix app was built on Streamlit + Plotly, and cell-click-to-snapshot was the
