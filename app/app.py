@@ -35,6 +35,11 @@ from data import (
 )
 from tsforecastbench.bench.viz import METRIC_CONFIG
 
+# Pixel size of one heatmap cell — also used to pin the case-panel's height to the
+# heatmap's, so the panel never leaves whitespace above the forecast-snapshot panel below.
+CELL = 42
+MATRIX_MARGIN = 120
+
 DOMAIN_KEY_DICT = {
     "groundwater": "GrW",
     "hydrology": "Hyd",
@@ -123,7 +128,9 @@ def _selection_shapes(
 
 def render_matrix(
     df, metric: str, case_ids: list[str], methods: list[str], selection: dict | None = None
-) -> go.Figure:
+) -> tuple[go.Figure, int]:
+    """Returns the heatmap figure plus its row count, so callers can pin sibling
+    elements (the case panel) to the same rendered height."""
     df_metric = df[
         (df["metric"] == metric) & df["case_id"].isin(case_ids) & df["method"].isin(methods)
     ]
@@ -245,10 +252,9 @@ def render_matrix(
     # Size the figure so square cells fill the plot area exactly: with the height fixed
     # at CELL*n_rows (plus title margins), matching the width to CELL*n_cols leaves no
     # centering gap, so the colorbar and the group titles sit flush against the grid.
-    cell = 42
     fig.update_layout(
-        height=cell * n_rows + 120,
-        width=cell * n_cols + 170,
+        height=CELL * n_rows + MATRIX_MARGIN,
+        width=CELL * n_cols + 170,
         margin={"l": 90, "t": 40, "r": 80, "b": 80},
         paper_bgcolor="white",
         plot_bgcolor="white",
@@ -268,7 +274,7 @@ def render_matrix(
     )
     fig.update_xaxes(showticklabels=False)
     fig.update_yaxes(showticklabels=False)
-    return fig
+    return fig, n_rows
 
 
 def _empty_fig(message: str) -> go.Figure:
@@ -310,10 +316,17 @@ _SIDEBAR_STYLE = {
     "boxSizing": "border-box",
 }
 _LABEL_STYLE = {"fontWeight": "bold", "marginTop": "16px", "display": "block"}
+
+# The row holding the matrix and the case panel; `update_matrix` pins its height in
+# px to match the matrix's own rendered height (see CELL/MATRIX_MARGIN), so the case
+# panel — which has no natural height of its own — stretches to exactly that height
+# instead of growing to fit a long case summary and leaving a gap above the
+# forecast-snapshot panel below.
+_MATRIX_ROW_STYLE = {"display": "flex", "gap": "16px", "alignItems": "stretch"}
+
 # Grows to fill whatever width is left next to the matrix (no fixed width, so no
-# leftover blank strip on the right), but is capped in height so a long case summary
-# scrolls inside the panel instead of pushing the panel past the matrix's height and
-# displacing the forecast-snapshot panel below it.
+# leftover blank strip on the right). `maxHeight` is just a safety net for
+# pathologically large grids; height is normally set by the stretch above.
 _CASE_PANEL_STYLE = {
     "flex": "1 1 380px",
     "minWidth": "320px",
@@ -392,7 +405,8 @@ app.layout = html.Div(
                     style={"color": "#444", "maxWidth": "1000px"},
                 ),
                 html.Div(
-                    style={"display": "flex", "gap": "16px", "alignItems": "stretch"},
+                    id="matrix-row",
+                    style=_MATRIX_ROW_STYLE,
                     children=[
                         dcc.Graph(id="matrix", config=_MATRIX_CONFIG),
                         html.Div(
@@ -512,6 +526,7 @@ app.layout = html.Div(
 
 @app.callback(
     Output("matrix", "figure"),
+    Output("matrix-row", "style"),
     Input("metric", "value"),
     Input("domains", "value"),
     Input("families", "value"),
@@ -521,12 +536,16 @@ app.layout = html.Div(
 def update_matrix(metric, domains, families, n_reload, selection):
     df = load_metrics(n_reload or 0)
     if not metric or not domains or not families:
-        return _empty_fig("Select a metric, at least one domain, and one method family.")
-    case_ids = sorted(df.loc[df["domain"].isin(domains), "case_id"].unique())
-    methods = sorted(df.loc[df["family"].isin(families), "method"].unique())
-    if not case_ids or not methods:
-        return _empty_fig("No cases or methods match the current filters.")
-    return render_matrix(df, metric, case_ids, methods, selection)
+        fig = _empty_fig("Select a metric, at least one domain, and one method family.")
+    else:
+        case_ids = sorted(df.loc[df["domain"].isin(domains), "case_id"].unique())
+        methods = sorted(df.loc[df["family"].isin(families), "method"].unique())
+        if not case_ids or not methods:
+            fig = _empty_fig("No cases or methods match the current filters.")
+        else:
+            fig, n_rows = render_matrix(df, metric, case_ids, methods, selection)
+            return fig, {**_MATRIX_ROW_STYLE, "height": f"{CELL * n_rows + MATRIX_MARGIN}px"}
+    return fig, {**_MATRIX_ROW_STYLE, "height": f"{fig.layout.height}px"}
 
 
 def _method_chips(methods: list[str]) -> list:
