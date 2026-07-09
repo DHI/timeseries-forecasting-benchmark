@@ -146,6 +146,22 @@ def render_matrix(df, metric: str, case_ids: list[str], methods: list[str]) -> g
 
     fig = go.Figure(go.Heatmap(**heatmap_kwargs))
 
+    # Plotly's Heatmap trace has no `selectPoints` module, so it can never emit a
+    # selection event — Streamlit's on_select would never fire for a click on a cell.
+    # Overlay an invisible, selectable Scatter marker per cell (same categorical grid) so
+    # clicks land on something that supports selection; it carries no visual weight.
+    fig.add_trace(
+        go.Scatter(
+            x=[x for _ in row_order for x in col_order],
+            y=[y for y in row_order for _ in col_order],
+            mode="markers",
+            marker={"size": 24, "color": "rgba(0,0,0,0)"},
+            hoverinfo="skip",
+            showlegend=False,
+            name="_click_target",
+        )
+    )
+
     n_rows, n_cols = len(row_order), len(col_order)
     domain_of = df_metric.drop_duplicates("case_id").set_index("case_id")["domain"].to_dict()
     family_of = df_metric.drop_duplicates("method").set_index("method")["family"].to_dict()
