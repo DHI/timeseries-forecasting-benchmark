@@ -146,25 +146,35 @@ def main() -> int:
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     all_results = []
+    all_snapshots = []
     for case in cases:
         print(
             f"=== {case.id} ({case.domain}, freq={case.freq}, horizon={case.horizon_primary}) ==="
         )
         try:
             if args.fast:
+                # Single hold-out doesn't emit per-origin snapshots; the viewer degrades
+                # to a "no forecast stored" note for these cases.
                 res = run_case(case, methods, prefer_synth=args.synth)
+                snaps = None
             else:
-                res = run_case_rolling(
+                res, snaps = run_case_rolling(
                     case, methods, n_origins=args.origins, prefer_synth=args.synth
                 )
         except Exception as exc:  # keep a long unattended run going if one case fails
             print(f"  [case-error] {case.id}: {type(exc).__name__}: {exc}")
             continue
         all_results.append(res)
+        if snaps is not None and not snaps.empty:
+            all_snapshots.append(snaps)
         # incremental save so a multi-hour run is never all-or-nothing
         pd.concat(all_results, ignore_index=True).to_parquet(
             RESULTS_DIR / "pilot_metrics.parquet", index=False
         )
+        if all_snapshots:
+            pd.concat(all_snapshots, ignore_index=True).to_parquet(
+                RESULTS_DIR / "pilot_snapshots.parquet", index=False
+            )
         print()
 
     if not all_results:
@@ -172,6 +182,10 @@ def main() -> int:
         return 1
     results = pd.concat(all_results, ignore_index=True)
     results.to_parquet(RESULTS_DIR / "pilot_metrics.parquet", index=False)
+    if all_snapshots:
+        pd.concat(all_snapshots, ignore_index=True).to_parquet(
+            RESULTS_DIR / "pilot_snapshots.parquet", index=False
+        )
 
     render_matrix(
         results,
@@ -197,6 +211,9 @@ def main() -> int:
 
     print(f"\nWrote results to {RESULTS_DIR.relative_to(REPO_ROOT)}/")
     print(f"  pilot_metrics.parquet ({len(results)} rows)")
+    if all_snapshots:
+        n_snap = sum(len(s) for s in all_snapshots)
+        print(f"  pilot_snapshots.parquet ({n_snap} rows)")
     print("  pilot_matrix_MASE.png, pilot_matrix_skill.png, pilot_matrix_skill_vs_mean.png")
     return 0
 

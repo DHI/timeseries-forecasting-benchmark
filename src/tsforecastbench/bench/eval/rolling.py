@@ -47,19 +47,30 @@ def _select_rolling_origins(
     return [valid[i] for i in idx]
 
 
+SNAPSHOT_COLUMNS = ("case_id", "method", "origin_id", "origin_ds", "ds", "y_hat")
+
+
 def run_case_rolling(
     case: Case,
     methods: list[Forecaster],
     n_origins: int = DEFAULT_ORIGINS,
     prefer_synth: bool = False,
-) -> pd.DataFrame:
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Rolling-origin scores for the cases x methods matrix — robust to single-window luck.
 
     Each method is refit at `n_origins` cutoffs spread across the test period and forecasts
     the primary horizon; errors are POOLED across all origins x leads (observed points only)
-    and the matrix metrics computed once on the pool. Returns the same tidy record shape as
-    `loop.run_case` (case_id, domain, method, horizon, metric, value, seconds,
-    frac_finite_test, status) so the matrix renderer is unchanged.
+    and the matrix metrics computed once on the pool.
+
+    Returns `(metrics, snapshots)`:
+    - `metrics` keeps the tidy record shape of `loop.run_case` (case_id, domain, method,
+      horizon, metric, value, seconds, frac_finite_test, status) so the matrix renderer is
+      unchanged.
+    - `snapshots` holds every origin's full predicted series (columns `SNAPSHOT_COLUMNS`:
+      case_id, method, origin_id, origin_ds, ds, y_hat) so the results viewer can draw real
+      forecasts. Origins are case-level, so `origin_id`/`origin_ds` align across methods,
+      which is what lets the viewer overlay several methods on one origin's panel. A method
+      that errors contributes no snapshot rows (its metrics row still records the failure).
     """
     df = case.load(prefer_synth=prefer_synth, curated=True)
     splits = case.split_frame(df)
@@ -87,16 +98,33 @@ def run_case_rolling(
 
     metric_names = ("MAE", "RMSE", "MASE", "Skill_vs_Persistence", "Skill_vs_Mean")
     records: list[dict] = []
+    snap_frames: list[pd.DataFrame] = []
     for method in methods:
         t0 = time.perf_counter()
         a, p, ref_p, ref_m = [], [], [], []  # pooled actual, pred, persistence, mean
+        method_snaps: list[pd.DataFrame] = []
         n_ok = 0
         try:
-            for o in origins:
+            for i, o in enumerate(origins):
                 history = full_fit.iloc[:o]
                 fexog = full_fit.iloc[o : o + H][["ds", *exo_present]] if exo_present else None
                 method.fit(case, history)
-                y_hat = method.predict(case, history, H, future_exog=fexog)["y_hat"].to_numpy(float)
+                preds = method.predict(case, history, H, future_exog=fexog)
+                y_hat = preds["y_hat"].to_numpy(float)
+                # Keep the full predicted series (all H steps, before masking) so the viewer
+                # draws a continuous forecast line even where the actual has gaps.
+                method_snaps.append(
+                    pd.DataFrame(
+                        {
+                            "case_id": case.id,
+                            "method": method.name,
+                            "origin_id": i,
+                            "origin_ds": full_fit["ds"].iloc[o],
+                            "ds": preds["ds"].to_numpy(),
+                            "y_hat": y_hat,
+                        }
+                    )
+                )
                 actual = raw_y[o : o + H]
                 m = np.isfinite(actual)
                 if not m.any():
@@ -123,6 +151,7 @@ def run_case_rolling(
                 "Skill_vs_Mean": 1.0 - mse / float(np.mean((a - ref_m) ** 2)),
             }
             status = "ok"
+            snap_frames.extend(method_snaps)
         except Exception as exc:
             metrics = {k: float("nan") for k in metric_names}
             status = f"error: {type(exc).__name__}: {str(exc)[:70]}"
@@ -145,7 +174,12 @@ def run_case_rolling(
                 }
             )
         print(f"  {method.name:>18s}: {status[:50]:<50s} ({n_ok} origins, {seconds:.1f}s)")
-    return pd.DataFrame(records)
+    snapshots = (
+        pd.concat(snap_frames, ignore_index=True)
+        if snap_frames
+        else pd.DataFrame(columns=list(SNAPSHOT_COLUMNS))
+    )
+    return pd.DataFrame(records), snapshots
 
 
 def run_leadtime_curve(
