@@ -17,10 +17,16 @@ import numpy as np
 import plotly.graph_objects as go
 from dash import ALL, Dash, Input, Output, State, ctx, dcc, html
 from dash.exceptions import PreventUpdate
-from snapshot import METHOD_COLORS, render_snapshots
+from snapshot import (
+    METHOD_COLORS,
+    TRAINING_TAIL_N,
+    render_snapshots,
+    render_training_snapshot,
+)
 
 from data import (
     FAMILY_ORDER,
+    case_summary,
     load_case_notes,
     load_metrics,
     load_snapshots,
@@ -304,6 +310,21 @@ _SIDEBAR_STYLE = {
     "boxSizing": "border-box",
 }
 _LABEL_STYLE = {"fontWeight": "bold", "marginTop": "16px", "display": "block"}
+# Grows to fill whatever width is left next to the matrix (no fixed width, so no
+# leftover blank strip on the right), but is capped in height so a long case summary
+# scrolls inside the panel instead of pushing the panel past the matrix's height and
+# displacing the forecast-snapshot panel below it.
+_CASE_PANEL_STYLE = {
+    "flex": "1 1 380px",
+    "minWidth": "320px",
+    "maxHeight": "calc(100vh - 220px)",
+    "paddingLeft": "16px",
+    "borderLeft": "1px solid #ddd",
+    "boxSizing": "border-box",
+    "display": "flex",
+    "flexDirection": "column",
+    "minHeight": "0",
+}
 
 # Locks the heatmap down to a read-only view: keeps the click-to-select and
 # hover interactions the app depends on, but strips every pan/zoom/select tool
@@ -370,7 +391,58 @@ app.layout = html.Div(
                     "runtime.",
                     style={"color": "#444", "maxWidth": "1000px"},
                 ),
-                dcc.Graph(id="matrix", config=_MATRIX_CONFIG),
+                html.Div(
+                    style={"display": "flex", "gap": "16px", "alignItems": "stretch"},
+                    children=[
+                        dcc.Graph(id="matrix", config=_MATRIX_CONFIG),
+                        html.Div(
+                            id="case-panel",
+                            style={**_CASE_PANEL_STYLE, "display": "none"},
+                            children=[
+                                html.H3(
+                                    id="case-panel-title",
+                                    style={"flex": "0 0 auto", "margin": "0 0 4px 0"},
+                                ),
+                                html.P(
+                                    f"Training data (last {TRAINING_TAIL_N:,} points)",
+                                    style={
+                                        "color": "#666",
+                                        "fontSize": "0.85em",
+                                        "marginBottom": "4px",
+                                        "flex": "0 0 auto",
+                                    },
+                                ),
+                                dcc.Graph(
+                                    id="case-training-graph",
+                                    config={"displayModeBar": False},
+                                    style={"flex": "0 0 auto", "width": "100%"},
+                                ),
+                                html.Hr(style={"flex": "0 0 auto", "width": "100%"}),
+                                html.P(
+                                    "Case summary",
+                                    style={
+                                        "color": "#666",
+                                        "fontSize": "0.9em",
+                                        "flex": "0 0 auto",
+                                    },
+                                ),
+                                # Fixed above, scrollable below: the training plot always
+                                # stays in view, and a long case summary scrolls in its
+                                # own box instead of pushing the panel past the matrix's
+                                # height into the forecast-snapshot panel underneath.
+                                html.Div(
+                                    id="case-summary",
+                                    style={
+                                        "flex": "1 1 auto",
+                                        "minHeight": "0",
+                                        "overflowY": "auto",
+                                        "paddingRight": "8px",
+                                    },
+                                ),
+                            ],
+                        ),
+                    ],
+                ),
                 html.P(
                     "Click a cell to see its forecast snapshots and case "
                     "notes below; click more cells in the same row to stack their "
@@ -546,6 +618,27 @@ def update_selection(click_data, clear_clicks, chip_clicks, sel):
     click in a different row resets to that case; chip clicks and Clear remove methods.
     """
     return next_selection(ctx.triggered_id, ctx.triggered[0]["value"], click_data, sel)
+
+
+@app.callback(
+    Output("case-panel-title", "children"),
+    Output("case-training-graph", "figure"),
+    Output("case-summary", "children"),
+    Output("case-panel", "style"),
+    Input("snapshot-selection", "data"),
+)
+def render_case_panel(sel):
+    """Right-hand panel: a training-data snapshot and case metadata for the clicked
+    cell's case. Depends only on `case_id`, so it stays open across method chip clicks."""
+    case_id = (sel or {}).get("case_id")
+    if not case_id:
+        return "", go.Figure(), "", {**_CASE_PANEL_STYLE, "display": "none"}
+    return (
+        case_id,
+        render_training_snapshot(case_id),
+        dcc.Markdown(case_summary(case_id)),
+        {**_CASE_PANEL_STYLE, "display": "flex"},
+    )
 
 
 @app.callback(

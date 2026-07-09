@@ -20,9 +20,11 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+from data import load_case_training_tail
 from tsforecastbench.data.registry import get_case
 
 MAX_COLS = 3
+TRAINING_TAIL_N = 1000
 
 ACTUAL_COLOR = "black"
 # Method identity is the thing being compared across overlaid lines, so colour encodes it
@@ -53,6 +55,42 @@ def _empty_fig(message: str) -> go.Figure:
         paper_bgcolor="white",
         xaxis={"visible": False},
         yaxis={"visible": False},
+    )
+    return fig
+
+
+def render_training_snapshot(case_id: str, n: int = TRAINING_TAIL_N) -> go.Figure:
+    """Quick-look line plot of the case's last `n` training-split points — shown in the
+    side panel independent of any method selection."""
+    df = load_case_training_tail(case_id, n)
+    if df.empty:
+        return _empty_fig(f"No training data available for {case_id}.")
+    fig = go.Figure(
+        go.Scatter(
+            x=df["ds"],
+            y=df["y"],
+            mode="lines",
+            line={"color": ACTUAL_COLOR, "width": 1.5},
+        )
+    )
+    fig.update_xaxes(
+        showgrid=False, zeroline=False, showline=True, linecolor="black", ticks="outside"
+    )
+    fig.update_yaxes(
+        showgrid=False,
+        zeroline=False,
+        showline=True,
+        linecolor="black",
+        ticks="outside",
+        automargin=True,
+    )
+    fig.update_layout(
+        autosize=True,
+        height=260,
+        margin={"l": 0, "t": 10, "r": 10, "b": 40},
+        plot_bgcolor="white",
+        paper_bgcolor="white",
+        font={"family": "system-ui, sans-serif"},
     )
     return fig
 

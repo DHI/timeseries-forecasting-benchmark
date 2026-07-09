@@ -16,6 +16,7 @@ from pathlib import Path
 import pandas as pd
 
 from tsforecastbench.bench import methods as _methods
+from tsforecastbench.data.registry import get_case
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 RESULTS_DIR = REPO_ROOT / "results"
@@ -111,3 +112,34 @@ def load_case_notes(case_id: str) -> str | None:
     if not path.exists():
         return None
     return path.read_text()
+
+
+@cache
+def load_case_training_tail(case_id: str, n: int = 1000) -> pd.DataFrame:
+    """Last `n` points of the case's training split (curated), for a quick-look plot.
+
+    Cached: like the case's curated data itself, this is static for the process lifetime.
+    """
+    case = get_case(case_id)
+    train = case.split_frame(case.load(curated=True))["train"]
+    return train.tail(n)[["ds", "y"]].reset_index(drop=True)
+
+
+def case_summary(case_id: str) -> str:
+    """Markdown summary of a case's static metadata: domain, target, horizon, exogenous
+    inputs, and data source — the config in `case.toml`, not anything measured."""
+    case = get_case(case_id)
+    exo = f"{len(case.exogenous)} ({case.exo_tier})" if case.exogenous else "none"
+    source = case.source.name
+    if case.source.url:
+        source = f"[{source}]({case.source.url})"
+    lines = [
+        f"**Domain**: {case.domain.replace('_', ' ')}",
+        f"**Target**: `{case.target}`" + (f" ({case.target_unit})" if case.target_unit else ""),
+        f"**Frequency**: `{case.freq}`  ·  **Horizon**: `{case.horizon_primary}`",
+        f"**Exogenous inputs**: {exo}",
+        f"**Source**: {source}",
+    ]
+    if case.notes:
+        lines += ["", case.notes]
+    return "\n\n".join(lines)

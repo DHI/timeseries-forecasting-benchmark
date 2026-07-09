@@ -8,6 +8,17 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-09 — Added a case-context side panel to the results-matrix app
+
+Clicking a matrix cell now opens a right-hand panel next to the matrix, separate from the
+existing forecast-snapshot panel below it, showing the last 1,000 points of that case's
+training split and a summary of the case's static config (domain, target, frequency, horizon,
+exogenous inputs, source). The point cap keeps the plot fast on long series; there's no
+existing formatter for `Case` metadata elsewhere in the codebase, so `app/data.py` gained a
+small `case_summary()` that reads straight off the `Case` model rather than any generated
+report. The panel only depends on the clicked case, so it stays open across method-chip clicks
+that change the row's overlay selection.
+
 ## 2026-07-09 — Locked down the results-matrix heatmap to click-and-download only
 
 The matrix heatmap is the app's centerpiece, so it's now locked against pan, zoom, box/lasso
