@@ -314,6 +314,25 @@ _SIDEBAR_STYLE = {
     "padding": "16px",
     "borderRight": "1px solid #ddd",
     "boxSizing": "border-box",
+    "overflow": "hidden",
+}
+# Collapsed state keeps the div mounted (so dropdown state survives) but reclaims its
+# width for the matrix/snapshot panels.
+_SIDEBAR_COLLAPSED_STYLE = {
+    **_SIDEBAR_STYLE,
+    "width": "0px",
+    "flex": "0 0 0px",
+    "padding": "0px",
+    "borderRight": "none",
+}
+_SIDEBAR_TOGGLE_STYLE = {
+    "flex": "0 0 auto",
+    "alignSelf": "flex-start",
+    "marginTop": "16px",
+    "border": "1px solid #ddd",
+    "background": "white",
+    "cursor": "pointer",
+    "padding": "4px 8px",
 }
 _LABEL_STYLE = {"fontWeight": "bold", "marginTop": "16px", "display": "block"}
 
@@ -366,6 +385,7 @@ app.layout = html.Div(
     style={"display": "flex", "fontFamily": "system-ui, sans-serif"},
     children=[
         html.Div(
+            id="sidebar",
             style=_SIDEBAR_STYLE,
             children=[
                 html.H3("Controls"),
@@ -392,6 +412,13 @@ app.layout = html.Div(
                     multi=True,
                 ),
             ],
+        ),
+        html.Button(
+            "◀",
+            id="sidebar-toggle",
+            n_clicks=0,
+            title="Collapse/expand controls",
+            style=_SIDEBAR_TOGGLE_STYLE,
         ),
         html.Div(
             style={"flex": "1", "padding": "16px", "minWidth": "0"},
@@ -522,6 +549,17 @@ app.layout = html.Div(
         ),
     ],
 )
+
+
+@app.callback(
+    Output("sidebar", "style"),
+    Output("sidebar-toggle", "children"),
+    Input("sidebar-toggle", "n_clicks"),
+)
+def toggle_sidebar(n_clicks):
+    collapsed = (n_clicks or 0) % 2 == 1
+    style = _SIDEBAR_COLLAPSED_STYLE if collapsed else _SIDEBAR_STYLE
+    return style, "▶" if collapsed else "◀"
 
 
 def _n_rows_for(df, metric: str, case_ids: list[str], methods: list[str]) -> int:
