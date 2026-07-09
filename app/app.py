@@ -301,7 +301,7 @@ def _family_options(df) -> list[str]:
     )
 
 
-app = Dash(__name__, title="Benchmark results matrix")
+app = Dash(__name__, title="Timeseries Forecasting Benchmark")
 
 _df0 = load_metrics(0)
 _metric_options = [m for m in METRIC_CONFIG if m in _df0["metric"].unique()]
@@ -423,12 +423,16 @@ app.layout = html.Div(
         html.Div(
             style={"flex": "1", "padding": "16px", "minWidth": "0"},
             children=[
-                html.H1("Benchmark results matrix"),
+                html.H1("Timeseries Forecasting Benchmark"),
                 html.P(
-                    "Each cell is one case x method run, colored by the metric chosen "
-                    "on the left. Use the sidebar to filter by domain, method family, "
-                    "or metric. Hover a cell for its exact value, run status, and "
-                    "runtime.",
+                    "The following matrix compiles the forecasting results of multiple methods across a variety of timeseries in different water domains. "
+                    "Each cell represents one case x method run, colored by the metric chosen in the left sidebar. In addition, you can use the control panel in the sidebar to filter by domain, method family, ",
+                    style={"color": "#444", "maxWidth": "1000px"},
+                ),
+                html.P(" "),
+                html.P(
+                    "Click a cell to get more details on the training data, and explore forecast snapshots. "
+                    "You can click multiple cells in the same row to stack their forecasts on the same plot for comparison.",
                     style={"color": "#444", "maxWidth": "1000px"},
                 ),
                 html.Div(
@@ -483,12 +487,6 @@ app.layout = html.Div(
                             ],
                         ),
                     ],
-                ),
-                html.P(
-                    "Click a cell to see its forecast snapshots and case "
-                    "notes below; click more cells in the same row to stack their "
-                    "forecasts on the same plot for comparison.",
-                    style={"color": "#444", "maxWidth": "1000px"},
                 ),
                 html.Hr(),
                 dcc.Store(id="snapshot-selection", data={"case_id": None, "methods": []}),
