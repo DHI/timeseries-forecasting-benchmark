@@ -20,8 +20,12 @@ from tsforecastbench.bench.viz import METRIC_CONFIG
 DOMAIN_KEY_DICT = {
     "groundwater": "GrW",
     "hydrology": "Hyd",
+    "spectral_waves": "SpW",
+    "storm_surge": "StS",
     "urban_drainage": "UrD",
+    "wastewater_treatment": "WaT",
     "water_distribution": "WaD",
+    "water_quality": "WaQ",
 }
 
 
@@ -170,7 +174,7 @@ def render_matrix(df, metric: str, case_ids: list[str], methods: list[str]) -> g
             xref="paper",
             yref="y",
             xshift=-90,
-            text=f"<b>{DOMAIN_KEY_DICT[label]}</b>",
+            text=f"<b>{DOMAIN_KEY_DICT.get(label, label)}</b>",
             showarrow=False,
             font={"size": 14},
             textangle=-90,
