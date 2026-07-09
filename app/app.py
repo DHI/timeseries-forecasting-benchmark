@@ -132,7 +132,7 @@ def render_matrix(df, metric: str, case_ids: list[str], methods: list[str]) -> g
             "horizon: %{customdata[4]}"
             "<extra></extra>"
         ),
-        colorbar={"title": metric, "len": 0.6},
+        colorbar={"title": metric, "len": 0.6, "thickness": 16, "x": 1.0, "xanchor": "left"},
     )
     if cfg.get("center") is not None:
         center = cfg["center"]
@@ -163,30 +163,39 @@ def render_matrix(df, metric: str, case_ids: list[str], methods: list[str]) -> g
     for pos, label in _group_labels(col_order, family_of):
         fig.add_annotation(
             x=pos,
-            y=0.9,
+            y=-0.5,
             xref="x",
-            yref="paper",
-            yshift=10,
+            yref="y",
+            yanchor="bottom",
+            yshift=6,
             text=f"<b>{label.replace('_', '<br>').capitalize()}</b>",
             showarrow=False,
-            font={"size": 14},
+            font={"size": 13},
         )
     for pos, label in _group_labels(row_order, domain_of):
         fig.add_annotation(
-            x=0.05,
+            x=-0.5,
             y=pos,
-            xref="paper",
+            xref="x",
             yref="y",
-            xshift=-90,
+            xanchor="right",
+            xshift=-6,
             text=f"<b>{DOMAIN_KEY_DICT.get(label, label)}</b>",
             showarrow=False,
-            font={"size": 14},
+            font={"size": 13},
             textangle=-90,
         )
 
+    # Size the figure so square cells fill the plot area exactly: with the height fixed
+    # at CELL*n_rows (plus title margins), matching the width to CELL*n_cols leaves no
+    # centering gap, so the colorbar and the group titles sit flush against the grid.
+    cell = 42
     fig.update_layout(
-        height=max(600, 40 * n_rows + 120),
-        margin={"l": 140, "t": 60, "r": 20, "b": 80},
+        height=cell * n_rows + 120,
+        width=cell * n_cols + 170,
+        margin={"l": 90, "t": 40, "r": 80, "b": 80},
+        paper_bgcolor="white",
+        plot_bgcolor="white",
         xaxis={"side": "bottom", "tickangle": -35, "constrain": "domain"},
         yaxis={"autorange": "reversed", "scaleanchor": "x", "scaleratio": 1},
     )
@@ -354,9 +363,7 @@ def update_snapshot(click_data):
     case_id, method = point["y"], point["x"]
     notes = load_case_notes(case_id)
     notes_children = (
-        dcc.Markdown(notes)
-        if notes
-        else html.Em(f"No case_review notes found for {case_id}.")
+        dcc.Markdown(notes) if notes else html.Em(f"No case_review notes found for {case_id}.")
     )
     return (
         f"{case_id} x {method}",
