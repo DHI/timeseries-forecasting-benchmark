@@ -174,7 +174,13 @@ def render_matrix(
             "horizon: %{customdata[4]}"
             "<extra></extra>"
         ),
-        colorbar={"title": metric, "len": 0.6, "thickness": 16, "x": 1.0, "xanchor": "left"},
+        colorbar={
+            "title": metric.replace("_", "\n"),
+            "len": 0.6,
+            "thickness": 16,
+            "x": 1.0,
+            "xanchor": "left",
+        },
     )
     if cfg.get("center") is not None:
         center = cfg["center"]
@@ -240,8 +246,19 @@ def render_matrix(
         margin={"l": 90, "t": 40, "r": 80, "b": 80},
         paper_bgcolor="white",
         plot_bgcolor="white",
-        xaxis={"side": "bottom", "tickangle": -35, "constrain": "domain"},
-        yaxis={"autorange": "reversed", "scaleanchor": "x", "scaleratio": 1},
+        dragmode=False,
+        xaxis={
+            "side": "bottom",
+            "tickangle": -35,
+            "constrain": "domain",
+            "fixedrange": True,
+        },
+        yaxis={
+            "autorange": "reversed",
+            "scaleanchor": "x",
+            "scaleratio": 1,
+            "fixedrange": True,
+        },
     )
     fig.update_xaxes(showticklabels=False)
     fig.update_yaxes(showticklabels=False)
@@ -288,6 +305,29 @@ _SIDEBAR_STYLE = {
 }
 _LABEL_STYLE = {"fontWeight": "bold", "marginTop": "16px", "display": "block"}
 
+# Locks the heatmap down to a read-only view: keeps the click-to-select and
+# hover interactions the app depends on, but strips every pan/zoom/select tool
+# from the mode bar so the grid itself can't be dragged, scaled, or rearranged.
+# The download-as-png button ("toImage") is the only mode-bar tool left.
+_MATRIX_CONFIG = {
+    "displayModeBar": True,
+    "modeBarButtonsToRemove": [
+        "zoom2d",
+        "pan2d",
+        "select2d",
+        "lasso2d",
+        "zoomIn2d",
+        "zoomOut2d",
+        "autoScale2d",
+        "resetScale2d",
+    ],
+    "displaylogo": False,
+    "scrollZoom": False,
+    "doubleClick": False,
+    "showAxisDragHandles": False,
+    "showAxisRangeEntryBoxes": False,
+}
+
 app.layout = html.Div(
     style={"display": "flex", "fontFamily": "system-ui, sans-serif"},
     children=[
@@ -330,7 +370,7 @@ app.layout = html.Div(
                     "runtime.",
                     style={"color": "#444", "maxWidth": "1000px"},
                 ),
-                dcc.Graph(id="matrix"),
+                dcc.Graph(id="matrix", config=_MATRIX_CONFIG),
                 html.P(
                     "Click a cell to see its forecast snapshots and case "
                     "notes below; click more cells in the same row to stack their "

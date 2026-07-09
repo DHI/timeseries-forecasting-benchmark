@@ -8,6 +8,14 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-09 — Locked down the results-matrix heatmap to click-and-download only
+
+The matrix heatmap is the app's centerpiece, so it's now locked against pan, zoom, box/lasso
+select, and axis dragging — visitors can click a cell to open its snapshot panel or use the
+mode bar's camera icon to download a PNG, and nothing else. This is a `dcc.Graph` `config` plus
+`fixedrange`/`dragmode=False` change in `app/app.py`; the click-to-select callback needed no
+changes since `clickData` still fires normally.
+
 ## 2026-07-09 — Persist real per-origin forecasts and overlay methods in the results app
 
 The results-matrix app showed seeded placeholder forecasts because the eval pipeline only ever
