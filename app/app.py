@@ -287,7 +287,20 @@ app.layout = html.Div(
             style={"flex": "1", "padding": "16px", "minWidth": "0"},
             children=[
                 html.H1("Benchmark results matrix"),
+                html.P(
+                    "Each cell is one case x method run, colored by the metric chosen "
+                    "on the left. Use the sidebar to filter by domain, method family, "
+                    "or metric. Hover a cell for its exact value, run status, and "
+                    "runtime.",
+                    style={"color": "#444", "maxWidth": "1000px"},
+                ),
                 dcc.Graph(id="matrix"),
+                html.P(
+                    "Click a cell to see its forecast snapshots and case "
+                    "notes below; click more cells in the same row to stack their "
+                    "forecasts on the same plot for comparison.",
+                    style={"color": "#444", "maxWidth": "1000px"},
+                ),
                 html.Hr(),
                 dcc.Store(id="snapshot-selection", data={"case_id": None, "methods": []}),
                 html.Div(
