@@ -54,9 +54,7 @@ class _NFBase(Forecaster):
         # neuralforecast fits them as a panel, so no window spans a gap. The tail segment
         # (latest ds, always the last row) is the series we forecast at predict.
         self._target_uid = df["unique_id"].iloc[-1]
-        df = df.groupby("unique_id", group_keys=False, sort=False).apply(
-            lambda g: g.iloc[-_MAX_TRAIN:]
-        )
+        df = df.groupby("unique_id", sort=False).tail(_MAX_TRAIN)
         df["ds"] = _naive_ds(df["ds"]).to_numpy()
         df["y"] = pd.to_numeric(df["y"], errors="coerce")
 

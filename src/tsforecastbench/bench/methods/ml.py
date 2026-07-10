@@ -119,9 +119,7 @@ class _WindowedMLBase(Forecaster):
         # The tail segment (latest ds) is the one whose forecast we return at predict.
         self._target_uid = df["unique_id"].iloc[-1]
         if self.max_train_steps:
-            df = df.groupby("unique_id", group_keys=False, sort=False).apply(
-                lambda g: g.iloc[-self.max_train_steps :]
-            )
+            df = df.groupby("unique_id", sort=False).tail(self.max_train_steps)
         df["ds"] = _naive_ds(df["ds"]).to_numpy()
         for c in self._exo:
             df[c] = pd.to_numeric(df[c], errors="coerce")
