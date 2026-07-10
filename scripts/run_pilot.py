@@ -187,34 +187,48 @@ def main() -> int:
             RESULTS_DIR / "pilot_snapshots.parquet", index=False
         )
 
-    render_matrix(
-        results,
-        metric="MASE",
-        out_path=RESULTS_DIR / "pilot_matrix_MASE.png",
-        title="RK2026 pilot - MASE (lower is better)",
-        method_order=method_order,
-    )
-    render_matrix(
-        results,
-        metric="Skill_vs_Persistence",
-        out_path=RESULTS_DIR / "pilot_matrix_skill.png",
-        title="RK2026 pilot - skill vs persistence (higher is better)",
-        method_order=method_order,
-    )
-    render_matrix(
-        results,
-        metric="Skill_vs_Mean",
-        out_path=RESULTS_DIR / "pilot_matrix_skill_vs_mean.png",
-        title="RK2026 pilot - skill vs mean (higher is better)",
-        method_order=method_order,
-    )
+    # Two matrices per metric: every method on the shared curated span, and a second one
+    # restricted to `is_global` methods -- see `Forecaster.is_global` in base.py. The
+    # second is currently identical in substance to filtering the first to those methods
+    # (extended history is a no-op until Phase 2's gap-aware/pooled training exists, see
+    # RESEARCH_LOG.md), but keeps the two regimes visually and artifact-wise distinct
+    # from the start, and starts showing real differences once that lands.
+    matrix_specs = [
+        ("MASE", "pilot_matrix_MASE", "MASE (lower is better)"),
+        ("Skill_vs_Persistence", "pilot_matrix_skill", "skill vs persistence (higher is better)"),
+        ("Skill_vs_Mean", "pilot_matrix_skill_vs_mean", "skill vs mean (higher is better)"),
+    ]
+    global_results = results[results["is_global"]]
+    global_method_order = [m for m in method_order if m in global_results["method"].unique()]
+
+    written = []
+    for metric, stem, label in matrix_specs:
+        render_matrix(
+            results,
+            metric=metric,
+            out_path=RESULTS_DIR / f"{stem}.png",
+            title=f"RK2026 pilot - {label}",
+            method_order=method_order,
+        )
+        written.append(f"{stem}.png")
+        if global_method_order:
+            render_matrix(
+                global_results,
+                metric=metric,
+                out_path=RESULTS_DIR / f"{stem}_global.png",
+                title=f"RK2026 pilot - {label} (is_global methods, extended-history split)",
+                method_order=global_method_order,
+            )
+            written.append(f"{stem}_global.png")
 
     print(f"\nWrote results to {RESULTS_DIR.relative_to(REPO_ROOT)}/")
     print(f"  pilot_metrics.parquet ({len(results)} rows)")
     if all_snapshots:
         n_snap = sum(len(s) for s in all_snapshots)
         print(f"  pilot_snapshots.parquet ({n_snap} rows)")
-    print("  pilot_matrix_MASE.png, pilot_matrix_skill.png, pilot_matrix_skill_vs_mean.png")
+    if not global_method_order:
+        print("  [note] no is_global methods in this run; skipped the _global matrices")
+    print("  " + ", ".join(written))
     return 0
 
 
