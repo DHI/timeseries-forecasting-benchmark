@@ -21,6 +21,8 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 DATA_RAW = REPO_ROOT / "data" / "raw"
 DATA_PROCESSED = REPO_ROOT / "data" / "processed"
 DATA_CURATED = REPO_ROOT / "data" / "curated"
+# Extended-history frames for `Forecaster.is_global` methods (schema.py:Case.load_extended).
+DATA_CURATED_EXTENDED = REPO_ROOT / "data" / "curated_extended"
 
 REQUIRED_COLS = ("unique_id", "ds", "y")
 
@@ -143,6 +145,10 @@ class Case(BaseModel):
         return DATA_CURATED / f"{self.id}.parquet"
 
     @property
+    def curated_extended_path(self) -> Path:
+        return DATA_CURATED_EXTENDED / f"{self.id}.parquet"
+
+    @property
     def raw_dir(self) -> Path:
         return DATA_RAW / self.id
 
@@ -180,6 +186,35 @@ class Case(BaseModel):
         )
         return curated
 
+    def load_extended(self, prefer_synth: bool = False) -> pd.DataFrame:
+        """Full single-series history for `Forecaster.is_global` methods.
+
+        Gap-filled the same way as `load(curated=True)` (small gaps <= the per-case
+        ACF-derived cap), but without trimming to the tail segment: every observation
+        at or before the tail segment's `val_end` is kept, gaps larger than the cap
+        included and marked unobserved rather than used as a trim boundary. Cutting off
+        at `val_end` — not the raw series' end — keeps this frame strictly before the
+        test window every method (local or global) is scored on, so it adds history,
+        never leaks it.
+        """
+        from tsforecastbench.data.curate import curate_frame, extend_frame
+
+        if not prefer_synth and self.curated_extended_path.exists():
+            return pd.read_parquet(self.curated_extended_path)
+        raw = self.load(prefer_synth=prefer_synth)
+        exog = list(dict.fromkeys([*self.exogenous, *self.exogenous_known_future]))
+        curated, _ = curate_frame(
+            raw,
+            self.freq,
+            seasonalities=self.seasonalities,
+            horizon_primary=self.horizon_primary,
+            split_fraction=self.split_fraction,
+            exog=exog,
+        )
+        _, val_end, _ = self.split_bounds(curated)
+        extended, _ = extend_frame(raw, self.freq, cutoff=val_end, exog=exog)
+        return extended
+
     def synth(self) -> pd.DataFrame:
         mod = importlib.import_module(f"tsforecastbench.data.cases.{self.id}.synth")
         df = mod.generate(self)
@@ -196,7 +231,8 @@ class Case(BaseModel):
         t1 = pd.Timestamp(int(np.quantile(ns, f1)))
         return t0, t1
 
-    def split_frame(self, df: pd.DataFrame) -> dict[str, pd.DataFrame]:
+    def split_bounds(self, df: pd.DataFrame) -> tuple[pd.Timestamp, pd.Timestamp, pd.Timestamp]:
+        """(train_end, val_end, test_end), tz-naive UTC, from `split_mode`."""
         ds_cmp = pd.to_datetime(df["ds"])
         if ds_cmp.dt.tz is not None:
             ds_cmp = ds_cmp.dt.tz_convert("UTC").dt.tz_localize(None)
@@ -209,6 +245,13 @@ class Case(BaseModel):
             train_end = pd.Timestamp(self.splits.train_end)
             val_end = pd.Timestamp(self.splits.val_end)
             test_end = pd.Timestamp(self.splits.test_end)
+        return train_end, val_end, test_end
+
+    def split_frame(self, df: pd.DataFrame) -> dict[str, pd.DataFrame]:
+        ds_cmp = pd.to_datetime(df["ds"])
+        if ds_cmp.dt.tz is not None:
+            ds_cmp = ds_cmp.dt.tz_convert("UTC").dt.tz_localize(None)
+        train_end, val_end, test_end = self.split_bounds(df)
 
         return {
             "train": df[ds_cmp <= train_end].reset_index(drop=True),

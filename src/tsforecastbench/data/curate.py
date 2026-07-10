@@ -23,6 +23,10 @@ Two decisions, applied uniformly to every case (see RESEARCH_LOG.md):
 The materialized frame keeps a `y_observed` boolean column: `y` is complete (small gaps
 filled) so any method can fit, but scoring counts only genuinely observed points.
 
+`Forecaster.is_global` methods can use more than the shared tail segment: `extend_frame`
+applies the same small-gap fill to the full record up to the tail segment's `val_end`,
+without the segment trim, for `Case.load_extended` to serve.
+
 This module is the single source of truth for the policy. `scripts/curate_data.py`
 applies it once to write `data/curated/`; `Case.load(curated=True)` reads that, falling
 back to applying `curate_frame` on the fly when the parquet is absent.
@@ -108,6 +112,20 @@ def _horizon_steps(horizon: str, freq: str) -> int:
     return int(delta / step)
 
 
+def _fill_small_gaps(s: pd.Series, cap: int) -> pd.Series:
+    """Linearly interpolate only NaN runs of length `<= cap`; longer runs are left
+    as NaN rather than bridged."""
+    na = s.isna().to_numpy()
+    fillable = np.zeros(len(s), dtype=bool)
+    for a, b in _nan_runs(na):
+        if (b - a) <= cap:
+            fillable[a:b] = True
+    if not fillable.any():
+        return s
+    filled = s.interpolate(method="linear", limit_direction="both")
+    return s.where(~fillable, filled)
+
+
 def min_tail_length(
     seasonalities: list[int], horizon_primary: str, freq: str, split_fraction: list[float]
 ) -> int:
@@ -161,7 +179,8 @@ def curate_frame(
     seg_observed = observed[start:stop].copy()
 
     # Fill target and exogenous within the span. By construction the span holds no gap
-    # longer than `cap`, so linear interpolation fully completes the target.
+    # longer than `cap` in the *target*; exogenous columns are filled unconditionally
+    # (their own gaps aren't cap-bounded the way the target's are).
     fill_cols = ["y", *[c for c in (exog or []) if c in seg.columns]]
     n_filled = int((~seg_observed).sum())
     for c in fill_cols:
@@ -189,3 +208,67 @@ def curate_frame(
         "span_end": str(seg["ds"].iloc[-1]) if len(seg) else None,
     }
     return seg, info
+
+
+def extend_frame(
+    df: pd.DataFrame,
+    freq: str,
+    cutoff: pd.Timestamp,
+    exog: list[str] | None = None,
+    threshold: float = ACF_THRESHOLD,
+) -> tuple[pd.DataFrame, dict]:
+    """Gap-fill the full raw record up to `cutoff`, for `Forecaster.is_global` methods
+    that can use more history than the shared tail segment.
+
+    Unlike `curate_frame`, this does not trim to one contiguous segment: every gap
+    `<= cap` is filled throughout the kept range, but gaps larger than `cap` are left
+    unfilled (and marked unobserved) rather than used as a trim boundary — a
+    global-capable method sees the record's true shape, gaps and all, not a
+    stitched-together approximation of one. `cutoff` should be the tail segment's
+    `val_end`, so this frame never reaches past what the corresponding local matrix
+    holds out for testing.
+    """
+    df = df.sort_values("ds").reset_index(drop=True)
+    ds_cmp = pd.to_datetime(df["ds"])
+    if ds_cmp.dt.tz is not None:
+        ds_cmp = ds_cmp.dt.tz_convert("UTC").dt.tz_localize(None)
+    df = df[ds_cmp <= cutoff].reset_index(drop=True)
+
+    y = pd.to_numeric(df["y"], errors="coerce")
+    observed = y.notna().to_numpy()
+    if not observed.any():
+        raise ValueError(f"no observed y values at or before cutoff {cutoff}")
+    first_obs = int(np.flatnonzero(observed)[0])
+    df = df.iloc[first_obs:].copy().reset_index(drop=True)
+    observed = observed[first_obs:]
+    n_total = len(df)
+
+    cap = gap_cap(pd.to_numeric(df["y"], errors="coerce"), freq, threshold)
+
+    fill_cols = ["y", *[c for c in (exog or []) if c in df.columns]]
+    n_filled = 0
+    for c in fill_cols:
+        s = pd.to_numeric(df[c], errors="coerce")
+        filled = _fill_small_gaps(s, cap)
+        if c == "y":
+            n_filled = int((s.isna() & filled.notna()).sum())
+        if filled.isna().any():  # exogenous column that is all-NaN or gappy at the edges
+            filled = filled.ffill().bfill()
+        df[c] = filled
+
+    df["y_observed"] = observed
+
+    big_runs = [(a, b) for a, b in _nan_runs(~observed) if (b - a) > cap]
+    info = {
+        "cap": int(cap),
+        "acf_threshold": float(threshold),
+        "orig_rows": int(n_total),
+        "rows": len(df),
+        "n_observed": int(observed.sum()),
+        "n_filled": n_filled,
+        "n_big_gaps": len(big_runs),
+        "cutoff": str(cutoff),
+        "span_start": str(df["ds"].iloc[0]) if len(df) else None,
+        "span_end": str(df["ds"].iloc[-1]) if len(df) else None,
+    }
+    return df, info
