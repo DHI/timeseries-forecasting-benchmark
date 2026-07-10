@@ -8,6 +8,44 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-10 — Added an is_global capability flag and an extended-history training path (currently inert)
+
+Added `Forecaster.is_global` (`base.py`) marking methods whose architecture could use more
+data than the shared curated span — on for the ml/deep_learning/foundation_model families,
+off for baseline/classical/ensemble. Alongside it, curation now anchors the held-out tail
+segment to the record's most recent observation instead of picking the longest gap-bounded
+segment anywhere in the series — the old rule could put the test window in the middle of a
+case's history with no room to extend backward, and it changed the curated span for
+`discharge_lowland_denmark`, `sewerlevel_bellinge`, `waves_massachusetts`, and
+`wwtp_influent_n2o_350k` (their previous "longest" segment wasn't the tail one). A new
+`min_tail_length` floor makes curation fail loudly instead of silently accepting a span too
+short to use. `Case.load_extended()` and a new `data/curated_extended/` cache give
+`is_global` methods the full single-series history back to the tail segment's `val_end`,
+wired into both eval paths (`eval.loop.run_case`, and the rolling-origin path
+`run_pilot.py` actually uses by default).
+
+The finding that matters most: the tail segment is always bounded by the nearest preceding
+gap, so any case where extended history would be meaningfully longer necessarily crosses
+that same gap. Checked across all 12 cases: every one either has no gap at all (extended
+history comes out identical to what curation already used) or falls back to the shared
+curated data, because bridging a gap bigger than the per-case cap would mean either
+fabricating a value across it or letting a windowed model treat the rows on either side as
+adjacent — no method's `fit` handles gaps today. So right now `is_global` routing changes
+nothing measurable; each result row's new `used_extended_history` column reads `False`
+everywhere. That's deliberate, not a bug — it's the honest baseline for the follow-up that
+would actually deliver value: gap-aware or cross-series-pooled training, which is why
+`Forecaster.fit_pooled` exists already as an unimplemented hook. Pooling across series won't
+fix the gap problem on its own; it needs the same boundary-aware sample construction the gap
+problem needs, generalized to series boundaries too, so building that properly for pooling
+should close both at once.
+
+Nothing has been re-run yet: `results/pilot_metrics.parquet` and the matrix PNGs still
+reflect the old curation and don't have the `is_global`/`used_extended_history` columns.
+Curation itself is already regenerated and committed; `uv run python scripts/run_pilot.py`
+will refresh the results (add `--with-dl --with-nf --with-fm` for full method coverage, or
+`--fast` for a quick single hold-out check) and produce the new `pilot_matrix_*_global.png`
+files alongside the existing ones.
+
 ## 2026-07-10 — Closed out EDA figure-quality review comments (issue #36)
 
 Worked through Rocco's PR #2 figure comments (B5/B6/C3 + the WWTP figures): missing
