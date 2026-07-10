@@ -4,9 +4,34 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
+import numpy as np
 import pandas as pd
 
 from tsforecastbench.data.schema import Case
+
+
+def segment_arrays(train: pd.DataFrame, value_col: str = "y") -> tuple[list[np.ndarray], int]:
+    """Split a training frame into one array per contiguous segment (``unique_id``).
+
+    The extended-history frame an `is_global` method fits on carries several segments,
+    one per gap-bounded stretch of the record, each under its own ``unique_id`` (see
+    `tsforecastbench.bench.eval.loop._segment_extended`). Building windows across a
+    segment boundary would treat gap-separated rows as adjacent time steps, so windowed
+    methods must build them per segment instead. A plain local frame is a single
+    segment, so this returns one array and the loop below is unchanged.
+
+    Returns the per-segment value arrays in first-appearance (time) order, and the index
+    of the *tail* segment — the one containing the latest ``ds``, i.e. the segment the
+    forecast origin sits at. The tail array is what predict conditions on.
+    """
+    segs = [
+        pd.to_numeric(g[value_col], errors="coerce").to_numpy(dtype=float)
+        for _, g in train.groupby("unique_id", sort=False)
+    ]
+    uids = list(dict.fromkeys(train["unique_id"]))
+    # Frames arrive in time order with the tail segment (forecast origin) last.
+    tail_uid = train["unique_id"].iloc[-1]
+    return segs, uids.index(tail_uid)
 
 
 def lookback_for(freq: str, h: int) -> int:
@@ -31,14 +56,20 @@ class Forecaster(ABC):
     # by the results viewer to filter/group methods. "unclassified" flags a method that
     # forgot to set it, rather than silently disappearing from a family filter.
     family: str = "unclassified"
-    # Capability flag: this method's architecture can exploit more data than the shared
-    # curated span (a longer single-series history, or eventually cross-series pooling
-    # via `fit_pooled`) the way a strictly local statistical method cannot. It does NOT
-    # mean the method currently pools across series -- no method does yet, see
-    # `fit_pooled` below. The results viewer scores `is_global` methods a second time on
-    # an extended-history split into a separate matrix, alongside the shared one every
-    # method is scored on.
+    # Capability flag: this method's architecture can exploit more of a series' history
+    # than the shared curated (tail-segment) span the way a strictly local statistical
+    # method cannot. The results viewer scores `is_global` methods a second time on the
+    # extended-history fit (see `pools_segments`) in a separate matrix, alongside the
+    # shared local one every method is scored on; the gap between the two is the gain
+    # from the extra history.
     is_global: bool = False
+    # Whether `fit` actually trains on the full multi-segment extended history (as
+    # opposed to only conditioning on the tail segment). True for the methods that learn
+    # parameters from training windows/rows (ml/deep_learning/neuralforecast); False for
+    # zero-shot foundation models, which condition on the recent context and cannot
+    # bridge a gap, so extended history leaves their forecast unchanged. The eval loop
+    # runs the second (extended) fit only for `is_global and pools_segments` methods.
+    pools_segments: bool = False
 
     @abstractmethod
     def fit(self, case: Case, train: pd.DataFrame) -> None:
@@ -63,10 +94,3 @@ class Forecaster(ABC):
     def _future_index(case: Case, last_ds, horizon: int) -> pd.DatetimeIndex:
         last = pd.Timestamp(last_ds)
         return pd.date_range(start=last, periods=horizon + 1, freq=case.freq, tz="UTC")[1:]
-
-    def fit_pooled(self, series: list[tuple[Case, pd.DataFrame]]) -> None:
-        """Fit once across multiple series (true cross-series pooling), for `is_global`
-        methods whose architecture supports it. Unimplemented for every method today --
-        this is the seam future pooling work hooks into; the runner falls back to a
-        per-series `fit` call when a method doesn't override this."""
-        raise NotImplementedError(f"{type(self).__name__} does not support pooled fitting")

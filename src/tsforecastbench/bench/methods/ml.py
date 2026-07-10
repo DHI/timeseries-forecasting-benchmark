@@ -96,6 +96,7 @@ class _WindowedMLBase(Forecaster):
     name = "WindowedML"
     family = "ml"
     is_global = True
+    pools_segments = True
     max_train_steps: int | None = None
     use_exogenous: bool = False
     use_calendar: bool = False
@@ -113,8 +114,14 @@ class _WindowedMLBase(Forecaster):
         self._exo = _exo_cols(case) if self.use_exogenous else []
         cols = ["unique_id", "ds", "y", *self._exo]
         df = train[[c for c in cols if c in train.columns]].copy()
-        if self.max_train_steps and len(df) > self.max_train_steps:
-            df = df.iloc[-self.max_train_steps :]
+        # The extended-history frame carries one unique_id per contiguous segment;
+        # mlforecast treats them as separate series, so no lag feature ever spans a gap.
+        # The tail segment (latest ds) is the one whose forecast we return at predict.
+        self._target_uid = df["unique_id"].iloc[-1]
+        if self.max_train_steps:
+            df = df.groupby("unique_id", group_keys=False, sort=False).apply(
+                lambda g: g.iloc[-self.max_train_steps :]
+            )
         df["ds"] = _naive_ds(df["ds"]).to_numpy()
         for c in self._exo:
             df[c] = pd.to_numeric(df[c], errors="coerce")
@@ -150,11 +157,14 @@ class _WindowedMLBase(Forecaster):
         horizon: int,
         future_exog: pd.DataFrame | None = None,
     ) -> pd.DataFrame:
+        # Predict only the tail segment's series; with a multi-segment extended fit the
+        # other unique_ids are training-only context and their forecasts are discarded.
+        ids = [self._target_uid]
         if self._exo:
             x_df = self._future_X(case, history, horizon, future_exog)
-            preds = self._fcst.predict(h=horizon, X_df=x_df)
+            preds = self._fcst.predict(h=horizon, ids=ids, X_df=x_df)
         else:
-            preds = self._fcst.predict(h=horizon)
+            preds = self._fcst.predict(h=horizon, ids=ids)
         y_hat = preds[self._model_col].to_numpy().astype(np.float64)
         future = self._future_index(case, history["ds"].max(), horizon)
         return pd.DataFrame({"ds": future, "y_hat": y_hat})
@@ -165,7 +175,7 @@ class _WindowedMLBase(Forecaster):
         """Build the mlforecast X_df of future covariate values for the horizon."""
         last = _naive_ds(history["ds"].max()).iloc[0]
         fidx = pd.date_range(start=last, periods=horizon + 1, freq=case.freq)[1:]
-        data: dict = {"unique_id": case.id, "ds": fidx}
+        data: dict = {"unique_id": self._target_uid, "ds": fidx}
         for c in self._exo:
             fill = self._last_exo.get(c, 0.0)
             if future_exog is not None and c in future_exog.columns:

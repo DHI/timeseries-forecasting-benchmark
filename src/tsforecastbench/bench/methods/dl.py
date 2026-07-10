@@ -13,7 +13,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from tsforecastbench.bench.methods.base import Forecaster, lookback_for
+from tsforecastbench.bench.methods.base import Forecaster, lookback_for, segment_arrays
 from tsforecastbench.data.schema import Case
 
 
@@ -31,6 +31,7 @@ class DLinearForecaster(Forecaster):
     name = "DLinear"
     family = "deep_learning"
     is_global = True
+    pools_segments = True
     max_samples: int = 8000
 
     def __init__(self, lookback: int | None = None, kernel: int = 25, alpha: float = 1.0):
@@ -45,19 +46,28 @@ class DLinearForecaster(Forecaster):
 
         self._H = _horizon_to_steps(case.horizon_primary, case.freq)
         self._L = self.lookback or lookback_for(case.freq, self._H)
-        y = pd.to_numeric(train["y"], errors="coerce").to_numpy(dtype=float)
-        self._last_window = y[-self._L :]
-
         L, H = self._L, self._H
-        n = len(y) - L - H + 1
-        if n <= 10:  # too short: fall back to persistence at predict time
+
+        # Windows are built per contiguous segment (unique_id) and never across a gap; a
+        # plain local frame is a single segment, so this reduces to the original loop.
+        segs, tail = segment_arrays(train)
+        self._last_window = segs[tail][-L:]
+        counts = [max(0, len(y) - L - H + 1) for y in segs]
+        total = sum(counts)
+        if total <= 10:  # too little data: fall back to persistence at predict time
             self._model = None
             return
-        # stride so we keep at most max_samples training windows
-        stride = max(1, n // self.max_samples)
-        starts = np.arange(0, n, stride)
-        X = np.stack([y[s : s + L] for s in starts])
-        Y = np.stack([y[s + L : s + L + H] for s in starts])
+        # one shared stride across all segments so total windows stay <= max_samples
+        stride = max(1, total // self.max_samples)
+        Xs, Ys = [], []
+        for y, n in zip(segs, counts, strict=True):
+            if n <= 0:
+                continue
+            starts = np.arange(0, n, stride)
+            Xs.append(np.stack([y[s : s + L] for s in starts]))
+            Ys.append(np.stack([y[s + L : s + L + H] for s in starts]))
+        X = np.concatenate(Xs)
+        Y = np.concatenate(Ys)
         feats = self._decompose(X)
         self._model = Ridge(alpha=self.alpha).fit(feats, Y)
 

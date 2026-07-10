@@ -18,21 +18,35 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from tsforecastbench.bench.methods.base import Forecaster, lookback_for
+from tsforecastbench.bench.methods.base import Forecaster, lookback_for, segment_arrays
 from tsforecastbench.data.schema import Case
 
 _MAX_TRAIN = 20000
 _MAX_SAMPLES = 6000
 
 
-def _build_windows(y: np.ndarray, L: int, H: int):
-    n = len(y) - L - H + 1
-    if n <= 10:
+def _build_windows(segs: list[np.ndarray], L: int, H: int):
+    """Stack (input, target) windows over every segment, never across a gap.
+
+    Each segment is capped to its most recent `_MAX_TRAIN` points, then a single shared
+    stride across all segments keeps the total window count <= `_MAX_SAMPLES`. A local
+    (single-segment) frame reduces to the original one-series windowing.
+    """
+    segs = [y[-_MAX_TRAIN:] for y in segs]
+    counts = [max(0, len(y) - L - H + 1) for y in segs]
+    total = sum(counts)
+    if total <= 10:
         return None, None
-    stride = max(1, n // _MAX_SAMPLES)
-    starts = np.arange(0, n, stride)
-    X = np.stack([y[s : s + L] for s in starts]).astype(np.float32)
-    Y = np.stack([y[s + L : s + L + H] for s in starts]).astype(np.float32)
+    stride = max(1, total // _MAX_SAMPLES)
+    Xs, Ys = [], []
+    for y, n in zip(segs, counts, strict=True):
+        if n <= 0:
+            continue
+        starts = np.arange(0, n, stride)
+        Xs.append(np.stack([y[s : s + L] for s in starts]))
+        Ys.append(np.stack([y[s + L : s + L + H] for s in starts]))
+    X = np.concatenate(Xs).astype(np.float32)
+    Y = np.concatenate(Ys).astype(np.float32)
     return X, Y
 
 
@@ -121,6 +135,7 @@ class _TorchDLBase(Forecaster):
     name = "TorchDL"
     family = "deep_learning"
     is_global = True
+    pools_segments = True
     max_steps = 600
     batch = 256
     lr = 1e-3
@@ -138,12 +153,13 @@ class _TorchDLBase(Forecaster):
         self._H = _horizon_to_steps(case.horizon_primary, case.freq)
         self._L = lookback_for(case.freq, self._H)
 
-        y = pd.to_numeric(train["y"], errors="coerce").to_numpy(dtype=np.float32)
-        if len(y) > _MAX_TRAIN:
-            y = y[-_MAX_TRAIN:]
-        self._last_window = y[-self._L :].copy()
+        # Per-segment windows (unique_id), never across a gap; single-segment local
+        # frames behave exactly as before.
+        segs, tail = segment_arrays(train)
+        segs = [s.astype(np.float32) for s in segs]
+        self._last_window = segs[tail][-self._L :].copy()
 
-        X, Y = _build_windows(y, self._L, self._H)
+        X, Y = _build_windows(segs, self._L, self._H)
         if X is None:
             self._model = None
             return

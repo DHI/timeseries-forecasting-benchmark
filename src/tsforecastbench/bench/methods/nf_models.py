@@ -36,6 +36,7 @@ class _NFBase(Forecaster):
     name = "NF"
     family = "deep_learning"
     is_global = True
+    pools_segments = True
     model_name = "NHITS"  # neuralforecast.models class name
     extra_kwargs: ClassVar[dict] = {}
 
@@ -49,8 +50,13 @@ class _NFBase(Forecaster):
         pl.seed_everything(0)
         self._h = h = _horizon_to_steps(case.horizon_primary, case.freq)
         df = train[["unique_id", "ds", "y"]].copy()
-        if len(df) > _MAX_TRAIN:
-            df = df.iloc[-_MAX_TRAIN:]
+        # The extended-history frame carries one unique_id per contiguous segment;
+        # neuralforecast fits them as a panel, so no window spans a gap. The tail segment
+        # (latest ds, always the last row) is the series we forecast at predict.
+        self._target_uid = df["unique_id"].iloc[-1]
+        df = df.groupby("unique_id", group_keys=False, sort=False).apply(
+            lambda g: g.iloc[-_MAX_TRAIN:]
+        )
         df["ds"] = _naive_ds(df["ds"]).to_numpy()
         df["y"] = pd.to_numeric(df["y"], errors="coerce")
 
@@ -75,6 +81,9 @@ class _NFBase(Forecaster):
         future_exog: pd.DataFrame | None = None,
     ) -> pd.DataFrame:
         preds = self._nf.predict()
+        if "unique_id" not in preds.columns:
+            preds = preds.reset_index()  # some nf versions return unique_id as the index
+        preds = preds[preds["unique_id"] == self._target_uid]
         y_hat = preds[self._col].to_numpy().astype(np.float64)
         if len(y_hat) < horizon:
             y_hat = np.concatenate([y_hat, np.full(horizon - len(y_hat), y_hat[-1])])
@@ -90,7 +99,9 @@ class TFTForecaster(_NFBase):
 class ITransformerForecaster(_NFBase):
     name = "iTransformer"
     model_name = "iTransformer"
-    # iTransformer needs the number of series (n_series=1 here, univariate)
+    # iTransformer is multivariate and fixed to n_series=1 here, so it cannot absorb the
+    # extra segments of an extended-history fit -- keep it on the local span only.
+    pools_segments = False
     extra_kwargs: ClassVar[dict] = {"n_series": 1}
 
 
