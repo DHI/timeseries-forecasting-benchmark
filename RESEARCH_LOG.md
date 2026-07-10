@@ -8,6 +8,16 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-10 — Merged the case-info and snapshot panels into one collapsible column
+
+The results viewer used to open two separate side-by-side panels on a cell click: case
+info on the left, forecast snapshots on the right. Merged them into a single right-hand
+column, case info on top and snapshots below, matching the natural reading order. The
+case-info block (the four graphs plus the case summary text) is now wrapped in a native
+HTML `<details>`/`<summary>` element so it can be collapsed to make more room for the
+snapshots, defaulting to open so nothing changes for someone who never touches it.
+
+
 ## 2026-07-10 — Moved the snapshot panel into a vertical column next to case info
 
 The forecast-snapshot panel used to sit below the matrix, full width, with a
