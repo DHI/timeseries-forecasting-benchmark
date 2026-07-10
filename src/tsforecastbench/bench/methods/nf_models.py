@@ -35,6 +35,7 @@ class _NFBase(Forecaster):
 
     name = "NF"
     family = "deep_learning"
+    is_global = True
     model_name = "NHITS"  # neuralforecast.models class name
     extra_kwargs: ClassVar[dict] = {}
 

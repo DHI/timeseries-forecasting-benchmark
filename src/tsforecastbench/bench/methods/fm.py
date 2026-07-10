@@ -45,6 +45,9 @@ class ChronosForecaster(Forecaster):
     name = "Chronos-Bolt"
     family = "foundation_model"
     is_probabilistic = True
+    # Zero-shot: there's no fit-time benefit, but a longer history helps up to
+    # `context_length` if the shared curated span is shorter than that.
+    is_global = True
 
     def __init__(self, model_name: str = "amazon/chronos-bolt-small", context_length: int = 2048):
         self.model_name = model_name

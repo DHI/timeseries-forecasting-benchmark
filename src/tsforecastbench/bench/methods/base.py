@@ -31,6 +31,14 @@ class Forecaster(ABC):
     # by the results viewer to filter/group methods. "unclassified" flags a method that
     # forgot to set it, rather than silently disappearing from a family filter.
     family: str = "unclassified"
+    # Capability flag: this method's architecture can exploit more data than the shared
+    # curated span (a longer single-series history, or eventually cross-series pooling
+    # via `fit_pooled`) the way a strictly local statistical method cannot. It does NOT
+    # mean the method currently pools across series -- no method does yet, see
+    # `fit_pooled` below. The results viewer scores `is_global` methods a second time on
+    # an extended-history split into a separate matrix, alongside the shared one every
+    # method is scored on.
+    is_global: bool = False
 
     @abstractmethod
     def fit(self, case: Case, train: pd.DataFrame) -> None:
@@ -55,3 +63,10 @@ class Forecaster(ABC):
     def _future_index(case: Case, last_ds, horizon: int) -> pd.DatetimeIndex:
         last = pd.Timestamp(last_ds)
         return pd.date_range(start=last, periods=horizon + 1, freq=case.freq, tz="UTC")[1:]
+
+    def fit_pooled(self, series: list[tuple[Case, pd.DataFrame]]) -> None:
+        """Fit once across multiple series (true cross-series pooling), for `is_global`
+        methods whose architecture supports it. Unimplemented for every method today --
+        this is the seam future pooling work hooks into; the runner falls back to a
+        per-series `fit` call when a method doesn't override this."""
+        raise NotImplementedError(f"{type(self).__name__} does not support pooled fitting")
