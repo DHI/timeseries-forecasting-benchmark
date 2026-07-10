@@ -2,7 +2,7 @@
 
 Methods are fit and scored on the *curated* series (`Case.load(curated=True)`): the gap
 policy in `tsforecastbench.data.curate` has already filled small gaps and trimmed each
-case to its longest contiguous span, so the target is complete and every method sees
+case to its tail contiguous span, so the target is complete and every method sees
 identical data. Scoring still counts only genuine observations — the curated frame's
 `y_observed` mask marks which points were measured vs. filled, and metrics use only the
 measured ones. The fraction of finite test points is reported so a gappy test window is
