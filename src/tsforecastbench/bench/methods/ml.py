@@ -136,7 +136,11 @@ class _WindowedMLBase(Forecaster):
             date_features=date_feats,
         )
         self._fcst.fit(df, static_features=[])
-        self._model_col = type(next(iter(self._fcst.models.values()))).__name__
+        # mlforecast names prediction columns after its own alias for each model (the
+        # underlying estimator's class name, unwrapped from any Pipeline) — read that
+        # alias directly rather than re-deriving it from the fitted object's type, which
+        # would report "Pipeline" for models wrapped in one.
+        self._model_col = next(iter(self._fcst.models))
 
     def predict(
         self,
