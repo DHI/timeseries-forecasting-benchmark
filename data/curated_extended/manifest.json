@@ -37,7 +37,7 @@
     "orig_rows": 5879,
     "parquet": "data/curated_extended/discharge_lowland_denmark.parquet",
     "rows": 5879,
-    "sha256": "7014e07b3e4ee223ab8f41ceea43327fc8fee5badbdcff2ccbdf5120791b5cbc",
+    "sha256": "a76ae9710c0abc3aeb5b17e778bff8bc8e6be467b935b06bc8b12eb27946f0fc",
     "span_end": "2005-02-05 00:00:00+00:00",
     "span_start": "1989-01-02 00:00:00+00:00"
   },
@@ -93,7 +93,7 @@
     "orig_rows": 350175,
     "parquet": "data/curated_extended/sewerlevel_bellinge.parquet",
     "rows": 350175,
-    "sha256": "0daeedc3e91af2b6bdc116da859f1ef26fca23ce2b396e8e85e0cce6633aad12",
+    "sha256": "762de5d3ea11964a1cc74aab6d143c59cf0e5eb13518e4be3f5b29d889389eea",
     "span_end": "2020-07-26 15:30:00+00:00",
     "span_start": "2010-08-01 00:00:00+00:00"
   },
@@ -135,7 +135,7 @@
     "orig_rows": 77148,
     "parquet": "data/curated_extended/waves_massachusetts.parquet",
     "rows": 77148,
-    "sha256": "a826bcd58ee88f8752aae4191ca87a973ec4413b91d81d6184e0094f9089dfec",
+    "sha256": "5f5c9bf7658b7df5fcaa940203bfa2f48fb330f579f71f5d1784157e59b94263",
     "span_end": "2023-10-20 10:00:00+00:00",
     "span_start": "2014-12-31 23:00:00+00:00"
   },
@@ -149,7 +149,7 @@
     "orig_rows": 75226,
     "parquet": "data/curated_extended/waves_oregon.parquet",
     "rows": 75226,
-    "sha256": "28a8e6082502311b69f486b0c66d98ada29852806959424bfa4880de9f8564f2",
+    "sha256": "feb2948e97ad05ec27a8bd55256c5387a92e773b227d0894ca904d081489dc7d",
     "span_end": "2023-08-01 08:00:00+00:00",
     "span_start": "2014-12-31 23:00:00+00:00"
   },
@@ -163,7 +163,7 @@
     "orig_rows": 14866,
     "parquet": "data/curated_extended/wwtp_influent_n2o_350k.parquet",
     "rows": 14866,
-    "sha256": "47dfc15638b1eafa08e748739af71eece9aa86aebccdbadafbf231f2a4f39815",
+    "sha256": "725ad3aede56aca1503b55a0ac8a01a25da4c910799b0956d6534750e0d0cd7a",
     "span_end": "2024-05-23 19:00:00+00:00",
     "span_start": "2022-09-12 10:00:00+00:00"
   }

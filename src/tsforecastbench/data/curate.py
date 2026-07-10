@@ -252,7 +252,7 @@ def extend_frame(
         filled = _fill_small_gaps(s, cap)
         if c == "y":
             n_filled = int((s.isna() & filled.notna()).sum())
-        if filled.isna().any():  # exogenous column that is all-NaN or gappy at the edges
+        elif filled.isna().any():  # exogenous column all-NaN or gappy at the edges
             filled = filled.ffill().bfill()
         df[c] = filled
 

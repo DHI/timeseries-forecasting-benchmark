@@ -9,6 +9,12 @@ curated frame's `y_observed` mask); filled points never enter a metric.
 Refit-per-origin is honest but costs more for ARIMA/LightGBM; keep n_origins modest
 for those, or run the cheap baselines (Mean/Persistence/SeasonalNaive/Climatology)
 which refit trivially.
+
+`run_case_rolling` is `scripts/run_pilot.py`'s default path (single hold-out `run_case`
+only runs under `--fast`), so it gets the same `Forecaster.is_global` extended-history
+routing and gap-free fallback as `eval.loop.run_case` -- see that module's docstring for
+why a gappy extended history isn't used as-is. Refitting `is_global` methods on the
+extended frame happens at every one of `n_origins` cutoffs, same as everyone else.
 """
 
 from __future__ import annotations
@@ -92,21 +98,55 @@ def run_case_rolling(
         raise ValueError(f"Case {case.id}: test span too short for horizon {H}")
     origins = _select_rolling_origins(test_start, last_origin, raw_y, H, n_origins)
 
-    y_pre = full_fit["y"].iloc[:test_start].to_numpy(dtype=float)
-    s = mase_season_for(case.seasonalities, len(y_pre))
-    naive_scale = float(np.mean(np.abs(y_pre[s:] - y_pre[:-s]))) if len(y_pre) > s else float("nan")
+    def _naive_scale(y_pre: np.ndarray) -> float:
+        s = mase_season_for(case.seasonalities, len(y_pre))
+        return float(np.mean(np.abs(y_pre[s:] - y_pre[:-s]))) if len(y_pre) > s else float("nan")
+
+    naive_scale = _naive_scale(full_fit["y"].iloc[:test_start].to_numpy(dtype=float))
+
+    # Extended history for `is_global` methods -- same gap-free-or-fallback rule as
+    # `eval.loop.run_case`; see this module's docstring.
+    extended_base = None
+    if any(m.is_global for m in methods):
+        try:
+            extended = case.load_extended(prefer_synth=prefer_synth)
+        except Exception as exc:
+            print(
+                f"  [note] load_extended failed ({type(exc).__name__}: {exc}); "
+                "is_global methods fall back to the shared curated data."
+            )
+        else:
+            if extended["y"].isna().any():
+                print(
+                    "  [note] extended history has a gap bigger than the per-case cap; "
+                    "is_global methods fall back to the shared curated data."
+                )
+            else:
+                extended_base = extended
+    naive_scale_ext = (
+        _naive_scale(extended_base["y"].to_numpy(dtype=float))
+        if extended_base is not None
+        else None
+    )
 
     metric_names = ("MAE", "RMSE", "MASE", "Skill_vs_Persistence", "Skill_vs_Mean")
     records: list[dict] = []
     snap_frames: list[pd.DataFrame] = []
     for method in methods:
         t0 = time.perf_counter()
+        used_extended = method.is_global and extended_base is not None
+        m_naive_scale = naive_scale_ext if used_extended else naive_scale
         a, p, ref_p, ref_m = [], [], [], []  # pooled actual, pred, persistence, mean
         method_snaps: list[pd.DataFrame] = []
         n_ok = 0
         try:
             for i, o in enumerate(origins):
-                history = full_fit.iloc[:o]
+                if used_extended:
+                    history = pd.concat(
+                        [extended_base, full_fit.iloc[test_start:o]], ignore_index=True
+                    )
+                else:
+                    history = full_fit.iloc[:o]
                 fexog = full_fit.iloc[o : o + H][["ds", *exo_present]] if exo_present else None
                 method.fit(case, history)
                 preds = method.predict(case, history, H, future_exog=fexog)
@@ -144,8 +184,8 @@ def run_case_rolling(
             metrics = {
                 "MAE": float(np.mean(np.abs(a - p))),
                 "RMSE": float(np.sqrt(mse)),
-                "MASE": float(np.mean(np.abs(a - p)) / naive_scale)
-                if naive_scale
+                "MASE": float(np.mean(np.abs(a - p)) / m_naive_scale)
+                if m_naive_scale
                 else float("nan"),
                 "Skill_vs_Persistence": 1.0 - mse / float(np.mean((a - ref_p) ** 2)),
                 "Skill_vs_Mean": 1.0 - mse / float(np.mean((a - ref_m) ** 2)),
@@ -162,6 +202,8 @@ def run_case_rolling(
                     "case_id": case.id,
                     "domain": case.domain,
                     "method": method.name,
+                    "is_global": method.is_global,
+                    "used_extended_history": used_extended,
                     "horizon": case.horizon_primary,
                     "metric": metric_name,
                     "value": value,

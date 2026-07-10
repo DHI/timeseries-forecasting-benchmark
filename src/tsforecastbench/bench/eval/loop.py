@@ -1,12 +1,22 @@
 """Evaluation loop - single hold-out (rolling-origin in Phase B).
 
-Methods are fit and scored on the *curated* series (`Case.load(curated=True)`): the gap
-policy in `tsforecastbench.data.curate` has already filled small gaps and trimmed each
-case to its tail contiguous span, so the target is complete and every method sees
-identical data. Scoring still counts only genuine observations — the curated frame's
-`y_observed` mask marks which points were measured vs. filled, and metrics use only the
-measured ones. The fraction of finite test points is reported so a gappy test window is
-visible, not silently scored.
+Every method is fit and scored on the *curated* series (`Case.load(curated=True)`): the
+gap policy in `tsforecastbench.data.curate` has already filled small gaps and trimmed
+each case to its tail contiguous span, so the target is complete. Scoring still counts
+only genuine observations — the curated frame's `y_observed` mask marks which points
+were measured vs. filled, and metrics use only the measured ones. The fraction of
+finite test points is reported so a gappy test window is visible, not silently scored.
+
+`Forecaster.is_global` methods additionally get a second, longer training frame
+(`Case.load_extended`) reaching back before the tail segment — *when that extended
+history is itself gap-free*. If it contains a gap bigger than the per-case cap, using
+it as-is would require either fabricating a value across the gap (dishonest) or
+silently treating pre-gap and post-gap rows as adjacent time steps in a windowed
+model (wrong) — no current method's `fit` is gap-aware. Rather than do either, an
+`is_global` method falls back to the same curated data every other method uses for
+that case; `used_extended_history` on each result row records which happened. Building
+genuine gap-aware (or cross-series pooled) training is future work — see
+`Forecaster.fit_pooled`.
 """
 
 from __future__ import annotations
@@ -79,6 +89,10 @@ def run_case(case: Case, methods: list[Forecaster], prefer_synth: bool = False) 
     origin = _pick_origin(raw_y, test_start, last_origin, horizon_steps)
 
     train_fit = full_fit.iloc[:origin].reset_index(drop=True)
+    # Rows the origin-picking slide pulled from the test split into training -- carried
+    # over verbatim onto the extended frame too, so global methods forecast from the
+    # same origin as everyone else.
+    slide_in = full_fit.iloc[test_start:origin].reset_index(drop=True)
     future_exog = None
     if exo_cols:
         fe = full_fit.iloc[origin : origin + horizon_steps]
@@ -89,21 +103,55 @@ def run_case(case: Case, methods: list[Forecaster], prefer_synth: bool = False) 
     finite = np.isfinite(y_true_raw)
     frac_finite = float(finite.mean()) if len(finite) else 0.0
 
-    y_train = train_fit["y"].to_numpy(dtype=float)
-    # Declared dominant period the train series can support (>= 2 cycles), else the next
-    # declared period, else 1 — a real season or honest persistence scaling, never an
-    # arbitrary truncated lag.
-    season = mase_season_for(case.seasonalities, len(y_train))
-    ref_persistence = np.full(horizon_steps, float(train_fit["y"].iloc[-1]))
-    ref_mean = np.full(horizon_steps, float(np.nanmean(y_train)))
+    def _train_stats(train_df: pd.DataFrame) -> tuple[np.ndarray, int, np.ndarray, np.ndarray]:
+        y_train = train_df["y"].to_numpy(dtype=float)
+        # Declared dominant period the train series can support (>= 2 cycles), else the
+        # next declared period, else 1 — a real season or honest persistence scaling,
+        # never an arbitrary truncated lag.
+        season = mase_season_for(case.seasonalities, len(y_train))
+        ref_persistence = np.full(horizon_steps, float(train_df["y"].iloc[-1]))
+        ref_mean = np.full(horizon_steps, float(np.nanmean(y_train)))
+        return y_train, season, ref_persistence, ref_mean
+
+    y_train, season, ref_persistence, ref_mean = _train_stats(train_fit)
+
+    # Extended history for `is_global` methods -- only if the case actually has one, and
+    # only if it's itself gap-free. A gap bigger than the per-case cap would otherwise
+    # need fabricating across (dishonest) or silently treating pre/post-gap rows as
+    # adjacent (wrong); no method's fit is gap-aware, so we fall back to the shared
+    # curated data instead of risking either. See the module docstring.
+    train_fit_ext = None
+    if any(m.is_global for m in methods):
+        try:
+            extended = case.load_extended(prefer_synth=prefer_synth)
+        except Exception as exc:
+            print(
+                f"  [note] load_extended failed ({type(exc).__name__}: {exc}); "
+                "is_global methods fall back to the shared curated data."
+            )
+        else:
+            if extended["y"].isna().any():
+                print(
+                    "  [note] extended history has a gap bigger than the per-case cap; "
+                    "is_global methods fall back to the shared curated data."
+                )
+            else:
+                train_fit_ext = pd.concat([extended, slide_in], ignore_index=True)
+    ext_stats = _train_stats(train_fit_ext) if train_fit_ext is not None else None
 
     metric_names = ("MAE", "RMSE", "MASE", "Skill_vs_Persistence", "Skill_vs_Mean")
     records: list[dict] = []
     for method in methods:
         t0 = time.perf_counter()
+        used_extended = method.is_global and train_fit_ext is not None
+        m_train_fit, m_y_train, m_season, m_ref_persistence, m_ref_mean = (
+            (train_fit_ext, *ext_stats)
+            if used_extended
+            else (train_fit, y_train, season, ref_persistence, ref_mean)
+        )
         try:
-            method.fit(case, train_fit)
-            preds = method.predict(case, train_fit, horizon_steps, future_exog=future_exog)
+            method.fit(case, m_train_fit)
+            preds = method.predict(case, m_train_fit, horizon_steps, future_exog=future_exog)
             y_hat = preds["y_hat"].to_numpy(dtype=float)
             assert len(y_hat) == horizon_steps, (
                 f"{method.name} returned {len(y_hat)} predictions, expected {horizon_steps}"
@@ -114,9 +162,9 @@ def run_case(case: Case, methods: list[Forecaster], prefer_synth: bool = False) 
             metrics = {
                 "MAE": mae(yt, yh),
                 "RMSE": rmse(yt, yh),
-                "MASE": mase(yt, yh, y_train, season=season),
-                "Skill_vs_Persistence": skill_score(yt, yh, ref_persistence[finite]),
-                "Skill_vs_Mean": skill_score(yt, yh, ref_mean[finite]),
+                "MASE": mase(yt, yh, m_y_train, season=m_season),
+                "Skill_vs_Persistence": skill_score(yt, yh, m_ref_persistence[finite]),
+                "Skill_vs_Mean": skill_score(yt, yh, m_ref_mean[finite]),
             }
             status = "ok"
         except Exception as exc:
@@ -131,6 +179,8 @@ def run_case(case: Case, methods: list[Forecaster], prefer_synth: bool = False) 
                     "case_exo_tier": case.exo_tier,
                     "method": method.name,
                     "uses_exogenous": method.uses_exogenous,
+                    "is_global": method.is_global,
+                    "used_extended_history": used_extended,
                     "horizon": case.horizon_primary,
                     "metric": metric_name,
                     "value": value,
