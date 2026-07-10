@@ -187,24 +187,33 @@ def main() -> int:
             RESULTS_DIR / "pilot_snapshots.parquet", index=False
         )
 
-    # Two matrices per metric: every method on the shared curated span, and a second one
-    # restricted to `is_global` methods -- see `Forecaster.is_global` in base.py. The
-    # second is currently identical in substance to filtering the first to those methods
-    # (extended history is a no-op until Phase 2's gap-aware/pooled training exists, see
-    # RESEARCH_LOG.md), but keeps the two regimes visually and artifact-wise distinct
-    # from the start, and starts showing real differences once that lands.
+    # Two matrices per metric. The main one is every method on the shared curated span
+    # (the local fit only, `used_extended_history=False`), so all methods are compared on
+    # identical data. The `_global` one shows the same `is_global` methods scored on the
+    # full single-series history where the case has any beyond the curated span (the
+    # extended fit, `used_extended_history=True`), falling back to the local score for
+    # cases/methods with no extra history. Reading the two side by side shows the gain a
+    # global-capable method gets from the extra training data.
     matrix_specs = [
         ("MASE", "pilot_matrix_MASE", "MASE (lower is better)"),
         ("Skill_vs_Persistence", "pilot_matrix_skill", "skill vs persistence (higher is better)"),
         ("Skill_vs_Mean", "pilot_matrix_skill_vs_mean", "skill vs mean (higher is better)"),
     ]
-    global_results = results[results["is_global"]]
+    local_results = results[~results["used_extended_history"]]
+    # For the global matrix, keep one row per (case, method, metric): the extended fit
+    # when it ran, otherwise the local fit. Sorting False<True and keeping the last row
+    # prefers the extended score wherever both exist.
+    global_results = (
+        results[results["is_global"]]
+        .sort_values("used_extended_history")
+        .drop_duplicates(subset=["case_id", "method", "metric"], keep="last")
+    )
     global_method_order = [m for m in method_order if m in global_results["method"].unique()]
 
     written = []
     for metric, stem, label in matrix_specs:
         render_matrix(
-            results,
+            local_results,
             metric=metric,
             out_path=RESULTS_DIR / f"{stem}.png",
             title=f"RK2026 pilot - {label}",
@@ -216,7 +225,7 @@ def main() -> int:
                 global_results,
                 metric=metric,
                 out_path=RESULTS_DIR / f"{stem}_global.png",
-                title=f"RK2026 pilot - {label} (is_global methods, extended-history split)",
+                title=f"RK2026 pilot - {label} (is_global methods, extended-history fit)",
                 method_order=global_method_order,
             )
             written.append(f"{stem}_global.png")
