@@ -8,6 +8,31 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-10 — Made the extended-history fit live via per-segment training (supersedes the "inert" entry below)
+
+The extended-history path added earlier today was inert because it refused any extended
+frame containing a gap, and a gap is exactly where the extra history lives. Replaced that
+gap-free-or-fallback rule with segment-aware training: `_segment_extended` (in
+`bench/eval/loop.py`) splits the extended frame at its big gaps into contiguous segments,
+each carrying its own `unique_id`, and the `is_global` methods now build windows per
+segment so no training sample ever straddles a gap (`segment_arrays` in `methods/base.py`;
+mlforecast/neuralforecast get this for free, the manual DLinear/torch builders were
+changed to loop over segments). The tail segment equals the shared curated span, so the
+local and extended fits are scored against identical persistence/mean/seasonal-naive
+references and the same held-out window — the extended row isolates the gain from more
+training data, nothing else. Each `is_global`+`pools_segments` method now emits two result
+rows per gappy case (`used_extended_history` False/True); the main matrix shows the local
+fit, the `_global` matrix the extended fit. A quick 3-origin check on
+`discharge_lowland_denmark` already shows the gain is real (LinearLags MASE 0.24→0.20,
+DLinear 0.24→0.20). Five of the twelve cases have history beyond the curated span
+(`discharge_lowland_denmark`, `sewerlevel_bellinge`, `waves_massachusetts`, `waves_oregon`,
+`wwtp_influent_n2o_350k`); the other seven are gap-free and produce the local row only.
+Zero-shot Chronos and the fixed-`n_series` iTransformer keep `pools_segments=False` (they
+can't absorb extra segments), and the unused cross-series `fit_pooled` seam was removed.
+`results/pilot_metrics.parquet` and the matrix PNGs are still stale and must be regenerated
+with `uv run python scripts/run_pilot.py` (add `--with-dl --with-nf --with-fm` for full
+method coverage) before the numbers reflect this.
+
 ## 2026-07-10 — Added an is_global capability flag and an extended-history training path (currently inert)
 
 Added `Forecaster.is_global` (`base.py`) marking methods whose architecture could use more
