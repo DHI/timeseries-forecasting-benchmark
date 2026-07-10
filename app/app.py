@@ -411,12 +411,14 @@ _SIDEBAR_TOGGLE_STYLE = {
 }
 _LABEL_STYLE = {"fontWeight": "bold", "marginTop": "16px", "display": "block"}
 
-# Top-level columns, siblings to the sidebar rather than nested next to the matrix, so
-# they start flush with the top of the page instead of below the intro text. `position:
-# sticky` keeps each in view as the (often much taller) matrix column scrolls underneath.
-# The snapshot panel sits between the matrix and the case-info panel, in that reading
-# order (forecasts, then case context), and shares the same sticky/scroll treatment.
-_SNAPSHOT_PANEL_STYLE = {
+# A single top-level column, sibling to the sidebar rather than nested next to the
+# matrix, so it starts flush with the top of the page instead of below the intro text.
+# `position: sticky` keeps it in view as the (often much taller) matrix column scrolls
+# underneath. Case info and test snapshots used to be separate side-by-side panels;
+# they're now stacked in reading order (case context, then forecasts) inside one
+# scrolling column, with the case-info block collapsible to leave more room for
+# snapshots (see the `html.Details` wrapper around it in `app.layout`).
+_DETAIL_COLUMN_STYLE = {
     "flex": "0 0 460px",
     "width": "460px",
     "boxSizing": "border-box",
@@ -430,20 +432,8 @@ _SNAPSHOT_PANEL_STYLE = {
     "minHeight": "0",
     "overflowY": "auto",
 }
-_CASE_PANEL_STYLE = {
-    "flex": "0 0 420px",
-    "width": "420px",
-    "boxSizing": "border-box",
-    "position": "sticky",
-    "top": "0",
-    "maxHeight": "100vh",
-    "padding": "16px",
-    "borderLeft": "1px solid #ddd",
-    "display": "flex",
-    "flexDirection": "column",
-    "minHeight": "0",
-    "overflowY": "auto",
-}
+_CASE_PANEL_VISIBLE_STYLE = {"display": "flex", "flexDirection": "column", "flex": "0 0 auto"}
+_CASE_PANEL_HIDDEN_STYLE = {"display": "none"}
 _CASE_PLOT_CAPTION_STYLE = {
     "color": "#666",
     "fontSize": "0.85em",
@@ -544,96 +534,117 @@ app.layout = html.Div(
             ],
         ),
         html.Div(
-            id="snapshot-column",
-            style=_SNAPSHOT_PANEL_STYLE,
+            id="detail-column",
+            style=_DETAIL_COLUMN_STYLE,
             children=[
                 html.Div(
-                    id="snapshot-hint",
-                    children=(
-                        "Click a matrix cell to see real forecast snapshots. Click more "
-                        "cells in the same row to overlay other methods on the same "
-                        "origins."
-                    ),
-                    style={"color": "#666"},
-                ),
-                html.Div(
-                    id="snapshot-panel",
-                    style={"display": "none"},
+                    id="case-panel",
+                    style=_CASE_PANEL_HIDDEN_STYLE,
                     children=[
-                        html.H2(id="snapshot-title"),
-                        html.Div(
-                            style={
-                                "display": "flex",
-                                "gap": "8px",
-                                "alignItems": "center",
-                                "flexWrap": "wrap",
-                                "marginBottom": "8px",
-                            },
+                        html.Details(
+                            open=True,
                             children=[
-                                html.Span(id="snapshot-chips", style={"display": "contents"}),
-                                html.Button(
-                                    "Clear",
-                                    id="clear-btn",
-                                    n_clicks=0,
-                                    style={"marginLeft": "auto"},
+                                html.Summary(
+                                    id="case-panel-title",
+                                    style={
+                                        "cursor": "pointer",
+                                        "fontWeight": "bold",
+                                        "fontSize": "1.1em",
+                                        "margin": "0 0 4px 0",
+                                    },
+                                ),
+                                html.P(
+                                    id="case-training-caption",
+                                    style={**_CASE_PLOT_CAPTION_STYLE, "margin": "0 0 4px 0"},
+                                ),
+                                dcc.Graph(
+                                    id="case-training-graph",
+                                    config={"displayModeBar": False},
+                                    style={"flex": "0 0 auto", "width": "100%"},
+                                ),
+                                html.P(
+                                    "Test data (full test split)", style=_CASE_PLOT_CAPTION_STYLE
+                                ),
+                                dcc.Graph(
+                                    id="case-test-graph",
+                                    config={"displayModeBar": False},
+                                    style={"flex": "0 0 auto", "width": "100%"},
+                                ),
+                                html.P(
+                                    "Train vs test value distribution",
+                                    style=_CASE_PLOT_CAPTION_STYLE,
+                                ),
+                                dcc.Graph(
+                                    id="case-distribution-graph",
+                                    config={"displayModeBar": False},
+                                    style={"flex": "0 0 auto", "width": "100%"},
+                                ),
+                                html.P("Train / val / test split", style=_CASE_PLOT_CAPTION_STYLE),
+                                dcc.Graph(
+                                    id="case-proportions-graph",
+                                    config={"displayModeBar": False},
+                                    style={"flex": "0 0 auto", "width": "100%"},
+                                ),
+                                html.Hr(style={"flex": "0 0 auto", "width": "100%"}),
+                                html.P(
+                                    "Case summary",
+                                    style={
+                                        "color": "#666",
+                                        "fontSize": "0.9em",
+                                        "flex": "0 0 auto",
+                                    },
+                                ),
+                                html.Div(
+                                    id="case-summary",
+                                    style={"flex": "0 0 auto"},
                                 ),
                             ],
                         ),
-                        dcc.Graph(id="snapshot-graph"),
                     ],
                 ),
-            ],
-        ),
-        html.Div(
-            id="case-panel",
-            style={**_CASE_PANEL_STYLE, "display": "none"},
-            children=[
-                html.H3(
-                    id="case-panel-title",
-                    style={"flex": "0 0 auto", "margin": "0 0 4px 0"},
-                ),
-                html.P(
-                    id="case-training-caption",
-                    style={**_CASE_PLOT_CAPTION_STYLE, "margin": "0 0 4px 0"},
-                ),
-                dcc.Graph(
-                    id="case-training-graph",
-                    config={"displayModeBar": False},
-                    style={"flex": "0 0 auto", "width": "100%"},
-                ),
-                html.P("Test data (full test split)", style=_CASE_PLOT_CAPTION_STYLE),
-                dcc.Graph(
-                    id="case-test-graph",
-                    config={"displayModeBar": False},
-                    style={"flex": "0 0 auto", "width": "100%"},
-                ),
-                html.P(
-                    "Train vs test value distribution",
-                    style=_CASE_PLOT_CAPTION_STYLE,
-                ),
-                dcc.Graph(
-                    id="case-distribution-graph",
-                    config={"displayModeBar": False},
-                    style={"flex": "0 0 auto", "width": "100%"},
-                ),
-                html.P("Train / val / test split", style=_CASE_PLOT_CAPTION_STYLE),
-                dcc.Graph(
-                    id="case-proportions-graph",
-                    config={"displayModeBar": False},
-                    style={"flex": "0 0 auto", "width": "100%"},
-                ),
                 html.Hr(style={"flex": "0 0 auto", "width": "100%"}),
-                html.P(
-                    "Case summary",
-                    style={
-                        "color": "#666",
-                        "fontSize": "0.9em",
-                        "flex": "0 0 auto",
-                    },
-                ),
                 html.Div(
-                    id="case-summary",
-                    style={"flex": "0 0 auto"},
+                    id="snapshot-column",
+                    style={"display": "flex", "flexDirection": "column", "flex": "0 0 auto"},
+                    children=[
+                        html.Div(
+                            id="snapshot-hint",
+                            children=(
+                                "Click a matrix cell to see real forecast snapshots. Click "
+                                "more cells in the same row to overlay other methods on the "
+                                "same origins."
+                            ),
+                            style={"color": "#666"},
+                        ),
+                        html.Div(
+                            id="snapshot-panel",
+                            style={"display": "none"},
+                            children=[
+                                html.H2(id="snapshot-title"),
+                                html.Div(
+                                    style={
+                                        "display": "flex",
+                                        "gap": "8px",
+                                        "alignItems": "center",
+                                        "flexWrap": "wrap",
+                                        "marginBottom": "8px",
+                                    },
+                                    children=[
+                                        html.Span(
+                                            id="snapshot-chips", style={"display": "contents"}
+                                        ),
+                                        html.Button(
+                                            "Clear",
+                                            id="clear-btn",
+                                            n_clicks=0,
+                                            style={"marginLeft": "auto"},
+                                        ),
+                                    ],
+                                ),
+                                dcc.Graph(id="snapshot-graph"),
+                            ],
+                        ),
+                    ],
                 ),
             ],
         ),
@@ -790,7 +801,7 @@ def render_case_panel(sel, show_global, n_reload):
     case_id = (sel or {}).get("case_id")
     if not case_id:
         empty = go.Figure()
-        return "", "", empty, empty, empty, empty, "", {**_CASE_PANEL_STYLE, "display": "none"}
+        return "", "", empty, empty, empty, empty, "", _CASE_PANEL_HIDDEN_STYLE
 
     show_global = "on" in (show_global or [])
     extended = show_global and case_has_extended_history(load_metrics(n_reload or 0), case_id)
@@ -805,7 +816,7 @@ def render_case_panel(sel, show_global, n_reload):
         render_split_distribution(case_id, extended=extended),
         render_split_proportions(case_id, extended=extended),
         dcc.Markdown(case_summary(case_id)),
-        {**_CASE_PANEL_STYLE, "display": "flex"},
+        _CASE_PANEL_VISIBLE_STYLE,
     )
 
 
