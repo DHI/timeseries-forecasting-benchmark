@@ -33,6 +33,7 @@ from data import (
     case_summary,
     load_metrics,
     load_snapshots,
+    method_info,
     ordered_cases,
     ordered_methods,
 )
@@ -441,6 +442,28 @@ _CASE_PLOT_CAPTION_STYLE = {
     "flex": "0 0 auto",
 }
 
+# Full-width strip docked to the bottom of the viewport (sticky, not fixed, so it scrolls
+# into place with the rest of the page rather than always overlapping content) — one card
+# per selected method, colour-matched to that method's chip/forecast line.
+_METHOD_INFO_STYLE = {
+    "position": "sticky",
+    "bottom": "0",
+    "display": "flex",
+    "flexWrap": "wrap",
+    "gap": "16px",
+    "padding": "12px 16px",
+    "background": "white",
+    "borderTop": "1px solid #ddd",
+    "boxShadow": "0 -2px 6px rgba(0,0,0,0.08)",
+    "boxSizing": "border-box",
+}
+_METHOD_INFO_HIDDEN_STYLE = {"display": "none"}
+_METHOD_INFO_CARD_STYLE = {
+    "flex": "1 1 260px",
+    "minWidth": "220px",
+    "paddingLeft": "10px",
+}
+
 # Locks the heatmap down to a read-only view: keeps the click-to-select and
 # hover interactions the app depends on, but strips every pan/zoom/select tool
 # from the mode bar so the grid itself can't be dragged, scaled, or rearranged.
@@ -465,189 +488,209 @@ _MATRIX_CONFIG = {
 }
 
 app.layout = html.Div(
-    style={"display": "flex", "fontFamily": "system-ui, sans-serif"},
+    style={"display": "flex", "flexDirection": "column", "fontFamily": "system-ui, sans-serif"},
     children=[
         html.Div(
-            id="sidebar",
-            style=_SIDEBAR_STYLE,
-            children=[
-                html.H3("Controls"),
-                html.Button("Reload data", id="reload-btn", n_clicks=0),
-                html.Label("Metric", style=_LABEL_STYLE),
-                dcc.Dropdown(
-                    id="metric",
-                    options=_metric_options,
-                    value=_metric_options[0] if _metric_options else None,
-                    clearable=False,
-                ),
-                html.Label("Domains", style=_LABEL_STYLE),
-                dcc.Checklist(
-                    id="domains",
-                    options=_domain_opts,
-                    value=[o["value"] for o in _domain_opts],
-                    labelStyle={"display": "block"},
-                ),
-                html.Label("Method families", style=_LABEL_STYLE),
-                dcc.Dropdown(
-                    id="families",
-                    options=_family_opts,
-                    value=_family_opts,
-                    multi=True,
-                ),
-                html.Label("Global methods", style=_LABEL_STYLE),
-                dcc.Checklist(
-                    id="show-global",
-                    options=[{"label": " Score on full history where available", "value": "on"}],
-                    value=[],
-                ),
-                html.P(
-                    "For is_global methods on cases with data beyond the curated span, "
-                    "swaps in the full-history fit (a hotpink hash marks affected cells).",
-                    style={"color": "#666", "fontSize": "0.8em", "marginTop": "4px"},
-                ),
-            ],
-        ),
-        html.Button(
-            "◀",
-            id="sidebar-toggle",
-            n_clicks=0,
-            title="Collapse/expand controls",
-            style=_SIDEBAR_TOGGLE_STYLE,
-        ),
-        html.Div(
-            style={"flex": "1", "padding": "16px", "minWidth": "0"},
-            children=[
-                html.H1("Timeseries Forecasting Benchmark"),
-                html.P(
-                    "The following matrix compiles the forecasting results of multiple methods across a variety of timeseries in different water domains. "
-                    "Each cell represents one case x method run, colored by the metric chosen in the left sidebar. In addition, you can use the control panel in the sidebar to filter by domain, method family, ",
-                    style={"color": "#444", "maxWidth": "1000px"},
-                ),
-                html.P(" "),
-                html.P(
-                    "Click a cell to get more details on the training data, and explore forecast snapshots. "
-                    "You can click multiple cells in the same row to stack their forecasts on the same plot for comparison.",
-                    style={"color": "#444", "maxWidth": "1000px"},
-                ),
-                dcc.Graph(id="matrix", config=_MATRIX_CONFIG),
-                dcc.Store(id="snapshot-selection", data={"case_id": None, "methods": []}),
-            ],
-        ),
-        html.Div(
-            id="detail-column",
-            style=_DETAIL_COLUMN_STYLE,
+            style={"display": "flex"},
             children=[
                 html.Div(
-                    id="case-panel",
-                    style=_CASE_PANEL_HIDDEN_STYLE,
+                    id="sidebar",
+                    style=_SIDEBAR_STYLE,
                     children=[
-                        html.Details(
-                            open=True,
-                            children=[
-                                html.Summary(
-                                    id="case-panel-title",
-                                    style={
-                                        "cursor": "pointer",
-                                        "fontWeight": "bold",
-                                        "fontSize": "1.1em",
-                                        "margin": "0 0 4px 0",
-                                    },
-                                ),
-                                html.P(
-                                    id="case-training-caption",
-                                    style={**_CASE_PLOT_CAPTION_STYLE, "margin": "0 0 4px 0"},
-                                ),
-                                dcc.Graph(
-                                    id="case-training-graph",
-                                    config={"displayModeBar": False},
-                                    style={"flex": "0 0 auto", "width": "100%"},
-                                ),
-                                html.P(
-                                    "Test data (full test split)", style=_CASE_PLOT_CAPTION_STYLE
-                                ),
-                                dcc.Graph(
-                                    id="case-test-graph",
-                                    config={"displayModeBar": False},
-                                    style={"flex": "0 0 auto", "width": "100%"},
-                                ),
-                                html.P(
-                                    "Train vs test value distribution",
-                                    style=_CASE_PLOT_CAPTION_STYLE,
-                                ),
-                                dcc.Graph(
-                                    id="case-distribution-graph",
-                                    config={"displayModeBar": False},
-                                    style={"flex": "0 0 auto", "width": "100%"},
-                                ),
-                                html.P("Train / val / test split", style=_CASE_PLOT_CAPTION_STYLE),
-                                dcc.Graph(
-                                    id="case-proportions-graph",
-                                    config={"displayModeBar": False},
-                                    style={"flex": "0 0 auto", "width": "100%"},
-                                ),
-                                html.Hr(style={"flex": "0 0 auto", "width": "100%"}),
-                                html.P(
-                                    "Case summary",
-                                    style={
-                                        "color": "#666",
-                                        "fontSize": "0.9em",
-                                        "flex": "0 0 auto",
-                                    },
-                                ),
-                                html.Div(
-                                    id="case-summary",
-                                    style={"flex": "0 0 auto"},
-                                ),
+                        html.H3("Controls"),
+                        html.Button("Reload data", id="reload-btn", n_clicks=0),
+                        html.Label("Metric", style=_LABEL_STYLE),
+                        dcc.Dropdown(
+                            id="metric",
+                            options=_metric_options,
+                            value=_metric_options[0] if _metric_options else None,
+                            clearable=False,
+                        ),
+                        html.Label("Domains", style=_LABEL_STYLE),
+                        dcc.Checklist(
+                            id="domains",
+                            options=_domain_opts,
+                            value=[o["value"] for o in _domain_opts],
+                            labelStyle={"display": "block"},
+                        ),
+                        html.Label("Method families", style=_LABEL_STYLE),
+                        dcc.Dropdown(
+                            id="families",
+                            options=_family_opts,
+                            value=_family_opts,
+                            multi=True,
+                        ),
+                        html.Label("Global methods", style=_LABEL_STYLE),
+                        dcc.Checklist(
+                            id="show-global",
+                            options=[
+                                {"label": " Score on full history where available", "value": "on"}
                             ],
+                            value=[],
+                        ),
+                        html.P(
+                            "For is_global methods on cases with data beyond the curated span, "
+                            "swaps in the full-history fit (a hotpink hash marks affected cells).",
+                            style={"color": "#666", "fontSize": "0.8em", "marginTop": "4px"},
                         ),
                     ],
                 ),
-                html.Hr(style={"flex": "0 0 auto", "width": "100%"}),
+                html.Button(
+                    "◀",
+                    id="sidebar-toggle",
+                    n_clicks=0,
+                    title="Collapse/expand controls",
+                    style=_SIDEBAR_TOGGLE_STYLE,
+                ),
                 html.Div(
-                    id="snapshot-column",
-                    style={"display": "flex", "flexDirection": "column", "flex": "0 0 auto"},
+                    style={"flex": "1", "padding": "16px", "minWidth": "0"},
+                    children=[
+                        html.H1("Timeseries Forecasting Benchmark"),
+                        html.P(
+                            "The following matrix compiles the forecasting results of multiple methods across a variety of timeseries in different water domains. "
+                            "Each cell represents one case x method run, colored by the metric chosen in the left sidebar. In addition, you can use the control panel in the sidebar to filter by domain, method family, ",
+                            style={"color": "#444", "maxWidth": "1000px"},
+                        ),
+                        html.P(" "),
+                        html.P(
+                            "Click a cell to get more details on the training data, and explore forecast snapshots. "
+                            "You can click up to 3 cells in the same row to stack their forecasts on the same plot for comparison.",
+                            style={"color": "#444", "maxWidth": "1000px"},
+                        ),
+                        dcc.Graph(id="matrix", config=_MATRIX_CONFIG),
+                        dcc.Store(id="snapshot-selection", data={"case_id": None, "methods": []}),
+                    ],
+                ),
+                html.Div(
+                    id="detail-column",
+                    style=_DETAIL_COLUMN_STYLE,
                     children=[
                         html.Div(
-                            id="snapshot-hint",
-                            children=(
-                                "Click a matrix cell to see real forecast snapshots. Click "
-                                "more cells in the same row to overlay other methods on the "
-                                "same origins."
-                            ),
-                            style={"color": "#666"},
-                        ),
-                        html.Div(
-                            id="snapshot-panel",
-                            style={"display": "none"},
+                            id="case-panel",
+                            style=_CASE_PANEL_HIDDEN_STYLE,
                             children=[
-                                html.H2(id="snapshot-title"),
-                                html.Div(
-                                    style={
-                                        "display": "flex",
-                                        "gap": "8px",
-                                        "alignItems": "center",
-                                        "flexWrap": "wrap",
-                                        "marginBottom": "8px",
-                                    },
+                                html.Details(
+                                    open=True,
                                     children=[
-                                        html.Span(
-                                            id="snapshot-chips", style={"display": "contents"}
+                                        html.Summary(
+                                            id="case-panel-title",
+                                            style={
+                                                "cursor": "pointer",
+                                                "fontWeight": "bold",
+                                                "fontSize": "1.1em",
+                                                "margin": "0 0 4px 0",
+                                            },
                                         ),
-                                        html.Button(
-                                            "Clear",
-                                            id="clear-btn",
-                                            n_clicks=0,
-                                            style={"marginLeft": "auto"},
+                                        html.P(
+                                            id="case-training-caption",
+                                            style={
+                                                **_CASE_PLOT_CAPTION_STYLE,
+                                                "margin": "0 0 4px 0",
+                                            },
+                                        ),
+                                        dcc.Graph(
+                                            id="case-training-graph",
+                                            config={"displayModeBar": False},
+                                            style={"flex": "0 0 auto", "width": "100%"},
+                                        ),
+                                        html.P(
+                                            "Test data (full test split)",
+                                            style=_CASE_PLOT_CAPTION_STYLE,
+                                        ),
+                                        dcc.Graph(
+                                            id="case-test-graph",
+                                            config={"displayModeBar": False},
+                                            style={"flex": "0 0 auto", "width": "100%"},
+                                        ),
+                                        html.P(
+                                            "Train vs test value distribution",
+                                            style=_CASE_PLOT_CAPTION_STYLE,
+                                        ),
+                                        dcc.Graph(
+                                            id="case-distribution-graph",
+                                            config={"displayModeBar": False},
+                                            style={"flex": "0 0 auto", "width": "100%"},
+                                        ),
+                                        html.P(
+                                            "Train / val / test split",
+                                            style=_CASE_PLOT_CAPTION_STYLE,
+                                        ),
+                                        dcc.Graph(
+                                            id="case-proportions-graph",
+                                            config={"displayModeBar": False},
+                                            style={"flex": "0 0 auto", "width": "100%"},
+                                        ),
+                                        html.Hr(style={"flex": "0 0 auto", "width": "100%"}),
+                                        html.P(
+                                            "Case summary",
+                                            style={
+                                                "color": "#666",
+                                                "fontSize": "0.9em",
+                                                "flex": "0 0 auto",
+                                            },
+                                        ),
+                                        html.Div(
+                                            id="case-summary",
+                                            style={"flex": "0 0 auto"},
                                         ),
                                     ],
                                 ),
-                                dcc.Graph(id="snapshot-graph"),
+                            ],
+                        ),
+                        html.Hr(style={"flex": "0 0 auto", "width": "100%"}),
+                        html.Div(
+                            id="snapshot-column",
+                            style={
+                                "display": "flex",
+                                "flexDirection": "column",
+                                "flex": "0 0 auto",
+                            },
+                            children=[
+                                html.Div(
+                                    id="snapshot-hint",
+                                    children=(
+                                        "Click a matrix cell to see real forecast snapshots. Click "
+                                        "more cells in the same row to overlay other methods on the "
+                                        "same origins."
+                                    ),
+                                    style={"color": "#666"},
+                                ),
+                                html.Div(
+                                    id="snapshot-panel",
+                                    style={"display": "none"},
+                                    children=[
+                                        html.H2(id="snapshot-title"),
+                                        html.Div(
+                                            style={
+                                                "display": "flex",
+                                                "gap": "8px",
+                                                "alignItems": "center",
+                                                "flexWrap": "wrap",
+                                                "marginBottom": "8px",
+                                            },
+                                            children=[
+                                                html.Span(
+                                                    id="snapshot-chips",
+                                                    style={"display": "contents"},
+                                                ),
+                                                html.Button(
+                                                    "Clear",
+                                                    id="clear-btn",
+                                                    n_clicks=0,
+                                                    style={"marginLeft": "auto"},
+                                                ),
+                                            ],
+                                        ),
+                                        dcc.Graph(id="snapshot-graph"),
+                                    ],
+                                ),
                             ],
                         ),
                     ],
                 ),
             ],
         ),
+        html.Div(id="method-info-panel", style=_METHOD_INFO_HIDDEN_STYLE),
     ],
 )
 
@@ -723,7 +766,32 @@ def _method_chips(methods: list[str]) -> list:
     return chips
 
 
+def _method_info_cards(case_id: str, methods: list[str]) -> list:
+    """One card per selected method for the bottom method-info panel, colour-matched to
+    that method's chip/forecast line (see `_method_chips`)."""
+    cards = []
+    for i, method in enumerate(methods):
+        color = METHOD_COLORS[i % len(METHOD_COLORS)]
+        cards.append(
+            html.Div(
+                style={**_METHOD_INFO_CARD_STYLE, "borderLeft": f"3px solid {color}"},
+                children=[
+                    html.Div(method, style={"fontWeight": "bold", "marginBottom": "4px"}),
+                    dcc.Markdown(
+                        method_info(case_id, method), style={"fontSize": "0.85em", "margin": "0"}
+                    ),
+                ],
+            )
+        )
+    return cards
+
+
 EMPTY_SELECTION = {"case_id": None, "methods": []}
+
+# Cap on methods overlaid per case: the snapshot graph and the method-info panel both
+# lay their per-method content out side by side, which stops being readable much past
+# this. Adding a 4th distinct method evicts the oldest rather than refusing the click.
+MAX_OVERLAY_METHODS = 3
 
 
 def next_selection(trigger, trigger_value, click_data: dict | None, sel: dict) -> dict:
@@ -753,11 +821,10 @@ def next_selection(trigger, trigger_value, click_data: dict | None, sel: dict) -
     case_id, method = points[0]["y"], points[0]["x"]
     if case_id != sel["case_id"]:
         return {"case_id": case_id, "methods": [method]}
-    methods = (
-        [m for m in sel["methods"] if m != method]
-        if method in sel["methods"]
-        else [*sel["methods"], method]
-    )
+    if method in sel["methods"]:
+        methods = [m for m in sel["methods"] if m != method]
+    else:
+        methods = [*sel["methods"], method][-MAX_OVERLAY_METHODS:]
     return {"case_id": case_id, "methods": methods} if methods else dict(EMPTY_SELECTION)
 
 
@@ -772,8 +839,9 @@ def next_selection(trigger, trigger_value, click_data: dict | None, sel: dict) -
 def update_selection(click_data, clear_clicks, chip_clicks, sel):
     """Maintain the {case_id, methods} overlay selection.
 
-    Same-row clicks accumulate methods (re-click removes, when Plotly re-fires it); a
-    click in a different row resets to that case; chip clicks and Clear remove methods.
+    Same-row clicks accumulate methods, up to `MAX_OVERLAY_METHODS` (beyond that, the
+    oldest is evicted; re-click removes, when Plotly re-fires it); a click in a
+    different row resets to that case; chip clicks and Clear remove methods.
     """
     return next_selection(ctx.triggered_id, ctx.triggered[0]["value"], click_data, sel)
 
@@ -845,6 +913,22 @@ def render_panel(sel, n_reload, show_global):
         {"display": "block"},
         {"display": "none"},
     )
+
+
+@app.callback(
+    Output("method-info-panel", "children"),
+    Output("method-info-panel", "style"),
+    Input("snapshot-selection", "data"),
+)
+def render_method_info_panel(sel):
+    """Bottom panel: one card per selected method with a brief description and its
+    exogenous-input usage for this case (see `data.method_info`). Still a placeholder —
+    the fields shown here are expected to grow as we settle on what's useful."""
+    sel = sel or {}
+    case_id, methods = sel.get("case_id"), sel.get("methods") or []
+    if not case_id or not methods:
+        return [], _METHOD_INFO_HIDDEN_STYLE
+    return _method_info_cards(case_id, methods), _METHOD_INFO_STYLE
 
 
 if __name__ == "__main__":
