@@ -53,7 +53,15 @@ def _select_rolling_origins(
     return [valid[i] for i in idx]
 
 
-SNAPSHOT_COLUMNS = ("case_id", "method", "origin_id", "origin_ds", "ds", "y_hat")
+SNAPSHOT_COLUMNS = (
+    "case_id",
+    "method",
+    "used_extended_history",
+    "origin_id",
+    "origin_ds",
+    "ds",
+    "y_hat",
+)
 
 
 def run_case_rolling(
@@ -73,10 +81,12 @@ def run_case_rolling(
       horizon, metric, value, seconds, frac_finite_test, status) so the matrix renderer is
       unchanged.
     - `snapshots` holds every origin's full predicted series (columns `SNAPSHOT_COLUMNS`:
-      case_id, method, origin_id, origin_ds, ds, y_hat) so the results viewer can draw real
-      forecasts. Origins are case-level, so `origin_id`/`origin_ds` align across methods,
-      which is what lets the viewer overlay several methods on one origin's panel. A method
-      that errors contributes no snapshot rows (its metrics row still records the failure).
+      case_id, method, used_extended_history, origin_id, origin_ds, ds, y_hat) so the
+      results viewer can draw real forecasts. Origins are case-level, so `origin_id`/
+      `origin_ds` align across methods and fits, which is what lets the viewer overlay
+      several methods (and swap in a method's extended-history fit) on one origin's
+      panel. A method that errors contributes no snapshot rows for that fit (its metrics
+      row still records the failure).
     """
     df = case.load(prefer_synth=prefer_synth, curated=True)
     splits = case.split_frame(df)
@@ -134,8 +144,8 @@ def run_case_rolling(
     snap_frames: list[pd.DataFrame] = []
     for method in methods:
         # Local fit for everyone; a second extended fit for segment-pooling methods when
-        # the case has history beyond the curated span. Snapshots come from the local fit
-        # only -- the extended fit contributes matrix scores, not forecast overlays.
+        # the case has history beyond the curated span. Both fits' forecasts are saved as
+        # snapshots, tagged by `used_extended_history`, so the viewer can show either.
         variants = [(None, False)]
         if method.is_global and method.pools_segments and ext_segments is not None:
             variants.append((ext_segments, True))
@@ -157,21 +167,21 @@ def run_case_rolling(
                     method.fit(case, history)
                     preds = method.predict(case, history, H, future_exog=fexog)
                     y_hat = preds["y_hat"].to_numpy(float)
-                    if not used_extended:
-                        # Full predicted series (all H steps, before masking) so the viewer
-                        # draws a continuous forecast line even where the actual has gaps.
-                        method_snaps.append(
-                            pd.DataFrame(
-                                {
-                                    "case_id": case.id,
-                                    "method": method.name,
-                                    "origin_id": i,
-                                    "origin_ds": full_fit["ds"].iloc[o],
-                                    "ds": preds["ds"].to_numpy(),
-                                    "y_hat": y_hat,
-                                }
-                            )
+                    # Full predicted series (all H steps, before masking) so the viewer
+                    # draws a continuous forecast line even where the actual has gaps.
+                    method_snaps.append(
+                        pd.DataFrame(
+                            {
+                                "case_id": case.id,
+                                "method": method.name,
+                                "used_extended_history": used_extended,
+                                "origin_id": i,
+                                "origin_ds": full_fit["ds"].iloc[o],
+                                "ds": preds["ds"].to_numpy(),
+                                "y_hat": y_hat,
+                            }
                         )
+                    )
                     actual = raw_y[o : o + H]
                     m = np.isfinite(actual)
                     if not m.any():
@@ -202,8 +212,7 @@ def run_case_rolling(
                     "Skill_vs_Mean": 1.0 - mse / float(np.mean((a - ref_m) ** 2)),
                 }
                 status = "ok"
-                if not used_extended:
-                    snap_frames.extend(method_snaps)
+                snap_frames.extend(method_snaps)
             except Exception as exc:
                 metrics = {k: float("nan") for k in metric_names}
                 status = f"error: {type(exc).__name__}: {str(exc)[:70]}"
