@@ -123,13 +123,66 @@ def load_case_notes(case_id: str) -> str | None:
 
 
 @cache
-def load_case_training_tail(case_id: str, n: int = 1000) -> pd.DataFrame:
-    """Last `n` points of the case's training split (curated), for a quick-look plot.
+def load_case_split(case_id: str, split: str, extended: bool = False) -> pd.DataFrame:
+    """One split ("train"/"val"/"test") of a case's curated series, for the case-panel
+    quick-look plots.
 
-    Cached: like the case's curated data itself, this is static for the process lifetime.
+    `extended=True` (meaningful only for `split="train"`) swaps in the case's full
+    pre-curated history via `Case.load_extended`, cut at the curated train/val boundary
+    so it never reaches into val or test; falls back to the plain curated train split
+    if extended data can't be loaded for this case. Cached: like the case's curated data
+    itself, this is static for the process lifetime.
     """
     case = get_case(case_id)
-    train = case.split_frame(case.load(curated=True))["train"]
+    curated = case.load(curated=True)
+    splits = case.split_frame(curated)
+    if not (extended and split == "train"):
+        return splits[split]
+
+    train_end, _, _ = case.split_bounds(curated)
+    try:
+        ext = case.load_extended()
+    except Exception:
+        return splits["train"]
+    ds = pd.to_datetime(ext["ds"])
+    if ds.dt.tz is not None:
+        ds = ds.dt.tz_convert("UTC").dt.tz_localize(None)
+    return ext.loc[ds <= train_end].reset_index(drop=True)
+
+
+def _observed_mask(df: pd.DataFrame) -> pd.Series:
+    return df["y_observed"] if "y_observed" in df.columns else df["y"].notna()
+
+
+def load_case_split_values(case_id: str, split: str, extended: bool = False) -> pd.Series:
+    """Observed y-values for one split, for the case-panel distribution histogram."""
+    frame = load_case_split(case_id, split, extended=extended)
+    return frame.loc[_observed_mask(frame), "y"]
+
+
+def load_case_split_counts(case_id: str, extended: bool = False) -> dict[str, int]:
+    """Observed-point counts for train/val/test, for the case-panel proportions bar.
+
+    `extended` only swaps in the extended-history train count; val/test always reflect
+    the curated split, since extended history never reaches past the train/val boundary.
+    """
+    return {
+        split: len(load_case_split_values(case_id, split, extended=extended and split == "train"))
+        for split in ("train", "val", "test")
+    }
+
+
+def case_has_extended_history(df: pd.DataFrame, case_id: str) -> bool:
+    """Whether the pilot run recorded an extended-history fit for this case — i.e. some
+    `is_global` method found real history beyond the curated span (see
+    `bench.eval.rolling.run_case_rolling`)."""
+    return bool(df.loc[df["case_id"] == case_id, "used_extended_history"].any())
+
+
+@cache
+def load_case_training_tail(case_id: str, n: int = 1000, extended: bool = False) -> pd.DataFrame:
+    """Last `n` points of the case's training split, for a quick-look plot."""
+    train = load_case_split(case_id, "train", extended=extended)
     return train.tail(n)[["ds", "y"]].reset_index(drop=True)
 
 

@@ -21,11 +21,15 @@ from snapshot import (
     METHOD_COLORS,
     TRAINING_TAIL_N,
     render_snapshots,
+    render_split_distribution,
+    render_split_proportions,
+    render_test_snapshot,
     render_training_snapshot,
 )
 
 from data import (
     FAMILY_ORDER,
+    case_has_extended_history,
     case_summary,
     load_case_notes,
     load_metrics,
@@ -35,8 +39,8 @@ from data import (
 )
 from tsforecastbench.bench.viz import METRIC_CONFIG
 
-# Pixel size of one heatmap cell — also used to pin the case-panel's height to the
-# heatmap's, so the panel never leaves whitespace above the forecast-snapshot panel below.
+# Pixel size of one heatmap cell, and the fixed margin (title/colorbar/labels) around it —
+# together they size the heatmap figure so cells render square (see `render_matrix`).
 CELL = 42
 MATRIX_MARGIN = 120
 
@@ -176,8 +180,8 @@ def render_matrix(
     selection: dict | None = None,
     show_global: bool = False,
 ) -> tuple[go.Figure, int]:
-    """Returns the heatmap figure plus its row count, so callers can pin sibling
-    elements (the case panel) to the same rendered height.
+    """Returns the heatmap figure plus its row count (unused by the current caller, kept
+    since it falls out of the same pivot work the figure needs anyway).
 
     Every method has a `used_extended_history=False` ("local") row on the shared
     curated span; that's what's plotted by default. `is_global` methods additionally
@@ -408,26 +412,28 @@ _SIDEBAR_TOGGLE_STYLE = {
 }
 _LABEL_STYLE = {"fontWeight": "bold", "marginTop": "16px", "display": "block"}
 
-# The row holding the matrix and the case panel; `update_matrix` pins its height in
-# px to match the matrix's own rendered height (see CELL/MATRIX_MARGIN), so the case
-# panel — which has no natural height of its own — stretches to exactly that height
-# instead of growing to fit a long case summary and leaving a gap above the
-# forecast-snapshot panel below.
-_MATRIX_ROW_STYLE = {"display": "flex", "gap": "16px", "alignItems": "stretch"}
-
-# Grows to fill whatever width is left next to the matrix (no fixed width, so no
-# leftover blank strip on the right). `maxHeight` is just a safety net for
-# pathologically large grids; height is normally set by the stretch above.
+# A top-level column, sibling to the sidebar rather than nested next to the matrix, so
+# it starts flush with the top of the page instead of below the intro text. `position:
+# sticky` keeps it in view as the (often much taller) matrix column scrolls underneath.
 _CASE_PANEL_STYLE = {
-    "flex": "1 1 380px",
-    "minWidth": "320px",
-    "maxHeight": "calc(100vh - 220px)",
-    "paddingLeft": "16px",
-    "borderLeft": "1px solid #ddd",
+    "flex": "0 0 420px",
+    "width": "420px",
     "boxSizing": "border-box",
+    "position": "sticky",
+    "top": "0",
+    "maxHeight": "100vh",
+    "padding": "16px",
+    "borderLeft": "1px solid #ddd",
     "display": "flex",
     "flexDirection": "column",
     "minHeight": "0",
+    "overflowY": "auto",
+}
+_CASE_PLOT_CAPTION_STYLE = {
+    "color": "#666",
+    "fontSize": "0.85em",
+    "margin": "12px 0 4px 0",
+    "flex": "0 0 auto",
 }
 
 # Locks the heatmap down to a read-only view: keeps the click-to-select and
@@ -518,59 +524,7 @@ app.layout = html.Div(
                     "You can click multiple cells in the same row to stack their forecasts on the same plot for comparison.",
                     style={"color": "#444", "maxWidth": "1000px"},
                 ),
-                html.Div(
-                    id="matrix-row",
-                    style=_MATRIX_ROW_STYLE,
-                    children=[
-                        dcc.Graph(id="matrix", config=_MATRIX_CONFIG),
-                        html.Div(
-                            id="case-panel",
-                            style={**_CASE_PANEL_STYLE, "display": "none"},
-                            children=[
-                                html.H3(
-                                    id="case-panel-title",
-                                    style={"flex": "0 0 auto", "margin": "0 0 4px 0"},
-                                ),
-                                html.P(
-                                    f"Training data (last {TRAINING_TAIL_N:,} points)",
-                                    style={
-                                        "color": "#666",
-                                        "fontSize": "0.85em",
-                                        "marginBottom": "4px",
-                                        "flex": "0 0 auto",
-                                    },
-                                ),
-                                dcc.Graph(
-                                    id="case-training-graph",
-                                    config={"displayModeBar": False},
-                                    style={"flex": "0 0 auto", "width": "100%"},
-                                ),
-                                html.Hr(style={"flex": "0 0 auto", "width": "100%"}),
-                                html.P(
-                                    "Case summary",
-                                    style={
-                                        "color": "#666",
-                                        "fontSize": "0.9em",
-                                        "flex": "0 0 auto",
-                                    },
-                                ),
-                                # Fixed above, scrollable below: the training plot always
-                                # stays in view, and a long case summary scrolls in its
-                                # own box instead of pushing the panel past the matrix's
-                                # height into the forecast-snapshot panel underneath.
-                                html.Div(
-                                    id="case-summary",
-                                    style={
-                                        "flex": "1 1 auto",
-                                        "minHeight": "0",
-                                        "overflowY": "auto",
-                                        "paddingRight": "8px",
-                                    },
-                                ),
-                            ],
-                        ),
-                    ],
-                ),
+                dcc.Graph(id="matrix", config=_MATRIX_CONFIG),
                 html.Hr(),
                 dcc.Store(id="snapshot-selection", data={"case_id": None, "methods": []}),
                 html.Div(
@@ -628,6 +582,59 @@ app.layout = html.Div(
                 ),
             ],
         ),
+        html.Div(
+            id="case-panel",
+            style={**_CASE_PANEL_STYLE, "display": "none"},
+            children=[
+                html.H3(
+                    id="case-panel-title",
+                    style={"flex": "0 0 auto", "margin": "0 0 4px 0"},
+                ),
+                html.P(
+                    id="case-training-caption",
+                    style={**_CASE_PLOT_CAPTION_STYLE, "margin": "0 0 4px 0"},
+                ),
+                dcc.Graph(
+                    id="case-training-graph",
+                    config={"displayModeBar": False},
+                    style={"flex": "0 0 auto", "width": "100%"},
+                ),
+                html.P("Test data (full test split)", style=_CASE_PLOT_CAPTION_STYLE),
+                dcc.Graph(
+                    id="case-test-graph",
+                    config={"displayModeBar": False},
+                    style={"flex": "0 0 auto", "width": "100%"},
+                ),
+                html.P(
+                    "Train vs test value distribution",
+                    style=_CASE_PLOT_CAPTION_STYLE,
+                ),
+                dcc.Graph(
+                    id="case-distribution-graph",
+                    config={"displayModeBar": False},
+                    style={"flex": "0 0 auto", "width": "100%"},
+                ),
+                html.P("Train / val / test split", style=_CASE_PLOT_CAPTION_STYLE),
+                dcc.Graph(
+                    id="case-proportions-graph",
+                    config={"displayModeBar": False},
+                    style={"flex": "0 0 auto", "width": "100%"},
+                ),
+                html.Hr(style={"flex": "0 0 auto", "width": "100%"}),
+                html.P(
+                    "Case summary",
+                    style={
+                        "color": "#666",
+                        "fontSize": "0.9em",
+                        "flex": "0 0 auto",
+                    },
+                ),
+                html.Div(
+                    id="case-summary",
+                    style={"flex": "0 0 auto"},
+                ),
+            ],
+        ),
     ],
 )
 
@@ -643,16 +650,8 @@ def toggle_sidebar(n_clicks):
     return style, "▶" if collapsed else "◀"
 
 
-def _n_rows_for(df, metric: str, case_ids: list[str], methods: list[str]) -> int:
-    df_metric = df[
-        (df["metric"] == metric) & df["case_id"].isin(case_ids) & df["method"].isin(methods)
-    ]
-    return len(ordered_cases(df_metric))
-
-
 @app.callback(
     Output("matrix", "figure"),
-    Output("matrix-row", "style"),
     Input("metric", "value"),
     Input("domains", "value"),
     Input("families", "value"),
@@ -664,24 +663,15 @@ def update_matrix(metric, domains, families, n_reload, selection, show_global):
     df = load_metrics(n_reload or 0)
     show_global = "on" in (show_global or [])
     if not metric or not domains or not families:
-        fig = _empty_fig("Select a metric, at least one domain, and one method family.")
-        return fig, {**_MATRIX_ROW_STYLE, "height": f"{fig.layout.height}px"}
+        return _empty_fig("Select a metric, at least one domain, and one method family.")
 
     methods = sorted(df.loc[df["family"].isin(families), "method"].unique())
     case_ids = sorted(df.loc[df["domain"].isin(domains), "case_id"].unique())
     if not case_ids or not methods:
-        fig = _empty_fig("No cases or methods match the current filters.")
-        n_rows = 0
-    else:
-        fig, n_rows = render_matrix(df, metric, case_ids, methods, selection, show_global)
+        return _empty_fig("No cases or methods match the current filters.")
 
-    # Floor the row's height to whatever it would be with every domain checked, so
-    # narrowing the domain filter can't shrink the case panel below a readable size.
-    all_case_ids = sorted(df["case_id"].unique())
-    floor_rows = _n_rows_for(df, metric, all_case_ids, methods) if methods else 0
-    height = CELL * max(n_rows, floor_rows) + MATRIX_MARGIN
-    return fig, {**_MATRIX_ROW_STYLE, "height": f"{height}px"}
-    return fig, {**_MATRIX_ROW_STYLE, "height": f"{fig.layout.height}px"}
+    fig, _n_rows = render_matrix(df, metric, case_ids, methods, selection, show_global)
+    return fig
 
 
 def _method_chips(methods: list[str]) -> list:
@@ -777,20 +767,41 @@ def update_selection(click_data, clear_clicks, chip_clicks, sel):
 
 @app.callback(
     Output("case-panel-title", "children"),
+    Output("case-training-caption", "children"),
     Output("case-training-graph", "figure"),
+    Output("case-test-graph", "figure"),
+    Output("case-distribution-graph", "figure"),
+    Output("case-proportions-graph", "figure"),
     Output("case-summary", "children"),
     Output("case-panel", "style"),
     Input("snapshot-selection", "data"),
+    Input("show-global", "value"),
+    Input("reload-btn", "n_clicks"),
 )
-def render_case_panel(sel):
-    """Right-hand panel: a training-data snapshot and case metadata for the clicked
-    cell's case. Depends only on `case_id`, so it stays open across method chip clicks."""
+def render_case_panel(sel, show_global, n_reload):
+    """Right-hand panel: training/test snapshots, a train-vs-test distribution, a
+    train/val/test proportions bar, and case metadata for the clicked cell's case.
+    Depends only on `case_id` (plus the global toggle), so it stays open across method
+    chip clicks. When `show_global` reveals extended history for this case (see
+    `data.case_has_extended_history`), the training snapshot, distribution, and
+    proportions bar all swap in the extended-history train split."""
     case_id = (sel or {}).get("case_id")
     if not case_id:
-        return "", go.Figure(), "", {**_CASE_PANEL_STYLE, "display": "none"}
+        empty = go.Figure()
+        return "", "", empty, empty, empty, empty, "", {**_CASE_PANEL_STYLE, "display": "none"}
+
+    show_global = "on" in (show_global or [])
+    extended = show_global and case_has_extended_history(load_metrics(n_reload or 0), case_id)
+    caption = f"Training data (last {TRAINING_TAIL_N:,} points"
+    caption += ", including extended history)" if extended else ")"
+
     return (
         case_id.replace("_", " ").upper(),
-        render_training_snapshot(case_id),
+        caption,
+        render_training_snapshot(case_id, extended=extended),
+        render_test_snapshot(case_id),
+        render_split_distribution(case_id, extended=extended),
+        render_split_proportions(case_id, extended=extended),
         dcc.Markdown(case_summary(case_id)),
         {**_CASE_PANEL_STYLE, "display": "flex"},
     )
