@@ -3,7 +3,7 @@
 Reads `results/pilot_metrics.parquet` and renders the same case x method grid as the
 static `results/pilot_matrix_*.png` plots, but with hover detail, domain/method-family
 filtering, and a metric switcher. Clicking a cell opens a snapshot panel with forecast
-examples and the case-review notes for that case x method pair.
+examples for that case x method pair.
 
 Built on Dash: the matrix is a `dcc.Graph`, and a click callback reads the cell's
 `clickData` to populate the snapshot panel — no selection-event workarounds needed.
@@ -31,7 +31,6 @@ from data import (
     FAMILY_ORDER,
     case_has_extended_history,
     case_summary,
-    load_case_notes,
     load_metrics,
     load_snapshots,
     ordered_cases,
@@ -412,9 +411,25 @@ _SIDEBAR_TOGGLE_STYLE = {
 }
 _LABEL_STYLE = {"fontWeight": "bold", "marginTop": "16px", "display": "block"}
 
-# A top-level column, sibling to the sidebar rather than nested next to the matrix, so
-# it starts flush with the top of the page instead of below the intro text. `position:
-# sticky` keeps it in view as the (often much taller) matrix column scrolls underneath.
+# Top-level columns, siblings to the sidebar rather than nested next to the matrix, so
+# they start flush with the top of the page instead of below the intro text. `position:
+# sticky` keeps each in view as the (often much taller) matrix column scrolls underneath.
+# The snapshot panel sits between the matrix and the case-info panel, in that reading
+# order (forecasts, then case context), and shares the same sticky/scroll treatment.
+_SNAPSHOT_PANEL_STYLE = {
+    "flex": "0 0 460px",
+    "width": "460px",
+    "boxSizing": "border-box",
+    "position": "sticky",
+    "top": "0",
+    "maxHeight": "100vh",
+    "padding": "16px",
+    "borderLeft": "1px solid #ddd",
+    "display": "flex",
+    "flexDirection": "column",
+    "minHeight": "0",
+    "overflowY": "auto",
+}
 _CASE_PANEL_STYLE = {
     "flex": "0 0 420px",
     "width": "420px",
@@ -525,14 +540,19 @@ app.layout = html.Div(
                     style={"color": "#444", "maxWidth": "1000px"},
                 ),
                 dcc.Graph(id="matrix", config=_MATRIX_CONFIG),
-                html.Hr(),
                 dcc.Store(id="snapshot-selection", data={"case_id": None, "methods": []}),
+            ],
+        ),
+        html.Div(
+            id="snapshot-column",
+            style=_SNAPSHOT_PANEL_STYLE,
+            children=[
                 html.Div(
                     id="snapshot-hint",
                     children=(
-                        "Click a matrix cell to see its case notes and real forecast "
-                        "snapshots. Click more cells in the same row to overlay other "
-                        "methods on the same origins."
+                        "Click a matrix cell to see real forecast snapshots. Click more "
+                        "cells in the same row to overlay other methods on the same "
+                        "origins."
                     ),
                     style={"color": "#666"},
                 ),
@@ -559,25 +579,7 @@ app.layout = html.Div(
                                 ),
                             ],
                         ),
-                        html.Div(
-                            style={"display": "flex", "gap": "16px"},
-                            children=[
-                                html.Div(
-                                    style={"flex": "2", "minWidth": "0"},
-                                    children=[dcc.Graph(id="snapshot-graph")],
-                                ),
-                                html.Div(
-                                    style={"flex": "1", "minWidth": "0"},
-                                    children=[
-                                        html.P(
-                                            "Case review notes",
-                                            style={"color": "#666", "fontSize": "0.9em"},
-                                        ),
-                                        html.Div(id="snapshot-notes"),
-                                    ],
-                                ),
-                            ],
-                        ),
+                        dcc.Graph(id="snapshot-graph"),
                     ],
                 ),
             ],
@@ -810,7 +812,6 @@ def render_case_panel(sel, show_global, n_reload):
 @app.callback(
     Output("snapshot-title", "children"),
     Output("snapshot-graph", "figure"),
-    Output("snapshot-notes", "children"),
     Output("snapshot-chips", "children"),
     Output("snapshot-panel", "style"),
     Output("snapshot-hint", "style"),
@@ -822,18 +823,13 @@ def render_panel(sel, n_reload, show_global):
     sel = sel or {}
     case_id, methods = sel.get("case_id"), sel.get("methods") or []
     if not case_id or not methods:
-        return "", go.Figure(), "", [], {"display": "none"}, {"color": "#666"}
+        return "", go.Figure(), [], {"display": "none"}, {"color": "#666"}
 
     show_global = "on" in (show_global or [])
-    notes = load_case_notes(case_id)
-    notes_children = (
-        dcc.Markdown(notes) if notes else html.Em(f"No case_review notes found for {case_id}.")
-    )
     title = f"(Test) Prediction Snapshots — {', '.join(methods)}"
     return (
         title,
-        render_snapshots(case_id, methods, load_snapshots(n_reload or 0), show_global),
-        notes_children,
+        render_snapshots(case_id, methods, load_snapshots(n_reload or 0), show_global, max_cols=1),
         _method_chips(methods),
         {"display": "block"},
         {"display": "none"},

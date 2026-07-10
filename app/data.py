@@ -22,7 +22,6 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 RESULTS_DIR = REPO_ROOT / "results"
 METRICS_PATH = RESULTS_DIR / "pilot_metrics.parquet"
 SNAPSHOTS_PATH = RESULTS_DIR / "pilot_snapshots.parquet"
-CASE_REVIEW_DIR = RESULTS_DIR / "case_review"
 
 # Columns of the snapshot artifact written by the rolling eval (see
 # tsforecastbench.bench.eval.rolling.SNAPSHOT_COLUMNS). Kept here so an empty frame has
@@ -112,14 +111,6 @@ def ordered_methods(df: pd.DataFrame) -> list[str]:
     pairs["_family_rank"] = pairs["family"].map(_rank(FAMILY_ORDER))
     pairs = pairs.sort_values(["_family_rank", "method"])
     return list(pairs["method"])
-
-
-def load_case_notes(case_id: str) -> str | None:
-    """Markdown case-review notes for a case, or None if it hasn't been reviewed."""
-    path = CASE_REVIEW_DIR / f"{case_id}.md"
-    if not path.exists():
-        return None
-    return path.read_text()
 
 
 @cache

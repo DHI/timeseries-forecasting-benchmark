@@ -244,7 +244,11 @@ def render_split_proportions(case_id: str, extended: bool = False) -> go.Figure:
 
 
 def render_snapshots(
-    case_id: str, methods: list[str], preds: pd.DataFrame, show_global: bool = False
+    case_id: str,
+    methods: list[str],
+    preds: pd.DataFrame,
+    show_global: bool = False,
+    max_cols: int = MAX_COLS,
 ) -> go.Figure:
     """Grid of forecast-origin snapshots for one case, overlaying each of `methods`.
 
@@ -252,7 +256,9 @@ def render_snapshots(
     every method shares the same panels and the overlays line up. When `show_global` is
     True, a method with an extended-history fit for this case (see
     `bench.eval.rolling.run_case_rolling`) is drawn from that fit instead of the local one
-    -- matching the matrix's toggle -- with its legend entry flagged accordingly.
+    -- matching the matrix's toggle -- with its legend entry flagged accordingly. `max_cols`
+    caps how many origin panels share a row; pass 1 to stack them in a single column, e.g.
+    when rendering into a narrow vertical panel.
     """
     case_preds = preds[preds["case_id"] == case_id]
     if case_preds.empty:
@@ -283,7 +289,7 @@ def render_snapshots(
     actual = _actual_series(case_id)
 
     n = len(origins)
-    n_cols = min(MAX_COLS, n)
+    n_cols = min(max_cols, n)
     n_rows = math.ceil(n / n_cols)
 
     titles = [pd.Timestamp(o.origin_ds).strftime("%Y-%m-%d %H:%M") for o in origins]
