@@ -8,6 +8,23 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-10 — Closed out EDA figure-quality review comments (issue #36)
+
+Worked through Rocco's PR #2 figure comments (B5/B6/C3 + the WWTP figures): missing
+axis units, missing captions, and a stale/spiky Bellinge panel. Two `docs/figures/cases/*_eda.png`
+had never been regenerated since the case-id rename and still showed the old titles
+(`camels_dk_discharge`, `bellinge_sewer_level`) — regenerating them, plus labelling every
+exogenous-overlay axis with its unit in `case_eda.py`, resolved most of what looked "off."
+Added captions to every case doc and redrew the CAMELS-DK mermaid diagram, and gave
+`notebooks/eda.py` the same treatment (axis labels on the ACF/CCF panels, plus a
+raw-vs-curated overlay on the full-series plot so it's visible how much of the record the
+benchmark actually uses). One finding didn't get fixed: `sewerlevel_bellinge`'s level series
+has two ~67-hour flatline plateaus at a fixed value (2.059/2.013 m against a 0.2–0.6 m
+baseline) — a stuck-sensor/logger fault that neither `data/processed` nor `curate.py`'s
+gap-fill removes. Despiking it needs a filter in `sewerlevel_bellinge/download.py`
+(mirroring the existing rain-sentinel filter) calibrated against the raw 1-min CSV, which
+is still open.
+
 ## 2026-07-10 — Scaled features ahead of MLPRegressor (issue #48)
 
 `MLPForecaster` (`ml.py`) was feeding raw lags and calendar features straight into
