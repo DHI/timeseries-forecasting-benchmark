@@ -19,9 +19,8 @@ flowchart LR
 
 ![EDA](../figures/cases/demand_ltown_eda.png)
 
-*EDA panel: **total network demand** = sum of all node demands from `SCADA_Demands.csv`,
-resampled to hourly. **To regenerate (Rocco, PR #2):** label the panel so it's clear which
-series is plotted (the summed demand, not a single pump).*
+*EDA panel: **total network demand** (L/s) = sum of all node demands from
+`SCADA_Demands.csv`, resampled to hourly — not a single pump's flow.*
 
 ## The forecasting problem
 
