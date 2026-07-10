@@ -65,9 +65,10 @@ class Case(BaseModel):
     target: str
     target_unit: str = ""
     freq: str
-    # Seasonal periods in steps of `freq`, dominant first; [] = non-seasonal. The single
-    # source of truth for seasonality in the train/predict cycle (methods and the MASE
-    # season all resolve from here — there is no frequency-based fallback). Values are
+    # Seasonal periods in steps of `freq`, dominant first (ranked by detection prominence,
+    # not by period length — the longest period is not necessarily first); [] = non-seasonal.
+    # The single source of truth for seasonality in the train/predict cycle (methods and the
+    # MASE season all resolve from here — there is no frequency-based fallback). Values are
     # fixed once at curation time from train-split evidence (notebooks/seasonality.py);
     # deviations from the detection proposal need a justification in `notes`.
     seasonalities: list[int]
