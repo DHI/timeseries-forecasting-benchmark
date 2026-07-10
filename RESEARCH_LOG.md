@@ -18,7 +18,21 @@ exogenous-overlay axis with its unit in `case_eda.py`, resolved most of what loo
 Added captions to every case doc and redrew the CAMELS-DK mermaid diagram, and gave
 `notebooks/eda.py` the same treatment (axis labels on the ACF/CCF panels, plus a
 raw-vs-curated overlay on the full-series plot so it's visible how much of the record the
-benchmark actually uses). One finding didn't get fixed: `sewerlevel_bellinge`'s level series
+benchmark actually uses). That overlay initially thinned the raw and curated series to 3000
+points each for plotting, but computed the stride independently per series — since the two
+have different lengths, the strides diverged and the two lines ended up sampling different
+timestamps, making spikes in the raw line (e.g. `demand_ltown` in Jan–Feb 2018) look like
+they'd been smoothed away in the curated line even though the underlying values were
+identical everywhere outside the small gap-filled stretches. Fixed by dropping the
+downsampling entirely and plotting both series at full resolution, so they trace exactly on
+top of each other except where curation actually filled a gap. That broke `waves_oregon` and
+`waves_massachusetts` (hourly data over 2014–2023, ~79k rows), whose full-resolution plot
+exceeds marimo's 8MB cell-output cap. Fixed by only downsampling when a series is too large
+to render, using min/max-per-bin binning on a single shared set of absolute time edges
+across raw and curated (rather than each series computing its own stride), so a spike always
+survives and the two traces still match exactly at every plotted point outside a filled gap.
+One finding didn't get fixed:
+`sewerlevel_bellinge`'s level series
 has two ~67-hour flatline plateaus at a fixed value (2.059/2.013 m against a 0.2–0.6 m
 baseline) — a stuck-sensor/logger fault that neither `data/processed` nor `curate.py`'s
 gap-fill removes. Despiking it needs a filter in `sewerlevel_bellinge/download.py`

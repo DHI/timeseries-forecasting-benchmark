@@ -143,16 +143,38 @@ def _(case):
 
 
 @app.cell
-def _(case, df, go, mo, pd, splits_curated):
-    def _thin(part, max_pts=3000):
-        if len(part) > max_pts:
-            return part.iloc[:: len(part) // max_pts]
-        return part
+def _(case, df, go, mo, np, pd, splits_curated):
+    _MAX_PTS = 3000
+
+    def _envelope(part, edges):
+        # Min/max-per-bin downsampling on a *shared* set of absolute time edges, so every
+        # series (raw or curated) bins against the same grid — a spike surviving in one
+        # series' bin survives identically in every other series' matching bin, and
+        # wherever curated == raw (i.e. outside a filled gap) the two traces stay pointwise
+        # identical rather than drifting apart the way independent per-series striding did.
+        ds = pd.to_datetime(part["ds"])
+        y = pd.to_numeric(part["y"], errors="coerce")
+        bin_id = pd.cut(ds, bins=edges, labels=False, include_lowest=True)
+        agg = (
+            pd.DataFrame({"bin": bin_id, "y": y.to_numpy()})
+            .groupby("bin")["y"]
+            .agg(["idxmin", "idxmax"])
+        )
+        idx = np.unique(agg.dropna(how="all").to_numpy().astype(int))
+        return part.iloc[idx]
+
+    _ds_full = pd.to_datetime(df["ds"])
+    _needs_thin = len(df) > _MAX_PTS
+    _edges = (
+        pd.date_range(_ds_full.min(), _ds_full.max(), periods=_MAX_PTS // 2 + 1)
+        if _needs_thin
+        else None
+    )
 
     fig_ts = go.Figure()
     # Raw series first, in grey and behind everything, so it's obvious at a glance how
     # much of the full nominal span the benchmark-ready (curated) data actually covers.
-    _raw = _thin(df)
+    _raw = _envelope(df, _edges) if _needs_thin else df
     fig_ts.add_trace(
         go.Scatter(
             x=pd.to_datetime(_raw["ds"]),
@@ -164,10 +186,12 @@ def _(case, df, go, mo, pd, splits_curated):
         )
     )
     for _part, _color, _name in [
-        (_thin(splits_curated["train"]), "#4C72B0", "train"),
-        (_thin(splits_curated["val"]), "#DD8452", "val"),
-        (_thin(splits_curated["test"]), "#55A868", "test"),
+        (splits_curated["train"], "#4C72B0", "train"),
+        (splits_curated["val"], "#DD8452", "val"),
+        (splits_curated["test"], "#55A868", "test"),
     ]:
+        if _needs_thin:
+            _part = _envelope(_part, _edges)
         fig_ts.add_trace(
             go.Scatter(
                 x=pd.to_datetime(_part["ds"]),
@@ -200,7 +224,10 @@ def _(case, df, go, mo, pd, splits_curated):
                 "train/val/test lines on top are the curated (gap-filled, "
                 "longest-usable-span) series the benchmark actually trains and scores "
                 "on. Where grey shows but no colour does, that stretch was dropped by "
-                "the curation gap policy._"
+                "the curation gap policy. Very long/high-frequency series are "
+                "downsampled for display using a shared min/max-per-bin grid across raw "
+                "and curated, so the two stay pointwise identical everywhere outside a "
+                "filled gap._"
             ),
         ]
     )
