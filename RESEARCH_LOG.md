@@ -8,6 +8,23 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-10 — Scaled features ahead of MLPRegressor (issue #48)
+
+`MLPForecaster` (`ml.py`) was feeding raw lags and calendar features straight into
+`sklearn`'s `MLPRegressor` with no scaling, even though those features span very different
+ranges (lags near the target's scale, `dayofyear` up to 366). MLPs are sensitive to input
+scale, so its scores were likely reflecting that missing preprocessing step rather than
+anything about the architecture, which would undermine any MLP-vs-GBDT comparison in the
+matrix. Fixed by wrapping the regressor in an `sklearn` `Pipeline` with a `StandardScaler`
+step first. That exposed a latent bug: the code that reads back the prediction column name
+assumed the fitted model object's class name matched mlforecast's internal alias, which
+breaks for any model wrapped in a `Pipeline` (mlforecast unwraps to the last step's class
+name for the alias, but the object itself is still the `Pipeline`). Fixed that first, in its
+own commit, by reading the alias directly from mlforecast's model dict instead of
+re-deriving it from the object's type — a fix that's also correct for the unwrapped models,
+so it carries no risk for `LightGBM`/`CatBoost`/`Ridge`. Any MLP results generated before
+this fix should be treated as unreliable and re-run.
+
 ## 2026-07-10 — Cleaned up duplicated helper logic across method wrappers (issue #58)
 
 Fixed three cases of drifted duplicate code found in the 2026-07-02 method-suite audit.
