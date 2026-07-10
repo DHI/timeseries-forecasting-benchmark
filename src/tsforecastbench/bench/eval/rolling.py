@@ -11,10 +11,10 @@ for those, or run the cheap baselines (Mean/Persistence/SeasonalNaive/Climatolog
 which refit trivially.
 
 `run_case_rolling` is `scripts/run_pilot.py`'s default path (single hold-out `run_case`
-only runs under `--fast`), so it gets the same `Forecaster.is_global` extended-history
-routing and gap-free fallback as `eval.loop.run_case` -- see that module's docstring for
-why a gappy extended history isn't used as-is. Refitting `is_global` methods on the
-extended frame happens at every one of `n_origins` cutoffs, same as everyone else.
+only runs under `--fast`), so it gets the same segment-pooled extended-history scoring
+as `eval.loop.run_case` -- see that module's docstring. Methods that are `is_global` and
+`pools_segments` are refit on the extended history at every one of `n_origins` cutoffs,
+producing a second (`used_extended_history=True`) score alongside the local one.
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ import numpy as np
 import pandas as pd
 
 from tsforecastbench.bench.eval.config import DEFAULT_ORIGINS
-from tsforecastbench.bench.eval.loop import _horizon_to_steps, _raw_y
+from tsforecastbench.bench.eval.loop import _horizon_to_steps, _raw_y, _segment_extended
 from tsforecastbench.bench.methods.base import Forecaster
 from tsforecastbench.data.schema import Case
 from tsforecastbench.data.seasonality import mase_season_for
@@ -104,118 +104,133 @@ def run_case_rolling(
 
     naive_scale = _naive_scale(full_fit["y"].iloc[:test_start].to_numpy(dtype=float))
 
-    # Extended history for `is_global` methods -- same gap-free-or-fallback rule as
-    # `eval.loop.run_case`; see this module's docstring.
-    extended_base = None
-    if any(m.is_global for m in methods):
+    # Extended-history training for is_global methods that pool segments -- the full
+    # single-series record split at its big gaps into contiguous per-`unique_id`
+    # segments, so no window spans a gap (see `eval.loop._segment_extended`). A gap-free
+    # record has no history beyond the curated span and yields a single segment, so no
+    # extended fit runs. The extended fit reuses the local MASE/persistence/mean
+    # references, so its scores differ from the local fit only through the model.
+    ext_segments = None
+    if any(m.is_global and m.pools_segments for m in methods):
         try:
             extended = case.load_extended(prefer_synth=prefer_synth)
         except Exception as exc:
             print(
                 f"  [note] load_extended failed ({type(exc).__name__}: {exc}); "
-                "is_global methods fall back to the shared curated data."
+                "is_global methods use the curated span only."
             )
         else:
-            if extended["y"].isna().any():
-                print(
-                    "  [note] extended history has a gap bigger than the per-case cap; "
-                    "is_global methods fall back to the shared curated data."
-                )
+            segs = _segment_extended(extended, case.id, case.freq, H)
+            if len(segs) >= 2:
+                ext_segments = segs
             else:
-                extended_base = extended
-    naive_scale_ext = (
-        _naive_scale(extended_base["y"].to_numpy(dtype=float))
-        if extended_base is not None
-        else None
-    )
+                print(
+                    "  [note] no history beyond the curated span; "
+                    "is_global methods use the curated span only."
+                )
 
     metric_names = ("MAE", "RMSE", "MASE", "Skill_vs_Persistence", "Skill_vs_Mean")
     records: list[dict] = []
     snap_frames: list[pd.DataFrame] = []
     for method in methods:
-        t0 = time.perf_counter()
-        used_extended = method.is_global and extended_base is not None
-        m_naive_scale = naive_scale_ext if used_extended else naive_scale
-        a, p, ref_p, ref_m = [], [], [], []  # pooled actual, pred, persistence, mean
-        method_snaps: list[pd.DataFrame] = []
-        n_ok = 0
-        try:
-            for i, o in enumerate(origins):
-                if used_extended:
-                    history = pd.concat(
-                        [extended_base, full_fit.iloc[test_start:o]], ignore_index=True
+        # Local fit for everyone; a second extended fit for segment-pooling methods when
+        # the case has history beyond the curated span. Snapshots come from the local fit
+        # only -- the extended fit contributes matrix scores, not forecast overlays.
+        variants = [(None, False)]
+        if method.is_global and method.pools_segments and ext_segments is not None:
+            variants.append((ext_segments, True))
+        for segs, used_extended in variants:
+            t0 = time.perf_counter()
+            a, p, ref_p, ref_m = [], [], [], []  # pooled actual, pred, persistence, mean
+            method_snaps: list[pd.DataFrame] = []
+            n_ok = 0
+            try:
+                for i, o in enumerate(origins):
+                    local_hist = full_fit.iloc[:o]
+                    if used_extended:
+                        slide = full_fit.iloc[test_start:o].copy()
+                        slide["unique_id"] = segs[-1]["unique_id"].iloc[0]
+                        history = pd.concat([*segs, slide], ignore_index=True)
+                    else:
+                        history = local_hist
+                    fexog = full_fit.iloc[o : o + H][["ds", *exo_present]] if exo_present else None
+                    method.fit(case, history)
+                    preds = method.predict(case, history, H, future_exog=fexog)
+                    y_hat = preds["y_hat"].to_numpy(float)
+                    if not used_extended:
+                        # Full predicted series (all H steps, before masking) so the viewer
+                        # draws a continuous forecast line even where the actual has gaps.
+                        method_snaps.append(
+                            pd.DataFrame(
+                                {
+                                    "case_id": case.id,
+                                    "method": method.name,
+                                    "origin_id": i,
+                                    "origin_ds": full_fit["ds"].iloc[o],
+                                    "ds": preds["ds"].to_numpy(),
+                                    "y_hat": y_hat,
+                                }
+                            )
+                        )
+                    actual = raw_y[o : o + H]
+                    m = np.isfinite(actual)
+                    if not m.any():
+                        continue
+                    n_ok += 1
+                    a.extend(actual[m])
+                    p.extend(y_hat[m])
+                    # Local-history references, shared by both fits so the extended fit's
+                    # skill scores isolate the model, not a shifted baseline.
+                    ref_p.extend(np.full(int(m.sum()), float(local_hist["y"].iloc[-1])))
+                    ref_m.extend(
+                        np.full(int(m.sum()), float(np.nanmean(local_hist["y"].to_numpy(float))))
                     )
-                else:
-                    history = full_fit.iloc[:o]
-                fexog = full_fit.iloc[o : o + H][["ds", *exo_present]] if exo_present else None
-                method.fit(case, history)
-                preds = method.predict(case, history, H, future_exog=fexog)
-                y_hat = preds["y_hat"].to_numpy(float)
-                # Keep the full predicted series (all H steps, before masking) so the viewer
-                # draws a continuous forecast line even where the actual has gaps.
-                method_snaps.append(
-                    pd.DataFrame(
-                        {
-                            "case_id": case.id,
-                            "method": method.name,
-                            "origin_id": i,
-                            "origin_ds": full_fit["ds"].iloc[o],
-                            "ds": preds["ds"].to_numpy(),
-                            "y_hat": y_hat,
-                        }
-                    )
-                )
-                actual = raw_y[o : o + H]
-                m = np.isfinite(actual)
-                if not m.any():
-                    continue
-                n_ok += 1
-                a.extend(actual[m])
-                p.extend(y_hat[m])
-                ref_p.extend(np.full(int(m.sum()), float(history["y"].iloc[-1])))
-                ref_m.extend(np.full(int(m.sum()), float(np.nanmean(history["y"].to_numpy(float)))))
-            if not a:
-                raise ValueError("no finite test points across origins")
-            a = np.array(a)
-            p = np.array(p)
-            ref_p = np.array(ref_p)
-            ref_m = np.array(ref_m)
-            mse = float(np.mean((a - p) ** 2))
-            metrics = {
-                "MAE": float(np.mean(np.abs(a - p))),
-                "RMSE": float(np.sqrt(mse)),
-                "MASE": float(np.mean(np.abs(a - p)) / m_naive_scale)
-                if m_naive_scale
-                else float("nan"),
-                "Skill_vs_Persistence": 1.0 - mse / float(np.mean((a - ref_p) ** 2)),
-                "Skill_vs_Mean": 1.0 - mse / float(np.mean((a - ref_m) ** 2)),
-            }
-            status = "ok"
-            snap_frames.extend(method_snaps)
-        except Exception as exc:
-            metrics = {k: float("nan") for k in metric_names}
-            status = f"error: {type(exc).__name__}: {str(exc)[:70]}"
-        seconds = time.perf_counter() - t0
-        for metric_name, value in metrics.items():
-            records.append(
-                {
-                    "case_id": case.id,
-                    "domain": case.domain,
-                    "method": method.name,
-                    "is_global": method.is_global,
-                    "used_extended_history": used_extended,
-                    "horizon": case.horizon_primary,
-                    "metric": metric_name,
-                    "value": value,
-                    "seconds": seconds,
-                    "frac_finite_test": float(len(a) / max(1, len(origins) * H))
-                    if isinstance(a, np.ndarray)
-                    else 0.0,
-                    "status": status,
-                    "n_origins": n_ok,
+                if not a:
+                    raise ValueError("no finite test points across origins")
+                a = np.array(a)
+                p = np.array(p)
+                ref_p = np.array(ref_p)
+                ref_m = np.array(ref_m)
+                mse = float(np.mean((a - p) ** 2))
+                metrics = {
+                    "MAE": float(np.mean(np.abs(a - p))),
+                    "RMSE": float(np.sqrt(mse)),
+                    "MASE": float(np.mean(np.abs(a - p)) / naive_scale)
+                    if naive_scale
+                    else float("nan"),
+                    "Skill_vs_Persistence": 1.0 - mse / float(np.mean((a - ref_p) ** 2)),
+                    "Skill_vs_Mean": 1.0 - mse / float(np.mean((a - ref_m) ** 2)),
                 }
+                status = "ok"
+                if not used_extended:
+                    snap_frames.extend(method_snaps)
+            except Exception as exc:
+                metrics = {k: float("nan") for k in metric_names}
+                status = f"error: {type(exc).__name__}: {str(exc)[:70]}"
+            seconds = time.perf_counter() - t0
+            for metric_name, value in metrics.items():
+                records.append(
+                    {
+                        "case_id": case.id,
+                        "domain": case.domain,
+                        "method": method.name,
+                        "is_global": method.is_global,
+                        "used_extended_history": used_extended,
+                        "horizon": case.horizon_primary,
+                        "metric": metric_name,
+                        "value": value,
+                        "seconds": seconds,
+                        "frac_finite_test": float(len(a) / max(1, len(origins) * H))
+                        if isinstance(a, np.ndarray)
+                        else 0.0,
+                        "status": status,
+                        "n_origins": n_ok,
+                    }
+                )
+            tag = " [ext]" if used_extended else ""
+            print(
+                f"  {method.name:>18s}{tag:>6s}: {status[:48]:<48s} ({n_ok} origins, {seconds:.1f}s)"
             )
-        print(f"  {method.name:>18s}: {status[:50]:<50s} ({n_ok} origins, {seconds:.1f}s)")
     snapshots = (
         pd.concat(snap_frames, ignore_index=True)
         if snap_frames

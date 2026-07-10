@@ -7,16 +7,17 @@ only genuine observations — the curated frame's `y_observed` mask marks which 
 were measured vs. filled, and metrics use only the measured ones. The fraction of
 finite test points is reported so a gappy test window is visible, not silently scored.
 
-`Forecaster.is_global` methods additionally get a second, longer training frame
-(`Case.load_extended`) reaching back before the tail segment — *when that extended
-history is itself gap-free*. If it contains a gap bigger than the per-case cap, using
-it as-is would require either fabricating a value across the gap (dishonest) or
-silently treating pre-gap and post-gap rows as adjacent time steps in a windowed
-model (wrong) — no current method's `fit` is gap-aware. Rather than do either, an
-`is_global` method falls back to the same curated data every other method uses for
-that case; `used_extended_history` on each result row records which happened. Building
-genuine gap-aware (or cross-series pooled) training is future work — see
-`Forecaster.fit_pooled`.
+Methods that are `is_global` and `pools_segments` are additionally scored on the full
+single-series history (`Case.load_extended`) reaching back before the tail segment. That
+history is split at its big gaps into contiguous segments, each carrying its own
+`unique_id`, so a windowed method trains across all of them without ever building a
+sample that straddles a gap (see `_segment_extended` and `methods.base.segment_arrays`).
+The tail segment equals the shared curated span, so the local and extended fits are
+scored against identical reference scales and the same held-out window — only the
+training data the model sees differs. Each method thus emits a local result row
+(`used_extended_history=False`) and, when the case has history beyond the curated span,
+a second extended row (`=True`); a gap-free record has no extra history and produces the
+local row only.
 """
 
 from __future__ import annotations
@@ -27,7 +28,7 @@ import numpy as np
 import pandas as pd
 
 from tsforecastbench.bench.eval.metrics import mae, mase, rmse, skill_score
-from tsforecastbench.bench.methods.base import Forecaster
+from tsforecastbench.bench.methods.base import Forecaster, lookback_for
 from tsforecastbench.data.schema import Case, _observed_mask
 from tsforecastbench.data.seasonality import mase_season_for
 
@@ -36,6 +37,49 @@ def _horizon_to_steps(horizon: str, freq: str) -> int:
     delta = pd.Timedelta(horizon)
     step = pd.Timedelta(pd.tseries.frequencies.to_offset(freq))
     return int(delta / step)
+
+
+def _contiguous_runs(mask: np.ndarray) -> list[tuple[int, int]]:
+    """`[start, stop)` index ranges of each maximal run of True in `mask`."""
+    runs: list[tuple[int, int]] = []
+    i, n = 0, len(mask)
+    while i < n:
+        if mask[i]:
+            j = i + 1
+            while j < n and mask[j]:
+                j += 1
+            runs.append((i, j))
+            i = j
+        else:
+            i += 1
+    return runs
+
+
+def _segment_extended(
+    extended: pd.DataFrame, case_id: str, freq: str, horizon: int
+) -> list[pd.DataFrame]:
+    """Split the extended-history frame into contiguous segments at its big gaps.
+
+    The extended frame is a regular-frequency grid whose gaps larger than the per-case
+    fill cap are explicit NaN-`y` rows (small gaps are already filled). Each maximal run
+    of non-NaN rows becomes one segment, relabeled with its own `unique_id`
+    (`{case_id}__s{k}`) so a windowed method never builds a training sample across a gap.
+    Segments too short to yield even one lookback+horizon window are dropped; the tail
+    segment (ending at `val_end`) always survives, being the curated training span.
+
+    Returns segments in time order (tail last). A gap-free record yields a single
+    segment, i.e. no history beyond the curated span.
+    """
+    observed = pd.to_numeric(extended["y"], errors="coerce").notna().to_numpy()
+    floor = lookback_for(freq, horizon) + horizon
+    segments: list[pd.DataFrame] = []
+    for start, stop in _contiguous_runs(observed):
+        if stop - start < floor:
+            continue
+        seg = extended.iloc[start:stop].copy()
+        seg["unique_id"] = f"{case_id}__s{len(segments)}"
+        segments.append(seg)
+    return segments
 
 
 def _raw_y(df: pd.DataFrame) -> np.ndarray:
@@ -115,81 +159,86 @@ def run_case(case: Case, methods: list[Forecaster], prefer_synth: bool = False) 
 
     y_train, season, ref_persistence, ref_mean = _train_stats(train_fit)
 
-    # Extended history for `is_global` methods -- only if the case actually has one, and
-    # only if it's itself gap-free. A gap bigger than the per-case cap would otherwise
-    # need fabricating across (dishonest) or silently treating pre/post-gap rows as
-    # adjacent (wrong); no method's fit is gap-aware, so we fall back to the shared
-    # curated data instead of risking either. See the module docstring.
+    # Extended-history training for `is_global` methods that pool segments. The extended
+    # frame is split at its big gaps into contiguous segments (see `_segment_extended`);
+    # the tail segment equals the local train span, so the metric reference scales stay
+    # identical and only the training data the model sees grows. A gap-free record yields
+    # a single segment (no history beyond the curated span), so only the local fit runs.
     train_fit_ext = None
-    if any(m.is_global for m in methods):
+    if any(m.is_global and m.pools_segments for m in methods):
         try:
             extended = case.load_extended(prefer_synth=prefer_synth)
         except Exception as exc:
             print(
                 f"  [note] load_extended failed ({type(exc).__name__}: {exc}); "
-                "is_global methods fall back to the shared curated data."
+                "is_global methods use the curated span only."
             )
         else:
-            if extended["y"].isna().any():
-                print(
-                    "  [note] extended history has a gap bigger than the per-case cap; "
-                    "is_global methods fall back to the shared curated data."
-                )
+            segments = _segment_extended(extended, case.id, case.freq, horizon_steps)
+            if len(segments) >= 2:
+                slide = slide_in.copy()
+                slide["unique_id"] = segments[-1]["unique_id"].iloc[0]
+                train_fit_ext = pd.concat([*segments, slide], ignore_index=True)
             else:
-                train_fit_ext = pd.concat([extended, slide_in], ignore_index=True)
-    ext_stats = _train_stats(train_fit_ext) if train_fit_ext is not None else None
+                print(
+                    "  [note] no history beyond the curated span; "
+                    "is_global methods use the curated span only."
+                )
 
     metric_names = ("MAE", "RMSE", "MASE", "Skill_vs_Persistence", "Skill_vs_Mean")
     records: list[dict] = []
     for method in methods:
-        t0 = time.perf_counter()
-        used_extended = method.is_global and train_fit_ext is not None
-        m_train_fit, m_y_train, m_season, m_ref_persistence, m_ref_mean = (
-            (train_fit_ext, *ext_stats)
-            if used_extended
-            else (train_fit, y_train, season, ref_persistence, ref_mean)
-        )
-        try:
-            method.fit(case, m_train_fit)
-            preds = method.predict(case, m_train_fit, horizon_steps, future_exog=future_exog)
-            y_hat = preds["y_hat"].to_numpy(dtype=float)
-            assert len(y_hat) == horizon_steps, (
-                f"{method.name} returned {len(y_hat)} predictions, expected {horizon_steps}"
-            )
-            if finite.sum() == 0:
-                raise ValueError("no finite test points to score")
-            yt, yh = y_true_raw[finite], y_hat[finite]
-            metrics = {
-                "MAE": mae(yt, yh),
-                "RMSE": rmse(yt, yh),
-                "MASE": mase(yt, yh, m_y_train, season=m_season),
-                "Skill_vs_Persistence": skill_score(yt, yh, m_ref_persistence[finite]),
-                "Skill_vs_Mean": skill_score(yt, yh, m_ref_mean[finite]),
-            }
-            status = "ok"
-        except Exception as exc:
-            metrics = {k: float("nan") for k in metric_names}
-            status = f"error: {type(exc).__name__}: {str(exc)[:70]}"
-        seconds = time.perf_counter() - t0
-        for metric_name, value in metrics.items():
-            records.append(
-                {
-                    "case_id": case.id,
-                    "domain": case.domain,
-                    "case_exo_tier": case.exo_tier,
-                    "method": method.name,
-                    "uses_exogenous": method.uses_exogenous,
-                    "is_global": method.is_global,
-                    "used_extended_history": used_extended,
-                    "horizon": case.horizon_primary,
-                    "metric": metric_name,
-                    "value": value,
-                    "seconds": seconds,
-                    "frac_finite_test": frac_finite,
-                    "status": status,
+        # Every method is scored on the local span. Methods that pool segments are scored
+        # a second time on the extended history, when the case has any. Both fits share
+        # the local reference scales (persistence/mean/seasonal-naive), so the extended
+        # row differs from the local one only through the model, not the yardstick.
+        variants = [(train_fit, False)]
+        if method.is_global and method.pools_segments and train_fit_ext is not None:
+            variants.append((train_fit_ext, True))
+        for m_train_fit, used_extended in variants:
+            t0 = time.perf_counter()
+            try:
+                method.fit(case, m_train_fit)
+                preds = method.predict(case, m_train_fit, horizon_steps, future_exog=future_exog)
+                y_hat = preds["y_hat"].to_numpy(dtype=float)
+                assert len(y_hat) == horizon_steps, (
+                    f"{method.name} returned {len(y_hat)} predictions, expected {horizon_steps}"
+                )
+                if finite.sum() == 0:
+                    raise ValueError("no finite test points to score")
+                yt, yh = y_true_raw[finite], y_hat[finite]
+                metrics = {
+                    "MAE": mae(yt, yh),
+                    "RMSE": rmse(yt, yh),
+                    "MASE": mase(yt, yh, y_train, season=season),
+                    "Skill_vs_Persistence": skill_score(yt, yh, ref_persistence[finite]),
+                    "Skill_vs_Mean": skill_score(yt, yh, ref_mean[finite]),
                 }
-            )
-        print(f"  {method.name:>18s}: {status[:60]:<60s}  ({seconds:.2f}s)")
+                status = "ok"
+            except Exception as exc:
+                metrics = {k: float("nan") for k in metric_names}
+                status = f"error: {type(exc).__name__}: {str(exc)[:70]}"
+            seconds = time.perf_counter() - t0
+            for metric_name, value in metrics.items():
+                records.append(
+                    {
+                        "case_id": case.id,
+                        "domain": case.domain,
+                        "case_exo_tier": case.exo_tier,
+                        "method": method.name,
+                        "uses_exogenous": method.uses_exogenous,
+                        "is_global": method.is_global,
+                        "used_extended_history": used_extended,
+                        "horizon": case.horizon_primary,
+                        "metric": metric_name,
+                        "value": value,
+                        "seconds": seconds,
+                        "frac_finite_test": frac_finite,
+                        "status": status,
+                    }
+                )
+            tag = " [ext]" if used_extended else ""
+            print(f"  {method.name:>18s}{tag:>6s}: {status[:54]:<54s}  ({seconds:.2f}s)")
 
     if frac_finite < 1.0:
         print(
