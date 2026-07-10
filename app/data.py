@@ -45,21 +45,54 @@ FAMILY_ORDER = ["baseline", "ensemble", "classical", "ml", "deep_learning", "fou
 _ENSEMBLE_FACTORIES = ("ensemble_baselines", "ensemble_baselines_theta")
 
 
-def _method_family_map() -> dict[str, str]:
-    """method name -> family, derived from the Forecaster classes."""
-    mapping: dict[str, str] = {}
+def _own_doc(cls: type) -> str | None:
+    """First docstring found on `cls` or one of its Forecaster ancestors, stopping at
+    `Forecaster` itself so a class with no docstring of its own doesn't fall through to
+    `ABC`'s generic one (`inspect.getdoc` would otherwise walk that far)."""
+    for klass in cls.__mro__:
+        if klass is _methods.Forecaster:
+            break
+        doc = klass.__dict__.get("__doc__")
+        if doc:
+            return doc
+    return None
+
+
+@cache
+def _method_registry() -> dict[str, dict]:
+    """method name -> {family, description, uses_exogenous}, derived from the Forecaster
+    classes — the same introspection the old family-only map used, extended to cover
+    what the method-info panel needs. `description` is the class's own docstring (first
+    paragraph only), via `_own_doc` so a subclass without one (e.g. LightGBM, which only
+    adds a `_make_model`) inherits its base's; methods with no docstring anywhere in
+    their Forecaster ancestry get a placeholder instead."""
+    registry: dict[str, dict] = {}
     for attr_name in _methods.__all__:
         obj = getattr(_methods, attr_name)
         if attr_name in _ENSEMBLE_FACTORIES:
             instance = obj()
-            mapping[instance.name] = instance.family
+            cls = type(instance)
         elif (
             inspect.isclass(obj)
             and issubclass(obj, _methods.Forecaster)
             and obj not in (_methods.Forecaster, _methods.EnsembleForecaster)
         ):
-            mapping[obj.name] = obj.family
-    return mapping
+            instance = obj()
+            cls = obj
+        else:
+            continue
+        doc = _own_doc(cls)
+        registry[instance.name] = {
+            "family": instance.family,
+            "description": doc.split("\n\n")[0].strip() if doc else "No description yet.",
+            "uses_exogenous": instance.uses_exogenous,
+        }
+    return registry
+
+
+def _method_family_map() -> dict[str, str]:
+    """method name -> family, derived from the Forecaster classes."""
+    return {name: meta["family"] for name, meta in _method_registry().items()}
 
 
 def _rank(order: list[str]):
@@ -195,3 +228,27 @@ def case_summary(case_id: str) -> str:
     if case.notes:
         lines += ["", case.notes]
     return "\n\n".join(lines)
+
+
+def method_info(case_id: str, method: str) -> str:
+    """Markdown blurb for the bottom method-info panel: family, a brief description
+    drawn from the Forecaster subclass's docstring, and which of the case's exogenous
+    inputs (if any) this method actually consumes. Still a placeholder — the set of
+    fields shown here is expected to grow."""
+    case = get_case(case_id)
+    meta = _method_registry().get(method, {})
+
+    exo_line = "none"
+    if meta.get("uses_exogenous"):
+        exo_cols = list(dict.fromkeys([*case.exogenous, *case.exogenous_known_future]))
+        if exo_cols:
+            necessary = set(case.necessary_exogenous)
+            exo_line = ", ".join(f"{c} (necessary)" if c in necessary else c for c in exo_cols)
+
+    return "\n\n".join(
+        [
+            f"**Family**: {meta.get('family', 'unclassified').replace('_', ' ')}",
+            meta.get("description", "No description yet."),
+            f"**Exogenous inputs used**: {exo_line}",
+        ]
+    )
