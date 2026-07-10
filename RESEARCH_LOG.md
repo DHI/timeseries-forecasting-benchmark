@@ -8,6 +8,28 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-10 — Results viewer can show the extended-history fit for gappy cases
+
+The interactive viewer (`app/app.py`) previously pivoted on every row in
+`pilot_metrics.parquet` without splitting out `used_extended_history`, so once a case had
+both a local and an extended-history row for an `is_global` method (see the entry above)
+the matrix pivot would hit duplicate `(case_id, method)` pairs. Fixed the viewer to plot
+the local fit by default, and added a sidebar checkbox that swaps in the extended fit for
+`is_global` methods on the five cases with data beyond the curated span, marking those
+cells with a thin hotpink diagonal hash so they read as not directly comparable to the
+rest of the row.
+
+The checkbox originally only changed the matrix's metric, not the forecast-snapshot
+panel, because `run_case_rolling` computed the extended fit's predictions but never saved
+them — snapshots came from the local fit only. Fixed by tagging every snapshot row with
+`used_extended_history` too, and having the snapshot panel pick a method's extended fit
+when the toggle is on and one exists for the case (falling back to the local fit
+otherwise), labelling the swapped trace "(global fit)" in the legend. This needs a rerun
+of `scripts/run_pilot.py` to regenerate `pilot_snapshots.parquet` with the new column —
+older snapshot artifacts won't have it. Checked end-to-end on `discharge_lowland_denmark`:
+toggling swaps exactly the ten `is_global` methods' matrix values and their snapshot
+forecasts, everything else unchanged.
+
 ## 2026-07-10 — Made the extended-history fit live via per-segment training (supersedes the "inert" entry below)
 
 The extended-history path added earlier today was inert because it refused any extended
