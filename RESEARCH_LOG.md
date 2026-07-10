@@ -8,6 +8,17 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-10 — Moved the snapshot panel into a vertical column next to case info
+
+The forecast-snapshot panel used to sit below the matrix, full width, with a
+"case review notes" column next to the forecast graph. Moved it into a sticky
+column of its own between the matrix and the existing case-info panel, and
+dropped the notes column — that content already lives in the case-info panel,
+so it was redundant. Since a narrow column can't fit the old three-wide grid of
+forecast-origin snapshots, `render_snapshots` now takes a `max_cols` argument
+and the app passes `max_cols=1` so origins stack one per row. Selecting
+methods, the chip row, and the clear button all work the same as before.
+
 ## 2026-07-10 — Results viewer can show the extended-history fit for gappy cases
 
 The interactive viewer (`app/app.py`) previously pivoted on every row in
