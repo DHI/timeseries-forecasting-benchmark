@@ -213,13 +213,20 @@ class MLPForecaster(_WindowedMLBase):
 
     def _make_model(self):
         from sklearn.neural_network import MLPRegressor
+        from sklearn.pipeline import make_pipeline
+        from sklearn.preprocessing import StandardScaler
 
-        return MLPRegressor(
-            hidden_layer_sizes=(64, 32),
-            activation="relu",
-            max_iter=300,
-            early_stopping=True,
-            random_state=0,
+        # MLPRegressor is scale-sensitive; lags and calendar features (e.g. dayofyear up
+        # to 366) span very different ranges, so scale them first.
+        return make_pipeline(
+            StandardScaler(),
+            MLPRegressor(
+                hidden_layer_sizes=(64, 32),
+                activation="relu",
+                max_iter=300,
+                early_stopping=True,
+                random_state=0,
+            ),
         )
 
 
