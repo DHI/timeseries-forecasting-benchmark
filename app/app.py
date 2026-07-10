@@ -805,13 +805,15 @@ def render_case_panel(sel):
     Output("snapshot-hint", "style"),
     Input("snapshot-selection", "data"),
     Input("reload-btn", "n_clicks"),
+    Input("show-global", "value"),
 )
-def render_panel(sel, n_reload):
+def render_panel(sel, n_reload, show_global):
     sel = sel or {}
     case_id, methods = sel.get("case_id"), sel.get("methods") or []
     if not case_id or not methods:
         return "", go.Figure(), "", [], {"display": "none"}, {"color": "#666"}
 
+    show_global = "on" in (show_global or [])
     notes = load_case_notes(case_id)
     notes_children = (
         dcc.Markdown(notes) if notes else html.Em(f"No case_review notes found for {case_id}.")
@@ -819,7 +821,7 @@ def render_panel(sel, n_reload):
     title = f"(Test) Prediction Snapshots — {', '.join(methods)}"
     return (
         title,
-        render_snapshots(case_id, methods, load_snapshots(n_reload or 0)),
+        render_snapshots(case_id, methods, load_snapshots(n_reload or 0), show_global),
         notes_children,
         _method_chips(methods),
         {"display": "block"},

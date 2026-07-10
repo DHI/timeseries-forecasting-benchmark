@@ -27,7 +27,15 @@ CASE_REVIEW_DIR = RESULTS_DIR / "case_review"
 # Columns of the snapshot artifact written by the rolling eval (see
 # tsforecastbench.bench.eval.rolling.SNAPSHOT_COLUMNS). Kept here so an empty frame has
 # the right shape when the artifact is missing (e.g. an old results set, or a --fast run).
-SNAPSHOT_COLUMNS = ["case_id", "method", "origin_id", "origin_ds", "ds", "y_hat"]
+SNAPSHOT_COLUMNS = [
+    "case_id",
+    "method",
+    "used_extended_history",
+    "origin_id",
+    "origin_ds",
+    "ds",
+    "y_hat",
+]
 
 # Display order for method families (left-to-right column grouping) and case domains
 # (top-to-bottom row grouping). Anything not listed sorts after, alphabetically.

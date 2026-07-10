@@ -95,13 +95,33 @@ def render_training_snapshot(case_id: str, n: int = TRAINING_TAIL_N) -> go.Figur
     return fig
 
 
-def render_snapshots(case_id: str, methods: list[str], preds: pd.DataFrame) -> go.Figure:
+def render_snapshots(
+    case_id: str, methods: list[str], preds: pd.DataFrame, show_global: bool = False
+) -> go.Figure:
     """Grid of forecast-origin snapshots for one case, overlaying each of `methods`.
 
     `preds` is the snapshot artifact (see `data.load_snapshots`); origins come from it, so
-    every method shares the same panels and the overlays line up.
+    every method shares the same panels and the overlays line up. When `show_global` is
+    True, a method with an extended-history fit for this case (see
+    `bench.eval.rolling.run_case_rolling`) is drawn from that fit instead of the local one
+    -- matching the matrix's toggle -- with its legend entry flagged accordingly.
     """
     case_preds = preds[preds["case_id"] == case_id]
+    if case_preds.empty:
+        return _empty_fig(f"No stored forecasts for {case_id} (needs a rolling pilot run).")
+
+    has_extended = case_preds.groupby("method")["used_extended_history"].any()
+    use_extended = {m: bool(show_global and has_extended.get(m, False)) for m in methods}
+    case_preds = pd.concat(
+        [
+            case_preds[
+                (case_preds["method"] == m)
+                & (case_preds["used_extended_history"] == use_extended[m])
+            ]
+            for m in methods
+        ],
+        ignore_index=True,
+    )
     if case_preds.empty:
         return _empty_fig(f"No stored forecasts for {case_id} (needs a rolling pilot run).")
 
@@ -156,11 +176,12 @@ def render_snapshots(case_id: str, methods: list[str], preds: pd.DataFrame) -> g
             mpred = origin_preds[origin_preds["method"] == method].sort_values("ds")
             if mpred.empty:
                 continue
+            label = f"{method} (global fit)" if use_extended[method] else method
             fig.add_trace(
                 go.Scatter(
                     x=pd.DatetimeIndex(mpred["ds"]),
                     y=mpred["y_hat"].to_numpy(dtype=float),
-                    name=method,
+                    name=label,
                     mode="lines",
                     line={"color": color_of[method], "width": 2},
                     legendgroup=method,
