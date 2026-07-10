@@ -8,6 +8,19 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-10 — Added a bottom method-info panel, capped the method overlay at 3
+
+Clicking a cell now also opens a panel docked to the bottom of the screen with a brief
+description of that method and which of the case's exogenous inputs (if any) it used —
+placeholder content while we figure out what's actually worth showing there. The
+description comes straight from each Forecaster subclass's own docstring, so it's free as
+methods gain or lose docstrings rather than a second copy to keep in sync; methods with no
+docstring anywhere in their class hierarchy just show a "no description yet" placeholder.
+Since both the snapshot graph and this new panel lay per-method content out side by side,
+the same-row method overlay is now capped at 3: clicking a 4th method evicts the oldest
+instead of piling on indefinitely.
+
+
 ## 2026-07-10 — Merged the case-info and snapshot panels into one collapsible column
 
 The results viewer used to open two separate side-by-side panels on a cell click: case
