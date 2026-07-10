@@ -18,17 +18,11 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from tsforecastbench.bench.methods.base import Forecaster
+from tsforecastbench.bench.methods.base import Forecaster, lookback_for
 from tsforecastbench.data.schema import Case
 
 _MAX_TRAIN = 20000
 _MAX_SAMPLES = 6000
-
-
-def _lookback_for(freq: str, h: int) -> int:
-    f = freq.lower()
-    base = {"1d": 64, "1h": 168, "15min": 192, "1w": 52}.get(f, 4 * h)
-    return max(base, 2 * h)
 
 
 def _build_windows(y: np.ndarray, L: int, H: int):
@@ -141,7 +135,7 @@ class _TorchDLBase(Forecaster):
         torch.manual_seed(0)
         self._mods = mods
         self._H = _horizon_to_steps(case.horizon_primary, case.freq)
-        self._L = _lookback_for(case.freq, self._H)
+        self._L = lookback_for(case.freq, self._H)
 
         y = pd.to_numeric(train["y"], errors="coerce").to_numpy(dtype=np.float32)
         if len(y) > _MAX_TRAIN:

@@ -9,6 +9,17 @@ import pandas as pd
 from tsforecastbench.data.schema import Case
 
 
+def lookback_for(freq: str, h: int) -> int:
+    """Default lookback window length for a windowed DL/ML forecaster.
+
+    Frequency-tuned base, floored at 2*h so the window always covers at least two
+    horizons even at large h (freqs not listed default to 4*h).
+    """
+    f = freq.lower()
+    base = {"1d": 64, "1h": 168, "15min": 192, "1w": 52}.get(f, 4 * h)
+    return max(base, 2 * h)
+
+
 class Forecaster(ABC):
     name: str = "Forecaster"
     requires_gpu: bool = False

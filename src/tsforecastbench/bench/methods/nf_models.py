@@ -17,18 +17,12 @@ from typing import ClassVar
 import numpy as np
 import pandas as pd
 
-from tsforecastbench.bench.methods.base import Forecaster
+from tsforecastbench.bench.methods.base import Forecaster, lookback_for
 from tsforecastbench.data.schema import Case
 
 _MAX_STEPS = 500
 _MAX_TRAIN = 30000
 _TRAINER_KW = {"accelerator": "auto", "enable_progress_bar": False, "logger": False}
-
-
-def _input_size(freq: str, h: int) -> int:
-    f = freq.lower()
-    base = {"1d": 64, "1h": 168, "15min": 192, "1w": 52}.get(f, 4 * h)
-    return max(base, 2 * h)
 
 
 def _naive_ds(ds) -> pd.Series:
@@ -46,10 +40,12 @@ class _NFBase(Forecaster):
 
     def fit(self, case: Case, train: pd.DataFrame) -> None:
         import neuralforecast.models as nfm
+        import pytorch_lightning as pl
         from neuralforecast import NeuralForecast
 
         from tsforecastbench.bench.eval.loop import _horizon_to_steps
 
+        pl.seed_everything(0)
         self._h = h = _horizon_to_steps(case.horizon_primary, case.freq)
         df = train[["unique_id", "ds", "y"]].copy()
         if len(df) > _MAX_TRAIN:
@@ -60,7 +56,7 @@ class _NFBase(Forecaster):
         model_cls = getattr(nfm, self.model_name)
         model = model_cls(
             h=h,
-            input_size=_input_size(case.freq, h),
+            input_size=lookback_for(case.freq, h),
             max_steps=_MAX_STEPS,
             scaler_type="standard",
             **self.extra_kwargs,

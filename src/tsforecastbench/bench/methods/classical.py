@@ -27,6 +27,18 @@ from tsforecastbench.bench.methods.base import Forecaster
 from tsforecastbench.data.schema import Case
 
 
+def _prepare_train(train: pd.DataFrame, max_train_steps: int) -> pd.DataFrame:
+    """Slice to the most recent max_train_steps rows and strip tz (statsforecast wants naive ds)."""
+    df = train[["unique_id", "ds", "y"]].copy()
+    if len(df) > max_train_steps:
+        df = df.iloc[-max_train_steps:]
+    ds = pd.to_datetime(df["ds"])
+    if ds.dt.tz is not None:
+        ds = ds.dt.tz_convert("UTC").dt.tz_localize(None)
+    df["ds"] = ds
+    return df
+
+
 class AutoARIMAForecaster(Forecaster):
     name = "AutoARIMA"
     family = "classical"
@@ -39,13 +51,7 @@ class AutoARIMAForecaster(Forecaster):
         from statsforecast import StatsForecast
         from statsforecast.models import AutoARIMA
 
-        df = train[["unique_id", "ds", "y"]].copy()
-        if len(df) > self.max_train_steps:
-            df = df.iloc[-self.max_train_steps :]
-        ds = pd.to_datetime(df["ds"])
-        if ds.dt.tz is not None:
-            ds = ds.dt.tz_convert("UTC").dt.tz_localize(None)
-        df["ds"] = ds
+        df = _prepare_train(train, self.max_train_steps)
 
         self._sf = StatsForecast(
             models=[AutoARIMA(season_length=self.season_length)],
@@ -86,13 +92,7 @@ class AutoETSForecaster(Forecaster):
         from statsforecast import StatsForecast
         from statsforecast.models import AutoETS
 
-        df = train[["unique_id", "ds", "y"]].copy()
-        if len(df) > self.max_train_steps:
-            df = df.iloc[-self.max_train_steps :]
-        ds = pd.to_datetime(df["ds"])
-        if ds.dt.tz is not None:
-            ds = ds.dt.tz_convert("UTC").dt.tz_localize(None)
-        df["ds"] = ds
+        df = _prepare_train(train, self.max_train_steps)
 
         self._sf = StatsForecast(
             models=[AutoETS(season_length=self.season_length)],
@@ -143,18 +143,12 @@ class TBATSForecaster(Forecaster):
 
         from tsforecastbench.data.seasonality import dominant_period
 
-        df = train[["unique_id", "ds", "y"]].copy()
-        if len(df) > self.max_train_steps:
-            df = df.iloc[-self.max_train_steps :]
+        df = _prepare_train(train, self.max_train_steps)
         season_length = (
             self.season_length
             if self.season_length is not None
             else dominant_period(case.seasonalities, df["y"].to_numpy())
         )
-        ds = pd.to_datetime(df["ds"])
-        if ds.dt.tz is not None:
-            ds = ds.dt.tz_convert("UTC").dt.tz_localize(None)
-        df["ds"] = ds
 
         # Apply Yeo-Johnson when Box-Cox would be disabled (non-positive data).
         y_vals = df["y"].to_numpy(dtype=float)
@@ -224,18 +218,12 @@ class ThetaForecaster(Forecaster):
 
         from tsforecastbench.data.seasonality import dominant_period
 
-        df = train[["unique_id", "ds", "y"]].copy()
-        if len(df) > self.max_train_steps:
-            df = df.iloc[-self.max_train_steps :]
+        df = _prepare_train(train, self.max_train_steps)
         season_length = (
             self.season_length
             if self.season_length is not None
             else dominant_period(case.seasonalities, df["y"].to_numpy())
         )
-        ds = pd.to_datetime(df["ds"])
-        if ds.dt.tz is not None:
-            ds = ds.dt.tz_convert("UTC").dt.tz_localize(None)
-        df["ds"] = ds
         self._sf = StatsForecast(
             models=[AutoTheta(season_length=season_length)],
             freq=case.freq,
@@ -285,13 +273,7 @@ class _MSTLBase(Forecaster):
         from statsforecast import StatsForecast
         from statsforecast.models import MSTL
 
-        df = train[["unique_id", "ds", "y"]].copy()
-        if len(df) > self.max_train_steps:
-            df = df.iloc[-self.max_train_steps :]
-        ds = pd.to_datetime(df["ds"])
-        if ds.dt.tz is not None:
-            ds = ds.dt.tz_convert("UTC").dt.tz_localize(None)
-        df["ds"] = ds
+        df = _prepare_train(train, self.max_train_steps)
 
         if not case.seasonalities:
             raise ValueError(f"MSTL inapplicable: case {case.id} is declared non-seasonal")

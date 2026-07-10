@@ -8,6 +8,18 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-10 — Cleaned up duplicated helper logic across method wrappers (issue #58)
+
+Fixed three cases of drifted duplicate code found in the 2026-07-02 method-suite audit.
+`classical.py`'s five AutoARIMA/AutoETS/TBATS/Theta/MSTL forecasters each repeated the same
+tz-strip-and-truncate block; that's now one `_prepare_train` helper. `_lookback_for` existed
+in three near-identical copies (`dl.py`, `torchdl.py`, and `nf_models.py`'s differently-named
+`_input_size`), and `dl.py`'s had silently drifted to drop the `max(base, 2*h)` floor the other
+two had — merged into one `lookback_for` in `base.py` with the floor applied everywhere.
+`nf_models.py`'s TFT/iTransformer/TimesNet models were also unseeded, unlike the other DL
+families, so `fit()` now calls `pytorch_lightning.seed_everything(0)` for reproducibility.
+No test asserted the pre-fix behavior, so nothing needed updating beyond the three files.
+
 ## 2026-07-09 — Added a case-context side panel to the results-matrix app
 
 Clicking a matrix cell now opens a right-hand panel next to the matrix, separate from the

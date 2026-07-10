@@ -13,21 +13,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from tsforecastbench.bench.methods.base import Forecaster
+from tsforecastbench.bench.methods.base import Forecaster, lookback_for
 from tsforecastbench.data.schema import Case
-
-
-def _lookback_for(freq: str) -> int:
-    f = freq.lower()
-    if f in {"1d", "d"}:
-        return 64
-    if f in {"1h", "h"}:
-        return 168
-    if f in {"15min", "15t"}:
-        return 192
-    if f in {"1w", "w"}:
-        return 52
-    return 48
 
 
 def _moving_avg(x: np.ndarray, k: int) -> np.ndarray:
@@ -56,7 +43,7 @@ class DLinearForecaster(Forecaster):
         from tsforecastbench.bench.eval.loop import _horizon_to_steps
 
         self._H = _horizon_to_steps(case.horizon_primary, case.freq)
-        self._L = self.lookback or _lookback_for(case.freq)
+        self._L = self.lookback or lookback_for(case.freq, self._H)
         y = pd.to_numeric(train["y"], errors="coerce").to_numpy(dtype=float)
         self._last_window = y[-self._L :]
 
