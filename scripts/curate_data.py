@@ -1,10 +1,10 @@
 """Materialize benchmark-ready series in data/curated/ from data/processed/.
 
 Applies the gap policy in tsforecastbench.data.curate once per case: fill small gaps
-(<= a per-case, autocorrelation-derived cap), keep the longest contiguous span, drop
-the rest, and record which points are genuine observations (`y_observed`). The eval
-loops read these; the raw gappy Parquets in data/processed/ stay untouched for EDA and
-case review.
+(<= a per-case, autocorrelation-derived cap), keep the tail contiguous span (the one
+ending at the record's most recent observation), drop the rest, and record which
+points are genuine observations (`y_observed`). The eval loops read these; the raw
+gappy Parquets in data/processed/ stay untouched for EDA and case review.
 
 Run after downloading/refreshing data, or after changing the policy:
 
@@ -61,7 +61,14 @@ def main(argv: list[str] | None = None) -> int:
         try:
             raw = pd.read_parquet(case.parquet_path)
             exog = list(dict.fromkeys([*case.exogenous, *case.exogenous_known_future]))
-            curated, info = curate_frame(raw, case.freq, exog=exog)
+            curated, info = curate_frame(
+                raw,
+                case.freq,
+                seasonalities=case.seasonalities,
+                horizon_primary=case.horizon_primary,
+                split_fraction=case.split_fraction,
+                exog=exog,
+            )
             curated["ds"] = pd.to_datetime(curated["ds"], utc=True)
             out = DATA_CURATED / f"{cid}.parquet"
             curated.to_parquet(out, index=False)

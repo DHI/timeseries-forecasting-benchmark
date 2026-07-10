@@ -170,7 +170,14 @@ class Case(BaseModel):
             return pd.read_parquet(self.curated_path)
         raw = self.load(prefer_synth=prefer_synth)
         exog = list(dict.fromkeys([*self.exogenous, *self.exogenous_known_future]))
-        curated, _ = curate_frame(raw, self.freq, exog=exog)
+        curated, _ = curate_frame(
+            raw,
+            self.freq,
+            seasonalities=self.seasonalities,
+            horizon_primary=self.horizon_primary,
+            split_fraction=self.split_fraction,
+            exog=exog,
+        )
         return curated
 
     def synth(self) -> pd.DataFrame:
