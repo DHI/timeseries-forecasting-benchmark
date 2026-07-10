@@ -95,6 +95,48 @@ def _group_labels(ordered_keys: list[str], key_of: dict[str, str]) -> list[tuple
     return labels
 
 
+def _hatch_path(x0: float, y0: float, x1: float, y1: float, n_lines: int = 6) -> str:
+    """SVG path for a thin diagonal hash filling one cell's box.
+
+    Plotly shapes have no `fillpattern` in this version (only trace markers do), so the
+    hash is drawn by hand as a set of disconnected diagonal strokes, each clipped to the
+    box: a "M x,y L x,y" subpath per line, at intercepts spanning corner to corner.
+    """
+    s = x1 - x0
+    segments = []
+    for c in np.linspace(-s, s, n_lines + 2)[1:-1]:
+        if c >= 0:
+            xa, ya, xb, yb = x0, y0 + c, x1 - c, y1
+        else:
+            xa, ya, xb, yb = x0 - c, y0, x1, y1 + c
+        segments.append(f"M {xa},{ya} L {xb},{yb}")
+    return " ".join(segments)
+
+
+def _global_overlay_shapes(
+    cells: list[tuple[str, str]], row_order: list[str], col_order: list[str]
+) -> list[dict]:
+    """Thin hotpink diagonal-hash pattern over cells overridden with the extended-history
+    (full-data) fit, so they read as "not directly comparable to the rest of the row"."""
+    shapes = []
+    for case_id, method in cells:
+        if case_id not in row_order or method not in col_order:
+            continue
+        y = row_order.index(case_id)
+        x = col_order.index(method)
+        shapes.append(
+            {
+                "type": "path",
+                "path": _hatch_path(x - 0.5, y - 0.5, x + 0.5, y + 0.5),
+                "line": {"color": "#FF1493", "width": 1.2},
+                "fillcolor": "rgba(0,0,0,0)",
+                "opacity": 0.8,
+                "layer": "above",
+            }
+        )
+    return shapes
+
+
 def _selection_shapes(
     selection: dict | None, row_order: list[str], col_order: list[str]
 ) -> list[dict]:
@@ -127,22 +169,50 @@ def _selection_shapes(
 
 
 def render_matrix(
-    df, metric: str, case_ids: list[str], methods: list[str], selection: dict | None = None
+    df,
+    metric: str,
+    case_ids: list[str],
+    methods: list[str],
+    selection: dict | None = None,
+    show_global: bool = False,
 ) -> tuple[go.Figure, int]:
     """Returns the heatmap figure plus its row count, so callers can pin sibling
-    elements (the case panel) to the same rendered height."""
+    elements (the case panel) to the same rendered height.
+
+    Every method has a `used_extended_history=False` ("local") row on the shared
+    curated span; that's what's plotted by default. `is_global` methods additionally
+    get a `used_extended_history=True` row wherever the case has real history beyond
+    the curated span (a gappy record with a segment before the tail). When
+    `show_global` is True, those cells are swapped in for the local score and outlined
+    with a hotpink hash (see `_global_overlay_shapes`), since they're fit on more data than the
+    rest of the row and aren't directly comparable.
+    """
     df_metric = df[
         (df["metric"] == metric) & df["case_id"].isin(case_ids) & df["method"].isin(methods)
     ]
-    row_order = ordered_cases(df_metric)
-    col_order = ordered_methods(df_metric)
+    df_local = df_metric[~df_metric["used_extended_history"]]
+    row_order = ordered_cases(df_local)
+    col_order = ordered_methods(df_local)
 
-    values = _pivot(df_metric, row_order, col_order, "value")
-    status = _pivot(df_metric, row_order, col_order, "status").fillna("—")
-    n_origins = _pivot(df_metric, row_order, col_order, "n_origins")
-    frac_finite = _pivot(df_metric, row_order, col_order, "frac_finite_test")
-    seconds = _pivot(df_metric, row_order, col_order, "seconds")
-    horizon = _pivot(df_metric, row_order, col_order, "horizon").fillna("—")
+    values = _pivot(df_local, row_order, col_order, "value")
+    status = _pivot(df_local, row_order, col_order, "status").fillna("—")
+    n_origins = _pivot(df_local, row_order, col_order, "n_origins")
+    frac_finite = _pivot(df_local, row_order, col_order, "frac_finite_test")
+    seconds = _pivot(df_local, row_order, col_order, "seconds")
+    horizon = _pivot(df_local, row_order, col_order, "horizon").fillna("—")
+
+    overlay_cells: list[tuple[str, str]] = []
+    if show_global:
+        df_global = df_metric[df_metric["used_extended_history"] & df_metric["is_global"]]
+        for row in df_global.itertuples(index=False):
+            if row.case_id not in values.index or row.method not in values.columns:
+                continue
+            values.loc[row.case_id, row.method] = row.value
+            status.loc[row.case_id, row.method] = row.status
+            n_origins.loc[row.case_id, row.method] = row.n_origins
+            frac_finite.loc[row.case_id, row.method] = row.frac_finite_test
+            seconds.loc[row.case_id, row.method] = row.seconds
+            overlay_cells.append((row.case_id, row.method))
 
     cfg = _metric_cfg(metric)
     fmt = cfg.get("fmt", "{:.3g}")
@@ -220,6 +290,8 @@ def render_matrix(
         fig.add_shape(type="line", x0=-0.5, x1=n_cols - 0.5, y0=y, y1=y, line=boundary_line)
     for x in _group_boundaries(col_order, family_of):
         fig.add_shape(type="line", x0=x, x1=x, y0=-0.5, y1=n_rows - 0.5, line=boundary_line)
+    for shape in _global_overlay_shapes(overlay_cells, row_order, col_order):
+        fig.add_shape(**shape)
     for shape in _selection_shapes(selection, row_order, col_order):
         fig.add_shape(**shape)
 
@@ -411,6 +483,17 @@ app.layout = html.Div(
                     value=_family_opts,
                     multi=True,
                 ),
+                html.Label("Global methods", style=_LABEL_STYLE),
+                dcc.Checklist(
+                    id="show-global",
+                    options=[{"label": " Score on full history where available", "value": "on"}],
+                    value=[],
+                ),
+                html.P(
+                    "For is_global methods on cases with data beyond the curated span, "
+                    "swaps in the full-history fit (a hotpink hash marks affected cells).",
+                    style={"color": "#666", "fontSize": "0.8em", "marginTop": "4px"},
+                ),
             ],
         ),
         html.Button(
@@ -575,9 +658,11 @@ def _n_rows_for(df, metric: str, case_ids: list[str], methods: list[str]) -> int
     Input("families", "value"),
     Input("reload-btn", "n_clicks"),
     Input("snapshot-selection", "data"),
+    Input("show-global", "value"),
 )
-def update_matrix(metric, domains, families, n_reload, selection):
+def update_matrix(metric, domains, families, n_reload, selection, show_global):
     df = load_metrics(n_reload or 0)
+    show_global = "on" in (show_global or [])
     if not metric or not domains or not families:
         fig = _empty_fig("Select a metric, at least one domain, and one method family.")
         return fig, {**_MATRIX_ROW_STYLE, "height": f"{fig.layout.height}px"}
@@ -588,7 +673,7 @@ def update_matrix(metric, domains, families, n_reload, selection):
         fig = _empty_fig("No cases or methods match the current filters.")
         n_rows = 0
     else:
-        fig, n_rows = render_matrix(df, metric, case_ids, methods, selection)
+        fig, n_rows = render_matrix(df, metric, case_ids, methods, selection, show_global)
 
     # Floor the row's height to whatever it would be with every domain checked, so
     # narrowing the domain filter can't shrink the case panel below a readable size.
