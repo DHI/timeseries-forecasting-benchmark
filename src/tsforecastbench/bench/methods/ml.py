@@ -179,14 +179,20 @@ class _WindowedMLBase(Forecaster):
         horizon: int,
         future_exog: pd.DataFrame | None = None,
     ) -> pd.DataFrame:
-        # Predict only the tail segment's series; with a multi-segment extended fit the
-        # other unique_ids are training-only context and their forecasts are discarded.
-        ids = [self._target_uid]
+        # Inference-only: condition the trained regressor on the tail segment's history as
+        # handed in at this origin (mlforecast's `new_df`), never the frame captured at
+        # fit — so one fit serves every rolling origin. Only the tail segment's series is
+        # forecast; a multi-segment extended fit's other unique_ids were training-only.
+        sub = history[history["unique_id"] == self._target_uid]
+        new_df = sub[[c for c in ["unique_id", "ds", "y", *self._exo] if c in sub.columns]].copy()
+        new_df["ds"] = _naive_ds(new_df["ds"]).to_numpy()
+        for c in self._exo:
+            new_df[c] = pd.to_numeric(new_df[c], errors="coerce")
         if self._exo:
             x_df = self._future_X(case, history, horizon, future_exog)
-            preds = self._fcst.predict(h=horizon, ids=ids, X_df=x_df)
+            preds = self._fcst.predict(h=horizon, new_df=new_df, X_df=x_df)
         else:
-            preds = self._fcst.predict(h=horizon, ids=ids)
+            preds = self._fcst.predict(h=horizon, new_df=new_df)
         y_hat = preds[self._model_col].to_numpy().astype(np.float64)
         future = self._future_index(case, history["ds"].max(), horizon)
         return pd.DataFrame({"ds": future, "y_hat": y_hat})

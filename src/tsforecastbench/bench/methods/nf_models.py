@@ -100,7 +100,14 @@ class _NFBase(Forecaster):
         horizon: int,
         future_exog: pd.DataFrame | None = None,
     ) -> pd.DataFrame:
-        preds = self._nf.predict()
+        # Inference-only: condition the trained network on the tail segment's history as
+        # handed in at this origin (neuralforecast's `df=`), never the frame captured at
+        # fit — so one fit serves every rolling origin.
+        sub = history[history["unique_id"] == self._target_uid]
+        new_df = sub[["unique_id", "ds", "y"]].copy()
+        new_df["ds"] = _naive_ds(new_df["ds"]).to_numpy()
+        new_df["y"] = pd.to_numeric(new_df["y"], errors="coerce")
+        preds = self._nf.predict(df=new_df)
         if "unique_id" not in preds.columns:
             preds = preds.reset_index()  # some nf versions return unique_id as the index
         preds = preds[preds["unique_id"] == self._target_uid]

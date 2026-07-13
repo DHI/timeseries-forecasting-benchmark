@@ -68,8 +68,7 @@ class DLinearForecaster(Forecaster):
 
         # Windows are built per contiguous segment (unique_id) and never across a gap; a
         # plain local frame is a single segment, so this reduces to the original loop.
-        segs, tail = segment_arrays(train)
-        self._last_window = segs[tail][-L:]
+        segs, _tail = segment_arrays(train)
         counts = [max(0, len(y) - L - H + 1) for y in segs]
         total = sum(counts)
         if total <= 10:  # too little data: fall back to persistence at predict time
@@ -105,7 +104,10 @@ class DLinearForecaster(Forecaster):
         if getattr(self, "_model", None) is None:
             last = float(pd.to_numeric(history["y"], errors="coerce").ffill().iloc[-1])
             return pd.DataFrame({"ds": future, "y_hat": np.full(horizon, last)})
-        win = self._last_window.reshape(1, -1)
+        # Inference-only: the lookback window is the tail segment of the history handed in
+        # at this origin, never state captured at fit — so one fit serves every origin.
+        segs, tail = segment_arrays(history)
+        win = segs[tail][-self._L :].reshape(1, -1)
         y_hat = self._model.predict(self._decompose(win))[0]
         if len(y_hat) < horizon:  # horizon longer than trained H: pad with last value
             y_hat = np.concatenate([y_hat, np.full(horizon - len(y_hat), y_hat[-1])])

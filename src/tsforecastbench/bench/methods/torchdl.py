@@ -179,9 +179,8 @@ class _TorchDLBase(Forecaster):
 
         # Per-segment windows (unique_id), never across a gap; single-segment local
         # frames behave exactly as before.
-        segs, tail = segment_arrays(train)
+        segs, _tail = segment_arrays(train)
         segs = [s.astype(np.float32) for s in segs]
-        self._last_window = segs[tail][-self._L :].copy()
 
         X, Y = _build_windows(segs, self._L, self._H)
         if X is None:
@@ -216,9 +215,13 @@ class _TorchDLBase(Forecaster):
             last = float(pd.to_numeric(history["y"], errors="coerce").ffill().iloc[-1])
             return pd.DataFrame({"ds": future, "y_hat": np.full(horizon, last)})
         torch = self._mods[0]
+        # Inference-only: the lookback window is the tail segment of the history handed in
+        # at this origin, never state captured at fit — so one fit serves every origin.
+        segs, tail = segment_arrays(history)
+        last_window = segs[tail][-self._L :].astype(np.float32)
         self._model.eval()
         with torch.no_grad():
-            x = torch.from_numpy(self._last_window.astype(np.float32)).unsqueeze(0)
+            x = torch.from_numpy(last_window).unsqueeze(0)
             mu = x.mean(1, keepdim=True)
             sd = x.std(1, keepdim=True) + 1e-5
             y_hat = (self._model((x - mu) / sd) * sd + mu).squeeze(0).numpy()
