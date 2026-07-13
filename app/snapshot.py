@@ -292,12 +292,12 @@ def render_snapshots(
     n_cols = min(max_cols, n)
     n_rows = math.ceil(n / n_cols)
 
-    titles = [pd.Timestamp(o.origin_ds).strftime("%Y-%m-%d %H:%M") for o in origins]
+    # titles = [pd.Timestamp(o.origin_ds).strftime("%Y-%m-%d %H:%M") for o in origins]
     fig = make_subplots(
         rows=n_rows,
         cols=n_cols,
         shared_yaxes="all",
-        subplot_titles=titles,
+        # subplot_titles=titles,
         vertical_spacing=0.12,
         horizontal_spacing=0.04,
     )

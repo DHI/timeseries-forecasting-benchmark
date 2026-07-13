@@ -905,7 +905,7 @@ def render_panel(sel, n_reload, show_global):
         return "", go.Figure(), [], {"display": "none"}, {"color": "#666"}
 
     show_global = "on" in (show_global or [])
-    title = f"(Test) Prediction Snapshots — {', '.join(methods)}"
+    title = "[Test] Prediction Snapshots"
     return (
         title,
         render_snapshots(case_id, methods, load_snapshots(n_reload or 0), show_global, max_cols=1),
