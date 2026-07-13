@@ -8,6 +8,26 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-13 — Method-info panel now shows library, compute cost, limitations, and a code snippet
+
+Grew the method-info panel beyond family/description/exogenous-inputs to answer the question a
+non-ML user actually needs answered when comparing methods: what library does the work, how
+expensive is it to run, when should you not trust it, and what does the pipeline actually look
+like in code. The new fields live as plain class attributes directly on each `Forecaster`
+subclass (`library`, `compute_profile`, `limitations`, `code_snippet` in `base.py`), the same way
+`family` already does, rather than in a separate metadata file — so a method's description of
+itself can't drift out of sync with its implementation. Several method families share a base
+class that holds the real pipeline (e.g. the windowed-ML lag-feature pipeline, the neuralforecast
+wrapper), so the shared fields — especially the code snippet — are set once on the base and only
+`library` gets overridden per leaf, to avoid repeating the same snippet 4-8 times. The detail is
+collapsed by default behind an "Implementation detail" toggle on each card, so the panel's default
+view is unchanged; only opening it reveals the new fields. Couldn't get a headless-browser
+screenshot of the panel in this environment (no root to install Chromium's system libraries), so
+verification here relies on checking every registered method has all four fields populated and on
+inspecting the rendered markdown directly — worth a manual look in a real browser before trusting
+the layout at a glance.
+
+
 ## 2026-07-10 — Added a bottom method-info panel, capped the method overlay at 3
 
 Clicking a cell now also opens a panel docked to the bottom of the screen with a brief
