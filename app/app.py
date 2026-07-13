@@ -525,6 +525,16 @@ _COL_TOOLTIP_STYLE = {
     "pointerEvents": "none",
     "zIndex": 10,
 }
+# One of four translucent-white rectangles that dim the grid outside the hovered row and
+# column (the corner regions around the crosshair). `pointerEvents: none` so hover still
+# reaches the cells beneath; zIndex sits above the graph but below the name tooltips.
+_DIM_RECT_STYLE = {
+    "position": "absolute",
+    "display": "none",
+    "background": "rgba(255, 255, 255, 0.6)",
+    "pointerEvents": "none",
+    "zIndex": 5,
+}
 
 app.layout = html.Div(
     style={"display": "flex", "flexDirection": "column", "fontFamily": "system-ui, sans-serif"},
@@ -605,6 +615,10 @@ app.layout = html.Div(
                                     config=_MATRIX_CONFIG,
                                     clear_on_unhover=True,
                                 ),
+                                html.Div(id="dim-tl", style=_DIM_RECT_STYLE),
+                                html.Div(id="dim-tr", style=_DIM_RECT_STYLE),
+                                html.Div(id="dim-bl", style=_DIM_RECT_STYLE),
+                                html.Div(id="dim-br", style=_DIM_RECT_STYLE),
                                 html.Div(
                                     id="row-tooltip",
                                     style=_ROW_TOOLTIP_STYLE,
@@ -834,10 +848,12 @@ app.layout = html.Div(
 )
 
 
-# Position the row/col name tooltips from the hovered cell. Runs in the browser so it can
-# read the live pixel geometry off the Plotly graph div (`_fullLayout` axis offsets and the
-# data->pixel converters) and reacts to every hover without a server round-trip. Returns
-# hidden styles when the cursor leaves the grid (dcc.Graph `clear_on_unhover` nulls hoverData).
+# Drive the hover overlays from the hovered cell: the two name tooltips, plus four
+# translucent rectangles that pale everything outside the hovered row and column. Runs in
+# the browser so it can read the live pixel geometry off the Plotly graph div (`_fullLayout`
+# axis offsets, lengths, and the data->pixel converters) and react to every hover without a
+# server round-trip. Returns hidden styles when the cursor leaves the grid (dcc.Graph
+# `clear_on_unhover` nulls hoverData).
 app.clientside_callback(
     """
     function(hoverData) {
@@ -845,24 +861,33 @@ app.clientside_callback(
                            pointerEvents:'none', zIndex:10};
         const colHidden = {position:'absolute', display:'none', flexDirection:'column',
                            alignItems:'center', pointerEvents:'none', zIndex:10};
-        if (!hoverData || !hoverData.points || !hoverData.points.length) {
-            return [rowHidden, '', colHidden, ''];
-        }
+        const dimHidden = {position:'absolute', display:'none',
+                           background:'rgba(255, 255, 255, 0.6)', pointerEvents:'none', zIndex:5};
+        const hide = [rowHidden, '', colHidden, '',
+                      dimHidden, dimHidden, dimHidden, dimHidden];
+        if (!hoverData || !hoverData.points || !hoverData.points.length) return hide;
         const pt = hoverData.points[0];
         const wrapper = document.getElementById('matrix-wrapper');
         const gd = wrapper ? wrapper.querySelector('.js-plotly-plot') : null;
-        if (!gd || !gd._fullLayout) {
-            return [rowHidden, '', colHidden, ''];
-        }
+        if (!gd || !gd._fullLayout) return hide;
         const xa = gd._fullLayout.xaxis, ya = gd._fullLayout.yaxis;
         const d2pix = (ax, v) => (ax.d2p ? ax.d2p(v) : ax.c2p(ax.d2c(v)));
-        // Offset from the wrapper's origin to the plot div's origin, so absolute-positioned
-        // tooltips line up with the axis pixel coordinates below.
+        // Offset from the wrapper's origin to the plot div's origin, so the absolute-
+        // positioned overlays line up with the axis pixel coordinates below.
         const wr = wrapper.getBoundingClientRect(), gr = gd.getBoundingClientRect();
         const dx = gr.left - wr.left, dy = gr.top - wr.top;
-        const colCenter = dx + xa._offset + d2pix(xa, pt.x);
-        const rowCenter = dy + ya._offset + d2pix(ya, pt.y);
         const gridLeft = dx + xa._offset, gridTop = dy + ya._offset;
+        const gridRight = gridLeft + xa._length, gridBottom = gridTop + ya._length;
+        const colCenter = gridLeft + d2pix(xa, pt.x), rowCenter = gridTop + d2pix(ya, pt.y);
+        // One category spans 1 unit, so its pixel width/height is the |c2p| step per unit.
+        const halfW = Math.abs(xa.c2p(1) - xa.c2p(0)) / 2;
+        const halfH = Math.abs(ya.c2p(1) - ya.c2p(0)) / 2;
+        const colLeft = colCenter - halfW, colRight = colCenter + halfW;
+        const rowTop = rowCenter - halfH, rowBottom = rowCenter + halfH;
+        const rect = (l, t, w, h) => Object.assign({}, dimHidden, {
+            display:'block', left:l+'px', top:t+'px',
+            width: Math.max(0, w)+'px', height: Math.max(0, h)+'px'
+        });
         const rowStyle = Object.assign({}, rowHidden, {
             display:'flex', left: gridLeft + 'px', top: rowCenter + 'px',
             transform: 'translate(-100%, -50%)'
@@ -871,13 +896,23 @@ app.clientside_callback(
             display:'flex', left: colCenter + 'px', top: gridTop + 'px',
             transform: 'translate(-50%, -100%)'
         });
-        return [rowStyle, pt.y, colStyle, pt.x];
+        return [
+            rowStyle, pt.y, colStyle, pt.x,
+            rect(gridLeft, gridTop, colLeft - gridLeft, rowTop - gridTop),        // top-left
+            rect(colRight, gridTop, gridRight - colRight, rowTop - gridTop),      // top-right
+            rect(gridLeft, rowBottom, colLeft - gridLeft, gridBottom - rowBottom),   // bot-left
+            rect(colRight, rowBottom, gridRight - colRight, gridBottom - rowBottom)  // bot-right
+        ];
     }
     """,
     Output("row-tooltip", "style"),
     Output("row-tooltip-text", "children"),
     Output("col-tooltip", "style"),
     Output("col-tooltip-text", "children"),
+    Output("dim-tl", "style"),
+    Output("dim-tr", "style"),
+    Output("dim-bl", "style"),
+    Output("dim-br", "style"),
     Input("matrix", "hoverData"),
 )
 
