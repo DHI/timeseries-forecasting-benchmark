@@ -169,8 +169,17 @@ def test_rolling_matrix_runs():
     # pooled rolling score is finite and persistence skill-vs-itself is ~0
     pers = res[(res.method == "Persistence") & (res.metric == "Skill_vs_Persistence")]["value"]
     assert abs(float(pers.iloc[0])) < 1e-6
-    # snapshots: full predicted series per method x origin, aligned on shared origins
-    assert set(snaps.columns) == {"case_id", "method", "origin_id", "origin_ds", "ds", "y_hat"}
+    # snapshots: full predicted series per method x origin, tagged by fit variant and
+    # aligned on shared origins
+    assert set(snaps.columns) == {
+        "case_id",
+        "method",
+        "used_extended_history",
+        "origin_id",
+        "origin_ds",
+        "ds",
+        "y_hat",
+    }
     assert set(snaps["method"].unique()) == {m.name for m in methods}
     per_method_origins = snaps.groupby("method")["origin_id"].apply(lambda s: sorted(s.unique()))
     assert per_method_origins.iloc[0] == per_method_origins.iloc[1]
