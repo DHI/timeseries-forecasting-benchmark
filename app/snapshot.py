@@ -427,14 +427,11 @@ def render_snapshots(
     n_cols = min(max_cols, n)
     n_rows = math.ceil(n / n_cols)
 
-    titles = [
-        f"{o.label} · {pd.Timestamp(o.origin_ds):%Y-%m-%d} ({metric} {o.value:.3g})"
-        for o in origins
-    ]
+    titles = [f"{o.label} · ({metric} {o.value:.3g})" for o in origins]
     fig = make_subplots(
         rows=n_rows,
         cols=n_cols,
-        shared_yaxes="all",
+        shared_yaxes=False,
         subplot_titles=titles,
         vertical_spacing=0.12,
         horizontal_spacing=0.04,
