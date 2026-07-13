@@ -251,17 +251,10 @@ def render_matrix(
         texttemplate="%{text}",
         textfont={"size": 10},
         customdata=customdata,
-        hovertemplate=(
-            "<b>%{y}</b><br>"
-            "method: %{x}<br>"
-            # f"{metric}: %{{z:{_d3_format(fmt)}}}<br>"
-            # "status: %{customdata[0]}<br>"
-            # "n_origins: %{customdata[1]}<br>"
-            # "frac_finite_test: %{customdata[2]}<br>"
-            "runtime: %{customdata[3]}<br>"
-            "horizon: %{customdata[4]}"
-            "<extra></extra>"
-        ),
+        # Native per-cell hover label is off; the row/col name tooltips are drawn as HTML
+        # overlays by the `hover-tooltips` clientside callback. "none" (not "skip") keeps
+        # the plotly_hover event firing so `matrix.hoverData` still updates.
+        hoverinfo="none",
         colorbar={
             "title": metric.replace("_", "\n"),
             "len": 0.6,
@@ -488,6 +481,51 @@ _MATRIX_CONFIG = {
     "showAxisRangeEntryBoxes": False,
 }
 
+# Two HTML overlays that replace the native per-cell hover label: a row tooltip pinned to
+# the grid's left edge (triangle pointing right at the hovered row) showing the case name,
+# and a column tooltip pinned to the top edge (triangle pointing down at the hovered
+# column) showing the method name. Positioned by the `hover-tooltips` clientside callback.
+_TOOLTIP_BG = "#2a3f5f"
+_TOOLTIP_BOX_STYLE = {
+    "background": _TOOLTIP_BG,
+    "color": "white",
+    "padding": "3px 8px",
+    "borderRadius": "3px",
+    "fontSize": "12px",
+    "whiteSpace": "nowrap",
+    "boxShadow": "0 1px 3px rgba(0,0,0,0.3)",
+}
+_ROW_TRIANGLE_STYLE = {
+    "width": "0",
+    "height": "0",
+    "borderTop": "6px solid transparent",
+    "borderBottom": "6px solid transparent",
+    "borderLeft": f"7px solid {_TOOLTIP_BG}",
+}
+_COL_TRIANGLE_STYLE = {
+    "width": "0",
+    "height": "0",
+    "borderLeft": "6px solid transparent",
+    "borderRight": "6px solid transparent",
+    "borderTop": f"7px solid {_TOOLTIP_BG}",
+}
+# Base (hidden) styles; the clientside callback flips `display` and sets left/top/transform.
+_ROW_TOOLTIP_STYLE = {
+    "position": "absolute",
+    "display": "none",
+    "alignItems": "center",
+    "pointerEvents": "none",
+    "zIndex": 10,
+}
+_COL_TOOLTIP_STYLE = {
+    "position": "absolute",
+    "display": "none",
+    "flexDirection": "column",
+    "alignItems": "center",
+    "pointerEvents": "none",
+    "zIndex": 10,
+}
+
 app.layout = html.Div(
     style={"display": "flex", "flexDirection": "column", "fontFamily": "system-ui, sans-serif"},
     children=[
@@ -558,7 +596,33 @@ app.layout = html.Div(
                             "You can click up to 3 cells in the same row to stack their forecasts on the same plot for comparison.",
                             style={"color": "#444", "maxWidth": "1000px"},
                         ),
-                        dcc.Graph(id="matrix", config=_MATRIX_CONFIG),
+                        html.Div(
+                            id="matrix-wrapper",
+                            style={"position": "relative"},
+                            children=[
+                                dcc.Graph(
+                                    id="matrix",
+                                    config=_MATRIX_CONFIG,
+                                    clear_on_unhover=True,
+                                ),
+                                html.Div(
+                                    id="row-tooltip",
+                                    style=_ROW_TOOLTIP_STYLE,
+                                    children=[
+                                        html.Div(id="row-tooltip-text", style=_TOOLTIP_BOX_STYLE),
+                                        html.Div(style=_ROW_TRIANGLE_STYLE),
+                                    ],
+                                ),
+                                html.Div(
+                                    id="col-tooltip",
+                                    style=_COL_TOOLTIP_STYLE,
+                                    children=[
+                                        html.Div(id="col-tooltip-text", style=_TOOLTIP_BOX_STYLE),
+                                        html.Div(style=_COL_TRIANGLE_STYLE),
+                                    ],
+                                ),
+                            ],
+                        ),
                         html.H2("Benchmark Design"),
                         html.Div(
                             style={"color": "#444", "maxWidth": "1000px"},
@@ -767,6 +831,54 @@ app.layout = html.Div(
         ),
         html.Div(id="method-info-panel", style=_METHOD_INFO_HIDDEN_STYLE),
     ],
+)
+
+
+# Position the row/col name tooltips from the hovered cell. Runs in the browser so it can
+# read the live pixel geometry off the Plotly graph div (`_fullLayout` axis offsets and the
+# data->pixel converters) and reacts to every hover without a server round-trip. Returns
+# hidden styles when the cursor leaves the grid (dcc.Graph `clear_on_unhover` nulls hoverData).
+app.clientside_callback(
+    """
+    function(hoverData) {
+        const rowHidden = {position:'absolute', display:'none', alignItems:'center',
+                           pointerEvents:'none', zIndex:10};
+        const colHidden = {position:'absolute', display:'none', flexDirection:'column',
+                           alignItems:'center', pointerEvents:'none', zIndex:10};
+        if (!hoverData || !hoverData.points || !hoverData.points.length) {
+            return [rowHidden, '', colHidden, ''];
+        }
+        const pt = hoverData.points[0];
+        const wrapper = document.getElementById('matrix-wrapper');
+        const gd = wrapper ? wrapper.querySelector('.js-plotly-plot') : null;
+        if (!gd || !gd._fullLayout) {
+            return [rowHidden, '', colHidden, ''];
+        }
+        const xa = gd._fullLayout.xaxis, ya = gd._fullLayout.yaxis;
+        const d2pix = (ax, v) => (ax.d2p ? ax.d2p(v) : ax.c2p(ax.d2c(v)));
+        // Offset from the wrapper's origin to the plot div's origin, so absolute-positioned
+        // tooltips line up with the axis pixel coordinates below.
+        const wr = wrapper.getBoundingClientRect(), gr = gd.getBoundingClientRect();
+        const dx = gr.left - wr.left, dy = gr.top - wr.top;
+        const colCenter = dx + xa._offset + d2pix(xa, pt.x);
+        const rowCenter = dy + ya._offset + d2pix(ya, pt.y);
+        const gridLeft = dx + xa._offset, gridTop = dy + ya._offset;
+        const rowStyle = Object.assign({}, rowHidden, {
+            display:'flex', left: gridLeft + 'px', top: rowCenter + 'px',
+            transform: 'translate(-100%, -50%)'
+        });
+        const colStyle = Object.assign({}, colHidden, {
+            display:'flex', left: colCenter + 'px', top: gridTop + 'px',
+            transform: 'translate(-50%, -100%)'
+        });
+        return [rowStyle, pt.y, colStyle, pt.x];
+    }
+    """,
+    Output("row-tooltip", "style"),
+    Output("row-tooltip-text", "children"),
+    Output("col-tooltip", "style"),
+    Output("col-tooltip-text", "children"),
+    Input("matrix", "hoverData"),
 )
 
 
