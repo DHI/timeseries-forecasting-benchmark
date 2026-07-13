@@ -8,6 +8,23 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-13 — Snapshot panel now shows curated best/median/worst origins, not storage order
+
+The snapshot panel used to show every rolling-origin forecast stored in
+`pilot_snapshots.parquet`, in whatever order the eval pipeline happened to produce them.
+It now picks up to three: the best, median, and worst performing origin, ranked by MAE
+for the first-clicked method, so a viewer sees a representative spread instead of an
+arbitrary sequence. No per-origin error existed anywhere in the eval pipeline before this
+— the app computes MAE itself from the stored predictions and the case's actual series,
+since MAE is the only metric on the matrix that needs nothing beyond a single origin's
+actual/predicted pair (MASE and the skill scores both need extra data the app doesn't
+have handy). When several methods are overlaid, they all plot on the same three origins
+(fixed by the first-clicked method) so the comparison stays apples-to-apples. The current
+pilot data has only 3 origins per case, so today this mostly relabels the existing panels
+rather than filtering anything out — the value grows if a future run stores more origins
+per case (`TSFB_ORIGINS`).
+
+
 ## 2026-07-13 — Method-info panel now shows library, compute cost, limitations, and a code snippet
 
 Grew the method-info panel beyond family/description/exogenous-inputs to answer the question a
