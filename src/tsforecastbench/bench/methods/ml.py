@@ -100,6 +100,29 @@ class _WindowedMLBase(Forecaster):
     max_train_steps: int | None = None
     use_exogenous: bool = False
     use_calendar: bool = False
+    compute_profile = (
+        "CPU only; a lag+calendar feature table is built once, then the regressor "
+        "fits on it directly — fast for the linear/tree models here, slower for the "
+        "MLP (which also cross-validates an early-stopping split)."
+    )
+    limitations = (
+        "Needs enough history to fill its lag windows (shortest lag 1, longest tied "
+        "to the case's declared seasonal periods). The univariate variant ignores "
+        "exogenous inputs entirely; the +exo variant sees only the future covariate "
+        "values supplied at predict time (a perfect-forecast proxy in this "
+        "benchmark, not a real forecast of those covariates)."
+    )
+    code_snippet = (
+        "from mlforecast import MLForecast\n\n"
+        "fcst = MLForecast(\n"
+        "    models=[<regressor>],           # e.g. LGBMRegressor, Ridge, MLPRegressor\n"
+        "    freq=case.freq,\n"
+        "    lags=[1, 2, 4, 8, 16, 32, *case.seasonalities],\n"
+        '    date_features=["dayofweek", "month", ...],\n'
+        ")\n"
+        "fcst.fit(train_df, static_features=[])\n"
+        "y_hat = fcst.predict(h=horizon, ids=[target_uid])"
+    )
 
     def __init__(self):
         self.uses_exogenous = self.use_exogenous
@@ -188,6 +211,7 @@ class _WindowedMLBase(Forecaster):
 
 class LightGBMForecaster(_WindowedMLBase):
     name = "LightGBM"
+    library = "mlforecast + lightgbm"
 
     def _make_model(self):
         from lightgbm import LGBMRegressor
@@ -197,6 +221,7 @@ class LightGBMForecaster(_WindowedMLBase):
 
 class CatBoostForecaster(_WindowedMLBase):
     name = "CatBoost"
+    library = "mlforecast + catboost"
 
     def _make_model(self):
         from catboost import CatBoostRegressor
@@ -208,6 +233,7 @@ class CatBoostForecaster(_WindowedMLBase):
 
 class LinearLagsForecaster(_WindowedMLBase):
     name = "LinearLags"
+    library = "mlforecast + scikit-learn (Ridge)"
 
     def _make_model(self):
         from sklearn.linear_model import Ridge
@@ -219,6 +245,7 @@ class LinearLagsForecaster(_WindowedMLBase):
 class MLPForecaster(_WindowedMLBase):
     name = "MLP"
     max_train_steps = 20000
+    library = "mlforecast + scikit-learn (MLPRegressor)"
 
     def _make_model(self):
         from sklearn.neural_network import MLPRegressor
