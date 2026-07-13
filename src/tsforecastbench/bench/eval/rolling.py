@@ -310,13 +310,23 @@ def run_leadtime_curve(
         sq_err = [[] for _ in range(H)]
         signed = [[] for _ in range(H)]
         n_ok = 0
+        # Same protocol as the matrix (see `run_case_rolling`): a method with a reusable
+        # trained model is fit once, on train+val only, then evaluated across every origin
+        # by inference; classical/baseline methods refit per origin below. A failed single
+        # fit makes the method unusable on this case, so it contributes no rows.
+        if not method.refit_per_origin:
+            try:
+                method.fit(case, full_fit.iloc[:test_start])
+            except Exception:
+                continue
         for o in origins:
             history = full_fit.iloc[: o + 1]
             future_exog = (
                 full_fit.iloc[o + 1 : o + 1 + H][["ds", *exo_present]] if exo_present else None
             )
             try:
-                method.fit(case, history)
+                if method.refit_per_origin:
+                    method.fit(case, history)
                 y_hat = method.predict(case, history, H, future_exog=future_exog)["y_hat"].to_numpy(
                     dtype=float
                 )
