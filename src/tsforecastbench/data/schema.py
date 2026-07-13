@@ -26,6 +26,12 @@ DATA_CURATED_EXTENDED = REPO_ROOT / "data" / "curated_extended"
 
 REQUIRED_COLS = ("unique_id", "ds", "y")
 
+# Metrics whose meaning depends on the case's domain (e.g. NSE/KGE assume a flow/level
+# quantity), so they only apply to cases that opt in via `Case.domain_metrics`. Every other
+# metric the eval loops compute (MAE, RMSE, MASE, Skill_vs_*, MAPE, sMAPE) applies to every
+# case and needs no such declaration.
+DOMAIN_RESTRICTED_METRICS = frozenset({"NSE", "KGE"})
+
 
 class Splits(BaseModel):
     """Calendar train/val/test split (inclusive end dates). Used when split_mode=calendar."""
@@ -85,6 +91,11 @@ class Case(BaseModel):
     # `optional_exogenous` below and RESEARCH_LOG.md 2026-07-02.
     necessary_exogenous: list[str] = Field(default_factory=list)
     static_attrs: list[str] = Field(default_factory=list)
+    # Domain-expert judgment, like `necessary_exogenous`: which domain-restricted metrics
+    # (see `DOMAIN_RESTRICTED_METRICS`) are meaningful for this case. The app uses this to
+    # restrict a domain metric's matrix rows to only the cases that declare it, so e.g. NSE
+    # never appears against a wave-height case.
+    domain_metrics: list[str] = Field(default_factory=list)
     splits: Splits
     source: Source
     data_type: Literal["observed", "simulated", "mixed"] = "observed"
@@ -103,6 +114,17 @@ class Case(BaseModel):
             raise ValueError(f"seasonalities must all be >= 2 steps, got {v}")
         if len(set(v)) != len(v):
             raise ValueError(f"seasonalities must be unique, got {v}")
+        return v
+
+    @field_validator("domain_metrics")
+    @classmethod
+    def _domain_metrics_known(cls, v: list[str]) -> list[str]:
+        unknown = set(v) - DOMAIN_RESTRICTED_METRICS
+        if unknown:
+            raise ValueError(
+                f"domain_metrics has unknown metric(s) {sorted(unknown)}; "
+                f"must be a subset of {sorted(DOMAIN_RESTRICTED_METRICS)}"
+            )
         return v
 
     @model_validator(mode="after")

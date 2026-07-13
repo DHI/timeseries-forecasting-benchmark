@@ -14,6 +14,10 @@ input_window = "14D"
 exogenous = []
 exogenous_known_future = []
 static_attrs = []
+# NSE/KGE are hydrology-standard for flow/level; Rocco confirmed them for the discharge
+# cases but only called influent flow "arguably" appropriate (issue #34) — included here
+# as an unconfirmed extension, not a validated domain-expert call.
+domain_metrics = ["NSE", "KGE"]
 data_type = "observed"
 split_mode = "fraction"
 split_fraction = [0.7, 0.85]

@@ -15,6 +15,10 @@ exogenous = ["rain_gauge", "temp_air"]
 exogenous_known_future = ["rain_radar_nowcast"]
 necessary_exogenous = ["rain_gauge", "rain_radar_nowcast"]
 static_attrs = ["catchment_area_ha", "impervious_frac"]
+# NSE/KGE are hydrology-standard for flow/level; Rocco confirmed them for the discharge
+# cases but only called sewer level "arguably" appropriate (issue #34) — included here as
+# an unconfirmed extension, not a validated domain-expert call.
+domain_metrics = ["NSE", "KGE"]
 data_type = "observed"
 split_mode = "fraction"
 split_fraction = [0.7, 0.85]
