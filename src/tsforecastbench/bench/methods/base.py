@@ -70,6 +70,14 @@ class Forecaster(ABC):
     # bridge a gap, so extended history leaves their forecast unchanged. The eval loop
     # runs the second (extended) fit only for `is_global and pools_segments` methods.
     pools_segments: bool = False
+    # The next four are documentation only, read by the results viewer's method-info
+    # panel (app/data.py) — they have no effect on fit/predict. Kept as class attributes
+    # (not a separate metadata file) so a method's implementation and its description of
+    # itself can't drift apart.
+    library: str = ""  # concrete package(s) doing the work, e.g. "statsforecast (Nixtla)"
+    compute_profile: str = ""  # rough CPU/GPU + speed expectations, one sentence
+    limitations: str = ""  # plain-language failure modes / assumptions
+    code_snippet: str = ""  # short, truthful excerpt of the real fit/predict calls
 
     @abstractmethod
     def fit(self, case: Case, train: pd.DataFrame) -> None:
