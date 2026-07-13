@@ -441,7 +441,6 @@ def render_snapshots(
 
     for i, origin in enumerate(origins):
         row, col = i // n_cols + 1, i % n_cols + 1
-        first_panel = i == 0
         origin_ds = pd.Timestamp(origin.origin_ds)
         origin_preds = case_preds[case_preds["origin_id"] == origin.origin_id]
 
@@ -455,7 +454,7 @@ def render_snapshots(
                 mode="lines",
                 line={"color": ACTUAL_COLOR, "width": 2},
                 legendgroup="Actual",
-                showlegend=first_panel,
+                showlegend=False,
             ),
             row=row,
             col=col,
@@ -474,7 +473,7 @@ def render_snapshots(
                     mode="lines",
                     line={"color": color_of[method], "width": 2},
                     legendgroup=method,
-                    showlegend=first_panel,
+                    showlegend=False,
                 ),
                 row=row,
                 col=col,
