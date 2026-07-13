@@ -189,7 +189,7 @@ def render_matrix(
     get a `used_extended_history=True` row wherever the case has real history beyond
     the curated span (a gappy record with a segment before the tail). When
     `show_global` is True, those cells are swapped in for the local score and outlined
-    with a hotpink hash (see `_global_overlay_shapes`), since they're fit on more data than the
+    with a hash (see `_global_overlay_shapes`), since they're fit on more data than the
     rest of the row and aren't directly comparable.
     """
     df_metric = df[
@@ -531,7 +531,7 @@ app.layout = html.Div(
                         ),
                         html.P(
                             "For is_global methods on cases with data beyond the curated span, "
-                            "swaps in the full-history fit (a hotpink hash marks affected cells).",
+                            "swaps in the full-history fit (a hash marks affected cells).",
                             style={"color": "#666", "fontSize": "0.8em", "marginTop": "4px"},
                         ),
                     ],
