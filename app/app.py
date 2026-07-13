@@ -34,6 +34,7 @@ from data import (
     load_metrics,
     load_snapshots,
     method_info,
+    method_info_detail,
     ordered_cases,
     ordered_methods,
 )
@@ -459,8 +460,8 @@ _METHOD_INFO_STYLE = {
 }
 _METHOD_INFO_HIDDEN_STYLE = {"display": "none"}
 _METHOD_INFO_CARD_STYLE = {
-    "flex": "1 1 260px",
-    "minWidth": "220px",
+    "flex": "1 1 320px",
+    "minWidth": "320px",
     "paddingLeft": "10px",
 }
 
@@ -780,6 +781,19 @@ def _method_info_cards(case_id: str, methods: list[str]) -> list:
                     dcc.Markdown(
                         method_info(case_id, method), style={"fontSize": "0.85em", "margin": "0"}
                     ),
+                    html.Details(
+                        style={"marginTop": "6px"},
+                        children=[
+                            html.Summary(
+                                "Implementation detail",
+                                style={"fontSize": "0.85em", "cursor": "pointer"},
+                            ),
+                            dcc.Markdown(
+                                method_info_detail(case_id, method),
+                                style={"fontSize": "0.85em", "margin": "4px 0 0 0"},
+                            ),
+                        ],
+                    ),
                 ],
             )
         )
@@ -922,8 +936,9 @@ def render_panel(sel, n_reload, show_global):
 )
 def render_method_info_panel(sel):
     """Bottom panel: one card per selected method with a brief description and its
-    exogenous-input usage for this case (see `data.method_info`). Still a placeholder —
-    the fields shown here are expected to grow as we settle on what's useful."""
+    exogenous-input usage for this case (see `data.method_info`), plus a collapsed
+    "Implementation detail" section (library, compute cost, limitations, a code
+    excerpt — see `data.method_info_detail`)."""
     sel = sel or {}
     case_id, methods = sel.get("case_id"), sel.get("methods") or []
     if not case_id or not methods:
