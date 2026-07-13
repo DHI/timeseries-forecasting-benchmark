@@ -139,6 +139,29 @@ class _TorchDLBase(Forecaster):
     max_steps = 600
     batch = 256
     lr = 1e-3
+    library = "torch (custom implementation, no ray/lightning)"
+    compute_profile = (
+        "CPU (no GPU dependency); trains a small network from scratch per case — "
+        "600 gradient steps over randomly sampled windows — making these the "
+        "heaviest CPU methods in the benchmark. Keep rolling-origin counts modest "
+        "when including them."
+    )
+    limitations = (
+        "Univariate — ignores exogenous inputs (the covariate story lives in the "
+        "windowed-ML +exo columns instead). Each window is instance-normalised "
+        "(RevIN-style) before the model and de-normalised after, which is what makes "
+        "the same architecture usable across very different series scales."
+    )
+    code_snippet = (
+        "net = <NHiTSNet or PatchTSTNet>(lookback, horizon)\n"
+        "opt = torch.optim.Adam(net.parameters(), lr=1e-3)\n"
+        "for step in range(600):\n"
+        "    xb, yb = sample_batch(windows, batch_size=256)\n"
+        "    mu, sd = xb.mean(1), xb.std(1)          # per-window instance norm\n"
+        "    pred = net((xb - mu) / sd) * sd + mu\n"
+        "    loss = mse_loss(pred, yb)\n"
+        "    loss.backward(); opt.step()"
+    )
 
     def _net(self, mods, L, H):
         raise NotImplementedError

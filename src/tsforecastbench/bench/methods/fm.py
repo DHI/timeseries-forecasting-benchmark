@@ -48,6 +48,27 @@ class ChronosForecaster(Forecaster):
     # Zero-shot: there's no fit-time benefit, but a longer history helps up to
     # `context_length` if the shared curated span is shorter than that.
     is_global = True
+    library = "chronos-forecasting (Amazon Chronos-Bolt) + torch"
+    compute_profile = (
+        "CPU-capable; zero-shot, so there's no per-case training — one forward "
+        "pass per prediction. The pretrained model is loaded once and cached "
+        "across every case and origin."
+    )
+    limitations = (
+        "Zero-shot: never learns anything case-specific, only what it picked up "
+        "from pretraining on other series. Univariate — ignores exogenous inputs. "
+        "Only conditions on the most recent 2,048 points of history (context_length)."
+    )
+    code_snippet = (
+        "from chronos import BaseChronosPipeline\n\n"
+        'pipe = BaseChronosPipeline.from_pretrained("amazon/chronos-bolt-small", device_map="cpu")\n'
+        "quantiles, _mean = pipe.predict_quantiles(\n"
+        "    inputs=context,                  # last 2048 observed values\n"
+        "    prediction_length=horizon,\n"
+        "    quantile_levels=[0.1, 0.5, 0.9],\n"
+        ")\n"
+        "y_hat = quantiles[..., 1]            # median"
+    )
 
     def __init__(self, model_name: str = "amazon/chronos-bolt-small", context_length: int = 2048):
         self.model_name = model_name

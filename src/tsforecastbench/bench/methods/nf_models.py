@@ -39,6 +39,27 @@ class _NFBase(Forecaster):
     pools_segments = True
     model_name = "NHITS"  # neuralforecast.models class name
     extra_kwargs: ClassVar[dict] = {}
+    library = "neuralforecast + pytorch_lightning"
+    compute_profile = (
+        "Uses a GPU automatically if one is available (accelerator='auto'), "
+        "otherwise falls back to CPU; a heavier training loop (up to 500 steps, "
+        "full pytorch_lightning trainer overhead) than the custom torch models in "
+        "torchdl.py. Only available on Linux with Python <3.13 (the `nf` extra), "
+        "since neuralforecast depends on `ray`."
+    )
+    limitations = (
+        "Univariate — ignores exogenous inputs. Trains a fresh model per case with "
+        "no hyperparameter tuning, using the same architecture defaults regardless "
+        "of the series' scale or frequency."
+    )
+    code_snippet = (
+        "import neuralforecast.models as nfm\n"
+        "from neuralforecast import NeuralForecast\n\n"
+        "model = getattr(nfm, model_name)(h=horizon, input_size=lookback, max_steps=500)\n"
+        "nf = NeuralForecast(models=[model], freq=case.freq)\n"
+        "nf.fit(train_df)                     # train_df: unique_id, ds, y\n"
+        "y_hat = nf.predict()[model_name]"
+    )
 
     def fit(self, case: Case, train: pd.DataFrame) -> None:
         import neuralforecast.models as nfm
@@ -101,6 +122,11 @@ class ITransformerForecaster(_NFBase):
     # extra segments of an extended-history fit -- keep it on the local span only.
     pools_segments = False
     extra_kwargs: ClassVar[dict] = {"n_series": 1}
+    limitations = (
+        _NFBase.limitations
+        + " Architecturally multivariate but fixed to a single series here (n_series=1), "
+        "so unlike its siblings it can't pool the extra segments of an extended-history fit."
+    )
 
 
 class TimesNetForecaster(_NFBase):

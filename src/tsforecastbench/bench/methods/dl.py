@@ -33,6 +33,23 @@ class DLinearForecaster(Forecaster):
     is_global = True
     pools_segments = True
     max_samples: int = 8000
+    library = "scikit-learn (Ridge) — no deep-learning framework"
+    compute_profile = (
+        "CPU only, fast; both linear maps collapse into a single closed-form ridge "
+        "fit on the decomposed window, so there's no gradient-descent training loop."
+    )
+    limitations = (
+        "Univariate — ignores exogenous inputs. The trend/remainder decomposition is "
+        "a fixed moving average, not learned, so an unusually shaped trend can leak "
+        "into the remainder term."
+    )
+    code_snippet = (
+        "from sklearn.linear_model import Ridge\n\n"
+        "trend = moving_average(window, kernel)\n"
+        "remainder = window - trend\n"
+        "model = Ridge(alpha=alpha).fit(concat([trend, remainder]), target_window)\n"
+        "y_hat = model.predict(concat([trend, remainder]))"
+    )
 
     def __init__(self, lookback: int | None = None, kernel: int = 25, alpha: float = 1.0):
         self.lookback = lookback
