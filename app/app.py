@@ -715,9 +715,10 @@ app.layout = html.Div(
                                 html.Div(
                                     id="snapshot-hint",
                                     children=(
-                                        "Click a matrix cell to see real forecast snapshots. Click "
-                                        "more cells in the same row to overlay other methods on the "
-                                        "same origins."
+                                        "Click a matrix cell to see real forecast snapshots: the "
+                                        "best, median, and worst performing origins (by MAE) for "
+                                        "that method. Click more cells in the same row to overlay "
+                                        "other methods on those same origins."
                                     ),
                                     style={"color": "#666"},
                                 ),
@@ -726,6 +727,14 @@ app.layout = html.Div(
                                     style={"display": "none"},
                                     children=[
                                         html.H2(id="snapshot-title"),
+                                        html.P(
+                                            id="snapshot-caption",
+                                            style={
+                                                "color": "#666",
+                                                "fontSize": "0.85em",
+                                                "margin": "0 0 8px 0",
+                                            },
+                                        ),
                                         html.Div(
                                             style={
                                                 "display": "flex",
@@ -969,6 +978,7 @@ def render_case_panel(sel, show_global, n_reload):
 
 @app.callback(
     Output("snapshot-title", "children"),
+    Output("snapshot-caption", "children"),
     Output("snapshot-graph", "figure"),
     Output("snapshot-chips", "children"),
     Output("snapshot-panel", "style"),
@@ -981,12 +991,14 @@ def render_panel(sel, n_reload, show_global):
     sel = sel or {}
     case_id, methods = sel.get("case_id"), sel.get("methods") or []
     if not case_id or not methods:
-        return "", go.Figure(), [], {"display": "none"}, {"color": "#666"}
+        return "", "", go.Figure(), [], {"display": "none"}, {"color": "#666"}
 
     show_global = "on" in (show_global or [])
     title = "[Test] Prediction Snapshots"
+    caption = f"Origins curated by {methods[0]}'s MAE (best / median / worst)."
     return (
         title,
+        caption,
         render_snapshots(case_id, methods, load_snapshots(n_reload or 0), show_global, max_cols=1),
         _method_chips(methods),
         {"display": "block"},
