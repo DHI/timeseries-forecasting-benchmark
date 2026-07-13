@@ -17,10 +17,13 @@ torch/neuralforecast models) paid a full retrain per origin and its cost grew wi
 training was never needed to stay leak-free — the train/val/test boundary already does
 that. They are now fit once, on data strictly before the test period, and scored across
 every origin by inference: each origin's forecast conditions on the observed history up to
-that cutoff without re-estimating parameters. A new `refit_per_origin` flag on
-`Forecaster` draws the line — the classical methods (AutoARIMA, AutoETS, Theta, TBATS,
-MSTL) and naive baselines keep refitting, since for them the fit *is* the forecast.
-Raising `--origins` is now cheap, but this shifts the windowed ML/DL scores (they no
+that cutoff without re-estimating parameters. The existing `is_global` flag already draws
+this line, so no new flag was needed — global methods (the windowed ML/DL models plus
+Chronos) keep a trained model apart from their input and are fit once, while local methods
+(AutoARIMA, AutoETS, Theta, TBATS, MSTL, the naive baselines) keep refitting, since for
+them the fit *is* the forecast and statsforecast cannot forecast from a later origin
+without one. Raising `--origins` is now cheap, but this shifts the windowed ML/DL scores
+(they no
 longer see test-period data in training), so earlier pilot numbers for those methods are
 stale and need a re-run; baseline, classical, and Chronos scores are unchanged. The torch
 and neuralforecast paths were not exercised locally (neither package is installed here) —

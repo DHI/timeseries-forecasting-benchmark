@@ -97,7 +97,6 @@ class _WindowedMLBase(Forecaster):
     family = "ml"
     is_global = True
     pools_segments = True
-    refit_per_origin = False
     max_train_steps: int | None = None
     use_exogenous: bool = False
     use_calendar: bool = False

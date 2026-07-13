@@ -136,7 +136,6 @@ class _TorchDLBase(Forecaster):
     family = "deep_learning"
     is_global = True
     pools_segments = True
-    refit_per_origin = False
     max_steps = 600
     batch = 256
     lr = 1e-3

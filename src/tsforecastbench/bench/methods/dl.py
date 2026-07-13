@@ -32,7 +32,6 @@ class DLinearForecaster(Forecaster):
     family = "deep_learning"
     is_global = True
     pools_segments = True
-    refit_per_origin = False
     max_samples: int = 8000
     library = "scikit-learn (Ridge) — no deep-learning framework"
     compute_profile = (

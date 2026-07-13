@@ -3,12 +3,12 @@
 For each of `n_origins` cutoffs spaced across the test period, forecast `horizon` steps;
 errors are pooled per lead time and averaged over all origins, giving the canonical
 "skill degrades with lead time" curve used to compare methods. How the model behind each
-forecast is obtained depends on the method's `refit_per_origin` flag (see `methods.base`):
+forecast is obtained depends on the method's `is_global` flag (see `methods.base`):
 
-- Classical/baseline methods (AutoARIMA, AutoETS, Theta, TBATS, MSTL, the naive
-  baselines, Chronos) have no separable trained model, so they are refit on the curated
-  history up to each cutoff -- that refit is simply how they fold in the newer data.
-- Windowed ML/DL methods (LightGBM, CatBoost, MLP, LinearLags, DLinear, and the optional
+- Local methods (AutoARIMA, AutoETS, Theta, TBATS, MSTL, and the naive baselines) have no
+  separable trained model, so they are refit on the curated history up to each cutoff --
+  that refit is simply how they fold in the newer data.
+- Global methods (LightGBM, CatBoost, MLP, LinearLags, DLinear, Chronos, and the optional
   torch/neuralforecast models) estimate a reusable model once, on data strictly before
   the test period, then evaluate every cutoff by inference alone -- each origin's predict
   conditions on the real observed history up to that origin without re-estimating any
@@ -82,9 +82,9 @@ def run_case_rolling(
 
     Each method forecasts the primary horizon at `n_origins` cutoffs spread across the test
     period; errors are POOLED across all origins x leads (observed points only) and the
-    matrix metrics computed once on the pool. Classical/baseline methods refit at each
-    cutoff; windowed ML/DL methods (`refit_per_origin=False`) are fit once before the test
-    period and evaluated across all cutoffs by inference (see the module docstring).
+    matrix metrics computed once on the pool. Local methods refit at each cutoff; global
+    methods (`is_global`) are fit once before the test period and evaluated across all
+    cutoffs by inference (see the module docstring).
 
     Returns `(metrics, snapshots)`:
     - `metrics` keeps the tidy record shape of `loop.run_case` (case_id, domain, method,
@@ -165,14 +165,14 @@ def run_case_rolling(
             method_snaps: list[pd.DataFrame] = []
             n_ok = 0
             try:
-                # A method with a reusable trained model (`refit_per_origin=False`) is fit
+                # A global method keeps a trained model apart from its input, so it is fit
                 # once, on data strictly before the test period — train+val locally, or the
                 # pre-curated segments for the extended fit — then evaluated across every
                 # origin by inference alone. No origin's forecast sees test data in its
                 # weights, so this stays leak-free while cutting the cost of `--origins` to
-                # one fit per case. Classical/baseline methods, whose parameters are a
-                # direct function of the fitted series, refit at each origin below.
-                if not method.refit_per_origin:
+                # one fit per case. A local (non-global) method, whose parameters are a
+                # direct function of the fitted series, refits at each origin below instead.
+                if method.is_global:
                     fit_frame = (
                         pd.concat([*segs], ignore_index=True) if used_extended else train_val
                     )
@@ -186,7 +186,7 @@ def run_case_rolling(
                     else:
                         history = local_hist
                     fexog = full_fit.iloc[o : o + H][["ds", *exo_present]] if exo_present else None
-                    if method.refit_per_origin:
+                    if not method.is_global:
                         method.fit(case, history)
                     preds = method.predict(case, history, H, future_exog=fexog)
                     y_hat = preds["y_hat"].to_numpy(float)
@@ -310,11 +310,11 @@ def run_leadtime_curve(
         sq_err = [[] for _ in range(H)]
         signed = [[] for _ in range(H)]
         n_ok = 0
-        # Same protocol as the matrix (see `run_case_rolling`): a method with a reusable
-        # trained model is fit once, on train+val only, then evaluated across every origin
-        # by inference; classical/baseline methods refit per origin below. A failed single
-        # fit makes the method unusable on this case, so it contributes no rows.
-        if not method.refit_per_origin:
+        # Same protocol as the matrix (see `run_case_rolling`): a global method is fit once,
+        # on train+val only, then evaluated across every origin by inference; a local method
+        # refits per origin below. A failed single fit makes the method unusable on this
+        # case, so it contributes no rows.
+        if method.is_global:
             try:
                 method.fit(case, full_fit.iloc[:test_start])
             except Exception:
@@ -325,7 +325,7 @@ def run_leadtime_curve(
                 full_fit.iloc[o + 1 : o + 1 + H][["ds", *exo_present]] if exo_present else None
             )
             try:
-                if method.refit_per_origin:
+                if not method.is_global:
                     method.fit(case, history)
                 y_hat = method.predict(case, history, H, future_exog=future_exog)["y_hat"].to_numpy(
                     dtype=float
