@@ -70,7 +70,9 @@ def test_baselines_run(cid):
     case = get_case(cid)
     methods = [MeanBaseline(), Persistence(), SeasonalNaive(), Climatology()]
     res = run_case(case, methods, prefer_synth=True)
-    assert len(res) == len(methods) * 5  # MAE, RMSE, MASE, Skill_vs_Persistence, Skill_vs_Mean
+    assert (
+        len(res) == len(methods) * 9
+    )  # MAE, RMSE, MASE, Skill_vs_Persistence, Skill_vs_Mean, MAPE, sMAPE, NSE, KGE
     if case.seasonalities:
         assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
     else:
@@ -126,7 +128,9 @@ def test_ensemble_baselines_run():
     case = get_case("discharge_lowland_denmark")
     methods = [ensemble_baselines(), ensemble_baselines_theta()]
     res = run_case(case, methods, prefer_synth=True)
-    assert len(res) == len(methods) * 5  # MAE, RMSE, MASE, Skill_vs_Persistence, Skill_vs_Mean
+    assert (
+        len(res) == len(methods) * 9
+    )  # MAE, RMSE, MASE, Skill_vs_Persistence, Skill_vs_Mean, MAPE, sMAPE, NSE, KGE
     assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
 
 
@@ -164,7 +168,7 @@ def test_rolling_matrix_runs():
     case = get_case("discharge_flashy_catskills")
     methods = [Persistence(), LightGBMExoForecaster()]
     res, snaps = run_case_rolling(case, methods, n_origins=6, prefer_synth=True)
-    assert len(res) == len(methods) * 5
+    assert len(res) == len(methods) * 9
     assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
     # pooled rolling score is finite and persistence skill-vs-itself is ~0
     pers = res[(res.method == "Persistence") & (res.metric == "Skill_vs_Persistence")]["value"]

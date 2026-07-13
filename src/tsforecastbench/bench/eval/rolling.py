@@ -34,6 +34,7 @@ import pandas as pd
 
 from tsforecastbench.bench.eval.config import DEFAULT_ORIGINS
 from tsforecastbench.bench.eval.loop import _horizon_to_steps, _raw_y, _segment_extended
+from tsforecastbench.bench.eval.metrics import kge, mape, nse, smape
 from tsforecastbench.bench.methods.base import Forecaster
 from tsforecastbench.data.schema import Case
 from tsforecastbench.data.seasonality import mase_season_for
@@ -149,7 +150,17 @@ def run_case_rolling(
                     "is_global methods use the curated span only."
                 )
 
-    metric_names = ("MAE", "RMSE", "MASE", "Skill_vs_Persistence", "Skill_vs_Mean")
+    metric_names = (
+        "MAE",
+        "RMSE",
+        "MASE",
+        "Skill_vs_Persistence",
+        "Skill_vs_Mean",
+        "MAPE",
+        "sMAPE",
+        "NSE",
+        "KGE",
+    )
     records: list[dict] = []
     snap_frames: list[pd.DataFrame] = []
     for method in methods:
@@ -233,6 +244,10 @@ def run_case_rolling(
                     else float("nan"),
                     "Skill_vs_Persistence": 1.0 - mse / float(np.mean((a - ref_p) ** 2)),
                     "Skill_vs_Mean": 1.0 - mse / float(np.mean((a - ref_m) ** 2)),
+                    "MAPE": mape(a, p),
+                    "sMAPE": smape(a, p),
+                    "NSE": nse(a, p),
+                    "KGE": kge(a, p),
                 }
                 status = "ok"
                 snap_frames.extend(method_snaps)
