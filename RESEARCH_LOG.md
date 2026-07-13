@@ -8,6 +8,24 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-13 — Windowed ML/DL methods are now fit once per case, not refit at every rolling origin
+
+The rolling-origin eval used to refit every method at each of `n_origins` cutoffs, so a
+learned method (LightGBM, CatBoost, MLP, LinearLags, DLinear, and the optional
+torch/neuralforecast models) paid a full retrain per origin and its cost grew with
+`--origins`. Those methods keep a trained model separate from its input, so the repeat
+training was never needed to stay leak-free — the train/val/test boundary already does
+that. They are now fit once, on data strictly before the test period, and scored across
+every origin by inference: each origin's forecast conditions on the observed history up to
+that cutoff without re-estimating parameters. A new `refit_per_origin` flag on
+`Forecaster` draws the line — the classical methods (AutoARIMA, AutoETS, Theta, TBATS,
+MSTL) and naive baselines keep refitting, since for them the fit *is* the forecast.
+Raising `--origins` is now cheap, but this shifts the windowed ML/DL scores (they no
+longer see test-period data in training), so earlier pilot numbers for those methods are
+stale and need a re-run; baseline, classical, and Chronos scores are unchanged. The torch
+and neuralforecast paths were not exercised locally (neither package is installed here) —
+verify them on a WSL run before trusting those columns.
+
 ## 2026-07-13 — Snapshot panel now shows curated best/median/worst origins, ranked by whichever metric the matrix is showing
 
 The snapshot panel used to show every rolling-origin forecast stored in
