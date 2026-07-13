@@ -101,6 +101,12 @@ class Forecaster(ABC):
     ) -> pd.DataFrame:
         """Forecast `horizon` steps ahead. Returns columns: ds (UTC), y_hat (float64).
 
+        Whether `history` is read depends on `is_global`. Global methods condition their
+        forecast on it, so one fit serves every origin. Non-global methods read only its
+        last timestamp (to place the forecast index) and forecast from state captured at
+        `fit` — to move the origin, refit; passing fresh history to predict alone would
+        silently forecast from the old origin.
+
         `future_exog`, when given, holds the exogenous columns for the `horizon` future
         timestamps (ds + each declared covariate). Univariate methods ignore it;
         exogenous-aware methods use it as a perfect-forecast proxy for the covariates.
