@@ -17,6 +17,7 @@ import pandas as pd
 
 from tsforecastbench.bench import methods as _methods
 from tsforecastbench.data.registry import get_case
+from tsforecastbench.data.schema import DOMAIN_RESTRICTED_METRICS
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 RESULTS_DIR = REPO_ROOT / "results"
@@ -151,6 +152,17 @@ def ordered_methods(df: pd.DataFrame) -> list[str]:
     pairs["_family_rank"] = pairs["family"].map(_rank(FAMILY_ORDER))
     pairs = pairs.sort_values(["_family_rank", "method"])
     return list(pairs["method"])
+
+
+def cases_eligible_for_metric(metric: str, case_ids: list[str]) -> list[str]:
+    """`case_ids` restricted to those declaring `metric` in their case.toml
+    `domain_metrics` — a no-op for every metric outside `DOMAIN_RESTRICTED_METRICS`
+    (MASE, MAPE, etc. apply to every case). Keeps domain-restricted metrics like NSE/KGE
+    selectable in the same dropdown as everything else, while their matrix rows stay
+    limited to cases that actually declare eligibility."""
+    if metric not in DOMAIN_RESTRICTED_METRICS:
+        return case_ids
+    return [c for c in case_ids if metric in get_case(c).domain_metrics]
 
 
 @cache

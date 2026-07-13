@@ -31,6 +31,7 @@ from data import (
     FAMILY_ORDER,
     case_has_extended_history,
     case_summary,
+    cases_eligible_for_metric,
     load_metrics,
     load_snapshots,
     method_info,
@@ -545,6 +546,12 @@ app.layout = html.Div(
                             value=_metric_options[0] if _metric_options else None,
                             clearable=False,
                         ),
+                        html.P(
+                            "NSE and KGE only apply to cases whose case.toml declares them "
+                            "(flow/level domains) — the matrix rows narrow to just those "
+                            "cases when one is selected.",
+                            style={"color": "#666", "fontSize": "0.8em", "marginTop": "4px"},
+                        ),
                         html.Label("Domains", style=_LABEL_STYLE),
                         dcc.Checklist(
                             id="domains",
@@ -932,8 +939,12 @@ def update_matrix(metric, domains, families, n_reload, selection, show_global):
 
     methods = sorted(df.loc[df["family"].isin(families), "method"].unique())
     case_ids = sorted(df.loc[df["domain"].isin(domains), "case_id"].unique())
+    case_ids = cases_eligible_for_metric(metric, case_ids)
     if not case_ids or not methods:
-        return _empty_fig("No cases or methods match the current filters.")
+        return _empty_fig(
+            "No cases or methods match the current filters, "
+            "or the selected metric doesn't apply to any of them."
+        )
 
     fig, _n_rows = render_matrix(df, metric, case_ids, methods, selection, show_global)
     return fig
