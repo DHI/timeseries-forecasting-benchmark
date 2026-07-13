@@ -60,12 +60,15 @@ def _own_doc(cls: type) -> str | None:
 
 @cache
 def _method_registry() -> dict[str, dict]:
-    """method name -> {family, description, uses_exogenous}, derived from the Forecaster
-    classes — the same introspection the old family-only map used, extended to cover
-    what the method-info panel needs. `description` is the class's own docstring (first
-    paragraph only), via `_own_doc` so a subclass without one (e.g. LightGBM, which only
-    adds a `_make_model`) inherits its base's; methods with no docstring anywhere in
-    their Forecaster ancestry get a placeholder instead."""
+    """method name -> {family, description, uses_exogenous, library, compute_profile,
+    limitations, code_snippet}, derived from the Forecaster classes — the same
+    introspection the old family-only map used, extended to cover what the method-info
+    panel needs. `description` is the class's own docstring (first paragraph only), via
+    `_own_doc` so a subclass without one (e.g. LightGBM, which only adds a
+    `_make_model`) inherits its base's; methods with no docstring anywhere in their
+    Forecaster ancestry get a placeholder instead. The other four fields are ordinary
+    class attributes (see `Forecaster` in bench/methods/base.py), so plain attribute
+    lookup already inherits them through the MRO with no special-casing needed."""
     registry: dict[str, dict] = {}
     for attr_name in _methods.__all__:
         obj = getattr(_methods, attr_name)
@@ -86,6 +89,10 @@ def _method_registry() -> dict[str, dict]:
             "family": instance.family,
             "description": doc.split("\n\n")[0].strip() if doc else "No description yet.",
             "uses_exogenous": instance.uses_exogenous,
+            "library": instance.library,
+            "compute_profile": instance.compute_profile,
+            "limitations": instance.limitations,
+            "code_snippet": instance.code_snippet,
         }
     return registry
 
@@ -252,3 +259,24 @@ def method_info(case_id: str, method: str) -> str:
             f"**Exogenous inputs used**: {exo_line}",
         ]
     )
+
+
+def method_info_detail(case_id: str, method: str) -> str:
+    """Markdown for the method-info panel's collapsed "Implementation detail"
+    section: which library actually does the work, a rough compute-cost profile,
+    known limitations/assumptions, and a short excerpt of the real fit/predict
+    calls. Blank fields (a method with nothing set yet) are omitted rather than
+    shown as an empty heading."""
+    del case_id
+    meta = _method_registry().get(method, {})
+
+    lines = []
+    if meta.get("library"):
+        lines.append(f"**Library**: {meta['library']}")
+    if meta.get("compute_profile"):
+        lines.append(f"**Compute profile**: {meta['compute_profile']}")
+    if meta.get("limitations"):
+        lines.append(f"**Limitations**: {meta['limitations']}")
+    if meta.get("code_snippet"):
+        lines.append(f"```python\n{meta['code_snippet']}\n```")
+    return "\n\n".join(lines) if lines else "No implementation detail yet."
