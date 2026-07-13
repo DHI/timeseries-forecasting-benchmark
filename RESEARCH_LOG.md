@@ -8,21 +8,28 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
-## 2026-07-13 — Snapshot panel now shows curated best/median/worst origins, not storage order
+## 2026-07-13 — Snapshot panel now shows curated best/median/worst origins, ranked by whichever metric the matrix is showing
 
 The snapshot panel used to show every rolling-origin forecast stored in
 `pilot_snapshots.parquet`, in whatever order the eval pipeline happened to produce them.
-It now picks up to three: the best, median, and worst performing origin, ranked by MAE
-for the first-clicked method, so a viewer sees a representative spread instead of an
-arbitrary sequence. No per-origin error existed anywhere in the eval pipeline before this
-— the app computes MAE itself from the stored predictions and the case's actual series,
-since MAE is the only metric on the matrix that needs nothing beyond a single origin's
-actual/predicted pair (MASE and the skill scores both need extra data the app doesn't
-have handy). When several methods are overlaid, they all plot on the same three origins
-(fixed by the first-clicked method) so the comparison stays apples-to-apples. The current
-pilot data has only 3 origins per case, so today this mostly relabels the existing panels
-rather than filtering anything out — the value grows if a future run stores more origins
-per case (`TSFB_ORIGINS`).
+It now picks up to three: the best, median, and worst performing origin for the
+first-clicked method, so a viewer sees a representative spread instead of an arbitrary
+sequence. Ranking follows whichever metric is selected on the matrix (MAE, RMSE, MASE,
+or one of the two skill scores), rather than a fixed MAE, so switching the matrix's
+metric dropdown also reorders the snapshots. No per-origin error existed anywhere in the
+eval pipeline before this, so the app recomputes each metric itself from the stored
+predictions and the case's actual series — replicating `rolling.py`'s own per-origin
+math (MASE against the case-level train+val naive scale, skill scores against a
+persistence/mean reference built from history strictly before the origin, everything
+scored against observed-only actuals rather than the gap-filled series used for
+plotting). Spot-checked against the matrix's pooled scores for one case/method: every
+per-origin value falls in the expected range around the pooled figure, and a method
+that predicts the historical mean scores exactly 0 `Skill_vs_Mean` at every origin, as
+it should. When several methods are overlaid, they all plot on the same three origins
+(fixed by the first-clicked method) so the comparison stays apples-to-apples. The
+current pilot data has only 3 origins per case, so today this mostly relabels the
+existing panels rather than filtering anything out — the value grows if a future run
+stores more origins per case (`TSFB_ORIGINS`).
 
 
 ## 2026-07-13 — Method-info panel now shows library, compute cost, limitations, and a code snippet
