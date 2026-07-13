@@ -716,9 +716,9 @@ app.layout = html.Div(
                                     id="snapshot-hint",
                                     children=(
                                         "Click a matrix cell to see real forecast snapshots: the "
-                                        "best, median, and worst performing origins (by MAE) for "
-                                        "that method. Click more cells in the same row to overlay "
-                                        "other methods on those same origins."
+                                        "best, median, and worst performing origins, by the metric "
+                                        "selected above, for that method. Click more cells in the "
+                                        "same row to overlay other methods on those same origins."
                                     ),
                                     style={"color": "#666"},
                                 ),
@@ -986,8 +986,9 @@ def render_case_panel(sel, show_global, n_reload):
     Input("snapshot-selection", "data"),
     Input("reload-btn", "n_clicks"),
     Input("show-global", "value"),
+    Input("metric", "value"),
 )
-def render_panel(sel, n_reload, show_global):
+def render_panel(sel, n_reload, show_global, metric):
     sel = sel or {}
     case_id, methods = sel.get("case_id"), sel.get("methods") or []
     if not case_id or not methods:
@@ -995,11 +996,18 @@ def render_panel(sel, n_reload, show_global):
 
     show_global = "on" in (show_global or [])
     title = "[Test] Prediction Snapshots"
-    caption = f"Origins curated by {methods[0]}'s MAE (best / median / worst)."
+    caption = f"Origins curated by {methods[0]}'s {metric} (best / median / worst)."
     return (
         title,
         caption,
-        render_snapshots(case_id, methods, load_snapshots(n_reload or 0), show_global, max_cols=1),
+        render_snapshots(
+            case_id,
+            methods,
+            load_snapshots(n_reload or 0),
+            show_global,
+            max_cols=1,
+            metric=metric,
+        ),
         _method_chips(methods),
         {"display": "block"},
         {"display": "none"},
