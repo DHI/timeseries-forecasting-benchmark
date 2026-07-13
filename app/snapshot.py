@@ -1,12 +1,14 @@
 """Forecast-snapshot panel for the results-matrix app.
 
-Draws, for one case, a grid of small charts — one per rolling-origin snapshot the eval
-pipeline persisted to `results/pilot_snapshots.parquet`. Each panel shows the case's real
-actual series around a forecast origin with one predicted line per selected method
-overlaid, so several methods can be compared on the same origins by clicking cells along a
-matrix row.
+Draws, for one case, a grid of small charts — one per curated rolling-origin snapshot the
+eval pipeline persisted to `results/pilot_snapshots.parquet`. Rather than showing every
+stored origin in storage order, the panel picks up to three representative ones (best,
+median, and worst MAE — see `curate_origins`) so a viewer sees a meaningful spread of
+outcomes instead of an arbitrary sequence. Each panel shows the case's real actual series
+around a forecast origin with one predicted line per selected method overlaid, so several
+methods can be compared on the same curated origins by clicking cells along a matrix row.
 
-The grid is capped at `MAX_COLS` columns and stacks rows until every stored origin is
+The grid is capped at `MAX_COLS` columns and stacks rows until every curated origin is
 placed. Actuals are not stored in the snapshot artifact; they're reloaded from the case's
 curated series so the target lives in exactly one place.
 """
@@ -28,6 +30,7 @@ from data import (
     load_case_split_values,
     load_case_training_tail,
 )
+from tsforecastbench.bench.eval.metrics import mae as _mae_score
 from tsforecastbench.data.registry import get_case
 
 MAX_COLS = 3
@@ -243,6 +246,54 @@ def render_split_proportions(case_id: str, extended: bool = False) -> go.Figure:
     return fig
 
 
+def _origin_mae(actual: pd.Series, origin_preds: pd.DataFrame) -> float:
+    """MAE of one origin's forecast against the real observed actuals, or NaN if
+    none of the forecast window's timestamps have an observed actual."""
+    aligned = actual.reindex(pd.DatetimeIndex(origin_preds["ds"]))
+    mask = aligned.notna().to_numpy()
+    if not mask.any():
+        return float("nan")
+    y_hat = origin_preds["y_hat"].to_numpy(dtype=float)
+    return _mae_score(aligned.to_numpy()[mask], y_hat[mask])
+
+
+def curate_origins(case_preds: pd.DataFrame, anchor_method: str, actual: pd.Series) -> pd.DataFrame:
+    """Pick up to 3 representative origins for one case — the best, median, and worst
+    performing by MAE for `anchor_method` (the first-selected/"anchor" method of the
+    overlay) — so the snapshot grid shows a meaningful spread of outcomes rather than
+    whatever origins happen to be first in storage order. All overlaid methods share
+    this same set of origins so their forecasts remain directly comparable.
+
+    Returns a frame with columns (origin_id, origin_ds, mae, label), ordered
+    Best -> Median -> Worst. Origins with an undefined MAE (no observed actual in
+    their window) are dropped before ranking; if fewer than 3 remain, only the
+    labels that make sense are emitted (e.g. just Best/Worst for 2 origins).
+    """
+    anchor_preds = case_preds[case_preds["method"] == anchor_method]
+    origins = anchor_preds[["origin_id", "origin_ds"]].drop_duplicates().reset_index(drop=True)
+    origins["mae"] = [
+        _origin_mae(actual, anchor_preds[anchor_preds["origin_id"] == oid])
+        for oid in origins["origin_id"]
+    ]
+    origins = origins.dropna(subset=["mae"]).sort_values("mae").reset_index(drop=True)
+
+    n = len(origins)
+    if n == 0:
+        return origins.assign(label=pd.Series(dtype=object))
+    if n == 1:
+        picks, labels = [0], ["Best"]
+    elif n == 2:
+        picks, labels = [0, 1], ["Best", "Worst"]
+    else:
+        picks = sorted({0, n // 2, n - 1})
+        label_of = {0: "Best", n // 2: "Median", n - 1: "Worst"}
+        labels = [label_of[i] for i in picks]
+
+    curated = origins.loc[picks].copy()
+    curated["label"] = labels
+    return curated
+
+
 def render_snapshots(
     case_id: str,
     methods: list[str],
@@ -250,15 +301,17 @@ def render_snapshots(
     show_global: bool = False,
     max_cols: int = MAX_COLS,
 ) -> go.Figure:
-    """Grid of forecast-origin snapshots for one case, overlaying each of `methods`.
+    """Grid of curated forecast-origin snapshots for one case, overlaying each of
+    `methods`.
 
-    `preds` is the snapshot artifact (see `data.load_snapshots`); origins come from it, so
-    every method shares the same panels and the overlays line up. When `show_global` is
-    True, a method with an extended-history fit for this case (see
-    `bench.eval.rolling.run_case_rolling`) is drawn from that fit instead of the local one
-    -- matching the matrix's toggle -- with its legend entry flagged accordingly. `max_cols`
-    caps how many origin panels share a row; pass 1 to stack them in a single column, e.g.
-    when rendering into a narrow vertical panel.
+    `preds` is the snapshot artifact (see `data.load_snapshots`). Rather than showing
+    every stored origin, origins are curated by `curate_origins` — best/median/worst MAE
+    for `methods[0]` (the anchor) — so every method shares the same curated panels and
+    the overlays line up. When `show_global` is True, a method with an extended-history
+    fit for this case (see `bench.eval.rolling.run_case_rolling`) is drawn from that fit
+    instead of the local one -- matching the matrix's toggle -- with its legend entry
+    flagged accordingly. `max_cols` caps how many origin panels share a row; pass 1 to
+    stack them in a single column, e.g. when rendering into a narrow vertical panel.
     """
     case_preds = preds[preds["case_id"] == case_id]
     if case_preds.empty:
@@ -279,25 +332,29 @@ def render_snapshots(
     if case_preds.empty:
         return _empty_fig(f"No stored forecasts for {case_id} (needs a rolling pilot run).")
 
-    origins = case_preds[["origin_id", "origin_ds"]].drop_duplicates().sort_values("origin_id")
-    origins = list(origins.itertuples(index=False))
+    actual = _actual_series(case_id)
+    curated = curate_origins(case_preds, methods[0], actual)
+    if curated.empty:
+        return _empty_fig(f"No observed actuals to score any stored origin for {case_id}.")
+    origins = list(curated.itertuples(index=False))
 
     case = get_case(case_id)
     horizon_steps = _horizon_steps(case)
     n_history = max(horizon_steps // 4, 1)
     step = pd.Timedelta(case.freq)
-    actual = _actual_series(case_id)
 
     n = len(origins)
     n_cols = min(max_cols, n)
     n_rows = math.ceil(n / n_cols)
 
-    # titles = [pd.Timestamp(o.origin_ds).strftime("%Y-%m-%d %H:%M") for o in origins]
+    titles = [
+        f"{o.label} · {pd.Timestamp(o.origin_ds):%Y-%m-%d} (MAE {o.mae:.3g})" for o in origins
+    ]
     fig = make_subplots(
         rows=n_rows,
         cols=n_cols,
         shared_yaxes="all",
-        # subplot_titles=titles,
+        subplot_titles=titles,
         vertical_spacing=0.12,
         horizontal_spacing=0.04,
     )
