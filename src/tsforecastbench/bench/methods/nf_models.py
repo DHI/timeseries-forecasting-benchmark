@@ -37,6 +37,7 @@ class _NFBase(Forecaster):
     family = "deep_learning"
     is_global = True
     pools_segments = True
+    refit_per_origin = False
     model_name = "NHITS"  # neuralforecast.models class name
     extra_kwargs: ClassVar[dict] = {}
     library = "neuralforecast + pytorch_lightning"

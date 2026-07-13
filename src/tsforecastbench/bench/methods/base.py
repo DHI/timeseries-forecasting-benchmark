@@ -70,6 +70,18 @@ class Forecaster(ABC):
     # bridge a gap, so extended history leaves their forecast unchanged. The eval loop
     # runs the second (extended) fit only for `is_global and pools_segments` methods.
     pools_segments: bool = False
+    # Whether the rolling-origin eval must call `fit` again at every origin. True for
+    # methods whose parameters ARE a direct function of the exact series passed to fit,
+    # with no separable "trained model" to reuse (the classical statsforecast methods,
+    # and the cheap baselines whose per-origin refit costs nothing). False for methods
+    # that estimate a reusable model once and then only slide their lookback window over
+    # already-observed history at predict — the windowed ML/DL methods. For those the
+    # loop fits once on train+val and evaluates every origin by inference alone, which is
+    # leak-free (the model never sees test data) and cuts the cost of raising `--origins`
+    # to one fit per case. A `refit_per_origin=False` method MUST make `predict` condition
+    # only on its trained model plus the `history` argument it is handed each origin — it
+    # may not depend on any per-origin state captured during `fit`.
+    refit_per_origin: bool = True
     # The next four are documentation only, read by the results viewer's method-info
     # panel (app/data.py) — they have no effect on fit/predict. Kept as class attributes
     # (not a separate metadata file) so a method's implementation and its description of
