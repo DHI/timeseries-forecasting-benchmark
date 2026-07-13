@@ -572,14 +572,11 @@ app.layout = html.Div(
                         html.Label("Global methods", style=_LABEL_STYLE),
                         dcc.Checklist(
                             id="show-global",
-                            options=[
-                                {"label": " Score on full history where available", "value": "on"}
-                            ],
+                            options=[{"label": " Score on full training history.", "value": "on"}],
                             value=[],
                         ),
                         html.P(
-                            "For is_global methods on cases with data beyond the curated span, "
-                            "swaps in the full-history fit (a hash marks affected cells).",
+                            "Some global models have been trained with longer history, marked with hash.",
                             style={"color": "#666", "fontSize": "0.8em", "marginTop": "4px"},
                         ),
                     ],
