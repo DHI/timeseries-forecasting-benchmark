@@ -8,6 +8,20 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-13 — Added MAPE, sMAPE, NSE, and KGE (issue #34)
+
+Both eval paths (single hold-out and rolling-origin) now also compute MAPE, sMAPE, NSE, and
+KGE for every case and method, alongside the existing five metrics. MAPE/sMAPE are
+dimensionless like MASE, so they're a plain addition to the matrix's metric dropdown. NSE
+and KGE are hydrology-standard but only meaningful for flow/level cases, so each case now
+declares eligibility in `case.toml` via a new `domain_metrics` field; the app still lists
+NSE/KGE in the same dropdown as everything else, but narrows the matrix rows to only the
+cases that declare them, rather than adding a separate sidebar UI. Eligibility is set for
+the 3 discharge cases (confirmed by Rocco's review) plus `sewerlevel_bellinge` and
+`wwtp_influent_n2o_350k`, flagged in their `case.toml` notes as an unconfirmed extension.
+`results/pilot_metrics.parquet` needs a full re-run before the new metrics show real
+values in the app.
+
 ## 2026-07-13 — Windowed ML/DL methods are now fit once per case, not refit at every rolling origin
 
 The rolling-origin eval used to refit every method at each of `n_origins` cutoffs, so a
