@@ -75,9 +75,9 @@ class ChronosForecaster(Forecaster):
         self.context_length = context_length
 
     def fit(self, case: Case, train: pd.DataFrame) -> None:
-        # Zero-shot: no training. Keep the recent observed context for predict.
-        y = pd.to_numeric(train["y"], errors="coerce").ffill().bfill().to_numpy(dtype=float)
-        self._context = y[-self.context_length :]
+        # Zero-shot: no training and no fit-time state. predict conditions on the recent
+        # observed context of the history it is handed, so one fit serves every origin.
+        pass
 
     def predict(
         self,
@@ -88,8 +88,10 @@ class ChronosForecaster(Forecaster):
     ) -> pd.DataFrame:
         import torch
 
+        y = pd.to_numeric(history["y"], errors="coerce").ffill().bfill().to_numpy(dtype=float)
+        context = y[-self.context_length :]
         pipe = _load_pipeline(self.model_name)
-        ctx = torch.tensor(self._context, dtype=torch.float32)
+        ctx = torch.tensor(context, dtype=torch.float32)
         # predict_quantiles -> (quantiles [B, H, Q], mean [B, H]); take the median quantile
         quantiles, _mean = pipe.predict_quantiles(
             inputs=ctx,
