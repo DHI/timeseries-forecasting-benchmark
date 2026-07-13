@@ -559,6 +559,71 @@ app.layout = html.Div(
                             style={"color": "#444", "maxWidth": "1000px"},
                         ),
                         dcc.Graph(id="matrix", config=_MATRIX_CONFIG),
+                        html.H2("Benchmark Design"),
+                        html.Div(
+                            style={"color": "#444", "maxWidth": "1000px"},
+                            children=[
+                                html.P(
+                                    [
+                                        html.B("Splits. "),
+                                        "Each case declares its train/val/test split in "
+                                        "case.toml, either as calendar dates (train_end, "
+                                        "val_end, test_end) or as fractions (default "
+                                        "70/15/15) of the observed timestamps, so series "
+                                        "with gaps still split cleanly. Splits are strictly "
+                                        "chronological — no shuffling.",
+                                    ]
+                                ),
+                                html.P(
+                                    [
+                                        html.B("Curation. "),
+                                        "Curation enforces minimum lengths: train must "
+                                        "cover at least two full seasonal cycles, and "
+                                        "val+test together must cover at least one "
+                                        "forecast horizon. Evaluation is rolling-origin by "
+                                        "default (errors pooled across many refit points "
+                                        "in the test window), with a --fast single-holdout "
+                                        "mode for quick checks. Missing data is kept as "
+                                        "explicit NaN: imputed for training, masked out "
+                                        "during scoring so only real observations count.",
+                                    ]
+                                ),
+                                html.P(
+                                    [
+                                        html.B("Model parameters. "),
+                                        "There's no per-case tuning or grid search. Each "
+                                        "method uses fixed, hard-coded defaults — e.g., "
+                                        "LightGBM and CatBoost both use 200 iterations at "
+                                        "a 0.05 learning rate, so the two gradient-boosting "
+                                        "methods compete on equal footing. Classical "
+                                        "methods (AutoARIMA, AutoETS, etc.) run their own "
+                                        "internal search, but training size is capped per "
+                                        "method to bound fit time, not to improve accuracy. "
+                                        "Any deviation from a method's default is manual "
+                                        "and explicit, not automated.",
+                                    ]
+                                ),
+                                html.P(
+                                    [
+                                        html.B("Case description. "),
+                                        "Cases carry structured metadata in case.toml: "
+                                        "domain, target, frequency, horizons, exogenous "
+                                        "variables, source citation, and declared "
+                                        "seasonalities. Seasonalities are the single "
+                                        "source of truth for every downstream method — a "
+                                        "candidate only qualifies with real evidence "
+                                        "(enough training cycles, a clear periodogram "
+                                        "peak, sufficient autocorrelation). There's no "
+                                        "ground-truth seasonality to validate against; any "
+                                        "override needs a written justification. The same "
+                                        "evidence-based standard applies to marking "
+                                        "exogenous variables as necessary, since that's a "
+                                        "domain judgment, not something a model's error "
+                                        "alone can tell you.",
+                                    ]
+                                ),
+                            ],
+                        ),
                         dcc.Store(id="snapshot-selection", data={"case_id": None, "methods": []}),
                     ],
                 ),
