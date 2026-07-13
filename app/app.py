@@ -100,29 +100,19 @@ def _group_labels(ordered_keys: list[str], key_of: dict[str, str]) -> list[tuple
     return labels
 
 
-def _hatch_path(x0: float, y0: float, x1: float, y1: float, n_lines: int = 6) -> str:
-    """SVG path for a thin diagonal hash filling one cell's box.
-
-    Plotly shapes have no `fillpattern` in this version (only trace markers do), so the
-    hash is drawn by hand as a set of disconnected diagonal strokes, each clipped to the
-    box: a "M x,y L x,y" subpath per line, at intercepts spanning corner to corner.
-    """
-    s = x1 - x0
-    segments = []
-    for c in np.linspace(-s, s, n_lines + 2)[1:-1]:
-        if c >= 0:
-            xa, ya, xb, yb = x0, y0 + c, x1 - c, y1
-        else:
-            xa, ya, xb, yb = x0 - c, y0, x1, y1 + c
-        segments.append(f"M {xa},{ya} L {xb},{yb}")
-    return " ".join(segments)
+def _corner_triangle_path(x0: float, y0: float, x1: float, y1: float, frac: float = 0.35) -> str:
+    """SVG path for a small filled triangle in the top-right corner of one cell's box,
+    sized as `frac` of the cell's edge length."""
+    s = (x1 - x0) * frac
+    return f"M {x1},{y0} L {x1 - s},{y0} L {x1},{y0 + s} Z"
 
 
 def _global_overlay_shapes(
     cells: list[tuple[str, str]], row_order: list[str], col_order: list[str]
 ) -> list[dict]:
-    """Thin hotpink diagonal-hash pattern over cells overridden with the extended-history
-    (full-data) fit, so they read as "not directly comparable to the rest of the row"."""
+    """Small hotpink corner triangle over cells overridden with the extended-history
+    (full-data) fit, so they read as "not directly comparable to the rest of the row"
+    without covering the cell's number."""
     shapes = []
     for case_id, method in cells:
         if case_id not in row_order or method not in col_order:
@@ -132,9 +122,9 @@ def _global_overlay_shapes(
         shapes.append(
             {
                 "type": "path",
-                "path": _hatch_path(x - 0.5, y - 0.5, x + 0.5, y + 0.5),
-                "line": {"color": "#FF1493", "width": 1.2},
-                "fillcolor": "rgba(0,0,0,0)",
+                "path": _corner_triangle_path(x - 0.5, y - 0.5, x + 0.5, y + 0.5),
+                "line": {"color": "#FF1493", "width": 0},
+                "fillcolor": "#FF1493",
                 "opacity": 0.8,
                 "layer": "above",
             }
@@ -188,9 +178,9 @@ def render_matrix(
     curated span; that's what's plotted by default. `is_global` methods additionally
     get a `used_extended_history=True` row wherever the case has real history beyond
     the curated span (a gappy record with a segment before the tail). When
-    `show_global` is True, those cells are swapped in for the local score and outlined
-    with a hash (see `_global_overlay_shapes`), since they're fit on more data than the
-    rest of the row and aren't directly comparable.
+    `show_global` is True, those cells are swapped in for the local score and marked
+    with a corner triangle (see `_global_overlay_shapes`), since they're fit on more
+    data than the rest of the row and aren't directly comparable.
     """
     df_metric = df[
         (df["metric"] == metric) & df["case_id"].isin(case_ids) & df["method"].isin(methods)
@@ -576,7 +566,7 @@ app.layout = html.Div(
                             value=[],
                         ),
                         html.P(
-                            "Some global models have been trained with longer history, marked with hash.",
+                            "Some global models have been trained with longer history, marked with a corner triangle.",
                             style={"color": "#666", "fontSize": "0.8em", "marginTop": "4px"},
                         ),
                     ],
