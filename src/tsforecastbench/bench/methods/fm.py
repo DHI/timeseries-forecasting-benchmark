@@ -10,12 +10,14 @@ the eval loop rather than breaking the run. Pretrained weights are loaded once a
 across every case and origin. The wrappers are univariate — they condition only on the
 target's recent history and ignore declared covariates.
 
-  - Chronos-Bolt / Chronos-2 (Amazon) — `chronos-forecasting` extra `fm`.
-  - TimesFM 2.5 (Google) — `timesfm` extra.
-  - Moirai-2.0 (Salesforce) — `uni2ts` extra `moirai`.
+  - Chronos-Bolt / Chronos-2 (Amazon) — `chronos-forecasting`.
+  - TimesFM 2.5 (Google) — `timesfm`.
+  - Moirai-2.0 (Salesforce) — `uni2ts`.
 
-All four are CPU-capable; the larger three are slow on CPU, so pair them with a small
-`--origins` when running without a GPU.
+All three libraries install together via the single `fm` extra (`uv sync --extra fm`); see
+`pyproject.toml` for why that extra caps the project at Python < 3.13. All four models are
+CPU-capable; the larger three are slow on CPU, so pair them with a small `--origins` when
+running without a GPU.
 """
 
 from __future__ import annotations

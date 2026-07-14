@@ -99,8 +99,8 @@ def main() -> int:
     p.add_argument(
         "--with-fm",
         action="store_true",
-        help="Add the zero-shot foundation models (Chronos-Bolt, Chronos-2 via 'fm'; "
-        "TimesFM-2.5 via 'timesfm'; Moirai-2.0 via 'moirai').",
+        help="Add the zero-shot foundation models (Chronos-Bolt, Chronos-2, TimesFM-2.5, "
+        "Moirai-2.0; all installed via the 'fm' extra).",
     )
     p.add_argument(
         "--with-dl",

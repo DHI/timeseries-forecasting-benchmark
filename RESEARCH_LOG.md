@@ -14,14 +14,15 @@ Chronos-Bolt was the only foundation model implemented of the six the plan calle
 Chronos-2, TimesFM 2.5 and Moirai-2.0 alongside it, each as a univariate zero-shot wrapper
 behind the common `Forecaster` interface and added to `run_pilot --with-fm`. They're
 univariate for now (matching the existing Chronos-Bolt precedent) — the models' covariate
-modes are a possible follow-up rather than part of this change. Moirai's `uni2ts` hard-pins
-scipy~=1.11.3 / numpy~=1.26, which have no Python-3.13 wheels; left unmanaged, uv unifies the
-whole lock onto those old pins and downgrades the base environment, so the `moirai` extra is
-marker-gated to Linux + py<3.13 and `[tool.uv] environments` forces the lock to fork on that
-boundary. TimeMoE, TimeGPT and Lag-Llama were dropped from the near-term plan (TimeGPT is
-API-only; all three have been overtaken in recent comparisons). No benchmark numbers yet —
-scoring these needs a `--with-fm` pilot run, and Moirai specifically needs a WSL / py<3.13
-environment.
+modes are a possible follow-up rather than part of this change. All three install through a
+single `fm` extra (`uv sync --extra fm`), so one command sets up everything `--with-fm`
+scores. Moirai's `uni2ts` is the binding dependency: it hard-pins scipy~=1.11.3 / numpy~=1.26
+/ torch<2.5, none of which have Python-3.13 wheels, so the whole project is now capped at
+**Python 3.11–3.12** (`requires-python = ">=3.11,<3.13"`) and its base stack drops to
+numpy 1.26 / scipy 1.11 / torch 2.4 to keep every model installable in one environment.
+Chronos and TimesFM both fit comfortably inside those bounds. TimeMoE, TimeGPT and Lag-Llama
+were dropped from the near-term plan (TimeGPT is API-only; all three have been overtaken in
+recent comparisons). No benchmark numbers yet — scoring these needs a `--with-fm` pilot run.
 
 ## 2026-07-14 — Folded +exo method variants into an app-level toggle; retired +calendar
 
