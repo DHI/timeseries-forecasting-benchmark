@@ -8,6 +8,21 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-14 — Added three zero-shot foundation models (Chronos-2, TimesFM 2.5, Moirai-2.0)
+
+Chronos-Bolt was the only foundation model implemented of the six the plan called for; added
+Chronos-2, TimesFM 2.5 and Moirai-2.0 alongside it, each as a univariate zero-shot wrapper
+behind the common `Forecaster` interface and added to `run_pilot --with-fm`. They're
+univariate for now (matching the existing Chronos-Bolt precedent) — the models' covariate
+modes are a possible follow-up rather than part of this change. Moirai's `uni2ts` hard-pins
+scipy~=1.11.3 / numpy~=1.26, which have no Python-3.13 wheels; left unmanaged, uv unifies the
+whole lock onto those old pins and downgrades the base environment, so the `moirai` extra is
+marker-gated to Linux + py<3.13 and `[tool.uv] environments` forces the lock to fork on that
+boundary. TimeMoE, TimeGPT and Lag-Llama were dropped from the near-term plan (TimeGPT is
+API-only; all three have been overtaken in recent comparisons). No benchmark numbers yet —
+scoring these needs a `--with-fm` pilot run, and Moirai specifically needs a WSL / py<3.13
+environment.
+
 ## 2026-07-14 — Folded +exo method variants into an app-level toggle; retired +calendar
 
 Replaced the separate `LightGBM+exo`/`CatBoost+exo`/`LinearLags+exo` matrix columns with one
