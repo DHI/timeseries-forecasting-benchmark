@@ -1144,13 +1144,32 @@ EMPTY_SELECTION = {"case_id": None, "methods": []}
 MAX_OVERLAY_METHODS = 3
 
 
-def next_selection(trigger, trigger_value, click_data: dict | None, sel: dict) -> dict:
+def _effective_method(df, case_id: str, method: str, show_exo: bool) -> str:
+    """The method that actually produced this cell's score — `method` unless the
+    exogenous toggle swapped in its "+exo" sibling's score, which happens only for
+    cases with real exogenous data (see the `show_exo` branch in `render_matrix`)."""
+    if not show_exo:
+        return method
+    exo_method = f"{method}+exo"
+    if exo_method not in df["method"].unique():
+        return method
+    tier = df.loc[df["case_id"] == case_id, "case_exo_tier"]
+    if tier.empty or tier.iloc[0] == "none":
+        return method
+    return exo_method
+
+
+def next_selection(
+    trigger, trigger_value, case_id: str | None, method: str | None, sel: dict
+) -> dict:
     """Pure transition for the overlay selection — the logic behind `update_selection`,
     factored out of Dash's callback context so it can be reasoned about and tested.
 
     `trigger` is the triggering component id (a str, or a pattern-matching dict for a
-    method chip); `trigger_value` is that input's value. Raises `PreventUpdate` when the
-    event shouldn't change the selection.
+    method chip); `trigger_value` is that input's value. `case_id`/`method` are the
+    already-resolved matrix-click target (`None` when the trigger wasn't a click, e.g. a
+    chip removal or Clear). Raises `PreventUpdate` when the event shouldn't change the
+    selection.
     """
     sel = sel or EMPTY_SELECTION
 
@@ -1165,13 +1184,8 @@ def next_selection(trigger, trigger_value, click_data: dict | None, sel: dict) -
         methods = [m for m in sel["methods"] if m != trigger["method"]]
         return {"case_id": sel["case_id"], "methods": methods} if methods else dict(EMPTY_SELECTION)
 
-    points = (click_data or {}).get("points") or []
-    if not points:
+    if case_id is None:
         raise PreventUpdate
-    # customdata[5] is the effective method for this cell — the clicked column's name
-    # ("LightGBM") unless the exogenous toggle swapped in its "+exo" sibling's score, in
-    # which case info panels/snapshots should reflect the sibling that was actually run.
-    case_id, method = points[0]["y"], points[0]["customdata"][5]
     if case_id != sel["case_id"]:
         return {"case_id": case_id, "methods": [method]}
     if method in sel["methods"]:
@@ -1187,16 +1201,29 @@ def next_selection(trigger, trigger_value, click_data: dict | None, sel: dict) -
     Input("clear-btn", "n_clicks"),
     Input({"type": "method-chip", "method": ALL}, "n_clicks"),
     State("snapshot-selection", "data"),
+    State("show-exogenous", "value"),
+    State("reload-btn", "n_clicks"),
     prevent_initial_call=True,
 )
-def update_selection(click_data, clear_clicks, chip_clicks, sel):
+def update_selection(click_data, clear_clicks, chip_clicks, sel, show_exogenous, n_reload):
     """Maintain the {case_id, methods} overlay selection.
 
     Same-row clicks accumulate methods, up to `MAX_OVERLAY_METHODS` (beyond that, the
     oldest is evicted; re-click removes, when Plotly re-fires it); a click in a
     different row resets to that case; chip clicks and Clear remove methods.
+
+    Reads the clicked cell's case/method off `x`/`y` rather than `customdata`: Dash's
+    clickData only reconstructs `customdata` for traces indexed by a flat
+    `pointNumber`/`pointNumbers`, which a Heatmap never sets, so it's silently absent on
+    every heatmap click regardless of what the figure sets it to.
     """
-    return next_selection(ctx.triggered_id, ctx.triggered[0]["value"], click_data, sel)
+    points = (click_data or {}).get("points") or []
+    case_id = method = None
+    if points:
+        case_id = points[0]["y"]
+        show_exo = "on" in (show_exogenous or [])
+        method = _effective_method(load_metrics(n_reload or 0), case_id, points[0]["x"], show_exo)
+    return next_selection(ctx.triggered_id, ctx.triggered[0]["value"], case_id, method, sel)
 
 
 @app.callback(

@@ -8,6 +8,19 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-14 — Fixed matrix cell clicks crashing with `KeyError: 'customdata'`
+
+Every click on a matrix cell in `app/app.py` raised `KeyError: 'customdata'`. Root cause: Dash's
+`clickData` only reconstructs a trace's `customdata` for points indexed by a flat
+`pointNumber`/`pointNumbers` (how 1D traces like scatter work) — a Heatmap addresses cells by
+`x`/`y` instead, so Dash silently omits `customdata` from every heatmap click regardless of what
+the figure sets it to. The exo-toggle's effective-method lookup (added in the entry below) had
+relied on reading it from `customdata[5]`. Fixed by resolving the effective method server-side
+from the clicked `x` (base method) plus the `show-exogenous` toggle state and the case's
+`case_exo_tier`, the same swap condition `render_matrix` already uses — no more reliance on
+`customdata` for heatmap clicks. Any future click-driven feature on this matrix should read
+`x`/`y` off the click point, not `customdata`.
+
 ## 2026-07-14 — Added three zero-shot foundation models (Chronos-2, TimesFM 2.5, Moirai-2.0)
 
 Chronos-Bolt was the only foundation model implemented of the six the plan called for; added
