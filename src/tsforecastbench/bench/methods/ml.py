@@ -1,7 +1,9 @@
 """Windowed ML methods - Nixtla mlforecast with three sklearn-style estimators.
 
 LinearLags (Ridge), LightGBM and MLP share one lag + calendar feature pipeline; they
-differ only in the underlying regressor. Each comes in two flavours:
+differ only in the underlying regressor. Calendar/seasonal features (date parts plus a
+sin/cos encoding of the case's dominant period) are always included — deterministic and
+free for any future timestamp, unlike exogenous covariates. Each comes in two flavours:
 
   * univariate (target lags + calendar features only) — the Tier-1 column;
   * exogenous-aware (``use_exogenous=True``) — additionally feeds the case's declared
@@ -99,7 +101,6 @@ class _WindowedMLBase(Forecaster):
     pools_segments = True
     max_train_steps: int | None = None
     use_exogenous: bool = False
-    use_calendar: bool = False
     compute_profile = (
         "CPU only; a lag+calendar feature table is built once, then the regressor "
         "fits on it directly — fast for the linear/tree models here, slower for the "
@@ -154,9 +155,10 @@ class _WindowedMLBase(Forecaster):
             for c in self._exo
         }
 
-        date_feats = list(_date_features_for(case.freq))
-        if self.use_calendar:
-            date_feats += _sincos_features_for(case, df["y"].to_numpy())
+        date_feats = [
+            *_date_features_for(case.freq),
+            *_sincos_features_for(case, df["y"].to_numpy()),
+        ]
 
         self._fcst = MLForecast(
             models=[self._make_model()],
@@ -274,16 +276,6 @@ class MLPForecaster(_WindowedMLBase):
 
 class LightGBMExoForecaster(LightGBMForecaster):
     name = "LightGBM+exo"
-    use_exogenous = True
-
-
-class LightGBMCalendarForecaster(LightGBMForecaster):
-    name = "LightGBM+calendar"
-    use_calendar = True
-
-
-class LightGBMCalendarExoForecaster(LightGBMCalendarForecaster):
-    name = "LightGBM+calendar+exo"
     use_exogenous = True
 
 
