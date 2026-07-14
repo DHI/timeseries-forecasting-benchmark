@@ -4,10 +4,18 @@ Wraps pretrained TSFMs behind the common Forecaster interface. These answer the 
 question directly: does a model pretrained on huge corpora, with *no* case-specific
 training, compete with the tuned baselines?
 
-Chronos-Bolt (Amazon) is the laptop-friendly entry: encoder-decoder, CPU-capable, fast.
-The dependency is optional — `uv pip install chronos-forecasting` (or the `fm` extra) —
-and the wrapper imports it lazily so the rest of the benchmark runs without it. The model
-is loaded once and cached across cases/origins.
+Each model's dependency is optional and imported lazily, so the rest of the benchmark
+runs without any of them; a method whose library is absent is skipped (status=error) by
+the eval loop rather than breaking the run. Pretrained weights are loaded once and cached
+across every case and origin. The wrappers are univariate — they condition only on the
+target's recent history and ignore declared covariates.
+
+  - Chronos-Bolt / Chronos-2 (Amazon) — `chronos-forecasting` extra `fm`.
+  - TimesFM 2.5 (Google) — `timesfm` extra.
+  - Moirai-2.0 (Salesforce) — `uni2ts` extra `moirai`.
+
+All four are CPU-capable; the larger three are slow on CPU, so pair them with a small
+`--origins` when running without a GPU.
 """
 
 from __future__ import annotations
@@ -19,6 +27,8 @@ from tsforecastbench.bench.methods.base import Forecaster
 from tsforecastbench.data.schema import Case
 
 _PIPELINE_CACHE: dict = {}
+_TIMESFM_CACHE: dict = {}
+_MOIRAI_CACHE: dict = {}
 
 
 def _load_pipeline(model_name: str):
@@ -27,6 +37,19 @@ def _load_pipeline(model_name: str):
         from chronos import BaseChronosPipeline
 
         _PIPELINE_CACHE[model_name] = BaseChronosPipeline.from_pretrained(
+            model_name,
+            device_map="cpu",
+            torch_dtype=torch.float32,
+        )
+    return _PIPELINE_CACHE[model_name]
+
+
+def _load_chronos2_pipeline(model_name: str):
+    if model_name not in _PIPELINE_CACHE:
+        import torch
+        from chronos import Chronos2Pipeline
+
+        _PIPELINE_CACHE[model_name] = Chronos2Pipeline.from_pretrained(
             model_name,
             device_map="cpu",
             torch_dtype=torch.float32,
@@ -99,5 +122,83 @@ class ChronosForecaster(Forecaster):
             quantile_levels=[0.1, 0.5, 0.9],
         )
         y_hat = quantiles[0, :, 1].cpu().numpy().astype(np.float64)
+        future = self._future_index(case, history["ds"].max(), horizon)
+        return pd.DataFrame({"ds": future, "y_hat": y_hat})
+
+
+class Chronos2Forecaster(Forecaster):
+    """Zero-shot Chronos-2 point forecast (predictive median).
+
+    The successor to Chronos-Bolt: a single encoder-only model that natively handles
+    univariate, multivariate and covariate-informed forecasting. Here it runs univariate,
+    conditioning only on the target's recent context. Requires the optional
+    `chronos-forecasting` dependency (same `fm` extra as Chronos-Bolt); methods are
+    skipped (status=error) by the eval loop if it is not installed.
+    """
+
+    name = "Chronos-2"
+    family = "fm"
+    is_probabilistic = True
+    is_global = True
+    library = "chronos-forecasting (Amazon Chronos-2) + torch"
+    compute_profile = (
+        "CPU-capable but slower than Chronos-Bolt (120M params); zero-shot, so there's "
+        "no per-case training — one forward pass per prediction via the DataFrame API. "
+        "The pretrained model is loaded once and cached across every case and origin."
+    )
+    limitations = (
+        "Zero-shot: never learns anything case-specific, only what it picked up from "
+        "pretraining on other series. Run univariate here — Chronos-2 supports covariates, "
+        "but this wrapper ignores exogenous inputs. Conditions on the most recent "
+        "`context_length` points of history."
+    )
+    code_snippet = (
+        "from chronos import Chronos2Pipeline\n\n"
+        'pipe = Chronos2Pipeline.from_pretrained("amazon/chronos-2", device_map="cpu")\n'
+        "pred = pipe.predict_df(\n"
+        "    context_df,                      # id / timestamp / target columns\n"
+        "    prediction_length=horizon,\n"
+        "    quantile_levels=[0.1, 0.5, 0.9],\n"
+        '    id_column="id",\n'
+        '    timestamp_column="timestamp",\n'
+        '    target="target",\n'
+        ")\n"
+        'y_hat = pred["predictions"]          # median'
+    )
+
+    def __init__(self, model_name: str = "amazon/chronos-2", context_length: int = 2048):
+        self.model_name = model_name
+        self.context_length = context_length
+
+    def fit(self, case: Case, train: pd.DataFrame) -> None:
+        # Zero-shot: no training and no fit-time state (see ChronosForecaster.fit).
+        pass
+
+    def predict(
+        self,
+        case: Case,
+        history: pd.DataFrame,
+        horizon: int,
+        future_exog: pd.DataFrame | None = None,
+    ) -> pd.DataFrame:
+        y = pd.to_numeric(history["y"], errors="coerce").ffill().bfill().to_numpy(dtype=float)
+        ds = pd.DatetimeIndex(history["ds"])
+        context_df = pd.DataFrame(
+            {
+                "id": 0,
+                "timestamp": ds[-self.context_length :],
+                "target": y[-self.context_length :],
+            }
+        )
+        pipe = _load_chronos2_pipeline(self.model_name)
+        pred = pipe.predict_df(
+            context_df,
+            prediction_length=horizon,
+            quantile_levels=[0.1, 0.5, 0.9],
+            id_column="id",
+            timestamp_column="timestamp",
+            target="target",
+        )
+        y_hat = pred["predictions"].to_numpy(dtype=np.float64)[:horizon]
         future = self._future_index(case, history["ds"].max(), horizon)
         return pd.DataFrame({"ds": future, "y_hat": y_hat})

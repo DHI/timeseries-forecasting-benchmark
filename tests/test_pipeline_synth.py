@@ -245,10 +245,11 @@ def test_mstl_is_honestly_inapplicable_on_declared_nonseasonal_case():
 
 
 def test_methods_package_imports_without_fm_deps():
-    """The methods package (incl. the FM wrapper) must import without torch/chronos."""
+    """The methods package (incl. the FM wrappers) must import without torch/chronos."""
     import tsforecastbench.bench.methods as m
 
     assert hasattr(m, "ChronosForecaster")
+    assert hasattr(m, "Chronos2Forecaster")
 
 
 def test_chronos_runs_if_installed():
@@ -256,6 +257,14 @@ def test_chronos_runs_if_installed():
     from tsforecastbench.bench.methods import ChronosForecaster
 
     res = run_case(get_case("waves_oregon"), [ChronosForecaster()], prefer_synth=True)
+    assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
+
+
+def test_chronos2_runs_if_installed():
+    pytest.importorskip("chronos")
+    from tsforecastbench.bench.methods import Chronos2Forecaster
+
+    res = run_case(get_case("waves_oregon"), [Chronos2Forecaster()], prefer_synth=True)
     assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
 
 
