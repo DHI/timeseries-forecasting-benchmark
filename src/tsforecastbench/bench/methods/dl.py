@@ -57,7 +57,6 @@ class DLinearForecaster(Forecaster):
         self._H = _horizon_to_steps(case.horizon_primary, case.freq)
         self._L = self.lookback or _lookback_for(case.freq)
         y = pd.to_numeric(train["y"], errors="coerce").to_numpy(dtype=float)
-        y = pd.Series(y).interpolate(limit_direction="both").bfill().ffill().to_numpy()
         self._last_window = y[-self._L :]
 
         L, H = self._L, self._H

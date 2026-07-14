@@ -35,7 +35,7 @@ from tsforecastbench.bench.eval import (  # noqa: E402
     run_case_rolling,
     run_leadtime_curve,
 )
-from tsforecastbench.bench.eval.loop import _complete_for_fit, _horizon_to_steps  # noqa: E402
+from tsforecastbench.bench.eval.loop import _horizon_to_steps, _raw_y  # noqa: E402
 from tsforecastbench.bench.methods import (  # noqa: E402
     DLinearForecaster,
     Persistence,
@@ -66,13 +66,13 @@ def _methods(with_fm: bool):
 
 def _example_figure(case, methods, out_path: Path) -> str:
     """Fit each method at one observed test origin and plot the forecast vs the truth."""
-    df = case.load().sort_values("ds").reset_index(drop=True)
+    df = case.load(curated=True).sort_values("ds").reset_index(drop=True)
     splits = case.split_frame(df)
     train_val = pd.concat([splits["train"], splits["val"]], ignore_index=True)
     full = pd.concat([train_val, splits["test"]], ignore_index=True)
     exo = list(dict.fromkeys([*case.exogenous, *case.exogenous_known_future]))
-    full_fit = _complete_for_fit(full, ["y", *exo])
-    raw_y = full["y"].to_numpy(dtype=float)
+    full_fit = full  # curated: the target is already complete within the span
+    raw_y = _raw_y(full)
     H = _horizon_to_steps(case.horizon_primary, case.freq)
 
     # pick a dense, dynamic origin in the test span (max std of the horizon window)

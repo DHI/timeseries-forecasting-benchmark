@@ -20,6 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DATA_RAW = REPO_ROOT / "data" / "raw"
 DATA_PROCESSED = REPO_ROOT / "data" / "processed"
+DATA_CURATED = REPO_ROOT / "data" / "curated"
 
 REQUIRED_COLS = ("unique_id", "ds", "y")
 
@@ -122,15 +123,39 @@ class Case(BaseModel):
         return DATA_PROCESSED / f"{self.id}.parquet"
 
     @property
+    def curated_path(self) -> Path:
+        return DATA_CURATED / f"{self.id}.parquet"
+
+    @property
     def raw_dir(self) -> Path:
         return DATA_RAW / self.id
 
-    def load(self, prefer_synth: bool = False) -> pd.DataFrame:
+    def load(self, prefer_synth: bool = False, curated: bool = False) -> pd.DataFrame:
+        """Load the case frame.
+
+        `curated=True` returns the benchmark-ready series (longest contiguous span,
+        small gaps filled, `y_observed` mask) that the eval loops consume: it reads
+        `data/curated/<id>.parquet` when present, else applies the gap policy on the
+        fly. The default (`curated=False`) returns the raw series in
+        `data/processed/`, gaps and all, for EDA and case review.
+        """
+        if curated:
+            return self._load_curated(prefer_synth=prefer_synth)
         if prefer_synth or not self.parquet_path.exists():
             return self.synth()
         df = pd.read_parquet(self.parquet_path)
         _validate_frame(self, df)
         return df
+
+    def _load_curated(self, prefer_synth: bool = False) -> pd.DataFrame:
+        from tsforecastbench.data.curate import curate_frame
+
+        if not prefer_synth and self.curated_path.exists():
+            return pd.read_parquet(self.curated_path)
+        raw = self.load(prefer_synth=prefer_synth)
+        exog = list(dict.fromkeys([*self.exogenous, *self.exogenous_known_future]))
+        curated, _ = curate_frame(raw, self.freq, exog=exog)
+        return curated
 
     def synth(self) -> pd.DataFrame:
         mod = importlib.import_module(f"tsforecastbench.data.cases.{self.id}.synth")
@@ -139,7 +164,7 @@ class Case(BaseModel):
         return df
 
     def _fraction_split_dates(self, df: pd.DataFrame) -> tuple[pd.Timestamp, pd.Timestamp]:
-        obs = pd.to_datetime(df.loc[df["y"].notna(), "ds"])
+        obs = pd.to_datetime(df.loc[_observed_mask(df), "ds"])
         if obs.empty:
             raise ValueError(f"Case {self.id}: no observed y values to split on")
         ns = obs.astype("int64").to_numpy()
@@ -155,7 +180,7 @@ class Case(BaseModel):
 
         if self.split_mode == "fraction":
             train_end, val_end = self._fraction_split_dates(df.assign(ds=ds_cmp))
-            obs_ds = ds_cmp[df["y"].notna()]
+            obs_ds = ds_cmp[_observed_mask(df)]
             test_end = obs_ds.max() if not obs_ds.empty else ds_cmp.max()
         else:
             train_end = pd.Timestamp(self.splits.train_end)
@@ -167,6 +192,14 @@ class Case(BaseModel):
             "val": df[(ds_cmp > train_end) & (ds_cmp <= val_end)].reset_index(drop=True),
             "test": df[(ds_cmp > val_end) & (ds_cmp <= test_end)].reset_index(drop=True),
         }
+
+
+def _observed_mask(df: pd.DataFrame) -> pd.Series:
+    """Genuine-observation mask. On a curated frame `y` is gap-filled, so the truth of
+    what was measured lives in `y_observed`; on a raw frame it is simply `y` non-NaN."""
+    if "y_observed" in df.columns:
+        return df["y_observed"].astype(bool)
+    return df["y"].notna()
 
 
 def _validate_frame(case: Case, df: pd.DataFrame) -> None:

@@ -8,6 +8,78 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-03 — Silencing a spurious TBATS Box-Cox warning
+
+`scripts/run_pilot.py` was emitting a `UserWarning: Data contains zero or negative values,
+disabling Box-Cox transformation` from `statsforecast`'s TBATS implementation on some cases
+(e.g. `watertemp_james`, whose `water_temp` target dips to -0.1°C).
+
+**What was going on.** `TBATSForecaster.fit` already has logic for this: when the raw target
+contains non-positive values, it pre-applies a Yeo-Johnson power transform (which, unlike
+Box-Cox, is defined for negative/zero inputs) before handing the series to TBATS, and TBATS's
+own internal Box-Cox is then expected to be a no-op. The problem is that Yeo-Johnson with
+`standardize=False` is not a positivity-guaranteeing transform — it can (and did, for values
+already near zero) leave some transformed points at or below zero. TBATS's model-selection
+code checks for that itself (`use_boxcox in (True, None) and np.any(y <= 0)`) and, on the
+default `use_boxcox=True`, warns and disables Box-Cox internally — redundant with what we'd
+already decided, just noisy.
+
+**What was decided and why.** Pass `use_boxcox=False` to `TBATS(...)` explicitly whenever our
+own Yeo-Johnson pre-transform was applied (`self._pt is not None`), so TBATS's positivity
+check never fires. This produces the identical fit (Box-Cox off either way) without the
+warning. When the raw data is already strictly positive, `use_boxcox` is left at its default
+(`True`) so TBATS can still decide for itself whether a Box-Cox transform helps.
+
+## 2026-07-03 — Gap handling: one materialized policy (cap + longest-segment trim)
+
+Consolidated how missing target data is handled. Previously there were **two** layers: the
+eval loop imputed gaps on the fly (`_complete_for_fit`: linear interpolation, then mean-fill
+for whatever remained), and several methods *also* interpolated/dropped NaNs internally
+(`dl`, `torchdl`, `nf_models`, and exogenous fills in `ml`). The per-method layer was
+redundant (the loop already delivered a filled frame) but non-uniform — `nf_models` *dropped*
+NaN rows while the others *filled*, a latent inconsistency — and, more importantly, mean-fill
+meant models could train on large stretches of fabricated target (e.g. one 6574-step block =
+54% of `discharge_lowland_denmark`, a single interpolated straight line).
+
+**What was decided and why.** Keep a single, honest policy, materialized once rather than
+re-derived every run:
+
+1. **Per-case gap cap = decorrelation time.** A gap is interpolatable only if its observed
+   endpoints still inform the interior — exactly what autocorrelation measures. The cap is
+   the lag at which the target ACF first drops below 0.8, bounded by one dominant seasonal
+   cycle. It adapts to dynamics with no hand-tuning: flashy series (demand, flashy discharge)
+   get cap=1; smooth ones (groundwater 26, water temperature 31) tolerate larger fills.
+2. **Longest-segment trim.** Gaps larger than the cap are hard boundaries, never bridged.
+   The record splits into contiguous segments and only the **longest** is kept — "no target =
+   nonexistent." We chose *longest* over *most-recent*: the most-recent segment starved
+   `waves_massachusetts` to 5 training points (a big gap sits at its train/test boundary),
+   whereas the longest segment gives it 21,126. Parameter-averaging across per-segment fits
+   (e.g. one ARIMA per segment) was rejected — averaging AR/MA coefficients across different
+   orders / a nonlinear parameter space is not a valid estimator, and a pre-gap segment
+   cannot forecast a post-gap origin without bridging anyway. Using *all* segments would
+   require per-family handling (window-pooling for global learners, missing-data Kalman for
+   state-space models), which reintroduces exactly the divergence this change removes; noted
+   as a possible future enhancement.
+3. **`y_observed` mask.** The curated target is complete (small gaps filled) so any method
+   can fit, but the mask records which points were genuinely measured. Scoring, origin
+   selection, and the fraction-split all key off the mask, so filled points never enter a
+   metric — honesty preserved despite materialization.
+
+**Implementation.** New `data/curate.py` holds the policy; `scripts/curate_data.py` writes
+`data/curated/<case>.parquet` (+ a manifest of cap/gap/span per case) once. `Case.load(curated=True)`
+reads it (falling back to on-the-fly curation), and the three eval entry points switched to
+it; `_complete_for_fit` and all per-method gap handling were removed. `processed/` stays the
+raw, gappy canonical for EDA/review/reports. Impact: 7 cases are untouched (no big gaps); the
+5 gappy cases keep their longest span (kept fractions 27–44%, all thousands of points in
+absolute terms).
+
+**What it means going forward.** Every method now sees byte-identical fitting data per case,
+so cross-method cells are no longer confounded by preprocessing. Training-set size still
+varies widely *across* cases (≈3k–214k) — this is inherent to the domains and handled by the
+relative metrics (MASE, skill), and is worth surfacing as a stratifying variable (data-hungry
+vs data-efficient methods) rather than suppressing. Re-run `curate_data.py` after any data
+refresh or a change to the ACF threshold / ceiling.
+
 ## 2026-07-02 — Seasonal classical baselines: MSTL forecasters + seasonally-adjusted Theta (issue #46)
 
 Closes the "classical methods run non-seasonal by default" flaw from the method-suite audit

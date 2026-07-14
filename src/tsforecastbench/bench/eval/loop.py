@@ -1,9 +1,12 @@
 """Evaluation loop - single hold-out (rolling-origin in Phase B).
 
-Real observed series contain gaps. We impute gaps in the *training* frame so methods
-that require a complete target (e.g. mlforecast/LightGBM) can fit, while scoring only
-on genuinely observed test points (NaN-masked metrics). The fraction of finite test
-points is reported so a case with a gappy test window is visible, not silently scored.
+Methods are fit and scored on the *curated* series (`Case.load(curated=True)`): the gap
+policy in `tsforecastbench.data.curate` has already filled small gaps and trimmed each
+case to its longest contiguous span, so the target is complete and every method sees
+identical data. Scoring still counts only genuine observations — the curated frame's
+`y_observed` mask marks which points were measured vs. filled, and metrics use only the
+measured ones. The fraction of finite test points is reported so a gappy test window is
+visible, not silently scored.
 """
 
 from __future__ import annotations
@@ -16,7 +19,7 @@ import pandas as pd
 from tsforecastbench.bench.eval.metrics import mae, mase, rmse, skill_score
 from tsforecastbench.bench.methods.base import Forecaster
 from tsforecastbench.bench.methods.naive import _default_season_length
-from tsforecastbench.data.schema import Case
+from tsforecastbench.data.schema import Case, _observed_mask
 
 
 def _horizon_to_steps(horizon: str, freq: str) -> int:
@@ -25,24 +28,9 @@ def _horizon_to_steps(horizon: str, freq: str) -> int:
     return int(delta / step)
 
 
-def _complete_for_fit(
-    df: pd.DataFrame, cols: list[str], interp_limit: int | None = None
-) -> pd.DataFrame:
-    """Return a copy with `cols` gap-filled so models needing complete data can fit.
-
-    Strategy: linear time-interpolation (optionally limited), then fill any remaining
-    edge/long-gap NaNs with the column mean. Training-only; never used for scoring.
-    """
-    out = df.copy()
-    for c in cols:
-        if c not in out.columns:
-            continue
-        s = pd.to_numeric(out[c], errors="coerce")
-        s = s.interpolate(method="linear", limit=interp_limit, limit_direction="both")
-        if s.isna().any():
-            s = s.fillna(s.mean())
-        out[c] = s
-    return out
+def _raw_y(df: pd.DataFrame) -> np.ndarray:
+    """Target with filled points masked back to NaN, for honest scoring/origin choice."""
+    return np.where(_observed_mask(df).to_numpy(), df["y"].to_numpy(dtype=float), np.nan)
 
 
 def _pick_origin(
@@ -65,7 +53,7 @@ def _pick_origin(
 
 
 def run_case(case: Case, methods: list[Forecaster], prefer_synth: bool = False) -> pd.DataFrame:
-    df = case.load(prefer_synth=prefer_synth)
+    df = case.load(prefer_synth=prefer_synth, curated=True)
     splits = case.split_frame(df)
     train_val = pd.concat([splits["train"], splits["val"]], ignore_index=True)
     test = splits["test"]
@@ -76,16 +64,16 @@ def run_case(case: Case, methods: list[Forecaster], prefer_synth: bool = False) 
     horizon_steps = min(horizon_steps, len(test))
 
     exo_cols = list(dict.fromkeys([*case.exogenous, *case.exogenous_known_future]))
-    fit_cols = ["y", *exo_cols]
 
     # Choose the forecast origin within the test split. The naive choice (the very first
-    # test timestamp) can land in a data gap, making the single-holdout window mostly NaN
-    # and the metric meaningless. Instead slide to the first origin whose horizon window is
-    # at least half observed (falling back to the densest window). History is then extended
-    # to that origin so the forecast is still made from genuine observations.
+    # test timestamp) can land on a filled (non-observed) point, making the single-holdout
+    # window mostly unscored and the metric meaningless. Instead slide to the first origin
+    # whose horizon window is at least half genuinely observed (falling back to the densest
+    # window). History is then extended to that origin so the forecast is still made from
+    # genuine observations.
     full = pd.concat([train_val, test], ignore_index=True)
-    full_fit = _complete_for_fit(full, fit_cols)
-    raw_y = full["y"].to_numpy(dtype=float)
+    full_fit = full  # curated: the target is already complete within the span
+    raw_y = _raw_y(full)
     test_start = len(train_val)
     last_origin = len(full) - horizon_steps
     origin = _pick_origin(raw_y, test_start, last_origin, horizon_steps)
