@@ -1201,16 +1201,19 @@ def next_selection(
     Input("clear-btn", "n_clicks"),
     Input({"type": "method-chip", "method": ALL}, "n_clicks"),
     State("snapshot-selection", "data"),
-    State("show-exogenous", "value"),
-    State("reload-btn", "n_clicks"),
     prevent_initial_call=True,
 )
-def update_selection(click_data, clear_clicks, chip_clicks, sel, show_exogenous, n_reload):
+def update_selection(click_data, clear_clicks, chip_clicks, sel):
     """Maintain the {case_id, methods} overlay selection.
 
     Same-row clicks accumulate methods, up to `MAX_OVERLAY_METHODS` (beyond that, the
     oldest is evicted; re-click removes, when Plotly re-fires it); a click in a
     different row resets to that case; chip clicks and Clear remove methods.
+
+    Stores the clicked column's base method name, not its exogenous-swapped sibling —
+    the exo toggle can change after a cell is selected, and resolving the swap here
+    would freeze a stale name that no longer matches the next click on the same
+    column (see `_effective_method`, resolved instead at render time).
 
     Reads the clicked cell's case/method off `x`/`y` rather than `customdata`: Dash's
     clickData only reconstructs `customdata` for traces indexed by a flat
@@ -1220,9 +1223,7 @@ def update_selection(click_data, clear_clicks, chip_clicks, sel, show_exogenous,
     points = (click_data or {}).get("points") or []
     case_id = method = None
     if points:
-        case_id = points[0]["y"]
-        show_exo = "on" in (show_exogenous or [])
-        method = _effective_method(load_metrics(n_reload or 0), case_id, points[0]["x"], show_exo)
+        case_id, method = points[0]["y"], points[0]["x"]
     return next_selection(ctx.triggered_id, ctx.triggered[0]["value"], case_id, method, sel)
 
 
@@ -1278,23 +1279,27 @@ def render_case_panel(sel, show_global, n_reload):
     Input("snapshot-selection", "data"),
     Input("reload-btn", "n_clicks"),
     Input("show-global", "value"),
+    Input("show-exogenous", "value"),
     Input("metric", "value"),
 )
-def render_panel(sel, n_reload, show_global, metric):
+def render_panel(sel, n_reload, show_global, show_exogenous, metric):
     sel = sel or {}
     case_id, methods = sel.get("case_id"), sel.get("methods") or []
     if not case_id or not methods:
         return "", "", go.Figure(), [], {"display": "none"}, {"color": "#666"}
 
     show_global = "on" in (show_global or [])
+    show_exo = "on" in (show_exogenous or [])
+    df = load_metrics(n_reload or 0)
+    effective_methods = [_effective_method(df, case_id, m, show_exo) for m in methods]
     title = "[Test] Prediction Snapshots"
-    caption = f"Origins curated by {methods[0]}'s {metric} (best / median / worst)."
+    caption = f"Origins curated by {effective_methods[0]}'s {metric} (best / median / worst)."
     return (
         title,
         caption,
         render_snapshots(
             case_id,
-            methods,
+            effective_methods,
             load_snapshots(n_reload or 0),
             show_global,
             max_cols=1,
@@ -1310,8 +1315,10 @@ def render_panel(sel, n_reload, show_global, metric):
     Output("method-info-panel", "children"),
     Output("method-info-panel", "style"),
     Input("snapshot-selection", "data"),
+    Input("show-exogenous", "value"),
+    Input("reload-btn", "n_clicks"),
 )
-def render_method_info_panel(sel):
+def render_method_info_panel(sel, show_exogenous, n_reload):
     """Bottom panel: one card per selected method with a brief description and its
     exogenous-input usage for this case (see `data.method_info`), plus a collapsed
     "Implementation detail" section (library, compute cost, limitations, a code
@@ -1320,7 +1327,10 @@ def render_method_info_panel(sel):
     case_id, methods = sel.get("case_id"), sel.get("methods") or []
     if not case_id or not methods:
         return [], _METHOD_INFO_HIDDEN_STYLE
-    return _method_info_cards(case_id, methods), _METHOD_INFO_STYLE
+    show_exo = "on" in (show_exogenous or [])
+    df = load_metrics(n_reload or 0)
+    effective_methods = [_effective_method(df, case_id, m, show_exo) for m in methods]
+    return _method_info_cards(case_id, effective_methods), _METHOD_INFO_STYLE
 
 
 if __name__ == "__main__":
