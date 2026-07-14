@@ -150,8 +150,11 @@ def ordered_cases(df: pd.DataFrame) -> list[str]:
 
 def ordered_methods(df: pd.DataFrame) -> list[str]:
     """Method names sorted by family (FAMILY_ORDER), then name, for stable column
-    grouping with separators."""
+    grouping with separators. Excludes "+exo" variants: they're folded into their base
+    method's column in the matrix (see `render_matrix`'s exogenous-toggle swap), not shown
+    as separate columns."""
     pairs = df[["family", "method"]].drop_duplicates()
+    pairs = pairs[~pairs["method"].str.endswith("+exo")]
     pairs["_family_rank"] = pairs["family"].map(_rank(FAMILY_ORDER))
     pairs = pairs.sort_values(["_family_rank", "method"])
     return list(pairs["method"])

@@ -103,10 +103,14 @@ def _group_labels(ordered_keys: list[str], key_of: dict[str, str]) -> list[tuple
     return labels
 
 
-def _corner_triangle_path(x0: float, y0: float, x1: float, y1: float, frac: float = 0.35) -> str:
-    """SVG path for a small filled triangle in the top-right corner of one cell's box,
-    sized as `frac` of the cell's edge length."""
+def _corner_triangle_path(
+    x0: float, y0: float, x1: float, y1: float, frac: float = 0.35, corner: str = "top-right"
+) -> str:
+    """SVG path for a small filled triangle in one corner of a cell's box, sized as `frac`
+    of the cell's edge length."""
     s = (x1 - x0) * frac
+    if corner == "bottom-left":
+        return f"M {x0},{y1} L {x0 + s},{y1} L {x0},{y1 - s} Z"
     return f"M {x1},{y0} L {x1 - s},{y0} L {x1},{y0 + s} Z"
 
 
@@ -128,6 +132,33 @@ def _global_overlay_shapes(
                 "path": _corner_triangle_path(x - 0.5, y - 0.5, x + 0.5, y + 0.5),
                 "line": {"color": "#FF1493", "width": 0},
                 "fillcolor": "#FF1493",
+                "opacity": 0.8,
+                "layer": "above",
+            }
+        )
+    return shapes
+
+
+def _exogenous_overlay_shapes(
+    cells: list[tuple[str, str]], row_order: list[str], col_order: list[str]
+) -> list[dict]:
+    """Small teal corner triangle (opposite corner from the global-history marker, so the
+    two never collide) over cells whose displayed value was swapped in from the method's
+    exogenous-aware (+exo) sibling — see the `show_exo` branch in `render_matrix`."""
+    shapes = []
+    for case_id, method in cells:
+        if case_id not in row_order or method not in col_order:
+            continue
+        y = row_order.index(case_id)
+        x = col_order.index(method)
+        shapes.append(
+            {
+                "type": "path",
+                "path": _corner_triangle_path(
+                    x - 0.5, y - 0.5, x + 0.5, y + 0.5, corner="bottom-left"
+                ),
+                "line": {"color": "#0B7285", "width": 0},
+                "fillcolor": "#0B7285",
                 "opacity": 0.8,
                 "layer": "above",
             }
@@ -173,6 +204,7 @@ def render_matrix(
     methods: list[str],
     selection: dict | None = None,
     show_global: bool = False,
+    show_exo: bool = False,
 ) -> tuple[go.Figure, int]:
     """Returns the heatmap figure plus its row count (unused by the current caller, kept
     since it falls out of the same pivot work the figure needs anyway).
@@ -184,6 +216,12 @@ def render_matrix(
     `show_global` is True, those cells are swapped in for the local score and marked
     with a corner triangle (see `_global_overlay_shapes`), since they're fit on more
     data than the rest of the row and aren't directly comparable.
+
+    A method with an exogenous-aware sibling (e.g. "LightGBM" / "LightGBM+exo") is shown
+    as a single column ("LightGBM"). When `show_exo` is True, cases with real exogenous
+    data (`case_exo_tier != "none"`) get that sibling's score swapped in and marked with a
+    teal corner (see `_exogenous_overlay_shapes`) — same swap-and-mark mechanism as
+    `show_global`, on a different axis.
     """
     df_metric = df[
         (df["metric"] == metric) & df["case_id"].isin(case_ids) & df["method"].isin(methods)
@@ -198,6 +236,7 @@ def render_matrix(
     frac_finite = _pivot(df_local, row_order, col_order, "frac_finite_test")
     seconds = _pivot(df_local, row_order, col_order, "seconds")
     horizon = _pivot(df_local, row_order, col_order, "horizon").fillna("—")
+    effective_method = np.tile(np.array(col_order, dtype=object), (len(row_order), 1))
 
     overlay_cells: list[tuple[str, str]] = []
     if show_global:
@@ -211,6 +250,26 @@ def render_matrix(
             frac_finite.loc[row.case_id, row.method] = row.frac_finite_test
             seconds.loc[row.case_id, row.method] = row.seconds
             overlay_cells.append((row.case_id, row.method))
+
+    exo_overlay_cells: list[tuple[str, str]] = []
+    if show_exo:
+        exo_pairs = {m: f"{m}+exo" for m in col_order if f"{m}+exo" in df_local["method"].unique()}
+        if exo_pairs:
+            tier_of = df_metric.drop_duplicates("case_id").set_index("case_id")["case_exo_tier"]
+            df_exo = df_local[df_local["method"].isin(exo_pairs.values())]
+            for row in df_exo.itertuples(index=False):
+                base = row.method.removesuffix("+exo")
+                if base not in values.columns or row.case_id not in values.index:
+                    continue
+                if tier_of.get(row.case_id, "none") == "none":
+                    continue  # nothing to swap in — case has no exogenous data
+                values.loc[row.case_id, base] = row.value
+                status.loc[row.case_id, base] = row.status
+                n_origins.loc[row.case_id, base] = row.n_origins
+                frac_finite.loc[row.case_id, base] = row.frac_finite_test
+                seconds.loc[row.case_id, base] = row.seconds
+                effective_method[row_order.index(row.case_id), col_order.index(base)] = row.method
+                exo_overlay_cells.append((row.case_id, base))
 
     cfg = _metric_cfg(metric)
     fmt = cfg.get("fmt", "{:.3g}")
@@ -232,6 +291,7 @@ def render_matrix(
             frac_finite.map(fmt_pct).to_numpy(dtype=object),
             seconds.map(fmt_secs).to_numpy(dtype=object),
             horizon.to_numpy(dtype=object),
+            effective_method,
         ]
     )
 
@@ -282,6 +342,8 @@ def render_matrix(
     for x in _group_boundaries(col_order, family_of):
         fig.add_shape(type="line", x0=x, x1=x, y0=-0.5, y1=n_rows - 0.5, line=boundary_line)
     for shape in _global_overlay_shapes(overlay_cells, row_order, col_order):
+        fig.add_shape(**shape)
+    for shape in _exogenous_overlay_shapes(exo_overlay_cells, row_order, col_order):
         fig.add_shape(**shape)
     for shape in _selection_shapes(selection, row_order, col_order):
         fig.add_shape(**shape)
@@ -576,6 +638,24 @@ app.layout = html.Div(
                         ),
                         html.P(
                             "Some global models have been trained with longer history, marked with a corner triangle.",
+                            style={"color": "#666", "fontSize": "0.8em", "marginTop": "4px"},
+                        ),
+                        html.Label("Exogenous inputs", style=_LABEL_STYLE),
+                        dcc.Checklist(
+                            id="show-exogenous",
+                            options=[
+                                {
+                                    "label": " Use exogenous inputs where available.",
+                                    "value": "on",
+                                }
+                            ],
+                            value=[],
+                        ),
+                        html.P(
+                            "Where a method has an exogenous-aware variant and the case "
+                            "provides exogenous data, this swaps in that variant's score "
+                            "for the cell and marks it with a teal corner. Cases or "
+                            "methods without an exogenous option are unaffected.",
                             style={"color": "#666", "fontSize": "0.8em", "marginTop": "4px"},
                         ),
                     ],
@@ -932,10 +1012,12 @@ def toggle_sidebar(n_clicks):
     Input("reload-btn", "n_clicks"),
     Input("snapshot-selection", "data"),
     Input("show-global", "value"),
+    Input("show-exogenous", "value"),
 )
-def update_matrix(metric, domains, families, n_reload, selection, show_global):
+def update_matrix(metric, domains, families, n_reload, selection, show_global, show_exogenous):
     df = load_metrics(n_reload or 0)
     show_global = "on" in (show_global or [])
+    show_exo = "on" in (show_exogenous or [])
     if not metric or not domains or not families:
         return _empty_fig("Select a metric, at least one domain, and one method family.")
 
@@ -948,7 +1030,7 @@ def update_matrix(metric, domains, families, n_reload, selection, show_global):
             "or the selected metric doesn't apply to any of them."
         )
 
-    fig, _n_rows = render_matrix(df, metric, case_ids, methods, selection, show_global)
+    fig, _n_rows = render_matrix(df, metric, case_ids, methods, selection, show_global, show_exo)
     return fig
 
 
@@ -1053,7 +1135,10 @@ def next_selection(trigger, trigger_value, click_data: dict | None, sel: dict) -
     points = (click_data or {}).get("points") or []
     if not points:
         raise PreventUpdate
-    case_id, method = points[0]["y"], points[0]["x"]
+    # customdata[5] is the effective method for this cell — the clicked column's name
+    # ("LightGBM") unless the exogenous toggle swapped in its "+exo" sibling's score, in
+    # which case info panels/snapshots should reflect the sibling that was actually run.
+    case_id, method = points[0]["y"], points[0]["customdata"][5]
     if case_id != sel["case_id"]:
         return {"case_id": case_id, "methods": [method]}
     if method in sel["methods"]:
