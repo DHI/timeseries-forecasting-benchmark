@@ -46,6 +46,11 @@ from tsforecastbench.data.registry import discover_cases
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 RESULTS_DIR = REPO_ROOT / "results"
+# Committed, distilled copies for onboarding: a new clone gets real scores and matrix
+# figures without running the (multi-hour) pilot first. `results/` stays the gitignored
+# working directory — raw snapshots and the same metrics, kept for local debugging.
+DOCS_RESULTS_DIR = REPO_ROOT / "docs" / "results"
+DOCS_FIGURES_DIR = REPO_ROOT / "docs" / "figures" / "benchmark"
 
 
 def build_methods():
@@ -182,6 +187,8 @@ def main() -> int:
         return 1
     results = pd.concat(all_results, ignore_index=True)
     results.to_parquet(RESULTS_DIR / "pilot_metrics.parquet", index=False)
+    DOCS_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    results.to_parquet(DOCS_RESULTS_DIR / "scores.parquet", index=False)
     if all_snapshots:
         pd.concat(all_snapshots, ignore_index=True).to_parquet(
             RESULTS_DIR / "pilot_snapshots.parquet", index=False
@@ -194,10 +201,22 @@ def main() -> int:
     # extended fit, `used_extended_history=True`), falling back to the local score for
     # cases/methods with no extra history. Reading the two side by side shows the gain a
     # global-capable method gets from the extra training data.
+    # `docs_stem` is the name these land under in docs/figures/benchmark/ (matches the
+    # names already referenced by docs/RESULTS.md).
     matrix_specs = [
-        ("MASE", "pilot_matrix_MASE", "MASE (lower is better)"),
-        ("Skill_vs_Persistence", "pilot_matrix_skill", "skill vs persistence (higher is better)"),
-        ("Skill_vs_Mean", "pilot_matrix_skill_vs_mean", "skill vs mean (higher is better)"),
+        ("MASE", "pilot_matrix_MASE", "MASE (lower is better)", "matrix_mase"),
+        (
+            "Skill_vs_Persistence",
+            "pilot_matrix_skill",
+            "skill vs persistence (higher is better)",
+            "matrix_skill_vs_persistence",
+        ),
+        (
+            "Skill_vs_Mean",
+            "pilot_matrix_skill_vs_mean",
+            "skill vs mean (higher is better)",
+            "matrix_skill_vs_mean",
+        ),
     ]
     local_results = results[~results["used_extended_history"]]
     # For the global matrix, keep one row per (case, method, metric): the extended fit
@@ -210,12 +229,20 @@ def main() -> int:
     )
     global_method_order = [m for m in method_order if m in global_results["method"].unique()]
 
+    DOCS_FIGURES_DIR.mkdir(parents=True, exist_ok=True)
     written = []
-    for metric, stem, label in matrix_specs:
+    for metric, stem, label, docs_stem in matrix_specs:
         render_matrix(
             local_results,
             metric=metric,
             out_path=RESULTS_DIR / f"{stem}.png",
+            title=f"RK2026 pilot - {label}",
+            method_order=method_order,
+        )
+        render_matrix(
+            local_results,
+            metric=metric,
+            out_path=DOCS_FIGURES_DIR / f"{docs_stem}.png",
             title=f"RK2026 pilot - {label}",
             method_order=method_order,
         )
@@ -238,6 +265,8 @@ def main() -> int:
     if not global_method_order:
         print("  [note] no is_global methods in this run; skipped the _global matrices")
     print("  " + ", ".join(written))
+    print(f"Wrote committed onboarding copies to {DOCS_RESULTS_DIR.relative_to(REPO_ROOT)}/ and")
+    print(f"  {DOCS_FIGURES_DIR.relative_to(REPO_ROOT)}/ — commit these along with this run.")
     return 0
 
 

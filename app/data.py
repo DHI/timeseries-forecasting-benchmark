@@ -1,8 +1,11 @@
 """Data loading for the results-matrix app.
 
-Reads `results/pilot_metrics.parquet` directly — no new artifacts, no pipeline changes.
-Method family is not a column in that file (adding it would require rerunning the whole
-pilot); instead it's read straight off the `Forecaster` classes in
+Reads `docs/results/scores.parquet` — the distilled metrics committed to the repo, so a
+fresh clone can open the app with real data before ever running the pilot. Per-origin
+snapshots are the raw, regenerable artifact and stay gitignored under `results/`; a clone
+that hasn't run the pilot just gets an empty snapshot frame (see `load_snapshots`).
+Method family is not a column in the scores file (adding it would require rerunning the
+whole pilot); instead it's read straight off the `Forecaster` classes in
 `tsforecastbench.bench.methods`, which is the actual source of truth, and joined in
 memory at load time.
 """
@@ -21,7 +24,7 @@ from tsforecastbench.data.schema import DOMAIN_RESTRICTED_METRICS
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 RESULTS_DIR = REPO_ROOT / "results"
-METRICS_PATH = RESULTS_DIR / "pilot_metrics.parquet"
+METRICS_PATH = REPO_ROOT / "docs" / "results" / "scores.parquet"
 SNAPSHOTS_PATH = RESULTS_DIR / "pilot_snapshots.parquet"
 
 # Columns of the snapshot artifact written by the rolling eval (see
@@ -109,7 +112,7 @@ def _rank(order: list[str]):
 
 @cache
 def load_metrics(version: int = 0) -> pd.DataFrame:
-    """Load pilot_metrics.parquet and join each method's family.
+    """Load docs/results/scores.parquet and join each method's family.
 
     `version` has no effect on the result; bump it (e.g. from a reload button) to land
     on a fresh cache key and re-read a pilot run that finished after the app started.

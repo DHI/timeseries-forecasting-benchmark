@@ -9,10 +9,11 @@ import pandas as pd
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 R = REPO_ROOT / "results"
+DOCS_R = REPO_ROOT / "docs" / "results"
 
 
 def main() -> int:
-    m = R / "pilot_metrics.parquet"
+    m = DOCS_R / "scores.parquet"
     if m.exists():
         df = pd.read_parquet(m)
         # is_global methods carry two rows per cell (local + extended fit); the matrices

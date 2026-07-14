@@ -1,9 +1,11 @@
 """Interactive viewer for the benchmark results matrix.
 
-Reads `results/pilot_metrics.parquet` and renders the same case x method grid as the
-static `results/pilot_matrix_*.png` plots, but with hover detail, domain/method-family
-filtering, and a metric switcher. Clicking a cell opens a snapshot panel with forecast
-examples for that case x method pair.
+Reads `docs/results/scores.parquet` (committed, so this works on a fresh clone) and
+renders the same case x method grid as the static `docs/figures/benchmark/matrix_*.png`
+plots, but with hover detail, domain/method-family filtering, and a metric switcher.
+Clicking a cell opens a snapshot panel with forecast examples for that case x method pair
+— that panel needs `results/pilot_snapshots.parquet`, which is only produced by actually
+running the pilot.
 
 Built on Dash: the matrix is a `dcc.Graph`, and a click callback reads the cell's
 `clickData` to populate the snapshot panel — no selection-event workarounds needed.
