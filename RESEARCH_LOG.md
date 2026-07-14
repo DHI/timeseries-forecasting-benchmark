@@ -8,6 +8,20 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-14 — Folded +exo method variants into an app-level toggle; retired +calendar
+
+Replaced the separate `LightGBM+exo`/`CatBoost+exo`/`LinearLags+exo` matrix columns with one
+column per algorithm plus a sidebar checkbox that swaps in the exogenous-aware score (marked
+with a teal corner) for cases with real exogenous data — the same swap-and-mark mechanism the
+app already used for the extended-history toggle. This also settled an open question about
+calendar/seasonal features: unlike genuine exogenous covariates, they're deterministic and free
+for any future timestamp, so they no longer sit behind a separate `+calendar` variant (only
+LightGBM had one) and are now always included for every windowed-ML method. While wiring this
+up, found that `run_case_rolling` — the default pilot path — never emitted the
+`case_exo_tier`/`uses_exogenous` fields the toggle depends on (only the `--fast` path did), so
+the committed `docs/results/scores.parquet` doesn't have them yet: the pilot needs a re-run
+before the checkbox works, and the method list is three columns shorter as a result.
+
 ## 2026-07-14 — Committed distilled scores to docs/ for onboarding (issue #19)
 
 `run_pilot.py` now writes its distilled metrics to `docs/results/scores.parquet` and the
