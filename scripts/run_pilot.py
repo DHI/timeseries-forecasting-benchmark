@@ -100,7 +100,7 @@ def main() -> int:
         "--with-fm",
         action="store_true",
         help="Add the zero-shot foundation models (Chronos-Bolt, Chronos-2 via 'fm'; "
-        "TimesFM-2.5 via 'timesfm').",
+        "TimesFM-2.5 via 'timesfm'; Moirai-2.0 via 'moirai').",
     )
     p.add_argument(
         "--with-dl",
@@ -140,10 +140,16 @@ def main() -> int:
         from tsforecastbench.bench.methods import (
             Chronos2Forecaster,
             ChronosForecaster,
+            Moirai2Forecaster,
             TimesFMForecaster,
         )
 
-        methods += [ChronosForecaster(), Chronos2Forecaster(), TimesFMForecaster()]
+        methods += [
+            ChronosForecaster(),
+            Chronos2Forecaster(),
+            TimesFMForecaster(),
+            Moirai2Forecaster(),
+        ]
     method_order = [m.name for m in methods]
 
     mode = "single hold-out" if args.fast else f"rolling-origin ({args.origins} origins)"

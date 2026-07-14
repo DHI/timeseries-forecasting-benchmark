@@ -79,6 +79,16 @@ def _load_timesfm(model_name: str, max_context: int, max_horizon: int):
     return _TIMESFM_CACHE[key]
 
 
+def _load_moirai_module(model_name: str):
+    # Only the pretrained weights are cached; the Moirai2Forecast wrapper bakes in the
+    # prediction length, so it is rebuilt per predict call (cheap next to the weights).
+    if model_name not in _MOIRAI_CACHE:
+        from uni2ts.model.moirai2 import Moirai2Module
+
+        _MOIRAI_CACHE[model_name] = Moirai2Module.from_pretrained(model_name)
+    return _MOIRAI_CACHE[model_name]
+
+
 class ChronosForecaster(Forecaster):
     """Zero-shot Chronos-Bolt point forecast (predictive median).
 
@@ -288,5 +298,84 @@ class TimesFMForecaster(Forecaster):
         model = _load_timesfm(self.model_name, self.max_context, max_horizon)
         point_forecast, _quantiles = model.forecast(horizon=horizon, inputs=[context])
         y_hat = np.asarray(point_forecast[0], dtype=np.float64)[:horizon]
+        future = self._future_index(case, history["ds"].max(), horizon)
+        return pd.DataFrame({"ds": future, "y_hat": y_hat})
+
+
+class Moirai2Forecaster(Forecaster):
+    """Zero-shot Moirai-2.0 point forecast (predictive median).
+
+    Salesforce's decoder-only, quantile foundation model, run through its GluonTS
+    predictor. Univariate — conditions on the target's recent context only. Requires the
+    optional `uni2ts` dependency (the `moirai` extra); skipped (status=error) by the eval
+    loop if it is not installed.
+    """
+
+    name = "Moirai-2.0"
+    family = "fm"
+    is_probabilistic = True
+    is_global = True
+    library = "uni2ts (Salesforce Moirai-2.0) + gluonts + torch"
+    compute_profile = (
+        "CPU-capable but slow; zero-shot, so there's no per-case training — one forward "
+        "pass per prediction through the GluonTS predictor. The pretrained weights are "
+        "loaded once and cached across every case and origin."
+    )
+    limitations = (
+        "Zero-shot: never learns anything case-specific, only what it picked up from "
+        "pretraining on other series. Run univariate here — Moirai supports covariates, "
+        "but this wrapper ignores exogenous inputs. Conditions on the most recent "
+        "`context_length` points of history."
+    )
+    code_snippet = (
+        "from gluonts.dataset.pandas import PandasDataset\n"
+        "from uni2ts.model.moirai2 import Moirai2Forecast, Moirai2Module\n\n"
+        "forecaster = Moirai2Forecast(\n"
+        '    module=Moirai2Module.from_pretrained("Salesforce/moirai-2.0-R-small"),\n'
+        "    prediction_length=horizon, context_length=ctx_len,\n"
+        "    target_dim=1, feat_dynamic_real_dim=0, past_feat_dynamic_real_dim=0,\n"
+        ")\n"
+        "predictor = forecaster.create_predictor(batch_size=1)\n"
+        "forecast = next(iter(predictor.predict(dataset)))\n"
+        "y_hat = forecast.median"
+    )
+
+    def __init__(
+        self,
+        model_name: str = "Salesforce/moirai-2.0-R-small",
+        context_length: int = 1680,
+    ):
+        self.model_name = model_name
+        self.context_length = context_length
+
+    def fit(self, case: Case, train: pd.DataFrame) -> None:
+        # Zero-shot: no training and no fit-time state (see ChronosForecaster.fit).
+        pass
+
+    def predict(
+        self,
+        case: Case,
+        history: pd.DataFrame,
+        horizon: int,
+        future_exog: pd.DataFrame | None = None,
+    ) -> pd.DataFrame:
+        from gluonts.dataset.pandas import PandasDataset
+        from uni2ts.model.moirai2 import Moirai2Forecast
+
+        y = pd.to_numeric(history["y"], errors="coerce").ffill().bfill().to_numpy(dtype=float)
+        ctx_len = min(self.context_length, len(y))
+        forecaster = Moirai2Forecast(
+            module=_load_moirai_module(self.model_name),
+            prediction_length=horizon,
+            context_length=ctx_len,
+            target_dim=1,
+            feat_dynamic_real_dim=0,
+            past_feat_dynamic_real_dim=0,
+        )
+        predictor = forecaster.create_predictor(batch_size=1)
+        hist = pd.DataFrame({"target": y}, index=pd.DatetimeIndex(history["ds"]))
+        dataset = PandasDataset(hist, target="target", freq=case.freq)
+        forecast = next(iter(predictor.predict(dataset)))
+        y_hat = np.asarray(forecast.median, dtype=np.float64)[:horizon]
         future = self._future_index(case, history["ds"].max(), horizon)
         return pd.DataFrame({"ds": future, "y_hat": y_hat})

@@ -18,6 +18,7 @@ from tsforecastbench.bench.methods.ensemble import (
 from tsforecastbench.bench.methods.fm import (
     Chronos2Forecaster,
     ChronosForecaster,
+    Moirai2Forecaster,
     TimesFMForecaster,
 )
 from tsforecastbench.bench.methods.ml import (
@@ -62,6 +63,7 @@ __all__ = [
     "MSTLAutoARIMAForecaster",
     "MSTLAutoETSForecaster",
     "MeanBaseline",
+    "Moirai2Forecaster",
     "NHITSForecaster",
     "PatchTSTForecaster",
     "Persistence",

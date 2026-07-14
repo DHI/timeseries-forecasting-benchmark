@@ -251,6 +251,7 @@ def test_methods_package_imports_without_fm_deps():
     assert hasattr(m, "ChronosForecaster")
     assert hasattr(m, "Chronos2Forecaster")
     assert hasattr(m, "TimesFMForecaster")
+    assert hasattr(m, "Moirai2Forecaster")
 
 
 def test_chronos_runs_if_installed():
@@ -274,6 +275,14 @@ def test_timesfm_runs_if_installed():
     from tsforecastbench.bench.methods import TimesFMForecaster
 
     res = run_case(get_case("waves_oregon"), [TimesFMForecaster()], prefer_synth=True)
+    assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
+
+
+def test_moirai2_runs_if_installed():
+    pytest.importorskip("uni2ts")
+    from tsforecastbench.bench.methods import Moirai2Forecaster
+
+    res = run_case(get_case("waves_oregon"), [Moirai2Forecaster()], prefer_synth=True)
     assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
 
 
