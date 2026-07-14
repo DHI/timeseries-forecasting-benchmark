@@ -8,6 +8,20 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-14 — Committed distilled scores to docs/ for onboarding (issue #19)
+
+`run_pilot.py` now writes its distilled metrics to `docs/results/scores.parquet` and the
+three main matrix PNGs to `docs/figures/benchmark/`, in addition to the full working output
+in gitignored `results/`. The results-matrix app (`app/data.py`) now reads from that
+committed file too, so a fresh clone can open the app and see real scores without running
+the pilot first; per-origin snapshots (the click-through forecast detail) still need a
+local pilot run, since those stay in `results/` and aren't committed. While wiring this up,
+found that `.gitignore`'s `results/` rule was unanchored and silently swallowed
+`docs/results/` as well — fixed to `/results/` so only the top-level directory is ignored.
+`docs/results/scores.parquet` and the three matrix figures are now populated from the most
+recent pilot run and should be regenerated (`uv run python scripts/run_pilot.py --with-fm`)
+and committed after future runs.
+
 ## 2026-07-13 — Added MAPE, sMAPE, NSE, and KGE (issue #34)
 
 Both eval paths (single hold-out and rolling-origin) now also compute MAPE, sMAPE, NSE, and
