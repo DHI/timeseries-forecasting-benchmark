@@ -260,7 +260,9 @@ def run_case_rolling(
                     {
                         "case_id": case.id,
                         "domain": case.domain,
+                        "case_exo_tier": case.exo_tier,
                         "method": method.name,
+                        "uses_exogenous": method.uses_exogenous,
                         "is_global": method.is_global,
                         "used_extended_history": used_extended,
                         "horizon": case.horizon_primary,
