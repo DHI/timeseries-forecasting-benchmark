@@ -776,6 +776,39 @@ app.layout = html.Div(
                                         "alone can tell you.",
                                     ]
                                 ),
+                                html.P(
+                                    [
+                                        html.B("Exogenous inputs. "),
+                                        "Each case declares its exogenous tier — "
+                                        "none, optional, or necessary — a domain "
+                                        "judgment, not something inferable from "
+                                        "measured skill deltas. LinearLags, LightGBM, "
+                                        "and CatBoost each have an exogenous-aware "
+                                        "sibling; the matrix shows one column per "
+                                        'algorithm, and the "Use exogenous inputs '
+                                        'where available" checkbox swaps in that '
+                                        "sibling's score for cases with real "
+                                        "exogenous data, marking the cell with a "
+                                        "teal corner. Toggling it changes which of "
+                                        "two already-computed scores is shown per "
+                                        "cell — it never adds columns, drops cases, "
+                                        "or aggregates across them, matching the "
+                                        "matrix's design elsewhere. Calendar and "
+                                        "seasonal features (day-of-week, "
+                                        "sin/cos-of-period) sit outside this toggle "
+                                        "entirely: they're deterministic and free "
+                                        "for any future timestamp, so every "
+                                        "windowed-ML method always includes them. "
+                                        "Genuine exogenous covariates don't have "
+                                        "that guarantee — future values fed to the "
+                                        "exogenous-aware methods here come from "
+                                        "observed reanalysis data (a perfect-"
+                                        "forecast proxy), so their scores are an "
+                                        "upper bound on real operational skill, "
+                                        "which depends on actual forecast quality "
+                                        "for those covariates.",
+                                    ]
+                                ),
                             ],
                         ),
                         dcc.Store(id="snapshot-selection", data={"case_id": None, "methods": []}),
