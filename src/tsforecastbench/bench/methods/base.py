@@ -52,7 +52,7 @@ class Forecaster(ABC):
     # Methods that consume covariates set this True; the eval loop then passes the
     # horizon's exogenous values (a perfect-forecast proxy) to predict via future_exog.
     uses_exogenous: bool = False
-    # Coarse grouping (baseline/classical/ml/deep_learning/foundation_model/ensemble) used
+    # Coarse grouping (baseline/classical/ml/dl/fm/ensemble) used
     # by the results viewer to filter/group methods. "unclassified" flags a method that
     # forgot to set it, rather than silently disappearing from a family filter.
     family: str = "unclassified"
@@ -73,7 +73,7 @@ class Forecaster(ABC):
     is_global: bool = False
     # Whether `fit` actually trains on the full multi-segment extended history (as
     # opposed to only conditioning on the tail segment). True for the methods that learn
-    # parameters from training windows/rows (ml/deep_learning/neuralforecast); False for
+    # parameters from training windows/rows (ml/dl/neuralforecast); False for
     # zero-shot foundation models, which condition on the recent context and cannot
     # bridge a gap, so extended history leaves their forecast unchanged. The eval loop
     # runs the second (extended) fit only for `is_global and pools_segments` methods.

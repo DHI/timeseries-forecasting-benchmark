@@ -133,7 +133,7 @@ def _make_modules():
 
 class _TorchDLBase(Forecaster):
     name = "TorchDL"
-    family = "deep_learning"
+    family = "dl"
     is_global = True
     pools_segments = True
     max_steps = 600

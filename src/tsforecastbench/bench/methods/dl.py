@@ -29,7 +29,7 @@ def _moving_avg(x: np.ndarray, k: int) -> np.ndarray:
 
 class DLinearForecaster(Forecaster):
     name = "DLinear"
-    family = "deep_learning"
+    family = "dl"
     is_global = True
     pools_segments = True
     max_samples: int = 8000

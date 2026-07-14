@@ -42,7 +42,7 @@ SNAPSHOT_COLUMNS = [
 
 # Display order for method families (left-to-right column grouping) and case domains
 # (top-to-bottom row grouping). Anything not listed sorts after, alphabetically.
-FAMILY_ORDER = ["baseline", "ensemble", "classical", "ml", "deep_learning", "foundation_model"]
+FAMILY_ORDER = ["baseline", "ensemble", "classical", "ml", "dl", "fm"]
 
 # EnsembleForecaster's `name` is set per-instance by these factories, not as a class
 # attribute, so it can't be read off the class the way every other method's can.

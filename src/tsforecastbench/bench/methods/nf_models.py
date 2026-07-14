@@ -34,7 +34,7 @@ class _NFBase(Forecaster):
     """Shared neuralforecast wrapper; subclasses name the model class + extra kwargs."""
 
     name = "NF"
-    family = "deep_learning"
+    family = "dl"
     is_global = True
     pools_segments = True
     model_name = "NHITS"  # neuralforecast.models class name

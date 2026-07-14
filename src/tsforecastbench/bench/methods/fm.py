@@ -43,7 +43,7 @@ class ChronosForecaster(Forecaster):
     """
 
     name = "Chronos-Bolt"
-    family = "foundation_model"
+    family = "fm"
     is_probabilistic = True
     # Zero-shot: there's no fit-time benefit, but a longer history helps up to
     # `context_length` if the shared curated span is shorter than that.
