@@ -1,6 +1,6 @@
 id = "discharge_snowmelt_yosemite"
 domain = "hydrology"
-notes = "Daily snowmelt-dominated river discharge at the Merced River at Happy Isles, Yosemite CA (USGS 11264500). A third hydrology regime alongside groundwater-dominated discharge_lowland_denmark and flashy discharge_flashy_catskills: a smooth, strongly seasonal melt hydrograph driven by air temperature (snowmelt) more than by individual rain events. Tests whether method ranking holds across slow / flashy / snowmelt dynamics. Discharge cfs->m3/s; exogenous ERA5 air temperature (primary, melt) + precipitation (Open-Meteo)."
+notes = "Daily snowmelt-dominated river discharge at the Merced River at Happy Isles, Yosemite CA (USGS 11264500). A third hydrology regime alongside groundwater-dominated discharge_lowland_denmark and flashy discharge_flashy_catskills: a smooth, strongly seasonal melt hydrograph driven by air temperature (snowmelt) more than by individual rain events. Tests whether method ranking holds across slow / flashy / snowmelt dynamics. Discharge cfs->m3/s; exogenous ERA5 air temperature (primary, melt) + precipitation (Open-Meteo). Necessary exogenous: temp_air; optional: precip — per the primary/secondary distinction above."
 
 target = "discharge"
 target_unit = "m3/s"
@@ -12,12 +12,15 @@ input_window = "30D"
 
 exogenous = ["temp_air", "precip"]
 exogenous_known_future = ["temp_air", "precip"]
+necessary_exogenous = ["temp_air"]
 static_attrs = ["lat", "lon"]
 data_type = "mixed"
+split_mode = "fraction"
+split_fraction = [0.7, 0.85]
 
 [splits]
-train_end = 2018-12-31
-val_end = 2019-12-31
+train_end = 2017-02-05
+val_end = 2019-01-18
 test_end = 2020-12-31
 
 [source]

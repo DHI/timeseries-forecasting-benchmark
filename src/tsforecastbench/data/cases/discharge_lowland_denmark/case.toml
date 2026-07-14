@@ -1,6 +1,6 @@
 id = "discharge_lowland_denmark"
 domain = "hydrology"
-notes = "Daily river discharge at one Danish lowland catchment from CAMELS-DK. Groundwater-dominated. Pilot uses a single representative gauge until station selection is finalised."
+notes = "Daily river discharge at one Danish lowland catchment from CAMELS-DK. Groundwater-dominated. Pilot uses a single representative gauge until station selection is finalised. Necessary exogenous: none — slow, groundwater-dominated baseflow persistence is expected to forecast reasonably well without exogenous input, making this the deliberate exo-available-but-not-essential contrast to the flashy/melt hydrology cases. precip, temp, and pet are treated as optional enrichments. Assumption, not yet validated against measured skill."
 
 target = "q_obs"
 target_unit = "mm/d"
@@ -12,6 +12,7 @@ input_window = "60D"
 
 exogenous = ["precip", "temp", "pet"]
 exogenous_known_future = []
+necessary_exogenous = []
 static_attrs = ["area_km2", "imperviousness"]
 data_type = "mixed"
 split_mode = "fraction"

@@ -1,6 +1,6 @@
 id = "discharge_flashy_catskills"
 domain = "hydrology"
-notes = "Daily river discharge at Esopus Creek at Coldbrook, NY (USGS 01362500), a rainfall/snowmelt-driven Catskills river. Deliberate flashy contrast to the groundwater-dominated discharge_lowland_denmark: fast storm response, Richards-Baker flashiness ~0.3 vs the near-persistence DK lowland catchment. Discharge converted cfs->m3/s. Exogenous: ERA5 precipitation + air temperature at the gauge (Open-Meteo), as a perfect-forecast proxy."
+notes = "Daily river discharge at Esopus Creek at Coldbrook, NY (USGS 01362500), a rainfall/snowmelt-driven Catskills river. Deliberate flashy contrast to the groundwater-dominated discharge_lowland_denmark: fast storm response, Richards-Baker flashiness ~0.3 vs the near-persistence DK lowland catchment. Discharge converted cfs->m3/s. Exogenous: ERA5 precipitation + air temperature at the gauge (Open-Meteo), as a perfect-forecast proxy. Necessary exogenous: precip (drives the flashy storm-response signal this case is built around); optional: temp_air (secondary — snowmelt plays a smaller role here than in discharge_snowmelt_yosemite). Assumption, not yet validated against measured skill."
 
 target = "discharge"
 target_unit = "m3/s"
@@ -12,12 +12,15 @@ input_window = "30D"
 
 exogenous = ["precip", "temp_air"]
 exogenous_known_future = ["precip", "temp_air"]
+necessary_exogenous = ["precip"]
 static_attrs = ["lat", "lon"]
 data_type = "mixed"
+split_mode = "fraction"
+split_fraction = [0.7, 0.85]
 
 [splits]
-train_end = 2018-12-31
-val_end = 2019-12-31
+train_end = 2017-02-05
+val_end = 2019-01-18
 test_end = 2020-12-31
 
 [source]

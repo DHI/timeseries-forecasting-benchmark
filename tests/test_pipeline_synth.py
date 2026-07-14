@@ -16,6 +16,8 @@ from tsforecastbench.bench.eval import run_case  # noqa: E402
 from tsforecastbench.bench.eval.metrics import mae, mase, rmse, skill_score  # noqa: E402
 from tsforecastbench.bench.eval.rolling import run_leadtime_curve  # noqa: E402
 from tsforecastbench.bench.methods import (  # noqa: E402
+    CatBoostExoForecaster,
+    CatBoostForecaster,
     Climatology,
     LightGBMExoForecaster,
     LightGBMForecaster,
@@ -31,8 +33,13 @@ ALL_CASES = list(discover_cases())
 
 
 def test_expected_cases_present():
-    for cid in ("discharge_lowland_denmark", "sewerlevel_bellinge", "surge_cuxhaven",
-                "waves_oregon", "wwtp_influent_n2o_350k"):
+    for cid in (
+        "discharge_lowland_denmark",
+        "sewerlevel_bellinge",
+        "surge_cuxhaven",
+        "waves_oregon",
+        "wwtp_influent_n2o_350k",
+    ):
         assert cid in ALL_CASES
 
 
@@ -69,6 +76,11 @@ def test_lightgbm_runs_on_one_case():
     assert (res["status"] == "ok").all()
 
 
+def test_catboost_runs_on_one_case():
+    res = run_case(get_case("waves_oregon"), [CatBoostForecaster()], prefer_synth=True)
+    assert (res["status"] == "ok").all()
+
+
 def test_rolling_matrix_runs():
     from tsforecastbench.bench.eval import run_case_rolling
 
@@ -86,7 +98,7 @@ def test_rolling_matrix_runs():
 def test_exogenous_methods_run(cid):
     """Exogenous-aware windowed ML runs on every case that declares covariates."""
     case = get_case(cid)
-    methods = [LinearLagsExoForecaster(), LightGBMExoForecaster()]
+    methods = [LinearLagsExoForecaster(), LightGBMExoForecaster(), CatBoostExoForecaster()]
     res = run_case(case, methods, prefer_synth=True)
     assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
     assert all(m.uses_exogenous for m in methods)
@@ -101,9 +113,29 @@ def test_exogenous_method_on_univariate_case():
 def test_dlinear_and_theta_run():
     from tsforecastbench.bench.methods import DLinearForecaster, ThetaForecaster
 
-    res = run_case(get_case("discharge_flashy_catskills"),
-                   [DLinearForecaster(), ThetaForecaster()], prefer_synth=True)
+    res = run_case(
+        get_case("discharge_flashy_catskills"),
+        [DLinearForecaster(), ThetaForecaster()],
+        prefer_synth=True,
+    )
     assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
+
+
+def test_mstl_classicals_run():
+    """MSTL-ETS / MSTL-ARIMA fit a seasonal classical model and produce finite MASE."""
+    from tsforecastbench.bench.methods import (
+        MSTLAutoARIMAForecaster,
+        MSTLAutoETSForecaster,
+    )
+
+    res = run_case(
+        get_case("discharge_flashy_catskills"),
+        [MSTLAutoETSForecaster(), MSTLAutoARIMAForecaster()],
+        prefer_synth=True,
+    )
+    assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
+    mase = res[res["metric"] == "MASE"]["value"]
+    assert mase.notna().all() and (mase > 0).all()
 
 
 def test_methods_package_imports_without_fm_deps():
@@ -132,8 +164,9 @@ def test_neuralforecast_zoo_classes_importable():
     # classes must always import (neuralforecast is imported lazily inside fit).
     import tsforecastbench.bench.methods as m
 
-    assert all(hasattr(m, c) for c in
-               ("TFTForecaster", "ITransformerForecaster", "TimesNetForecaster"))
+    assert all(
+        hasattr(m, c) for c in ("TFTForecaster", "ITransformerForecaster", "TimesNetForecaster")
+    )
 
 
 def test_torch_dl_runs_if_installed():
@@ -152,7 +185,7 @@ def test_fraction_split_handles_truncated_obs():
     """CAMELS uses fraction splits; even if obs end early the test window is scorable."""
     case = get_case("discharge_lowland_denmark")
     df = case.synth()
-    df.loc[int(len(df) * 0.6):, "y"] = np.nan  # observations stop at 60%
+    df.loc[int(len(df) * 0.6) :, "y"] = np.nan  # observations stop at 60%
     sp = case.split_frame(df)
     assert sp["test"]["y"].notna().sum() > 0
 
@@ -192,10 +225,19 @@ def test_matrix_colour_scale_clamped_to_outlier(tmp_path):
     for skill while the cell still renders. (User-reported: a -16 cell washed out the map.)"""
     rows = []
     for method, val in [("Good", 0.5), ("Bad", -16.65)]:
-        rows.append({"case_id": "c1", "domain": "d", "method": method,
-                     "horizon": "1h", "metric": "Skill_vs_Persistence", "value": val})
-    fig = render_matrix(pd.DataFrame(rows), metric="Skill_vs_Persistence",
-                        out_path=tmp_path / "skill.png")
+        rows.append(
+            {
+                "case_id": "c1",
+                "domain": "d",
+                "method": method,
+                "horizon": "1h",
+                "metric": "Skill_vs_Persistence",
+                "value": val,
+            }
+        )
+    fig = render_matrix(
+        pd.DataFrame(rows), metric="Skill_vs_Persistence", out_path=tmp_path / "skill.png"
+    )
     norm = fig.axes[0].images[0].norm
     assert norm.vmin == -1.0 and norm.vmax == 1.0  # clamped, not -16.65
     assert (tmp_path / "skill.png").exists()
@@ -203,6 +245,8 @@ def test_matrix_colour_scale_clamped_to_outlier(tmp_path):
 
 def test_leadtime_plot_renders(tmp_path):
     case = get_case("waves_oregon")
-    curve = run_leadtime_curve(case, [MeanBaseline(), Persistence()], n_origins=5, prefer_synth=True)
+    curve = run_leadtime_curve(
+        case, [MeanBaseline(), Persistence()], n_origins=5, prefer_synth=True
+    )
     plot_leadtime_curve(curve, out_path=tmp_path / "c.png")
     assert (tmp_path / "c.png").exists()

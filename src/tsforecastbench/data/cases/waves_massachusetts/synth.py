@@ -25,7 +25,12 @@ def generate(case: Case, seed: int = 3) -> pd.DataFrame:
     synoptic = synoptic - np.linspace(synoptic[0], synoptic[-1], n)
     wspd = np.clip(base_wind + 0.5 * synoptic + rng.gamma(2.0, 1.0, n) - 2.0, 0.2, None)
 
-    pres = 1015.0 + 5.0 * np.cos(2 * np.pi * (doy - 30) / 365) - 0.3 * (wspd - wspd.mean()) + rng.normal(0, 1.0, n)
+    pres = (
+        1015.0
+        + 5.0 * np.cos(2 * np.pi * (doy - 30) / 365)
+        - 0.3 * (wspd - wspd.mean())
+        + rng.normal(0, 1.0, n)
+    )
     atmp = 11.0 + 7.0 * np.cos(2 * np.pi * (doy - 200) / 365) + rng.normal(0, 1.0, n)
     wtmp = 12.0 + 4.0 * np.cos(2 * np.pi * (doy - 220) / 365) + rng.normal(0, 0.5, n)
 

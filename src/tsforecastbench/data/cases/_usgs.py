@@ -54,8 +54,10 @@ def fetch_nwis(
     """
     start = pd.Timestamp(start).strftime("%Y-%m-%d")
     end = pd.Timestamp(end).strftime("%Y-%m-%d")
-    url = (f"{NWIS}/{service}/?format=json&sites={site}&parameterCd={param}"
-           f"&startDT={start}&endDT={end}")
+    url = (
+        f"{NWIS}/{service}/?format=json&sites={site}&parameterCd={param}"
+        f"&startDT={start}&endDT={end}"
+    )
     data = _get_json(url)
     ts = data.get("value", {}).get("timeSeries", [])
     if not ts:
@@ -82,11 +84,13 @@ def site_info(site: str) -> dict:
     header = rows[0].split("\t")
     vals = rows[2].split("\t")  # row 1 is the format spec line
     rec = dict(zip(header, vals, strict=False))
+
     def _f(x):
         try:
             return float(x)
         except (TypeError, ValueError):
             return None
+
     return {
         "name": rec.get("station_nm", site),
         "lat": _f(rec.get("dec_lat_va")),

@@ -19,7 +19,7 @@ from tsforecastbench.data.cases import _io, _ndbc
 from tsforecastbench.data.registry import get_case
 
 CONFIG = {
-    "station": "46050",        # Stonewall Bank, Oregon - long record, open-ocean swell
+    "station": "46050",  # Stonewall Bank, Oregon - long record, open-ocean swell
     "years": list(range(2015, 2024)),
 }
 
@@ -38,7 +38,9 @@ def main(argv: list[str] | None = None) -> int:
 
     out = _ndbc.build_ndbc(case, args.station, years)
     path = _io.write_canonical(case, out)
-    print(f"[waves_oregon] wrote {path} ({len(out)} rows) station {args.station} {years[0]}-{years[-1]}")
+    print(
+        f"[waves_oregon] wrote {path} ({len(out)} rows) station {args.station} {years[0]}-{years[-1]}"
+    )
     return 0
 
 

@@ -82,8 +82,8 @@ fetched **credential-free** at the station point from the Open-Meteo ERA5 archiv
 
 - Naive: `Mean`, `Persistence`, `SeasonalNaive`, `Climatology`
 - Classical: `AutoARIMA`, `AutoETS`
-- Windowed ML (Tier 1, univariate): `LinearLags` (Ridge), `LightGBM`, `MLP`
-- Windowed ML (Tier 2, **exogenous-aware**): `LinearLags+exo`, `LightGBM+exo` — feed the
+- Windowed ML (Tier 1, univariate): `LinearLags` (Ridge), `LightGBM`, `CatBoost`, `MLP`
+- Windowed ML (Tier 2, **exogenous-aware**): `LinearLags+exo`, `LightGBM+exo`, `CatBoost+exo` — feed the
   case's declared covariates (rain, wind, pressure, ...). At prediction time the horizon's
   covariate values are supplied as a **perfect-forecast proxy** (observed reanalysis stands
   in for an NWP forecast). The Tier-1/Tier-2 pair exposes how much the covariates help.

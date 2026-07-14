@@ -142,8 +142,10 @@ def _scan_coverage(sensor_zip, members):
         except Exception as exc:
             rows.append((m, f"read error: {exc}", 0, 0, 0.0))
             continue
-        dcol = next((c for c in df.columns if c.lower() in
-                     {"time", "datetime", "date", "ds", "timestamp"}), df.columns[0])
+        dcol = next(
+            (c for c in df.columns if c.lower() in {"time", "datetime", "date", "ds", "timestamp"}),
+            df.columns[0],
+        )
         lcol = _pick_col(df, ["level", "value", "depth"])
         if lcol is None:
             rows.append((m, "no level col", 0, 0, 0.0))
@@ -157,8 +159,15 @@ def _scan_coverage(sensor_zip, members):
         ds_v = ds[valid]
         # "active" = non-zero value (sensor returning a real reading, not a sentinel zero)
         active = (v[valid].abs() > 1e-6).sum()
-        rows.append((m, f"{ds_v.min().date()}..{ds_v.max().date()}",
-                     int(valid.sum()), int(active), float(active / max(1, valid.sum()))))
+        rows.append(
+            (
+                m,
+                f"{ds_v.min().date()}..{ds_v.max().date()}",
+                int(valid.sum()),
+                int(active),
+                float(active / max(1, valid.sum())),
+            )
+        )
     rows.sort(key=lambda r: r[3], reverse=True)  # by active rows desc
     print(f"\n{'member':<60s} {'span':<25s} {'rows':>10s} {'active':>10s}  active_frac")
     for m, span, total, active, frac in rows:
@@ -168,10 +177,16 @@ def _scan_coverage(sensor_zip, members):
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--list-zip", action="store_true")
-    p.add_argument("--scan", action="store_true",
-                   help="Scan every CSV member: time span + active (non-zero) row count")
-    p.add_argument("--no-era5", action="store_true",
-                   help="Skip the ERA5 temp_air fetch (leave it NaN). Offline fallback.")
+    p.add_argument(
+        "--scan",
+        action="store_true",
+        help="Scan every CSV member: time span + active (non-zero) row count",
+    )
+    p.add_argument(
+        "--no-era5",
+        action="store_true",
+        help="Skip the ERA5 temp_air fetch (leave it NaN). Offline fallback.",
+    )
     args = p.parse_args(argv)
 
     case = get_case("sewerlevel_bellinge")
@@ -194,16 +209,26 @@ def main(argv: list[str] | None = None) -> int:
         _scan_coverage(sensor_zip, members)
         return 0
 
-    level_member = next((m for m in members if CONFIG["level_member_match"].lower() in m.lower()), None)
+    level_member = next(
+        (m for m in members if CONFIG["level_member_match"].lower() in m.lower()), None
+    )
     if level_member is None:
-        print(f"[sewerlevel_bellinge] no member matched {CONFIG['level_member_match']!r}. "
-              "Run --list-zip and edit CONFIG.")
+        print(
+            f"[sewerlevel_bellinge] no member matched {CONFIG['level_member_match']!r}. "
+            "Run --list-zip and edit CONFIG."
+        )
         return 1
     lp = _io.extract_member(sensor_zip, level_member, _io.DATA_RAW / case.id / "extracted")
     level_raw = _io.read_table(lp)
 
-    dcol = next((c for c in level_raw.columns if c.lower() in
-                 {"time", "datetime", "date", "ds", "timestamp"}), level_raw.columns[0])
+    dcol = next(
+        (
+            c
+            for c in level_raw.columns
+            if c.lower() in {"time", "datetime", "date", "ds", "timestamp"}
+        ),
+        level_raw.columns[0],
+    )
     lcol = _pick_col(level_raw, CONFIG["level_col_candidates"])
     if lcol is None:
         print(f"[sewerlevel_bellinge] no level column in {list(level_raw.columns)}")
@@ -227,24 +252,38 @@ def main(argv: list[str] | None = None) -> int:
     if rain_zip is not None:
         all_members = _io.list_zip(rain_zip)
         # Data-looking files only; exclude QC / metadata / event files
-        skip_substrings = ("readme", "event", "summary", "missing", "closing",
-                           "accepted", "coordinate")
-        rmembers = [m for m in all_members
-                    if m.lower().endswith((".csv", ".txt", ".dat"))
-                    and not any(s in m.lower() for s in skip_substrings)]
-        print(f"[sewerlevel_bellinge] rain zip: {len(all_members)} members total, "
-              f"{len(rmembers)} data-series candidates")
+        skip_substrings = (
+            "readme",
+            "event",
+            "summary",
+            "missing",
+            "closing",
+            "accepted",
+            "coordinate",
+        )
+        rmembers = [
+            m
+            for m in all_members
+            if m.lower().endswith((".csv", ".txt", ".dat"))
+            and not any(s in m.lower() for s in skip_substrings)
+        ]
+        print(
+            f"[sewerlevel_bellinge] rain zip: {len(all_members)} members total, "
+            f"{len(rmembers)} data-series candidates"
+        )
         print("[sewerlevel_bellinge] candidates:")
         for m in rmembers[:15]:
             print(f"    {m}")
         # Prefer time-series files (`_ts.`) > minute > hour > other
         priority = ["_ts.", "minute", "1m", "min", "hour", "1h"]
+
         def _rank(name):
             low = name.lower()
             for i, key in enumerate(priority):
                 if key in low:
                     return i
             return len(priority)
+
         rmembers_sorted = sorted(rmembers, key=_rank)
         rm = next(
             (m for m in rmembers_sorted if CONFIG["rain_member_match"].lower() in m.lower()),
@@ -254,31 +293,43 @@ def main(argv: list[str] | None = None) -> int:
             print(f"[sewerlevel_bellinge] picked rain member: {rm}")
             rp = _io.extract_member(rain_zip, rm, _io.DATA_RAW / case.id / "extracted")
             rain = _parse_svk_rain(rp)
-            print(f"[sewerlevel_bellinge] rain parsed: {len(rain)} rows, "
-                  f"{int(rain['rain_gauge'].notna().sum())} non-NaN, "
-                  f"{int((rain['rain_gauge'] > 0).sum())} non-zero, "
-                  f"span {rain['ds'].min()} .. {rain['ds'].max()}")
+            print(
+                f"[sewerlevel_bellinge] rain parsed: {len(rain)} rows, "
+                f"{int(rain['rain_gauge'].notna().sum())} non-NaN, "
+                f"{int((rain['rain_gauge'] > 0).sum())} non-zero, "
+                f"span {rain['ds'].min()} .. {rain['ds'].max()}"
+            )
             rain.insert(0, "unique_id", case.id)
             rain = _io.resample_regular(rain, case.freq, agg={"rain_gauge": "sum"})
-            print(f"[sewerlevel_bellinge] rain resampled: {len(rain)} rows, "
-                  f"{int(rain['rain_gauge'].notna().sum())} non-NaN, "
-                  f"{int((rain['rain_gauge'] > 0).sum())} non-zero")
+            print(
+                f"[sewerlevel_bellinge] rain resampled: {len(rain)} rows, "
+                f"{int(rain['rain_gauge'].notna().sum())} non-NaN, "
+                f"{int((rain['rain_gauge'] > 0).sum())} non-zero"
+            )
             base = base.merge(rain, on=["unique_id", "ds"], how="left")
-            print(f"[sewerlevel_bellinge] after merge: rain_gauge "
-                  f"{int(base['rain_gauge'].notna().sum())} non-NaN of {len(base)}, "
-                  f"{int((base['rain_gauge'] > 0).sum())} non-zero")
+            print(
+                f"[sewerlevel_bellinge] after merge: rain_gauge "
+                f"{int(base['rain_gauge'].notna().sum())} non-NaN of {len(base)}, "
+                f"{int((base['rain_gauge'] > 0).sum())} non-zero"
+            )
             base["rain_radar_nowcast"] = base["rain_gauge"]  # placeholder until X-band added
 
     # air temperature from ERA5 at the Bellinge point (credential-free via Open-Meteo)
     if not args.no_era5 and len(base):
         from tsforecastbench.data.cases import _era5
 
-        print(f"[sewerlevel_bellinge] fetching ERA5 temp_air at "
-              f"({CONFIG['lat']},{CONFIG['lon']}) "
-              f"{base['ds'].min().date()}..{base['ds'].max().date()} via Open-Meteo ...")
+        print(
+            f"[sewerlevel_bellinge] fetching ERA5 temp_air at "
+            f"({CONFIG['lat']},{CONFIG['lon']}) "
+            f"{base['ds'].min().date()}..{base['ds'].max().date()} via Open-Meteo ..."
+        )
         era5 = _era5.fetch_era5_point(
-            CONFIG["lat"], CONFIG["lon"], base["ds"].min(), base["ds"].max(),
-            variables=["temp_air"], cache_dir=_io.DATA_RAW / case.id / "era5_cache",
+            CONFIG["lat"],
+            CONFIG["lon"],
+            base["ds"].min(),
+            base["ds"].max(),
+            variables=["temp_air"],
+            cache_dir=_io.DATA_RAW / case.id / "era5_cache",
         )
         base = _era5.merge_onto(base, era5, ["temp_air"])
         print(f"[sewerlevel_bellinge] temp_air coverage {base['temp_air'].notna().mean():.0%}")

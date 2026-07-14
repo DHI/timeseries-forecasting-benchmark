@@ -30,6 +30,51 @@ def _date_features_for(freq: str) -> list[str]:
     return ["dayofweek", "month"]
 
 
+def _sincos_features_for(freq: str) -> list:
+    """Sin/cos encoding of the dominant seasonal period for the given frequency.
+
+    MLForecast passes a DatetimeIndex to each callable (no .dt accessor).
+    """
+    f = freq.lower()
+    if f in {"1d", "d"}:
+
+        def sin_week(ds):
+            return np.sin(2 * np.pi * ds.dayofweek / 7)
+
+        def cos_week(ds):
+            return np.cos(2 * np.pi * ds.dayofweek / 7)
+
+        return [sin_week, cos_week]
+    if f in {"1h", "h"}:
+
+        def sin_day(ds):
+            return np.sin(2 * np.pi * ds.hour / 24)
+
+        def cos_day(ds):
+            return np.cos(2 * np.pi * ds.hour / 24)
+
+        return [sin_day, cos_day]
+    if f in {"15min", "15t"}:
+
+        def sin_d15(ds):
+            pos = ds.hour * 4 + ds.minute // 15
+            return np.sin(2 * np.pi * pos / 96)
+
+        def cos_d15(ds):
+            pos = ds.hour * 4 + ds.minute // 15
+            return np.cos(2 * np.pi * pos / 96)
+
+        return [sin_d15, cos_d15]
+
+    def sin_fb(ds):
+        return np.sin(2 * np.pi * ds.dayofweek / 7)
+
+    def cos_fb(ds):
+        return np.cos(2 * np.pi * ds.dayofweek / 7)
+
+    return [sin_fb, cos_fb]
+
+
 def _lags_for(freq: str) -> list[int]:
     f = freq.lower()
     if f in {"1d", "d"}:
@@ -70,6 +115,7 @@ class _WindowedMLBase(Forecaster):
     name = "WindowedML"
     max_train_steps: int | None = None
     use_exogenous: bool = False
+    use_calendar: bool = False
 
     def __init__(self):
         self.uses_exogenous = self.use_exogenous
@@ -97,17 +143,26 @@ class _WindowedMLBase(Forecaster):
         if self._exo:
             df[self._exo] = df[self._exo].ffill().fillna(0.0)
 
+        date_feats = list(_date_features_for(case.freq))
+        if self.use_calendar:
+            date_feats += _sincos_features_for(case.freq)
+
         self._fcst = MLForecast(
             models=[self._make_model()],
             freq=case.freq,
             lags=_lags_for(case.freq),
-            date_features=_date_features_for(case.freq),
+            date_features=date_feats,
         )
         self._fcst.fit(df, static_features=[])
         self._model_col = type(next(iter(self._fcst.models.values()))).__name__
 
-    def predict(self, case: Case, history: pd.DataFrame, horizon: int,
-                future_exog: pd.DataFrame | None = None) -> pd.DataFrame:
+    def predict(
+        self,
+        case: Case,
+        history: pd.DataFrame,
+        horizon: int,
+        future_exog: pd.DataFrame | None = None,
+    ) -> pd.DataFrame:
         if self._exo:
             x_df = self._future_X(case, history, horizon, future_exog)
             preds = self._fcst.predict(h=horizon, X_df=x_df)
@@ -117,8 +172,9 @@ class _WindowedMLBase(Forecaster):
         future = self._future_index(case, history["ds"].max(), horizon)
         return pd.DataFrame({"ds": future, "y_hat": y_hat})
 
-    def _future_X(self, case: Case, history: pd.DataFrame, horizon: int,
-                  future_exog: pd.DataFrame | None) -> pd.DataFrame:
+    def _future_X(
+        self, case: Case, history: pd.DataFrame, horizon: int, future_exog: pd.DataFrame | None
+    ) -> pd.DataFrame:
         """Build the mlforecast X_df of future covariate values for the horizon."""
         last = _naive_ds(history["ds"].max()).iloc[0]
         fidx = pd.date_range(start=last, periods=horizon + 1, freq=case.freq)[1:]
@@ -126,7 +182,9 @@ class _WindowedMLBase(Forecaster):
         for c in self._exo:
             fill = self._last_exo.get(c, 0.0)
             if future_exog is not None and c in future_exog.columns:
-                vals = _fit_len(pd.to_numeric(future_exog[c], errors="coerce").to_numpy(), horizon, fill)
+                vals = _fit_len(
+                    pd.to_numeric(future_exog[c], errors="coerce").to_numpy(), horizon, fill
+                )
             else:
                 vals = np.full(horizon, fill)
             data[c] = np.where(np.isfinite(vals), vals, fill)
@@ -140,6 +198,17 @@ class LightGBMForecaster(_WindowedMLBase):
         from lightgbm import LGBMRegressor
 
         return LGBMRegressor(n_estimators=200, learning_rate=0.05, verbosity=-1)
+
+
+class CatBoostForecaster(_WindowedMLBase):
+    name = "CatBoost"
+
+    def _make_model(self):
+        from catboost import CatBoostRegressor
+
+        return CatBoostRegressor(
+            iterations=200, learning_rate=0.05, verbose=False, allow_writing_files=False
+        )
 
 
 class LinearLagsForecaster(_WindowedMLBase):
@@ -173,6 +242,21 @@ class LightGBMExoForecaster(LightGBMForecaster):
     use_exogenous = True
 
 
+class LightGBMCalendarForecaster(LightGBMForecaster):
+    name = "LightGBM+calendar"
+    use_calendar = True
+
+
+class LightGBMCalendarExoForecaster(LightGBMCalendarForecaster):
+    name = "LightGBM+calendar+exo"
+    use_exogenous = True
+
+
 class LinearLagsExoForecaster(LinearLagsForecaster):
     name = "LinearLags+exo"
+    use_exogenous = True
+
+
+class CatBoostExoForecaster(CatBoostForecaster):
+    name = "CatBoost+exo"
     use_exogenous = True

@@ -58,14 +58,25 @@ class _NFBase(Forecaster):
         df = df.dropna(subset=["y"])
 
         model_cls = getattr(nfm, self.model_name)
-        model = model_cls(h=h, input_size=_input_size(case.freq, h), max_steps=_MAX_STEPS,
-                          scaler_type="standard", **self.extra_kwargs, **_TRAINER_KW)
+        model = model_cls(
+            h=h,
+            input_size=_input_size(case.freq, h),
+            max_steps=_MAX_STEPS,
+            scaler_type="standard",
+            **self.extra_kwargs,
+            **_TRAINER_KW,
+        )
         self._nf = NeuralForecast(models=[model], freq=case.freq)
         self._nf.fit(df)
         self._col = self.model_name
 
-    def predict(self, case: Case, history: pd.DataFrame, horizon: int,
-                future_exog: pd.DataFrame | None = None) -> pd.DataFrame:
+    def predict(
+        self,
+        case: Case,
+        history: pd.DataFrame,
+        horizon: int,
+        future_exog: pd.DataFrame | None = None,
+    ) -> pd.DataFrame:
         preds = self._nf.predict()
         y_hat = preds[self._col].to_numpy().astype(np.float64)
         if len(y_hat) < horizon:

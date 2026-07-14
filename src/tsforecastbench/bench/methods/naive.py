@@ -22,14 +22,36 @@ def _default_season_length(freq: str) -> int:
     return 24
 
 
+def _seasonal_periods(freq: str) -> list[int]:
+    """Natural multi-seasonal period set for a frequency, for MSTL-style decomposition.
+
+    Returns the dominant cycles (shortest first): e.g. hourly data has both a daily (24)
+    and weekly (168) cycle. Callers that fit a decomposition must still drop periods the
+    training series is too short to support (STL needs >=2 full cycles of each period).
+    """
+    f = freq.lower()
+    if f in {"1d", "d"}:
+        return [7, 365]
+    if f in {"1h", "h"}:
+        return [24, 168]
+    if f in {"15min", "15t"}:
+        return [96, 672]
+    return [_default_season_length(freq)]
+
+
 class MeanBaseline(Forecaster):
     name = "Mean"
 
     def fit(self, case: Case, train: pd.DataFrame) -> None:
         self._mean = float(train["y"].mean())
 
-    def predict(self, case: Case, history: pd.DataFrame, horizon: int,
-                future_exog: pd.DataFrame | None = None) -> pd.DataFrame:
+    def predict(
+        self,
+        case: Case,
+        history: pd.DataFrame,
+        horizon: int,
+        future_exog: pd.DataFrame | None = None,
+    ) -> pd.DataFrame:
         last_ds = history["ds"].max()
         future = self._future_index(case, last_ds, horizon)
         return pd.DataFrame({"ds": future, "y_hat": np.full(horizon, self._mean)})
@@ -41,8 +63,13 @@ class Persistence(Forecaster):
     def fit(self, case: Case, train: pd.DataFrame) -> None:
         pass
 
-    def predict(self, case: Case, history: pd.DataFrame, horizon: int,
-                future_exog: pd.DataFrame | None = None) -> pd.DataFrame:
+    def predict(
+        self,
+        case: Case,
+        history: pd.DataFrame,
+        horizon: int,
+        future_exog: pd.DataFrame | None = None,
+    ) -> pd.DataFrame:
         last_value = float(history["y"].iloc[-1])
         last_ds = history["ds"].max()
         future = self._future_index(case, last_ds, horizon)
@@ -59,8 +86,13 @@ class SeasonalNaive(Forecaster):
         self._s = self.season_length or _default_season_length(case.freq)
         self._tail = train["y"].tail(self._s).to_numpy()
 
-    def predict(self, case: Case, history: pd.DataFrame, horizon: int,
-                future_exog: pd.DataFrame | None = None) -> pd.DataFrame:
+    def predict(
+        self,
+        case: Case,
+        history: pd.DataFrame,
+        horizon: int,
+        future_exog: pd.DataFrame | None = None,
+    ) -> pd.DataFrame:
         s = self._s
         h_tail = history["y"].tail(s).to_numpy()
         if len(h_tail) < s:
@@ -100,8 +132,13 @@ class Climatology(Forecaster):
         self._clim = s.groupby(keys).mean()
         self._global_mean = float(s.mean())
 
-    def predict(self, case: Case, history: pd.DataFrame, horizon: int,
-                future_exog: pd.DataFrame | None = None) -> pd.DataFrame:
+    def predict(
+        self,
+        case: Case,
+        history: pd.DataFrame,
+        horizon: int,
+        future_exog: pd.DataFrame | None = None,
+    ) -> pd.DataFrame:
         last_ds = history["ds"].max()
         future = self._future_index(case, last_ds, horizon)
         keys = self._key(pd.DatetimeIndex(future))

@@ -1,6 +1,6 @@
 id = "sewerlevel_bellinge"
 domain = "urban_drainage"
-notes = "Sewer water level at sensor G71F05R LevelInlet (the original F04R Level1 instance was only 20% active over 2010-2020 per --scan; G71F05R LevelInlet is 100% active over the same span). Bellinge combined drainage system, Odense DK. Native sampling 1-min, resampled to 15-min. Rain gauge + X-band radar nowcast as exogenous."
+notes = "Sewer water level at sensor G71F05R LevelInlet (the original F04R Level1 instance was only 20% active over 2010-2020 per --scan; G71F05R LevelInlet is 100% active over the same span). Bellinge combined drainage system, Odense DK. Native sampling 1-min, resampled to 15-min. Rain gauge + X-band radar nowcast as exogenous. Necessary exogenous: rain_gauge and rain_radar_nowcast — combined-sewer surcharge is rainfall-driven; optional: temp_air (minor secondary effect). Assumption, not yet validated against measured skill."
 
 target = "level_m"
 target_unit = "m"
@@ -12,13 +12,16 @@ input_window = "7D"
 
 exogenous = ["rain_gauge", "temp_air"]
 exogenous_known_future = ["rain_radar_nowcast"]
+necessary_exogenous = ["rain_gauge", "rain_radar_nowcast"]
 static_attrs = ["catchment_area_ha", "impervious_frac"]
 data_type = "observed"
+split_mode = "fraction"
+split_fraction = [0.7, 0.85]
 
 [splits]
-train_end = 2018-12-31
-val_end = 2019-12-31
-test_end = 2020-12-31
+train_end = 2017-09-17
+val_end = 2019-03-27
+test_end = 2020-10-12
 
 [source]
 name = "Bellinge"

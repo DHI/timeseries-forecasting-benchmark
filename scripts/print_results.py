@@ -16,11 +16,17 @@ def main() -> int:
     if m.exists():
         df = pd.read_parquet(m)
         print("\n=== Pilot matrix: MASE (lower is better; 1.0 = seasonal naive) ===")
-        print(df[df["metric"] == "MASE"]
-              .pivot(index="case_id", columns="method", values="value").round(2))
+        print(
+            df[df["metric"] == "MASE"]
+            .pivot(index="case_id", columns="method", values="value")
+            .round(2)
+        )
         print("\n=== Pilot matrix: Skill vs Persistence (higher is better; 0 = no better) ===")
-        print(df[df["metric"] == "Skill_vs_Persistence"]
-              .pivot(index="case_id", columns="method", values="value").round(2))
+        print(
+            df[df["metric"] == "Skill_vs_Persistence"]
+            .pivot(index="case_id", columns="method", values="value")
+            .round(2)
+        )
         print("\n=== Fraction of test window observed (NaN-masked) ===")
         print(df.groupby("case_id")["frac_finite_test"].first().round(3).to_string())
         print("\n=== Method runtimes (s) ===")

@@ -1,6 +1,6 @@
 id = "groundwater_yorktown"
 domain = "groundwater"
-notes = "Daily groundwater level (depth to water, m below land surface) at USGS well We-5020, Yorktown Heights NY (411421073481202), a shallow water-table aquifer. Slow recharge-driven dynamics: persistence is a hard baseline; skill at longer horizons comes from antecedent precipitation. Depth converted ft->m. Exogenous: ERA5 precipitation + air temperature (Open-Meteo). Covers the water-resources domain (cf. GEMS-GER in the plan)."
+notes = "Daily groundwater level (depth to water, m below land surface) at USGS well We-5020, Yorktown Heights NY (411421073481202), a shallow water-table aquifer. Slow recharge-driven dynamics: persistence is a hard baseline; skill at longer horizons comes from antecedent precipitation. Depth converted ft->m. Exogenous: ERA5 precipitation + air temperature (Open-Meteo). Covers the water-resources domain (cf. GEMS-GER in the plan). Necessary exogenous: precip, per the antecedent-precipitation skill claim above; optional: temp_air, which the original note does not credit with skill — optional-status assumption, not confirmed."
 
 target = "gwl_depth_m"
 target_unit = "m"
@@ -12,12 +12,15 @@ input_window = "90D"
 
 exogenous = ["precip", "temp_air"]
 exogenous_known_future = ["precip", "temp_air"]
+necessary_exogenous = ["precip"]
 static_attrs = ["lat", "lon"]
 data_type = "mixed"
+split_mode = "fraction"
+split_fraction = [0.7, 0.85]
 
 [splits]
-train_end = 2018-12-31
-val_end = 2019-12-31
+train_end = 2017-02-06
+val_end = 2019-01-19
 test_end = 2020-12-31
 
 [source]
