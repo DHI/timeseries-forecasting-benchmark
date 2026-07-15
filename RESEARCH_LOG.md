@@ -8,6 +8,22 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-15 — Started a React port of the results-matrix app for GitHub Pages
+
+`app/app.py` only runs as a live Dash server, so it can't be hosted on GitHub Pages. Decided to
+port it to React + TypeScript in a new `web/` directory, built as static files and deployed via
+GitHub Actions, with `app/app.py` staying as-is. Key design call: rather than reimplementing
+`app/data.py`'s statistics client-side (KDE curves, per-origin MASE/skill-score, method-family
+introspection), a new Python export script will precompute everything into static JSON — the React
+app is a pure presentation layer, same as `docs/figures/benchmark/matrix_*.png` is already a
+precomputed artifact of the same data. This also means the forecast-snapshot panel, whose source
+parquet (`results/pilot_snapshots.parquet`) isn't committed today, will ship as a new bounded and
+committed JSON artifact. Since GitHub Pages only serves one site per repo and the existing
+`pages.yml` already deploys a separate marimo EDA browser there, the React app will take the root
+Pages URL and the EDA site moves to `/eda/` under one combined deploy workflow — anyone relying on
+the EDA site's current root URL should expect it to move. Scaffolding (Vite+React+TS, oxlint,
+Prettier, Vitest) is in place in `web/`; the data export script and real matrix component are next.
+
 ## 2026-07-15 — Gave Chronos-2, TimesFM 2.5 and Moirai-2.0 `+exo` variants
 
 Closed the covariate follow-up flagged in the 2026-07-14 FM entry: each of the three
