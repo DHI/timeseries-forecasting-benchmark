@@ -5,6 +5,7 @@ import { MetricDropdown } from './components/Sidebar/MetricDropdown';
 import { ToggleExogenous } from './components/Sidebar/ToggleExogenous';
 import { ToggleGlobal } from './components/Sidebar/ToggleGlobal';
 import { MatrixGraph } from './components/Matrix/MatrixGraph';
+import { CasePanel } from './components/CasePanel/CasePanel';
 import { DOMAIN_RESTRICTED_METRICS } from './data/metricConfig';
 import {
   casesEligibleForMetric,
@@ -78,6 +79,7 @@ function AppRoot({
     <AppStateProvider initial={initial}>
       <MainLayout
         scores={scores}
+        cases={cases}
         domainOpts={domainOpts}
         familyOpts={familyOpts}
         metricOpts={metricOpts}
@@ -89,12 +91,14 @@ function AppRoot({
 
 function MainLayout({
   scores,
+  cases,
   domainOpts,
   familyOpts,
   metricOpts,
   domainMetrics,
 }: {
   scores: ScoreRow[];
+  cases: CaseRegistry;
   domainOpts: string[];
   familyOpts: string[];
   metricOpts: string[];
@@ -210,6 +214,29 @@ function MainLayout({
           onCellClick={handleCellClick}
         />
       </main>
+      {state.selection.case_id && cases[state.selection.case_id] && (
+        <div
+          style={{
+            flex: '0 0 460px',
+            width: 460,
+            boxSizing: 'border-box',
+            position: 'sticky',
+            top: 0,
+            maxHeight: '100vh',
+            padding: 16,
+            borderLeft: '1px solid var(--border)',
+            overflowY: 'auto',
+          }}
+        >
+          <CasePanel
+            caseId={state.selection.case_id}
+            caseMeta={cases[state.selection.case_id]!}
+            scores={scores}
+            methods={state.selection.methods}
+            showGlobal={state.showGlobal}
+          />
+        </div>
+      )}
     </div>
   );
 }
