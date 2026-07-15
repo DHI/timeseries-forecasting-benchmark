@@ -23,4 +23,23 @@ describe('appReducer', () => {
     const expanded = appReducer(collapsed, { type: 'TOGGLE_SIDEBAR' });
     expect(expanded.sidebarCollapsed).toBe(false);
   });
+
+  it('toggles the global-history and exogenous toggles independently', () => {
+    let state = initialAppState();
+    state = appReducer(state, { type: 'TOGGLE_GLOBAL' });
+    expect(state.showGlobal).toBe(true);
+    expect(state.showExogenous).toBe(false);
+    state = appReducer(state, { type: 'TOGGLE_EXOGENOUS' });
+    expect(state.showGlobal).toBe(true);
+    expect(state.showExogenous).toBe(true);
+  });
+
+  it('delegates selection actions to nextSelection', () => {
+    const state = appReducer(initialAppState(), {
+      type: 'CELL_CLICK',
+      case_id: 'case_a',
+      method: 'LightGBM',
+    });
+    expect(state.selection).toEqual({ case_id: 'case_a', methods: ['LightGBM'] });
+  });
 });

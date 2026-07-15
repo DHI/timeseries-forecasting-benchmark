@@ -1,18 +1,26 @@
 import { createContext, useContext, useReducer } from 'react';
 import type { Dispatch, ReactNode } from 'react';
+import { EMPTY_SELECTION, nextSelection } from './selectionReducer';
+import type { SelectionAction, SelectionState } from './selectionReducer';
 
 export type AppState = {
   metric: string;
   domains: string[];
   families: string[];
   sidebarCollapsed: boolean;
+  showGlobal: boolean;
+  showExogenous: boolean;
+  selection: SelectionState;
 };
 
 export type AppAction =
   | { type: 'SET_METRIC'; metric: string }
   | { type: 'SET_DOMAINS'; domains: string[] }
   | { type: 'SET_FAMILIES'; families: string[] }
-  | { type: 'TOGGLE_SIDEBAR' };
+  | { type: 'TOGGLE_SIDEBAR' }
+  | { type: 'TOGGLE_GLOBAL' }
+  | { type: 'TOGGLE_EXOGENOUS' }
+  | SelectionAction;
 
 export function appReducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
@@ -24,6 +32,14 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, families: action.families };
     case 'TOGGLE_SIDEBAR':
       return { ...state, sidebarCollapsed: !state.sidebarCollapsed };
+    case 'TOGGLE_GLOBAL':
+      return { ...state, showGlobal: !state.showGlobal };
+    case 'TOGGLE_EXOGENOUS':
+      return { ...state, showExogenous: !state.showExogenous };
+    case 'CELL_CLICK':
+    case 'REMOVE_CHIP':
+    case 'CLEAR_SELECTION':
+      return { ...state, selection: nextSelection(state.selection, action) };
     default:
       return state;
   }
@@ -35,6 +51,9 @@ export function initialAppState(overrides: Partial<AppState> = {}): AppState {
     domains: [],
     families: [],
     sidebarCollapsed: false,
+    showGlobal: false,
+    showExogenous: false,
+    selection: EMPTY_SELECTION,
     ...overrides,
   };
 }
