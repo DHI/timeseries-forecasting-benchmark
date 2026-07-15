@@ -39,7 +39,15 @@ renders them plus the case-summary/training-time markdown, matching `render_case
 side effect worth knowing: `surge_cuxhaven`'s test split alone is ~32k points, pushing `cases.json`
 to ~5MB — still fine for a static site (gzip compresses numeric JSON well, and the Dash app already
 pays this same "no decimation" cost when rendering it server-side), but worth revisiting if more
-cases at that scale get added. The snapshot panel (forecast overlays, method info) is next.
+cases at that scale get added. The forecast-snapshot panel landed last: a new
+`snapshots/<case_id>.json` per case (2.8MB total) carries every rolling origin's actual-series
+window and every method's prediction, plus curation (best/median/worst by whatever metric/method
+is anchored) precomputed via `snapshot.curate_origins` so the browser never re-derives MASE/
+skill-score. Methods with a real extended-history fit or a "+exo" sibling get both variants, and
+the client resolves which one to show the same way the matrix does (`showGlobal`/`showExogenous`
+toggles). This closes the last functional gap from `app/app.py` — matrix, case detail, and
+forecast snapshots are all ported. What's left is CI/deploy: a combined GitHub Actions workflow
+that also moves the existing marimo EDA site to `/eda/`.
 
 ## 2026-07-15 — Gave Chronos-2, TimesFM 2.5 and Moirai-2.0 `+exo` variants
 
