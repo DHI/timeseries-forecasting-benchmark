@@ -491,6 +491,9 @@ _CASE_PLOT_CAPTION_STYLE = {
     "margin": "12px 0 4px 0",
     "flex": "0 0 auto",
 }
+# Shared look for every collapsible subsection header in the detail column (training/test
+# data, case summary, prediction snapshots), so the three read as one consistent pattern.
+_SUBSECTION_SUMMARY_STYLE = {"cursor": "pointer", "fontWeight": "bold", "fontSize": "1em"}
 
 # Full-width strip docked to the bottom of the viewport (sticky, not fixed, so it scrolls
 # into place with the rest of the page rather than always overlapping content) — one card
@@ -823,17 +826,20 @@ app.layout = html.Div(
                             id="case-panel",
                             style=_CASE_PANEL_HIDDEN_STYLE,
                             children=[
+                                html.Div(
+                                    id="case-panel-title",
+                                    style={
+                                        "fontWeight": "bold",
+                                        "fontSize": "1.1em",
+                                        "margin": "0 0 4px 0",
+                                    },
+                                ),
                                 html.Details(
                                     open=True,
                                     children=[
                                         html.Summary(
-                                            id="case-panel-title",
-                                            style={
-                                                "cursor": "pointer",
-                                                "fontWeight": "bold",
-                                                "fontSize": "1.1em",
-                                                "margin": "0 0 4px 0",
-                                            },
+                                            "Training & test data",
+                                            style=_SUBSECTION_SUMMARY_STYLE,
                                         ),
                                         html.P(
                                             id="case-training-caption",
@@ -874,18 +880,19 @@ app.layout = html.Div(
                                             config={"displayModeBar": False},
                                             style={"flex": "0 0 auto", "width": "100%"},
                                         ),
-                                        html.Hr(style={"flex": "0 0 auto", "width": "100%"}),
-                                        html.P(
+                                    ],
+                                ),
+                                html.Hr(style={"flex": "0 0 auto", "width": "100%"}),
+                                html.Details(
+                                    open=True,
+                                    children=[
+                                        html.Summary(
                                             "Case summary",
-                                            style={
-                                                "color": "#666",
-                                                "fontSize": "0.9em",
-                                                "flex": "0 0 auto",
-                                            },
+                                            style=_SUBSECTION_SUMMARY_STYLE,
                                         ),
                                         html.Div(
                                             id="case-summary",
-                                            style={"flex": "0 0 auto"},
+                                            style={"flex": "0 0 auto", "marginTop": "4px"},
                                         ),
                                     ],
                                 ),
@@ -914,37 +921,45 @@ app.layout = html.Div(
                                     id="snapshot-panel",
                                     style={"display": "none"},
                                     children=[
-                                        html.H2(id="snapshot-title"),
-                                        html.P(
-                                            id="snapshot-caption",
-                                            style={
-                                                "color": "#666",
-                                                "fontSize": "0.85em",
-                                                "margin": "0 0 8px 0",
-                                            },
-                                        ),
-                                        html.Div(
-                                            style={
-                                                "display": "flex",
-                                                "gap": "8px",
-                                                "alignItems": "center",
-                                                "flexWrap": "wrap",
-                                                "marginBottom": "8px",
-                                            },
+                                        html.Details(
+                                            open=True,
                                             children=[
-                                                html.Span(
-                                                    id="snapshot-chips",
-                                                    style={"display": "contents"},
+                                                html.Summary(
+                                                    id="snapshot-title",
+                                                    style=_SUBSECTION_SUMMARY_STYLE,
                                                 ),
-                                                html.Button(
-                                                    "Clear",
-                                                    id="clear-btn",
-                                                    n_clicks=0,
-                                                    style={"marginLeft": "auto"},
+                                                html.P(
+                                                    id="snapshot-caption",
+                                                    style={
+                                                        "color": "#666",
+                                                        "fontSize": "0.85em",
+                                                        "margin": "0 0 8px 0",
+                                                    },
                                                 ),
+                                                html.Div(
+                                                    style={
+                                                        "display": "flex",
+                                                        "gap": "8px",
+                                                        "alignItems": "center",
+                                                        "flexWrap": "wrap",
+                                                        "marginBottom": "8px",
+                                                    },
+                                                    children=[
+                                                        html.Span(
+                                                            id="snapshot-chips",
+                                                            style={"display": "contents"},
+                                                        ),
+                                                        html.Button(
+                                                            "Clear",
+                                                            id="clear-btn",
+                                                            n_clicks=0,
+                                                            style={"marginLeft": "auto"},
+                                                        ),
+                                                    ],
+                                                ),
+                                                dcc.Graph(id="snapshot-graph"),
                                             ],
                                         ),
-                                        dcc.Graph(id="snapshot-graph"),
                                     ],
                                 ),
                             ],
