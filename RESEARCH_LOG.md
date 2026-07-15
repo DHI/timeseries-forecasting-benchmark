@@ -8,6 +8,21 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-15 — Closed two React/Dash parity gaps: method-info panel placement, missing benchmark-design text
+
+Found two spots where the React port, despite being logged as feature-complete, didn't actually
+match `app/app.py`. First, the method-info cards (family, description, exogenous usage,
+implementation detail per selected method) were rendered inline at the bottom of the snapshot
+panel, inside the right-hand detail column — unlike Dash, where they sit in their own strip docked
+to the bottom of the viewport, spanning the width of the matrix column. Moved that block into a new
+`MethodInfoPanel` component, rendered as the last child of the matrix column with `position:
+sticky; bottom: 0`, matching the Dash layout; `SnapshotPanel` no longer needs the method registry.
+Second, the static "Benchmark Design" writeup below the matrix (splits, curation, model
+parameters, case description, exogenous inputs) was missing from React entirely — ported verbatim
+into a new `BenchmarkDesign` component. Both are a reminder that "closes out the migration" in the
+earlier entry meant functional parity for the interactive panels, not a line-by-line diff against
+`app.py`'s layout.
+
 ## 2026-07-15 — Started a React port of the results-matrix app for GitHub Pages
 
 `app/app.py` only runs as a live Dash server, so it can't be hosted on GitHub Pages. Decided to

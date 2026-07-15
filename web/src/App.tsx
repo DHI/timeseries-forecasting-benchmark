@@ -5,7 +5,9 @@ import { MetricDropdown } from './components/Sidebar/MetricDropdown';
 import { ToggleExogenous } from './components/Sidebar/ToggleExogenous';
 import { ToggleGlobal } from './components/Sidebar/ToggleGlobal';
 import { MatrixGraph } from './components/Matrix/MatrixGraph';
+import { BenchmarkDesign } from './components/BenchmarkDesign/BenchmarkDesign';
 import { CasePanel } from './components/CasePanel/CasePanel';
+import { MethodInfoPanel } from './components/MethodInfoPanel/MethodInfoPanel';
 import { SnapshotPanel } from './components/SnapshotPanel/SnapshotPanel';
 import { DOMAIN_RESTRICTED_METRICS } from './data/metricConfig';
 import {
@@ -223,6 +225,15 @@ function MainLayout({
           showExogenous={state.showExogenous}
           onCellClick={handleCellClick}
         />
+        <BenchmarkDesign />
+        <MethodInfoPanel
+          caseId={state.selection.case_id}
+          caseMeta={state.selection.case_id ? cases[state.selection.case_id] : undefined}
+          methodsRegistry={methods}
+          scores={scores}
+          methods={state.selection.methods}
+          showExogenous={state.showExogenous}
+        />
       </main>
       {state.selection.case_id && cases[state.selection.case_id] && (
         <div
@@ -249,7 +260,6 @@ function MainLayout({
           <SnapshotPanel
             caseId={state.selection.case_id}
             caseMeta={cases[state.selection.case_id]!}
-            methodsRegistry={methods}
             scores={scores}
             methods={state.selection.methods}
             metric={state.metric}

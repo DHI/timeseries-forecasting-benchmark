@@ -1,9 +1,8 @@
 import { useJsonData } from '../../data/loadData';
 import { effectiveMethod } from '../../data/selectors';
 import { MethodChips } from './MethodChips';
-import { MethodInfoCard } from './MethodInfoCard';
 import { SnapshotGrid } from './SnapshotGrid';
-import type { CaseMeta, MethodRegistry, ScoreRow, SnapshotBundle } from '../../types/data';
+import type { CaseMeta, ScoreRow, SnapshotBundle } from '../../types/data';
 
 const SUMMARY_STYLE = { cursor: 'pointer', fontWeight: 'bold' as const, fontSize: '1em' };
 const CAPTION_STYLE = { color: '#666', fontSize: '0.85em', margin: '0 0 8px 0' };
@@ -11,7 +10,6 @@ const CAPTION_STYLE = { color: '#666', fontSize: '0.85em', margin: '0 0 8px 0' }
 type Props = {
   caseId: string;
   caseMeta: CaseMeta;
-  methodsRegistry: MethodRegistry;
   scores: ScoreRow[];
   methods: string[];
   metric: string;
@@ -22,12 +20,10 @@ type Props = {
 };
 
 /** Below the case panel: the curated forecast-snapshot grid for the selected case and up
- * to 3 selected methods, plus a method-info card per method. Port of app/app.py's
- * `render_panel` / `render_method_info_panel`. */
+ * to 3 selected methods. Port of app/app.py's `render_panel`. */
 export function SnapshotPanel({
   caseId,
   caseMeta,
-  methodsRegistry,
   scores,
   methods,
   metric,
@@ -89,26 +85,6 @@ export function SnapshotPanel({
           showGlobal={showGlobal}
         />
       </details>
-      <div
-        style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: 16,
-          marginTop: 16,
-          paddingTop: 12,
-          borderTop: '1px solid var(--border)',
-        }}
-      >
-        {effectiveMethods.map((method, i) => (
-          <MethodInfoCard
-            key={method}
-            method={method}
-            index={i}
-            caseMeta={caseMeta}
-            methodMeta={methodsRegistry[method]}
-          />
-        ))}
-      </div>
     </div>
   );
 }
