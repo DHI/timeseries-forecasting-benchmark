@@ -250,8 +250,11 @@ def test_methods_package_imports_without_fm_deps():
 
     assert hasattr(m, "ChronosForecaster")
     assert hasattr(m, "Chronos2Forecaster")
+    assert hasattr(m, "Chronos2ExoForecaster")
     assert hasattr(m, "TimesFMForecaster")
+    assert hasattr(m, "TimesFMExoForecaster")
     assert hasattr(m, "Moirai2Forecaster")
+    assert hasattr(m, "Moirai2ExoForecaster")
 
 
 def test_chronos_runs_if_installed():
@@ -270,6 +273,25 @@ def test_chronos2_runs_if_installed():
     assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
 
 
+def test_chronos2_exo_runs_if_installed():
+    """+exo variant conditions on waves_oregon's declared covariates via predict_df."""
+    pytest.importorskip("chronos")
+    from tsforecastbench.bench.methods import Chronos2ExoForecaster
+
+    res = run_case(get_case("waves_oregon"), [Chronos2ExoForecaster()], prefer_synth=True)
+    assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
+    assert res["uses_exogenous"].all()
+
+
+def test_chronos2_exo_on_univariate_case():
+    """+exo variant reduces to univariate (no crash) on a case with no covariates."""
+    pytest.importorskip("chronos")
+    from tsforecastbench.bench.methods import Chronos2ExoForecaster
+
+    res = run_case(get_case("demand_ltown"), [Chronos2ExoForecaster()], prefer_synth=True)
+    assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
+
+
 def test_timesfm_runs_if_installed():
     pytest.importorskip("timesfm")
     from tsforecastbench.bench.methods import TimesFMForecaster
@@ -278,11 +300,49 @@ def test_timesfm_runs_if_installed():
     assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
 
 
+def test_timesfm_exo_runs_if_installed():
+    """+exo variant fits an xreg regressor on waves_oregon's declared covariates."""
+    pytest.importorskip("timesfm")
+    from tsforecastbench.bench.methods import TimesFMExoForecaster
+
+    res = run_case(get_case("waves_oregon"), [TimesFMExoForecaster()], prefer_synth=True)
+    assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
+    assert res["uses_exogenous"].all()
+
+
+def test_timesfm_exo_on_univariate_case():
+    """+exo variant reduces to univariate (no crash) on a case with no covariates."""
+    pytest.importorskip("timesfm")
+    from tsforecastbench.bench.methods import TimesFMExoForecaster
+
+    res = run_case(get_case("demand_ltown"), [TimesFMExoForecaster()], prefer_synth=True)
+    assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
+
+
 def test_moirai2_runs_if_installed():
     pytest.importorskip("uni2ts")
     from tsforecastbench.bench.methods import Moirai2Forecaster
 
     res = run_case(get_case("waves_oregon"), [Moirai2Forecaster()], prefer_synth=True)
+    assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
+
+
+def test_moirai2_exo_runs_if_installed():
+    """+exo variant feeds declared covariates in as feat_dynamic_real."""
+    pytest.importorskip("uni2ts")
+    from tsforecastbench.bench.methods import Moirai2ExoForecaster
+
+    res = run_case(get_case("waves_oregon"), [Moirai2ExoForecaster()], prefer_synth=True)
+    assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
+    assert res["uses_exogenous"].all()
+
+
+def test_moirai2_exo_on_univariate_case():
+    """+exo variant reduces to univariate (no crash) on a case with no covariates."""
+    pytest.importorskip("uni2ts")
+    from tsforecastbench.bench.methods import Moirai2ExoForecaster
+
+    res = run_case(get_case("demand_ltown"), [Moirai2ExoForecaster()], prefer_synth=True)
     assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
 
 
