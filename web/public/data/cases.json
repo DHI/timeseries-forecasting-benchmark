@@ -1,0 +1,294 @@
+{
+  "demand_ltown": {
+    "domain": "water_distribution",
+    "target": "inlet_flow",
+    "target_unit": "L/s",
+    "freq": "1h",
+    "horizon_primary": "24h",
+    "exogenous": [],
+    "exogenous_known_future": [],
+    "necessary_exogenous": [],
+    "exo_tier": "none",
+    "domain_metrics": [],
+    "source": {
+      "name": "BattLeDIM L-Town",
+      "url": "https://battledim.ucy.ac.cy/"
+    },
+    "notes": "Inlet flow into the L-Town water distribution network (BattLeDIM 2020). Synthetic SCADA generated from EPANET simulations of a real Cyprus network, 2018 historical + 2019 evaluation. 5-min sampling resampled to hourly. Demand is strongly diurnal/weekly; calendar features dominate. Original BattLeDIM 2020 competition used Jan\u2013Sep 2018 as training and all of 2019 as evaluation; split changed to fraction [0.7, 0.85] for benchmark consistency \u2014 the competition-aligned split is no longer reproduced."
+  },
+  "discharge_flashy_catskills": {
+    "domain": "hydrology",
+    "target": "discharge",
+    "target_unit": "m3/s",
+    "freq": "1D",
+    "horizon_primary": "7D",
+    "exogenous": [
+      "precip",
+      "temp_air"
+    ],
+    "exogenous_known_future": [
+      "precip",
+      "temp_air"
+    ],
+    "necessary_exogenous": [
+      "precip"
+    ],
+    "exo_tier": "necessary",
+    "domain_metrics": [
+      "NSE",
+      "KGE"
+    ],
+    "source": {
+      "name": "USGS NWIS 01362500",
+      "url": "https://waterdata.usgs.gov/monitoring-location/01362500/"
+    },
+    "notes": "Daily river discharge at Esopus Creek at Coldbrook, NY (USGS 01362500), a rainfall/snowmelt-driven Catskills river. Deliberate flashy contrast to the groundwater-dominated discharge_lowland_denmark: fast storm response, Richards-Baker flashiness ~0.3 vs the near-persistence DK lowland catchment. Discharge converted cfs->m3/s. Exogenous: ERA5 precipitation + air temperature at the gauge (Open-Meteo), as a perfect-forecast proxy. Necessary exogenous: precip (drives the flashy storm-response signal this case is built around); optional: temp_air (secondary \u2014 snowmelt plays a smaller role here than in discharge_snowmelt_yosemite). Assumption, not yet validated against measured skill."
+  },
+  "discharge_lowland_denmark": {
+    "domain": "hydrology",
+    "target": "q_obs",
+    "target_unit": "mm/d",
+    "freq": "1D",
+    "horizon_primary": "7D",
+    "exogenous": [
+      "precip",
+      "temp",
+      "pet"
+    ],
+    "exogenous_known_future": [],
+    "necessary_exogenous": [],
+    "exo_tier": "optional",
+    "domain_metrics": [
+      "NSE",
+      "KGE"
+    ],
+    "source": {
+      "name": "CAMELS-DK",
+      "url": "https://essd.copernicus.org/articles/17/1551/2025/"
+    },
+    "notes": "Daily river discharge at one Danish lowland catchment from CAMELS-DK. Groundwater-dominated. Pilot uses a single representative gauge until station selection is finalised. Necessary exogenous: none \u2014 slow, groundwater-dominated baseflow persistence is expected to forecast reasonably well without exogenous input, making this the deliberate exo-available-but-not-essential contrast to the flashy/melt hydrology cases. precip, temp, and pet are treated as optional enrichments. Assumption, not yet validated against measured skill."
+  },
+  "discharge_saugeen": {
+    "domain": "hydrology",
+    "target": "discharge",
+    "target_unit": "m3/s",
+    "freq": "1D",
+    "horizon_primary": "30D",
+    "exogenous": [],
+    "exogenous_known_future": [],
+    "necessary_exogenous": [],
+    "exo_tier": "none",
+    "domain_metrics": [],
+    "source": {
+      "name": "Saugeen River Flow (SaugeenDay) \u2014 Monash Time Series Forecasting Archive",
+      "url": "https://zenodo.org/records/4656058"
+    },
+    "notes": "Daily river discharge at Saugeen River near Walkerton, Ontario, Canada (WSC 02FC002). A canonical benchmark series from the Monash Time Series Forecasting Archive (Godahewa et al., 2021): 65 years of record (1915\u20131979), univariate. The drainage basin is a low-relief agricultural plain on the Bruce Peninsula; the regime is dominated by spring snowmelt (April\u2013May) and late-summer low flows. A useful complement to discharge_flashy_catskills: longer record, different climate, no exogenous forcing."
+  },
+  "discharge_snowmelt_yosemite": {
+    "domain": "hydrology",
+    "target": "discharge",
+    "target_unit": "m3/s",
+    "freq": "1D",
+    "horizon_primary": "7D",
+    "exogenous": [
+      "temp_air",
+      "precip"
+    ],
+    "exogenous_known_future": [
+      "temp_air",
+      "precip"
+    ],
+    "necessary_exogenous": [
+      "temp_air"
+    ],
+    "exo_tier": "necessary",
+    "domain_metrics": [
+      "NSE",
+      "KGE"
+    ],
+    "source": {
+      "name": "USGS NWIS 11264500",
+      "url": "https://waterdata.usgs.gov/monitoring-location/11264500/"
+    },
+    "notes": "Daily snowmelt-dominated river discharge at the Merced River at Happy Isles, Yosemite CA (USGS 11264500). A third hydrology regime alongside groundwater-dominated discharge_lowland_denmark and flashy discharge_flashy_catskills: a smooth, strongly seasonal melt hydrograph driven by air temperature (snowmelt) more than by individual rain events. Tests whether method ranking holds across slow / flashy / snowmelt dynamics. Discharge cfs->m3/s; exogenous ERA5 air temperature (primary, melt) + precipitation (Open-Meteo). Necessary exogenous: temp_air; optional: precip \u2014 per the primary/secondary distinction above."
+  },
+  "groundwater_yorktown": {
+    "domain": "groundwater",
+    "target": "gwl_depth_m",
+    "target_unit": "m",
+    "freq": "1D",
+    "horizon_primary": "30D",
+    "exogenous": [
+      "precip",
+      "temp_air"
+    ],
+    "exogenous_known_future": [
+      "precip",
+      "temp_air"
+    ],
+    "necessary_exogenous": [
+      "precip"
+    ],
+    "exo_tier": "necessary",
+    "domain_metrics": [],
+    "source": {
+      "name": "USGS NWIS 411421073481202 (We-5020)",
+      "url": "https://waterdata.usgs.gov/monitoring-location/411421073481202/"
+    },
+    "notes": "Daily groundwater level (depth to water, m below land surface) at USGS well We-5020, Yorktown Heights NY (411421073481202), a shallow water-table aquifer. Slow recharge-driven dynamics: persistence is a hard baseline; skill at longer horizons comes from antecedent precipitation. Depth converted ft->m. Exogenous: ERA5 precipitation + air temperature (Open-Meteo). Covers the water-resources domain (cf. GEMS-GER in the plan). Necessary exogenous: precip, per the antecedent-precipitation skill claim above; optional: temp_air, which the original note does not credit with skill \u2014 optional-status assumption, not confirmed."
+  },
+  "sewerlevel_bellinge": {
+    "domain": "urban_drainage",
+    "target": "level_m",
+    "target_unit": "m",
+    "freq": "15min",
+    "horizon_primary": "6h",
+    "exogenous": [
+      "rain_gauge",
+      "temp_air"
+    ],
+    "exogenous_known_future": [
+      "rain_radar_nowcast"
+    ],
+    "necessary_exogenous": [
+      "rain_gauge",
+      "rain_radar_nowcast"
+    ],
+    "exo_tier": "necessary",
+    "domain_metrics": [
+      "NSE",
+      "KGE"
+    ],
+    "source": {
+      "name": "Bellinge",
+      "url": "https://essd.copernicus.org/articles/13/4779/2021/"
+    },
+    "notes": "Sewer water level at sensor G71F05R LevelInlet (the original F04R Level1 instance was only 20% active over 2010-2020 per --scan; G71F05R LevelInlet is 100% active over the same span). Bellinge combined drainage system, Odense DK. Native sampling 1-min, resampled to 15-min. Rain gauge + X-band radar nowcast as exogenous. Necessary exogenous: rain_gauge and rain_radar_nowcast \u2014 combined-sewer surcharge is rainfall-driven; optional: temp_air (minor secondary effect). Assumption, not yet validated against measured skill."
+  },
+  "surge_cuxhaven": {
+    "domain": "storm_surge",
+    "target": "residual_m",
+    "target_unit": "m",
+    "freq": "1h",
+    "horizon_primary": "48h",
+    "exogenous": [
+      "mslp",
+      "u10",
+      "v10"
+    ],
+    "exogenous_known_future": [
+      "mslp",
+      "u10",
+      "v10"
+    ],
+    "necessary_exogenous": [
+      "mslp",
+      "u10",
+      "v10"
+    ],
+    "exo_tier": "necessary",
+    "domain_metrics": [],
+    "source": {
+      "name": "GESLA-3",
+      "url": "https://gesla787883612.wordpress.com/downloads/"
+    },
+    "notes": "Hourly non-tidal residual (observed sea level minus tide prediction) at the Cuxhaven Steubenhoft GESLA gauge (German Bight). Exogenous: ERA5 mean sea-level pressure + 10-m wind components, fetched at the station point via Open-Meteo (credential-free). Wind and pressure are the physical surge drivers and are listed as known-future: at forecast time they would come from an NWP forecast; here the reanalysis is used as a perfect-forecast proxy. Record trimmed to 2000-2024 so ERA5 forcing covers the whole series. Necessary exogenous: mslp, u10, v10 (all three, per the driver statement above); no optional exogenous inputs."
+  },
+  "watertemp_james": {
+    "domain": "water_quality",
+    "target": "water_temp",
+    "target_unit": "degC",
+    "freq": "1D",
+    "horizon_primary": "7D",
+    "exogenous": [
+      "temp_air",
+      "precip"
+    ],
+    "exogenous_known_future": [
+      "temp_air",
+      "precip"
+    ],
+    "necessary_exogenous": [
+      "temp_air"
+    ],
+    "exo_tier": "necessary",
+    "domain_metrics": [],
+    "source": {
+      "name": "USGS NWIS 02035000",
+      "url": "https://waterdata.usgs.gov/monitoring-location/02035000/"
+    },
+    "notes": "Daily river water temperature at the James River at Cartersville, VA (USGS 02035000). Strongly air-temperature driven with a clear seasonal cycle; a water-quality / ecology case where the exogenous (ERA5 air temperature) carries most of the skill. Precipitation included as a secondary driver (storm cooling/mixing). Exogenous from Open-Meteo, perfect-forecast proxy. Necessary exogenous: temp_air; optional: precip \u2014 per the primary/secondary distinction above."
+  },
+  "waves_massachusetts": {
+    "domain": "spectral_waves",
+    "target": "wvht",
+    "target_unit": "m",
+    "freq": "1h",
+    "horizon_primary": "24h",
+    "exogenous": [
+      "wspd",
+      "pres",
+      "atmp",
+      "wtmp"
+    ],
+    "exogenous_known_future": [
+      "wspd",
+      "pres"
+    ],
+    "necessary_exogenous": [
+      "wspd"
+    ],
+    "exo_tier": "necessary",
+    "domain_metrics": [],
+    "source": {
+      "name": "NDBC 44013",
+      "url": "https://www.ndbc.noaa.gov/station_page.php?station=44013"
+    },
+    "notes": "Significant wave height at NDBC buoy 44013 (Boston / Massachusetts Bay, NW Atlantic). A fetch-limited wind-sea / nor'easter regime, deliberately contrasting the swell-dominated open-Pacific buoy waves_oregon (46050) \u2014 the same target and horizon across two wave climates tests whether method ranking is regime-robust. Exogenous: the buoy's own wind speed + pressure (known-future, perfect-forecast proxy for an NWP wind forecast) and air/water temperature. Necessary exogenous: wspd (the direct physical generator of local wind-sea wave height); optional: pres, atmp, wtmp (correlated with storm activity but not a direct mechanical driver of wave height). Assumption, not yet validated against measured skill."
+  },
+  "waves_oregon": {
+    "domain": "spectral_waves",
+    "target": "wvht",
+    "target_unit": "m",
+    "freq": "1h",
+    "horizon_primary": "24h",
+    "exogenous": [
+      "wspd",
+      "pres",
+      "atmp",
+      "wtmp"
+    ],
+    "exogenous_known_future": [],
+    "necessary_exogenous": [
+      "wspd"
+    ],
+    "exo_tier": "necessary",
+    "domain_metrics": [],
+    "source": {
+      "name": "NDBC",
+      "url": "https://www.ndbc.noaa.gov/"
+    },
+    "notes": "Significant wave height at a NOAA NDBC buoy (default 46050, Stonewall Bank, Oregon). Hourly. Exogenous from the same buoy's standard met record: wind speed, pressure, air + water temperature. ERA5/GFS wind *forecasts* as known-future covariates can be added later. Necessary exogenous: wspd; optional: pres, atmp, wtmp \u2014 same reasoning as waves_massachusetts. Assumption, not yet validated against measured skill."
+  },
+  "wwtp_influent_n2o_350k": {
+    "domain": "wastewater_treatment",
+    "target": "influent_flow",
+    "target_unit": "m3/h",
+    "freq": "1h",
+    "horizon_primary": "24h",
+    "exogenous": [],
+    "exogenous_known_future": [],
+    "necessary_exogenous": [],
+    "exo_tier": "none",
+    "domain_metrics": [
+      "NSE",
+      "KGE"
+    ],
+    "source": {
+      "name": "Mendeley N2O WWTP",
+      "url": "https://data.mendeley.com/datasets/xmbxhscgpr/1"
+    },
+    "notes": "Influent flow rate at a 350,000 PE WWTP (Mendeley N2O dataset, 2 yrs, 2-min sampling resampled to hourly). Exogenous (rain at plant, temperature, control signals) to be added after inspecting columns via --list; starts univariate."
+  }
+}

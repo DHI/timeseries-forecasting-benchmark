@@ -5,6 +5,13 @@ export type JsonDataState<T> =
 
 const cache = new Map<string, Promise<unknown>>();
 
+/** Test-only: the cache otherwise outlives any single fetch mock, since it's module-scoped
+ * rather than tied to a component lifetime — call this between tests that install a fresh
+ * `fetch` mock for the same URL. */
+export function clearJsonDataCache(): void {
+  cache.clear();
+}
+
 function fetchJson<T>(path: string): Promise<T> {
   const url = import.meta.env.BASE_URL + path;
   let promise = cache.get(url) as Promise<T> | undefined;
