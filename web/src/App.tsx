@@ -6,6 +6,7 @@ import { ToggleExogenous } from './components/Sidebar/ToggleExogenous';
 import { ToggleGlobal } from './components/Sidebar/ToggleGlobal';
 import { MatrixGraph } from './components/Matrix/MatrixGraph';
 import { CasePanel } from './components/CasePanel/CasePanel';
+import { SnapshotPanel } from './components/SnapshotPanel/SnapshotPanel';
 import { DOMAIN_RESTRICTED_METRICS } from './data/metricConfig';
 import {
   casesEligibleForMetric,
@@ -47,6 +48,7 @@ function ErrorBanner({ error }: { error: Error }) {
 
 function AppRoot({
   scores,
+  methods,
   cases,
 }: {
   scores: ScoreRow[];
@@ -79,6 +81,7 @@ function AppRoot({
     <AppStateProvider initial={initial}>
       <MainLayout
         scores={scores}
+        methods={methods}
         cases={cases}
         domainOpts={domainOpts}
         familyOpts={familyOpts}
@@ -91,6 +94,7 @@ function AppRoot({
 
 function MainLayout({
   scores,
+  methods,
   cases,
   domainOpts,
   familyOpts,
@@ -98,6 +102,7 @@ function MainLayout({
   domainMetrics,
 }: {
   scores: ScoreRow[];
+  methods: MethodRegistry;
   cases: CaseRegistry;
   domainOpts: string[];
   familyOpts: string[];
@@ -111,6 +116,11 @@ function MainLayout({
     (caseId: string, method: string) => dispatch({ type: 'CELL_CLICK', case_id: caseId, method }),
     [dispatch],
   );
+  const handleRemoveMethod = useCallback(
+    (method: string) => dispatch({ type: 'REMOVE_CHIP', method }),
+    [dispatch],
+  );
+  const handleClear = useCallback(() => dispatch({ type: 'CLEAR_SELECTION' }), [dispatch]);
 
   const filteredRows = useMemo(() => {
     if (!state.metric) return [];
@@ -234,6 +244,19 @@ function MainLayout({
             scores={scores}
             methods={state.selection.methods}
             showGlobal={state.showGlobal}
+          />
+          <hr />
+          <SnapshotPanel
+            caseId={state.selection.case_id}
+            caseMeta={cases[state.selection.case_id]!}
+            methodsRegistry={methods}
+            scores={scores}
+            methods={state.selection.methods}
+            metric={state.metric}
+            showGlobal={state.showGlobal}
+            showExogenous={state.showExogenous}
+            onRemoveMethod={handleRemoveMethod}
+            onClear={handleClear}
           />
         </div>
       )}
