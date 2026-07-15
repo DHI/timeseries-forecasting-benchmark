@@ -228,6 +228,22 @@ def case_has_extended_history(df: pd.DataFrame, case_id: str) -> bool:
     return bool(df.loc[df["case_id"] == case_id, "used_extended_history"].any())
 
 
+def method_training_seconds(
+    df: pd.DataFrame, case_id: str, method: str, extended: bool = False
+) -> float | None:
+    """The persisted `seconds` timing for this case x method run — fit plus predict,
+    pooled across every rolling origin (see `bench.eval.rolling.run_case_rolling`).
+    Identical across every metric row for the same case/method/fit-variant, so any row
+    will do. Falls back to the local (non-extended) fit's timing when `extended` is
+    requested but this method never produced an extended-history variant (only
+    global, segment-pooling methods do — see `case_has_extended_history`)."""
+    mask = (df["case_id"] == case_id) & (df["method"] == method)
+    rows = df[mask & (df["used_extended_history"] == extended)]
+    if rows.empty and extended:
+        rows = df[mask & ~df["used_extended_history"]]
+    return float(rows["seconds"].iloc[0]) if not rows.empty else None
+
+
 @cache
 def load_case_training_tail(case_id: str, n: int = 1000, extended: bool = False) -> pd.DataFrame:
     """Last `n` points of the case's training split, for a quick-look plot."""
@@ -253,6 +269,33 @@ def case_summary(case_id: str) -> str:
     if case.notes:
         lines += ["", case.notes]
     return "\n\n".join(lines)
+
+
+def case_training_stats(
+    df: pd.DataFrame, case_id: str, methods: list[str], extended: bool = False
+) -> str:
+    """Markdown lines for the case-summary panel, below the split-proportions bar: the
+    actual observed sample counts behind that bar's percentages (see
+    `load_case_split_counts`), and the measured training time (fit + predict, pooled
+    across rolling origins — see `method_training_seconds`) for each currently-selected
+    method."""
+    counts = load_case_split_counts(case_id, extended=extended)
+    total = sum(counts.values())
+    samples_line = (
+        f"**Samples used**: train {counts['train']:,} · val {counts['val']:,} · "
+        f"test {counts['test']:,} (total {total:,})"
+    )
+    if not methods:
+        return samples_line
+
+    times = []
+    for method in methods:
+        seconds = method_training_seconds(df, case_id, method, extended=extended)
+        times.append(f"{method} {seconds:.2f}s" if seconds is not None else f"{method} —")
+    time_line = "**Training time** (fit + predict, pooled across rolling origins): " + " · ".join(
+        times
+    )
+    return f"{samples_line}\n\n{time_line}"
 
 
 def method_info(case_id: str, method: str) -> str:

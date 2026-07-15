@@ -33,6 +33,7 @@ from data import (
     FAMILY_ORDER,
     case_has_extended_history,
     case_summary,
+    case_training_stats,
     cases_eligible_for_metric,
     load_metrics,
     load_snapshots,
@@ -1238,24 +1239,35 @@ def update_selection(click_data, clear_clicks, chip_clicks, sel):
     Output("case-panel", "style"),
     Input("snapshot-selection", "data"),
     Input("show-global", "value"),
+    Input("show-exogenous", "value"),
     Input("reload-btn", "n_clicks"),
 )
-def render_case_panel(sel, show_global, n_reload):
+def render_case_panel(sel, show_global, show_exogenous, n_reload):
     """Right-hand panel: training/test snapshots, a train-vs-test distribution, a
     train/val/test proportions bar, and case metadata for the clicked cell's case.
-    Depends only on `case_id` (plus the global toggle), so it stays open across method
-    chip clicks. When `show_global` reveals extended history for this case (see
-    `data.case_has_extended_history`), the training snapshot, distribution, and
-    proportions bar all swap in the extended-history train split."""
+    Depends on `case_id` plus the global/exogenous toggles, so it stays open across
+    method chip clicks. When `show_global` reveals extended history for this case (see
+    `data.case_has_extended_history`), the training snapshot, distribution, proportions
+    bar, and sample counts all swap in the extended-history train split. The training
+    time shown is per selected method (resolved to its exogenous-aware sibling when the
+    exo toggle applies — see `_effective_method`)."""
     case_id = (sel or {}).get("case_id")
+    methods = (sel or {}).get("methods") or []
     if not case_id:
         empty = go.Figure()
         return "", "", empty, empty, empty, empty, "", _CASE_PANEL_HIDDEN_STYLE
 
     show_global = "on" in (show_global or [])
-    extended = show_global and case_has_extended_history(load_metrics(n_reload or 0), case_id)
+    show_exo = "on" in (show_exogenous or [])
+    df = load_metrics(n_reload or 0)
+    extended = show_global and case_has_extended_history(df, case_id)
     caption = f"Training data (last {TRAINING_TAIL_N:,} points"
     caption += ", including extended history)" if extended else ")"
+
+    effective_methods = [_effective_method(df, case_id, m, show_exo) for m in methods]
+    summary_md = "\n\n".join(
+        [case_summary(case_id), case_training_stats(df, case_id, effective_methods, extended)]
+    )
 
     return (
         case_id.replace("_", " ").upper(),
@@ -1264,7 +1276,7 @@ def render_case_panel(sel, show_global, n_reload):
         render_test_snapshot(case_id),
         render_split_distribution(case_id, extended=extended),
         render_split_proportions(case_id, extended=extended),
-        dcc.Markdown(case_summary(case_id)),
+        dcc.Markdown(summary_md),
         _CASE_PANEL_VISIBLE_STYLE,
     )
 
