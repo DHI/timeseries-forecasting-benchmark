@@ -495,9 +495,13 @@ _CASE_PLOT_CAPTION_STYLE = {
 # data, case summary, prediction snapshots), so the three read as one consistent pattern.
 _SUBSECTION_SUMMARY_STYLE = {"cursor": "pointer", "fontWeight": "bold", "fontSize": "1em"}
 
-# Full-width strip docked to the bottom of the viewport (sticky, not fixed, so it scrolls
-# into place with the rest of the page rather than always overlapping content) — one card
-# per selected method, colour-matched to that method's chip/forecast line.
+# Strip docked to the bottom of the viewport (sticky, not fixed, so it scrolls into place
+# with the rest of the page rather than always overlapping content) — one card per
+# selected method, colour-matched to that method's chip/forecast line. Nested as the last
+# child of the middle content column (not a top-level sibling), so its width always
+# matches that column: it widens automatically when the sidebar is collapsed, and never
+# overlaps the sidebar or the detail column.
+
 _METHOD_INFO_STYLE = {
     "position": "sticky",
     "bottom": "0",
@@ -816,6 +820,7 @@ app.layout = html.Div(
                             ],
                         ),
                         dcc.Store(id="snapshot-selection", data={"case_id": None, "methods": []}),
+                        html.Div(id="method-info-panel", style=_METHOD_INFO_HIDDEN_STYLE),
                     ],
                 ),
                 html.Div(
@@ -968,7 +973,6 @@ app.layout = html.Div(
                 ),
             ],
         ),
-        html.Div(id="method-info-panel", style=_METHOD_INFO_HIDDEN_STYLE),
     ],
 )
 
