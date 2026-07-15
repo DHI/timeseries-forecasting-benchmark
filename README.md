@@ -119,6 +119,11 @@ Example result: ERA5 wind/pressure lift GESLA storm-surge skill-vs-persistence f
 **0.30 → 0.66**, and precipitation flips CAMELS-DK `LinearLags` from **−3.7 → +0.83** —
 the covariate value the benchmark is built to quantify.
 
+**Interactive viewer**: the same case × method matrix, with filtering, hover detail, and
+forecast-snapshot drill-down, is also browsable without running anything — see `web/` (a static
+React app, deployed via GitHub Pages) or run `app/app.py` locally (`uv run --extra app python
+app/app.py`) for the live Dash version.
+
 ## Design notes
 
 - **Two concerns, two namespaces**: `tsforecastbench.data` (case-building — schema,
