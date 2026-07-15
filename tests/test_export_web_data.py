@@ -11,12 +11,20 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 sys.path.insert(0, str(REPO_ROOT / "app"))
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
-from export_web_data import export_cases, export_methods, export_scores  # noqa: E402
+from export_web_data import (  # noqa: E402
+    SNAPSHOTS_PATH,
+    export_cases,
+    export_methods,
+    export_scores,
+    export_snapshots,
+)
 
 
 def _export(tmp_path: Path) -> tuple[list[dict], dict, dict]:
@@ -116,3 +124,63 @@ def test_distribution_x_grid_matches_density_length(tmp_path):
                 assert len(dist["train_density"]) == n, f"{case_id}.{field}"
             if dist["test_density"] is not None:
                 assert len(dist["test_density"]) == n, f"{case_id}.{field}"
+
+
+# export_snapshots takes ~1-2 minutes (curation runs 9 metrics x every method x every
+# case) — a module-scoped fixture runs it once and every snapshot test below reads that
+# same output, rather than each test re-running the full export.
+@pytest.fixture(scope="module")
+def snapshot_paths(tmp_path_factory) -> list[Path]:
+    if not SNAPSHOTS_PATH.exists():
+        pytest.skip(f"{SNAPSHOTS_PATH} not present — run a rolling pilot to produce it")
+    out_dir = tmp_path_factory.mktemp("snapshots")
+    export_snapshots(out_dir)
+    return sorted((out_dir / "snapshots").glob("*.json"))
+
+
+@pytest.fixture(scope="module")
+def snapshot_bundles(snapshot_paths) -> dict[str, dict]:
+    return {path.stem: json.loads(path.read_text()) for path in snapshot_paths}
+
+
+def test_snapshots_produce_one_bundle_per_case(snapshot_bundles):
+    assert len(snapshot_bundles) > 0
+
+
+def test_snapshot_actual_window_length_matches_history_plus_horizon(snapshot_bundles):
+    for case_id, bundle in snapshot_bundles.items():
+        expected_len = bundle["n_history"] + bundle["horizon_steps"]
+        for origin_id, values in bundle["actual"].items():
+            assert len(values) == expected_len, f"{case_id} origin {origin_id}"
+
+
+def test_snapshot_curation_origin_ids_exist_in_origins(snapshot_bundles):
+    """Every curated origin_id must be one this case bundle actually has data for — a
+    mismatch here would mean the client looks up a prediction/actual window that was
+    never exported."""
+    for case_id, bundle in snapshot_bundles.items():
+        known_origins = {o["origin_id"] for o in bundle["origins"]}
+        for metric, by_method in bundle["curation"].items():
+            for method, by_variant in by_method.items():
+                for variant, curated in by_variant.items():
+                    for entry in curated:
+                        assert entry["origin_id"] in known_origins, (
+                            f"{case_id}/{metric}/{method}/{variant}: "
+                            f"unknown origin_id {entry['origin_id']}"
+                        )
+
+
+def test_snapshot_predictions_keyed_by_known_origins(snapshot_bundles):
+    for case_id, bundle in snapshot_bundles.items():
+        known_origins = {o["origin_id"] for o in bundle["origins"]}
+        for method, by_variant in bundle["predictions"].items():
+            for variant, by_origin in by_variant.items():
+                for origin_id in by_origin:
+                    assert int(origin_id) in known_origins, f"{case_id}/{method}/{variant}"
+
+
+def test_snapshots_have_no_nan_json_literal(snapshot_paths):
+    for path in snapshot_paths:
+        raw = path.read_text()
+        assert "NaN" not in raw, path
+        assert "Infinity" not in raw, path

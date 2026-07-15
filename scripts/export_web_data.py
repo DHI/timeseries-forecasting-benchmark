@@ -32,7 +32,13 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 # the unrelated top-level data/ directory instead).
 sys.path.insert(0, str(REPO_ROOT / "app"))
 
-from snapshot import TRAINING_TAIL_N, _kde_curve  # noqa: E402
+from snapshot import (  # noqa: E402
+    TRAINING_TAIL_N,
+    _actual_series,
+    _horizon_steps,
+    _kde_curve,
+    curate_origins,
+)
 
 from data import (  # noqa: E402
     _method_registry,
@@ -42,7 +48,10 @@ from data import (  # noqa: E402
     load_case_training_tail,
     load_metrics,
 )
-from tsforecastbench.data.registry import discover_cases  # noqa: E402
+from tsforecastbench.bench.viz import METRIC_CONFIG  # noqa: E402
+from tsforecastbench.data.registry import discover_cases, get_case  # noqa: E402
+
+SNAPSHOTS_PATH = REPO_ROOT / "results" / "pilot_snapshots.parquet"
 
 
 def export_scores(out_dir: Path) -> None:
@@ -134,6 +143,138 @@ def export_cases(out_dir: Path) -> None:
     out_dir.joinpath("cases.json").write_text(json.dumps(cases, indent=2), encoding="utf-8")
 
 
+def _round_sig(value: float, sig: int = 4) -> float:
+    """Round to `sig` significant figures — unlike a fixed decimal-place round, this stays
+    meaningful across cases whose values range from ~0.001 to ~100,000."""
+    if value == 0 or not np.isfinite(value):
+        return value
+    return round(value, -int(np.floor(np.log10(abs(value)))) + (sig - 1))
+
+
+def _round_and_finite_list(values, sig: int = 4) -> list[float | None]:
+    return [
+        None if not np.isfinite(v) else _round_sig(float(v), sig)
+        for v in np.asarray(values, dtype=float)
+    ]
+
+
+def _predictions_by_origin(preds: pd.DataFrame) -> dict[str, list[float | None]]:
+    """origin_id (as a string, since JSON object keys are always strings) -> that
+    origin's y_hat values, ordered by ds — the horizon-length forecast the snapshot grid
+    overlays on the actual-series window."""
+    out = {}
+    for origin_id, group in preds.groupby("origin_id"):
+        out[str(int(origin_id))] = _round_and_finite_list(
+            group.sort_values("ds")["y_hat"].to_numpy()
+        )
+    return out
+
+
+def _curation_for(case_preds: pd.DataFrame, method: str, case_id: str, metric: str) -> list[dict]:
+    curated = curate_origins(case_preds, method, case_id, metric)
+    return [
+        {"origin_id": int(o.origin_id), "value": _round_sig(float(o.value)), "label": o.label}
+        for o in curated.itertuples(index=False)
+    ]
+
+
+def export_snapshots(out_dir: Path) -> None:
+    """snapshots/<case_id>.json (one per case): bounded per-origin forecast data for the
+    snapshot grid — every method's prediction at every one of the case's ~40 rolling
+    origins is reachable under some anchor-method/metric combination, so this ships all of
+    them rather than a curated subset, but eliminates the real waste in the raw parquet:
+    the actual series is stored once per origin (not once per method-row), timestamps are
+    dropped in favour of reconstructing them from `origin_ds` + `freq` client-side, and
+    every value is rounded to 4 significant figures (matching the matrix's own display
+    precision). `curation` is precomputed per (metric, method, local/extended variant) via
+    `snapshot.curate_origins` so the client never re-derives MASE/skill-score, which needs
+    a seasonal-naive train+val denominator.
+
+    Requires `results/pilot_snapshots.parquet` (gitignored, produced by a rolling pilot
+    run — see scripts/run_pilot.py); skipped with a warning if absent, same as the Dash
+    app's own graceful fallback (`data.load_snapshots`) for a clone that hasn't run one."""
+    if not SNAPSHOTS_PATH.exists():
+        print(
+            f"[export_web_data] {SNAPSHOTS_PATH} not found — skipping snapshot export "
+            "(run a rolling pilot to produce it, e.g. `uv run python scripts/run_pilot.py`)"
+        )
+        return
+
+    preds = pd.read_parquet(SNAPSHOTS_PATH)
+    snap_dir = out_dir / "snapshots"
+    snap_dir.mkdir(parents=True, exist_ok=True)
+    metrics = list(METRIC_CONFIG)
+
+    for case_id in sorted(preds["case_id"].unique()):
+        case = get_case(case_id)
+        case_preds = preds[preds["case_id"] == case_id]
+        horizon_steps = _horizon_steps(case)
+        n_history = max(horizon_steps // 4, 1)
+        step = pd.Timedelta(case.freq)
+        actual_full = _actual_series(case_id)
+
+        origins_df = (
+            case_preds[["origin_id", "origin_ds"]].drop_duplicates().sort_values("origin_id")
+        )
+        origins = []
+        actual = {}
+        for row in origins_df.itertuples(index=False):
+            origin_ds = pd.Timestamp(row.origin_ds)
+            window_index = pd.date_range(
+                origin_ds - n_history * step, periods=n_history + horizon_steps, freq=step
+            )
+            window = actual_full.reindex(window_index)
+            origins.append({"origin_id": int(row.origin_id), "origin_ds": origin_ds.isoformat()})
+            actual[str(int(row.origin_id))] = _round_and_finite_list(window.to_numpy())
+
+        has_extended = case_preds.groupby("method")["used_extended_history"].any()
+        predictions = {}
+        variants_by_method: dict[str, list[tuple[str, bool]]] = {}
+        for method in sorted(case_preds["method"].unique()):
+            variants: list[tuple[str, bool]] = [("local", False)]
+            if has_extended.get(method, False):
+                variants.append(("extended", True))
+            variants_by_method[method] = variants
+            predictions[method] = {
+                variant: _predictions_by_origin(
+                    case_preds[
+                        (case_preds["method"] == method)
+                        & (case_preds["used_extended_history"] == is_ext)
+                    ]
+                )
+                for variant, is_ext in variants
+            }
+
+        curation = {}
+        for metric in metrics:
+            curation[metric] = {}
+            for method, variants in variants_by_method.items():
+                curation[metric][method] = {
+                    variant: _curation_for(
+                        case_preds[
+                            (case_preds["method"] == method)
+                            & (case_preds["used_extended_history"] == is_ext)
+                        ],
+                        method,
+                        case_id,
+                        metric,
+                    )
+                    for variant, is_ext in variants
+                }
+
+        bundle = {
+            "case_id": case_id,
+            "n_history": n_history,
+            "horizon_steps": horizon_steps,
+            "origins": origins,
+            "actual": actual,
+            "predictions": predictions,
+            "curation": curation,
+        }
+        snap_dir.joinpath(f"{case_id}.json").write_text(json.dumps(bundle), encoding="utf-8")
+    print(f"[export_web_data] wrote {len(list(snap_dir.glob('*.json')))} snapshot bundle(s)")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -149,6 +290,7 @@ def main(argv: list[str] | None = None) -> int:
     export_methods(out_dir)
     export_cases(out_dir)
     print("[export_web_data] wrote scores.json, methods.json, cases.json")
+    export_snapshots(out_dir)
     return 0
 
 
