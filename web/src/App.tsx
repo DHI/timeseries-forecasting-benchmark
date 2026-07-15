@@ -1,7 +1,9 @@
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { DomainChecklist } from './components/Sidebar/DomainChecklist';
 import { FamilyMultiSelect } from './components/Sidebar/FamilyMultiSelect';
 import { MetricDropdown } from './components/Sidebar/MetricDropdown';
+import { ToggleExogenous } from './components/Sidebar/ToggleExogenous';
+import { ToggleGlobal } from './components/Sidebar/ToggleGlobal';
 import { MatrixGraph } from './components/Matrix/MatrixGraph';
 import { DOMAIN_RESTRICTED_METRICS } from './data/metricConfig';
 import {
@@ -101,6 +103,11 @@ function MainLayout({
   const state = useAppState();
   const dispatch = useAppDispatch();
 
+  const handleCellClick = useCallback(
+    (caseId: string, method: string) => dispatch({ type: 'CELL_CLICK', case_id: caseId, method }),
+    [dispatch],
+  );
+
   const filteredRows = useMemo(() => {
     if (!state.metric) return [];
     const domainSet = new Set(state.domains);
@@ -156,6 +163,28 @@ function MainLayout({
           value={state.families}
           onChange={(families) => dispatch({ type: 'SET_FAMILIES', families })}
         />
+        <label style={{ fontWeight: 'bold', display: 'block', marginTop: 16 }}>
+          Global methods
+        </label>
+        <ToggleGlobal
+          checked={state.showGlobal}
+          onChange={() => dispatch({ type: 'TOGGLE_GLOBAL' })}
+        />
+        <p style={{ color: '#666', fontSize: '0.8em', marginTop: 4 }}>
+          Some global models have been trained with longer history, marked with a corner triangle.
+        </p>
+        <label style={{ fontWeight: 'bold', display: 'block', marginTop: 16 }}>
+          Exogenous inputs
+        </label>
+        <ToggleExogenous
+          checked={state.showExogenous}
+          onChange={() => dispatch({ type: 'TOGGLE_EXOGENOUS' })}
+        />
+        <p style={{ color: '#666', fontSize: '0.8em', marginTop: 4 }}>
+          Where a method has an exogenous-aware variant and the case provides exogenous data, this
+          swaps in that variant's score for the cell and marks it with a teal corner. Cases or
+          methods without an exogenous option are unaffected.
+        </p>
       </aside>
       <button
         type="button"
@@ -172,7 +201,14 @@ function MainLayout({
           of timeseries in different water domains. Each cell represents one case x method run,
           coloured by the metric chosen in the sidebar.
         </p>
-        <MatrixGraph rows={filteredRows} metric={state.metric} />
+        <MatrixGraph
+          rows={filteredRows}
+          metric={state.metric}
+          selection={state.selection}
+          showGlobal={state.showGlobal}
+          showExogenous={state.showExogenous}
+          onCellClick={handleCellClick}
+        />
       </main>
     </div>
   );
