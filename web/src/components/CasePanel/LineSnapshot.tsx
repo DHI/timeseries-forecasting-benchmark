@@ -39,7 +39,7 @@ export function LineSnapshot({ series, emptyMessage }: { series: Series; emptyMe
       paper_bgcolor: 'white',
       plot_bgcolor: 'white',
       font: { family: 'system-ui, sans-serif' },
-      xaxis: AXIS_STYLE,
+      xaxis: { ...AXIS_STYLE },
       yaxis: { ...AXIS_STYLE, automargin: true },
     };
     return { data, layout };

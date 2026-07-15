@@ -56,7 +56,7 @@ export function DistributionPlot({
       paper_bgcolor: 'white',
       plot_bgcolor: 'white',
       font: { family: 'system-ui, sans-serif' },
-      xaxis: AXIS_STYLE,
+      xaxis: { ...AXIS_STYLE },
       yaxis: { ...AXIS_STYLE, showticklabels: false },
       legend: {
         orientation: 'h',

@@ -8,6 +8,21 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-15 — Fixed the React case panel's training/test charts showing timestamps on both axes
+
+The training-data chart in the React app's case panel plotted dates on both x and y instead of
+dates on x and values on y (Dash was unaffected). Root cause: `LineSnapshot.tsx`'s shared
+`AXIS_STYLE` object was passed to Plotly's `xaxis` by reference rather than copied, and Plotly.js
+auto-detects an axis's type from its data and writes that type back onto the layout object it was
+given — so the first date-valued x-axis it saw permanently stamped `type: 'date'` onto the shared
+`AXIS_STYLE` singleton, which then leaked into every later plot's y-axis (already built as
+`{...AXIS_STYLE}`, so it inherited the mutation instead of a clean object). Fixed by always
+spreading `AXIS_STYLE` into a fresh object before handing it to Plotly, for both axes; applied the
+same defensive copy in `DistributionPlot.tsx`, which has the identical pattern but had stayed
+harmless only because its x-data happens to be numeric. Lesson for any future Plotly-based
+component here: never pass a shared style object literal straight into a `layout` prop — Plotly.js
+treats it as mutable state, not a read-only style constant.
+
 ## 2026-07-15 — Closed two React/Dash parity gaps: method-info panel placement, missing benchmark-design text
 
 Found two spots where the React port, despite being logged as feature-complete, didn't actually
