@@ -46,8 +46,12 @@ is anchored) precomputed via `snapshot.curate_origins` so the browser never re-d
 skill-score. Methods with a real extended-history fit or a "+exo" sibling get both variants, and
 the client resolves which one to show the same way the matrix does (`showGlobal`/`showExogenous`
 toggles). This closes the last functional gap from `app/app.py` — matrix, case detail, and
-forecast snapshots are all ported. What's left is CI/deploy: a combined GitHub Actions workflow
-that also moves the existing marimo EDA site to `/eda/`.
+forecast snapshots are all ported. Last, `.github/workflows/pages.yml` now builds and deploys both
+static sites in one run — the React app into the repo's root Pages URL, the existing marimo EDA
+browser into `/eda/` — since `actions/deploy-pages` only publishes one site per repo; verified
+locally by assembling the combined output and serving it under the real base path before trusting
+the workflow. This closes out the migration: `web/` now covers everything `app/app.py` does, deploys
+as static files, and `app/app.py` itself is untouched for anyone who still wants the live version.
 
 ## 2026-07-15 — Gave Chronos-2, TimesFM 2.5 and Moirai-2.0 `+exo` variants
 
