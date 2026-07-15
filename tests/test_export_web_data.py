@@ -67,3 +67,52 @@ def test_cases_have_domain_metrics_field(tmp_path):
     for case_id, meta in cases.items():
         assert "domain_metrics" in meta, case_id
         assert isinstance(meta["domain_metrics"], list), case_id
+
+
+def test_cases_have_no_nan_json_literal(tmp_path):
+    export_cases(tmp_path)
+    raw = tmp_path.joinpath("cases.json").read_text()
+    assert "NaN" not in raw
+    assert "Infinity" not in raw
+
+
+def test_case_series_have_matching_ds_y_lengths(tmp_path):
+    """train_tail/test_split are exported as parallel ds/y arrays (not one array of
+    records) to keep the JSON smaller — a length mismatch would silently misalign every
+    point once the client zips them back together."""
+    _scores, _methods, cases = _export(tmp_path)
+    for case_id, meta in cases.items():
+        for field in ("train_tail", "train_tail_extended", "test_split"):
+            series = meta[field]
+            assert len(series["ds"]) == len(series["y"]), f"{case_id}.{field}"
+
+
+def test_train_tail_is_bounded(tmp_path):
+    """The training quick-look plot is a bounded tail, not a case's full (possibly
+    multi-hundred-thousand-point) history — this is the field that keeps a case like
+    wwtp_influent_n2o_350k from shipping its raw series."""
+    _scores, _methods, cases = _export(tmp_path)
+    for case_id, meta in cases.items():
+        assert len(meta["train_tail"]["ds"]) <= 1000, case_id
+        assert len(meta["train_tail_extended"]["ds"]) <= 1000, case_id
+
+
+def test_split_counts_extended_only_differs_in_train(tmp_path):
+    """`split_counts`/`split_counts_extended` should only ever differ in the train count
+    — extended history never reaches into val/test (see data.load_case_split_counts)."""
+    _scores, _methods, cases = _export(tmp_path)
+    for case_id, meta in cases.items():
+        assert meta["split_counts"]["val"] == meta["split_counts_extended"]["val"], case_id
+        assert meta["split_counts"]["test"] == meta["split_counts_extended"]["test"], case_id
+
+
+def test_distribution_x_grid_matches_density_length(tmp_path):
+    _scores, _methods, cases = _export(tmp_path)
+    for case_id, meta in cases.items():
+        for field in ("distribution", "distribution_extended"):
+            dist = meta[field]
+            n = len(dist["x_grid"])
+            if dist["train_density"] is not None:
+                assert len(dist["train_density"]) == n, f"{case_id}.{field}"
+            if dist["test_density"] is not None:
+                assert len(dist["test_density"]) == n, f"{case_id}.{field}"
