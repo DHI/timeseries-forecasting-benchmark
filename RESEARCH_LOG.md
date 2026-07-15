@@ -22,7 +22,12 @@ committed JSON artifact. Since GitHub Pages only serves one site per repo and th
 `pages.yml` already deploys a separate marimo EDA browser there, the React app will take the root
 Pages URL and the EDA site moves to `/eda/` under one combined deploy workflow — anyone relying on
 the EDA site's current root URL should expect it to move. Scaffolding (Vite+React+TS, oxlint,
-Prettier, Vitest) is in place in `web/`; the data export script and real matrix component are next.
+Prettier, Vitest) landed first, then `scripts/export_web_data.py` (importing `app/data.py`
+directly rather than reimplementing its statistics) and a working static matrix: the sidebar's
+metric/domain/family filters and the case x method heatmap render from the exported JSON with the
+same colours, cell text, best-cell bolding, and domain/family group boundaries as `render_matrix`.
+Hover tooltips, click-to-select, and the global/exogenous toggle overlays aren't ported yet —
+next up.
 
 ## 2026-07-15 — Gave Chronos-2, TimesFM 2.5 and Moirai-2.0 `+exo` variants
 
