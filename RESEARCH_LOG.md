@@ -32,8 +32,14 @@ with their corner-triangle overlays and selection outlines. Along the way, testi
 logic surfaced a real bug in the first matrix pass: a case/method with both a local and an
 extended-history row (5 of the 12 cases have one) silently picked whichever row came last in array
 order instead of always defaulting to the local row — fixed by explicitly filtering to the local
-row before pivoting, then overlaying the extended value only when the toggle is on. The snapshot
-panel and case detail panel (training/test plots, KDE distribution, method info) are next.
+row before pivoting, then overlaying the extended value only when the toggle is on. The case detail
+panel landed next: `cases.json` now carries each case's training tail, full test split, split
+counts, and train-vs-test KDE curves (local and extended-history variants), and the React panel
+renders them plus the case-summary/training-time markdown, matching `render_case_panel`. One
+side effect worth knowing: `surge_cuxhaven`'s test split alone is ~32k points, pushing `cases.json`
+to ~5MB — still fine for a static site (gzip compresses numeric JSON well, and the Dash app already
+pays this same "no decimation" cost when rendering it server-side), but worth revisiting if more
+cases at that scale get added. The snapshot panel (forecast overlays, method info) is next.
 
 ## 2026-07-15 — Gave Chronos-2, TimesFM 2.5 and Moirai-2.0 `+exo` variants
 
