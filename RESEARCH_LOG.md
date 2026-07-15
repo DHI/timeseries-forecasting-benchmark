@@ -26,8 +26,14 @@ Prettier, Vitest) landed first, then `scripts/export_web_data.py` (importing `ap
 directly rather than reimplementing its statistics) and a working static matrix: the sidebar's
 metric/domain/family filters and the case x method heatmap render from the exported JSON with the
 same colours, cell text, best-cell bolding, and domain/family group boundaries as `render_matrix`.
-Hover tooltips, click-to-select, and the global/exogenous toggle overlays aren't ported yet —
-next up.
+Next, the hover tooltip (same pixel-geometry crosshair, now driven by onHover instead of a Dash
+clientside callback), click-to-select, and the global-history/exogenous toggles all landed, along
+with their corner-triangle overlays and selection outlines. Along the way, testing the toggle swap
+logic surfaced a real bug in the first matrix pass: a case/method with both a local and an
+extended-history row (5 of the 12 cases have one) silently picked whichever row came last in array
+order instead of always defaulting to the local row — fixed by explicitly filtering to the local
+row before pivoting, then overlaying the extended value only when the toggle is on. The snapshot
+panel and case detail panel (training/test plots, KDE distribution, method info) are next.
 
 ## 2026-07-15 — Gave Chronos-2, TimesFM 2.5 and Moirai-2.0 `+exo` variants
 
