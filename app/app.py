@@ -67,7 +67,15 @@ def pd_isna(v) -> bool:
 
 def _metric_cfg(metric: str) -> dict:
     return METRIC_CONFIG.get(
-        metric, {"cmap": "viridis", "center": None, "vlo": None, "vhi": None, "fmt": "{:.3g}"}
+        metric,
+        {
+            "cmap": "viridis",
+            "center": None,
+            "vlo": None,
+            "vhi": None,
+            "fmt": "{:.3g}",
+            "lower_is_better": True,
+        },
     )
 
 
@@ -165,6 +173,18 @@ def _exogenous_overlay_shapes(
             }
         )
     return shapes
+
+
+def _row_best_methods(values, lower_is_better: bool) -> dict[str, str]:
+    """The best-scoring method per row (case), by the displayed (post-overlay) values.
+    Rows with no finite value are omitted."""
+    best = {}
+    for case_id, row in values.iterrows():
+        finite = row.dropna()
+        if finite.empty:
+            continue
+        best[case_id] = finite.idxmin() if lower_is_better else finite.idxmax()
+    return best
 
 
 def _selection_shapes(
@@ -301,9 +321,6 @@ def render_matrix(
         x=col_order,
         y=row_order,
         colorscale=cfg["cmap"],
-        text=text.to_numpy(dtype=object),
-        texttemplate="%{text}",
-        textfont={"size": 10},
         customdata=customdata,
         # Native per-cell hover label is off; the row/col name tooltips are drawn as HTML
         # overlays by the `hover-tooltips` clientside callback. "none" (not "skip") keeps
@@ -333,6 +350,32 @@ def render_matrix(
 
     fig = go.Figure(go.Heatmap(**heatmap_kwargs))
 
+    # Per-cell number, drawn as annotations rather than the heatmap's own texttemplate:
+    # Heatmap.textfont only takes one size/weight for the whole trace, but each row's best
+    # method needs to stand out from the rest of that same row. Built as a plain list and
+    # assigned once via `update_layout(annotations=...)` below, rather than one
+    # `add_annotation` call per cell — each `add_annotation` call re-validates/copies the
+    # whole existing annotations tuple, so looping it per cell is quadratic in cell count
+    # and was the cause of a multi-second render regression for ~300 cells.
+    best_of_row = _row_best_methods(values, cfg.get("lower_is_better", True))
+    annotations = []
+    for case_id in row_order:
+        best_method = best_of_row.get(case_id)
+        for method in col_order:
+            cell_text = text.loc[case_id, method]
+            is_best = method == best_method
+            annotations.append(
+                dict(
+                    x=method,
+                    y=case_id,
+                    xref="x",
+                    yref="y",
+                    text=f"<b>{cell_text}</b>" if is_best else cell_text,
+                    showarrow=False,
+                    font={"size": 13 if is_best else 10},
+                )
+            )
+
     n_rows, n_cols = len(row_order), len(col_order)
     domain_of = df_metric.drop_duplicates("case_id").set_index("case_id")["domain"].to_dict()
     family_of = df_metric.drop_duplicates("method").set_index("method")["family"].to_dict()
@@ -350,35 +393,40 @@ def render_matrix(
         fig.add_shape(**shape)
 
     for pos, label in _group_labels(col_order, family_of):
-        fig.add_annotation(
-            x=pos,
-            y=-0.5,
-            xref="x",
-            yref="y",
-            yanchor="bottom",
-            yshift=6,
-            text=f"<b>{label.replace('_', '<br>').capitalize()}</b>",
-            showarrow=False,
-            font={"size": 13},
+        annotations.append(
+            dict(
+                x=pos,
+                y=-0.5,
+                xref="x",
+                yref="y",
+                yanchor="bottom",
+                yshift=6,
+                text=f"<b>{label.replace('_', '<br>').capitalize()}</b>",
+                showarrow=False,
+                font={"size": 13},
+            )
         )
     for pos, label in _group_labels(row_order, domain_of):
-        fig.add_annotation(
-            x=-0.5,
-            y=pos,
-            xref="x",
-            yref="y",
-            xanchor="right",
-            xshift=-6,
-            text=f"<b>{DOMAIN_KEY_DICT.get(label, label)}</b>",
-            showarrow=False,
-            font={"size": 13},
-            textangle=-90,
+        annotations.append(
+            dict(
+                x=-0.5,
+                y=pos,
+                xref="x",
+                yref="y",
+                xanchor="right",
+                xshift=-6,
+                text=f"<b>{DOMAIN_KEY_DICT.get(label, label)}</b>",
+                showarrow=False,
+                font={"size": 13},
+                textangle=-90,
+            )
         )
 
     # Size the figure so square cells fill the plot area exactly: with the height fixed
     # at CELL*n_rows (plus title margins), matching the width to CELL*n_cols leaves no
     # centering gap, so the colorbar and the group titles sit flush against the grid.
     fig.update_layout(
+        annotations=annotations,
         height=CELL * n_rows + MATRIX_MARGIN,
         width=CELL * n_cols + 170,
         margin={"l": 90, "t": 40, "r": 80, "b": 80},
