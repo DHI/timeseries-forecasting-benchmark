@@ -138,9 +138,12 @@ def main() -> int:
         methods += [TFTForecaster(), ITransformerForecaster(), TimesNetForecaster()]
     if args.with_fm:
         from tsforecastbench.bench.methods import (
+            Chronos2ExoForecaster,
             Chronos2Forecaster,
             ChronosForecaster,
+            Moirai2ExoForecaster,
             Moirai2Forecaster,
+            TimesFMExoForecaster,
             TimesFMForecaster,
         )
 
@@ -149,6 +152,9 @@ def main() -> int:
             Chronos2Forecaster(),
             TimesFMForecaster(),
             Moirai2Forecaster(),
+            Chronos2ExoForecaster(),
+            TimesFMExoForecaster(),
+            Moirai2ExoForecaster(),
         ]
     method_order = [m.name for m in methods]
 

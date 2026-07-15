@@ -16,9 +16,12 @@ from tsforecastbench.bench.methods.ensemble import (
     ensemble_baselines_theta,
 )
 from tsforecastbench.bench.methods.fm import (
+    Chronos2ExoForecaster,
     Chronos2Forecaster,
     ChronosForecaster,
+    Moirai2ExoForecaster,
     Moirai2Forecaster,
+    TimesFMExoForecaster,
     TimesFMForecaster,
 )
 from tsforecastbench.bench.methods.ml import (
@@ -48,6 +51,7 @@ __all__ = [
     "AutoETSForecaster",
     "CatBoostExoForecaster",
     "CatBoostForecaster",
+    "Chronos2ExoForecaster",
     "Chronos2Forecaster",
     "ChronosForecaster",
     "Climatology",
@@ -63,6 +67,7 @@ __all__ = [
     "MSTLAutoARIMAForecaster",
     "MSTLAutoETSForecaster",
     "MeanBaseline",
+    "Moirai2ExoForecaster",
     "Moirai2Forecaster",
     "NHITSForecaster",
     "PatchTSTForecaster",
@@ -71,6 +76,7 @@ __all__ = [
     "TBATSForecaster",
     "TFTForecaster",
     "ThetaForecaster",
+    "TimesFMExoForecaster",
     "TimesFMForecaster",
     "TimesNetForecaster",
     "ensemble_baselines",
