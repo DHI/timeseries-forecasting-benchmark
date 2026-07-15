@@ -1,6 +1,13 @@
 import { FAMILY_ORDER, METRIC_CONFIG } from './metricConfig';
 import type { ScoreRow } from '../types/data';
 
+/** Whether the pilot run recorded an extended-history fit for this case — i.e. some
+ * `is_global` method found real history beyond the curated span. Port of app/data.py's
+ * `case_has_extended_history`. */
+export function caseHasExtendedHistory(scores: ScoreRow[], caseId: string): boolean {
+  return scores.some((r) => r.case_id === caseId && r.used_extended_history);
+}
+
 function rank(order: string[]): (value: string) => number {
   return (value) => {
     const i = order.indexOf(value);

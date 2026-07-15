@@ -28,6 +28,23 @@ export type MethodMeta = {
 
 export type MethodRegistry = Record<string, MethodMeta>;
 
+export type Series = {
+  ds: string[];
+  y: (number | null)[];
+};
+
+export type SplitCounts = {
+  train: number;
+  val: number;
+  test: number;
+};
+
+export type Distribution = {
+  x_grid: number[];
+  train_density: (number | null)[] | null;
+  test_density: (number | null)[] | null;
+};
+
 export type CaseMeta = {
   domain: string;
   target: string;
@@ -39,6 +56,13 @@ export type CaseMeta = {
   necessary_exogenous: string[];
   exo_tier: 'none' | 'optional' | 'necessary';
   domain_metrics: string[];
+  train_tail: Series;
+  train_tail_extended: Series;
+  test_split: Series;
+  split_counts: SplitCounts;
+  split_counts_extended: SplitCounts;
+  distribution: Distribution;
+  distribution_extended: Distribution;
   source: { name: string; url: string | null };
   notes: string;
 };

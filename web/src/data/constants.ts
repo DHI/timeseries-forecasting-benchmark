@@ -29,3 +29,7 @@ export const METHOD_COLORS = [
   '#E69F00',
   '#8B008B',
 ];
+
+/** Default number of points in the training-tail quick-look plot. Port of
+ * app/snapshot.py's TRAINING_TAIL_N. */
+export const TRAINING_TAIL_N = 1000;

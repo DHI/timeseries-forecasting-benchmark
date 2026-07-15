@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  caseHasExtendedHistory,
   casesEligibleForMetric,
   domainOptions,
   familyOptions,
@@ -104,6 +105,26 @@ describe('familyOptions', () => {
       row({ family: 'ml' }),
     ];
     expect(familyOptions(rows)).toEqual(['baseline', 'ml', 'dl', 'unclassified']);
+  });
+});
+
+describe('caseHasExtendedHistory', () => {
+  it('is true when some row for the case has used_extended_history', () => {
+    const rows = [
+      row({ case_id: 'c1', used_extended_history: false }),
+      row({ case_id: 'c1', method: 'LightGBM', used_extended_history: true }),
+    ];
+    expect(caseHasExtendedHistory(rows, 'c1')).toBe(true);
+  });
+
+  it('is false when no row for the case has used_extended_history', () => {
+    const rows = [row({ case_id: 'c1', used_extended_history: false })];
+    expect(caseHasExtendedHistory(rows, 'c1')).toBe(false);
+  });
+
+  it('is false for an unknown case', () => {
+    const rows = [row({ case_id: 'c1', used_extended_history: true })];
+    expect(caseHasExtendedHistory(rows, 'c2')).toBe(false);
   });
 });
 
