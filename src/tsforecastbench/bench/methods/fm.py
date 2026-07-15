@@ -7,8 +7,13 @@ training, compete with the tuned baselines?
 Each model's dependency is optional and imported lazily, so the rest of the benchmark
 runs without any of them; a method whose library is absent is skipped (status=error) by
 the eval loop rather than breaking the run. Pretrained weights are loaded once and cached
-across every case and origin. The wrappers are univariate — they condition only on the
-target's recent history and ignore declared covariates.
+across every case and origin. Each wrapper conditions only on the target's recent history
+by default. Chronos-2, TimesFM-2.5 and Moirai-2.0 also ship a `+exo` variant
+(`use_exogenous=True`) that additionally feeds the case's declared covariates to the
+model's native covariate mechanism, mirroring the windowed-ML `+exo` pair in `ml.py` —
+future covariate values are a perfect-forecast proxy supplied by the eval loop, not a real
+forecast of those covariates. Chronos-Bolt has no covariate mechanism, so it stays
+univariate-only.
 
   - Chronos-Bolt / Chronos-2 (Amazon) — `chronos-forecasting`.
   - TimesFM 2.5 (Google) — `timesfm`.
@@ -26,11 +31,32 @@ import numpy as np
 import pandas as pd
 
 from tsforecastbench.bench.methods.base import Forecaster
+from tsforecastbench.bench.methods.ml import _exo_cols, _fit_len
 from tsforecastbench.data.schema import Case
 
 _PIPELINE_CACHE: dict = {}
 _TIMESFM_CACHE: dict = {}
 _MOIRAI_CACHE: dict = {}
+
+
+def _future_covariate(
+    col: str, hist_series: pd.Series, horizon: int, future_exog: pd.DataFrame | None
+) -> np.ndarray:
+    """Perfect-forecast-proxy future values for one declared covariate.
+
+    Same convention `_WindowedMLBase._future_X` uses: `future_exog` (supplied by the eval
+    loop) stands in for a real forecast of the covariate, falling back to the last
+    observed value when the column is absent or too short.
+    """
+    numeric = pd.to_numeric(hist_series, errors="coerce")
+    fallback = float(numeric.ffill().iloc[-1]) if numeric.notna().any() else 0.0
+    if future_exog is not None and col in future_exog.columns:
+        vals = _fit_len(
+            pd.to_numeric(future_exog[col], errors="coerce").to_numpy(), horizon, fallback
+        )
+    else:
+        vals = np.full(horizon, fallback)
+    return np.where(np.isfinite(vals), vals, fallback)
 
 
 def _load_pipeline(model_name: str):
@@ -59,9 +85,15 @@ def _load_chronos2_pipeline(model_name: str):
     return _PIPELINE_CACHE[model_name]
 
 
-def _load_timesfm(model_name: str, max_context: int, max_horizon: int):
+def _load_timesfm(
+    model_name: str, max_context: int, max_horizon: int, return_backcast: bool = False
+):
     # Compilation bakes in the context/horizon caps, so cache per (model, caps) bucket.
-    key = (model_name, max_context, max_horizon)
+    # `return_backcast` is a separate bucket dimension: `forecast_with_covariates` requires
+    # it True to fit the xreg regressor, but turning it on changes what plain `forecast()`
+    # returns (backcast prepended to the horizon, not just the horizon) — so the
+    # covariate-fitting model must never be reused for a univariate call, and vice versa.
+    key = (model_name, max_context, max_horizon, return_backcast)
     if key not in _TIMESFM_CACHE:
         import timesfm
 
@@ -75,6 +107,7 @@ def _load_timesfm(model_name: str, max_context: int, max_horizon: int):
                 force_flip_invariance=True,
                 infer_is_positive=True,
                 fix_quantile_crossing=True,
+                return_backcast=return_backcast,
             )
         )
         _TIMESFM_CACHE[key] = model
@@ -182,15 +215,18 @@ class Chronos2Forecaster(Forecaster):
     )
     limitations = (
         "Zero-shot: never learns anything case-specific, only what it picked up from "
-        "pretraining on other series. Run univariate here — Chronos-2 supports covariates, "
-        "but this wrapper ignores exogenous inputs. Conditions on the most recent "
-        "`context_length` points of history."
+        "pretraining on other series. Univariate by default — Chronos-2 supports "
+        "covariates natively, and the +exo variant feeds the case's declared covariates "
+        "to `predict_df` as past+future covariate columns, using a perfect-forecast "
+        "proxy (not a real forecast of those covariates) for the future values. "
+        "Conditions on the most recent `context_length` points of history."
     )
     code_snippet = (
         "from chronos import Chronos2Pipeline\n\n"
         'pipe = Chronos2Pipeline.from_pretrained("amazon/chronos-2", device_map="cpu")\n'
         "pred = pipe.predict_df(\n"
-        "    context_df,                      # id / timestamp / target columns\n"
+        "    context_df,                      # id / timestamp / target (+ covariate) columns\n"
+        "    future_df=future_df,             # +exo: future covariate values (id/timestamp/cols)\n"
         "    prediction_length=horizon,\n"
         "    quantile_levels=[0.1, 0.5, 0.9],\n"
         '    id_column="id",\n'
@@ -200,9 +236,12 @@ class Chronos2Forecaster(Forecaster):
         'y_hat = pred["predictions"]          # median'
     )
 
+    use_exogenous: bool = False
+
     def __init__(self, model_name: str = "amazon/chronos-2", context_length: int = 2048):
         self.model_name = model_name
         self.context_length = context_length
+        self.uses_exogenous = self.use_exogenous
 
     def fit(self, case: Case, train: pd.DataFrame) -> None:
         # Zero-shot: no training and no fit-time state (see ChronosForecaster.fit).
@@ -224,9 +263,20 @@ class Chronos2Forecaster(Forecaster):
                 "target": y[-self.context_length :],
             }
         )
+        exo = [c for c in _exo_cols(case) if c in history.columns] if self.use_exogenous else []
+        future = self._future_index(case, history["ds"].max(), horizon)
+        future_df = None
+        if exo:
+            tail = history.iloc[-self.context_length :]
+            for c in exo:
+                context_df[c] = pd.to_numeric(tail[c], errors="coerce").to_numpy()
+            future_df = pd.DataFrame({"id": 0, "timestamp": future})
+            for c in exo:
+                future_df[c] = _future_covariate(c, history[c], horizon, future_exog)
         pipe = _load_chronos2_pipeline(self.model_name)
         pred = pipe.predict_df(
             context_df,
+            future_df=future_df,
             prediction_length=horizon,
             quantile_levels=[0.1, 0.5, 0.9],
             id_column="id",
@@ -234,7 +284,6 @@ class Chronos2Forecaster(Forecaster):
             target="target",
         )
         y_hat = pred["predictions"].to_numpy(dtype=np.float64)[:horizon]
-        future = self._future_index(case, history["ds"].max(), horizon)
         return pd.DataFrame({"ds": future, "y_hat": y_hat})
 
 
@@ -258,8 +307,11 @@ class TimesFMForecaster(Forecaster):
     )
     limitations = (
         "Zero-shot: never learns anything case-specific, only what it picked up from "
-        "pretraining. Univariate — ignores exogenous inputs. Conditions on the most recent "
-        "`max_context` points; horizons beyond `max_horizon` are not supported."
+        "pretraining. Univariate by default — the +exo variant feeds the case's declared "
+        "covariates to `forecast_with_covariates` as an xreg regressor fit alongside the "
+        "TimesFM forecast, using a perfect-forecast proxy (not a real forecast of those "
+        "covariates) for the future values. Conditions on the most recent `max_context` "
+        "points; horizons beyond `max_horizon` are not supported."
     )
     code_snippet = (
         "import timesfm\n\n"
@@ -270,8 +322,12 @@ class TimesFMForecaster(Forecaster):
         "    horizon=horizon,\n"
         "    inputs=[context],                # list of 1D arrays, one per series\n"
         ")\n"
-        "y_hat = point_forecast[0]"
+        "y_hat = point_forecast[0]\n"
+        "# +exo: model.forecast_with_covariates(inputs=[context],\n"
+        "#     dynamic_numerical_covariates={name: [context_and_horizon_values]})"
     )
+
+    use_exogenous: bool = False
 
     def __init__(
         self,
@@ -280,6 +336,7 @@ class TimesFMForecaster(Forecaster):
     ):
         self.model_name = model_name
         self.max_context = max_context
+        self.uses_exogenous = self.use_exogenous
 
     def fit(self, case: Case, train: pd.DataFrame) -> None:
         # Zero-shot: no training and no fit-time state (see ChronosForecaster.fit).
@@ -297,9 +354,37 @@ class TimesFMForecaster(Forecaster):
         # max_horizon must cover the horizon; bucket to a stable value so the compiled
         # model is reused across origins rather than recompiled each call.
         max_horizon = max(256, horizon)
-        model = _load_timesfm(self.model_name, self.max_context, max_horizon)
-        point_forecast, _quantiles = model.forecast(horizon=horizon, inputs=[context])
-        y_hat = np.asarray(point_forecast[0], dtype=np.float64)[:horizon]
+        exo = [c for c in _exo_cols(case) if c in history.columns] if self.use_exogenous else []
+        if exo:
+            # forecast_with_covariates needs return_backcast=True to fit the xreg
+            # regressor; that changes what plain forecast() returns, so this must be a
+            # separately cached compiled model, never the univariate one.
+            model = _load_timesfm(
+                self.model_name, self.max_context, max_horizon, return_backcast=True
+            )
+            n = len(context)
+            covariates = {
+                c: [
+                    np.concatenate(
+                        [
+                            pd.to_numeric(history[c], errors="coerce")
+                            .ffill()
+                            .bfill()
+                            .to_numpy(dtype=float)[-n:],
+                            _future_covariate(c, history[c], horizon, future_exog),
+                        ]
+                    ).tolist()
+                ]
+                for c in exo
+            }
+            outputs, _xreg = model.forecast_with_covariates(
+                inputs=[context], dynamic_numerical_covariates=covariates
+            )
+            y_hat = np.asarray(outputs[0], dtype=np.float64)[:horizon]
+        else:
+            model = _load_timesfm(self.model_name, self.max_context, max_horizon)
+            point_forecast, _quantiles = model.forecast(horizon=horizon, inputs=[context])
+            y_hat = np.asarray(point_forecast[0], dtype=np.float64)[:horizon]
         future = self._future_index(case, history["ds"].max(), horizon)
         return pd.DataFrame({"ds": future, "y_hat": y_hat})
 
@@ -325,9 +410,11 @@ class Moirai2Forecaster(Forecaster):
     )
     limitations = (
         "Zero-shot: never learns anything case-specific, only what it picked up from "
-        "pretraining on other series. Run univariate here — Moirai supports covariates, "
-        "but this wrapper ignores exogenous inputs. Conditions on the most recent "
-        "`context_length` points of history."
+        "pretraining on other series. Univariate by default — Moirai supports covariates "
+        "natively, and the +exo variant feeds the case's declared covariates in as "
+        "`feat_dynamic_real`, using a perfect-forecast proxy (not a real forecast of those "
+        "covariates) for the future values. Conditions on the most recent `context_length` "
+        "points of history."
     )
     code_snippet = (
         "from gluonts.dataset.pandas import PandasDataset\n"
@@ -336,11 +423,15 @@ class Moirai2Forecaster(Forecaster):
         '    module=Moirai2Module.from_pretrained("Salesforce/moirai-2.0-R-small"),\n'
         "    prediction_length=horizon, context_length=ctx_len,\n"
         "    target_dim=1, feat_dynamic_real_dim=0, past_feat_dynamic_real_dim=0,\n"
+        "    # +exo: feat_dynamic_real_dim=len(exo_cols); dataset built with\n"
+        "    # PandasDataset(df, feat_dynamic_real=exo_cols, future_length=horizon)\n"
         ")\n"
         "predictor = forecaster.create_predictor(batch_size=1)\n"
         "forecast = next(iter(predictor.predict(dataset)))\n"
         "y_hat = forecast.median"
     )
+
+    use_exogenous: bool = False
 
     def __init__(
         self,
@@ -349,6 +440,7 @@ class Moirai2Forecaster(Forecaster):
     ):
         self.model_name = model_name
         self.context_length = context_length
+        self.uses_exogenous = self.use_exogenous
 
     def fit(self, case: Case, train: pd.DataFrame) -> None:
         # Zero-shot: no training and no fit-time state (see ChronosForecaster.fit).
@@ -366,18 +458,53 @@ class Moirai2Forecaster(Forecaster):
 
         y = pd.to_numeric(history["y"], errors="coerce").ffill().bfill().to_numpy(dtype=float)
         ctx_len = min(self.context_length, len(y))
+        exo = [c for c in _exo_cols(case) if c in history.columns] if self.use_exogenous else []
         forecaster = Moirai2Forecast(
             module=_load_moirai_module(self.model_name),
             prediction_length=horizon,
             context_length=ctx_len,
             target_dim=1,
-            feat_dynamic_real_dim=0,
+            feat_dynamic_real_dim=len(exo),
             past_feat_dynamic_real_dim=0,
         )
         predictor = forecaster.create_predictor(batch_size=1)
-        hist = pd.DataFrame({"target": y}, index=pd.DatetimeIndex(history["ds"]))
-        dataset = PandasDataset(hist, target="target", freq=case.freq)
+        hist_ds = pd.DatetimeIndex(history["ds"])
+        if exo:
+            future = self._future_index(case, history["ds"].max(), horizon)
+            data = {"target": np.concatenate([y, np.zeros(horizon)])}
+            for c in exo:
+                hist_vals = (
+                    pd.to_numeric(history[c], errors="coerce").ffill().bfill().to_numpy(dtype=float)
+                )
+                future_vals = _future_covariate(c, history[c], horizon, future_exog)
+                data[c] = np.concatenate([hist_vals, future_vals])
+            full_df = pd.DataFrame(data, index=hist_ds.append(future))
+            dataset = PandasDataset(
+                full_df,
+                target="target",
+                feat_dynamic_real=exo,
+                freq=case.freq,
+                future_length=horizon,
+            )
+        else:
+            hist = pd.DataFrame({"target": y}, index=hist_ds)
+            dataset = PandasDataset(hist, target="target", freq=case.freq)
         forecast = next(iter(predictor.predict(dataset)))
         y_hat = np.asarray(forecast.median, dtype=np.float64)[:horizon]
         future = self._future_index(case, history["ds"].max(), horizon)
         return pd.DataFrame({"ds": future, "y_hat": y_hat})
+
+
+class Chronos2ExoForecaster(Chronos2Forecaster):
+    name = "Chronos-2+exo"
+    use_exogenous = True
+
+
+class TimesFMExoForecaster(TimesFMForecaster):
+    name = "TimesFM-2.5+exo"
+    use_exogenous = True
+
+
+class Moirai2ExoForecaster(Moirai2Forecaster):
+    name = "Moirai-2.0+exo"
+    use_exogenous = True
