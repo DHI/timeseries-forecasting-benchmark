@@ -8,6 +8,23 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-15 — Gave Chronos-2, TimesFM 2.5 and Moirai-2.0 `+exo` variants
+
+Closed the covariate follow-up flagged in the 2026-07-14 FM entry: each of the three
+foundation models that natively supports covariates (Chronos-2 via `predict_df`'s
+`future_df`, TimesFM via `forecast_with_covariates`, Moirai via `feat_dynamic_real`) now
+has a `+exo` sibling, mirroring the LightGBM/CatBoost/LinearLags `+exo` pattern — future
+covariate values are the eval loop's perfect-forecast proxy, not a real forecast of those
+covariates. Chronos-Bolt stays univariate-only; its architecture has no covariate
+mechanism to expose. One real gotcha: TimesFM's `forecast_with_covariates` requires
+`return_backcast=True` at compile time, but that flag silently changes what plain
+`forecast()` returns (backcast prepended ahead of the horizon rather than just the
+horizon) — so the covariate path now compiles and caches a second model instance,
+keeping the univariate path's compiled model and output shape untouched. All three
+variants were smoke-tested end-to-end against real cached model weights (not just
+synthetic placeholders) on a covariate-bearing case and a covariate-free one before
+committing.
+
 ## 2026-07-14 — Fixed matrix cell clicks crashing with `KeyError: 'customdata'`
 
 Every click on a matrix cell in `app/app.py` raised `KeyError: 'customdata'`. Root cause: Dash's
