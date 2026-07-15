@@ -68,3 +68,36 @@ export type CaseMeta = {
 };
 
 export type CaseRegistry = Record<string, CaseMeta>;
+
+export type SnapshotOrigin = {
+  origin_id: number;
+  origin_ds: string;
+};
+
+export type CuratedOrigin = {
+  origin_id: number;
+  value: number;
+  label: string;
+};
+
+export type PredictionVariant = 'local' | 'extended';
+
+export type MethodPredictions = {
+  local: Record<string, (number | null)[]>;
+  extended?: Record<string, (number | null)[]>;
+};
+
+export type MethodCuration = {
+  local: CuratedOrigin[];
+  extended?: CuratedOrigin[];
+};
+
+export type SnapshotBundle = {
+  case_id: string;
+  n_history: number;
+  horizon_steps: number;
+  origins: SnapshotOrigin[];
+  actual: Record<string, (number | null)[]>;
+  predictions: Record<string, MethodPredictions>;
+  curation: Record<string, Record<string, MethodCuration>>;
+};

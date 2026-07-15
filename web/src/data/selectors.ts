@@ -8,6 +8,23 @@ export function caseHasExtendedHistory(scores: ScoreRow[], caseId: string): bool
   return scores.some((r) => r.case_id === caseId && r.used_extended_history);
 }
 
+/** The method that actually produced this cell's score — `method` unless the exogenous
+ * toggle swaps in its "+exo" sibling's score, which happens only for cases with real
+ * exogenous data. Port of app/app.py's `_effective_method`. */
+export function effectiveMethod(
+  scores: ScoreRow[],
+  caseId: string,
+  method: string,
+  showExo: boolean,
+): string {
+  if (!showExo) return method;
+  const exoMethod = `${method}+exo`;
+  if (!scores.some((r) => r.method === exoMethod)) return method;
+  const tier = scores.find((r) => r.case_id === caseId)?.case_exo_tier;
+  if (!tier || tier === 'none') return method;
+  return exoMethod;
+}
+
 function rank(order: string[]): (value: string) => number {
   return (value) => {
     const i = order.indexOf(value);

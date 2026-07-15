@@ -3,6 +3,7 @@ import {
   caseHasExtendedHistory,
   casesEligibleForMetric,
   domainOptions,
+  effectiveMethod,
   familyOptions,
   groupBoundaries,
   groupLabels,
@@ -125,6 +126,34 @@ describe('caseHasExtendedHistory', () => {
   it('is false for an unknown case', () => {
     const rows = [row({ case_id: 'c1', used_extended_history: true })];
     expect(caseHasExtendedHistory(rows, 'c2')).toBe(false);
+  });
+});
+
+describe('effectiveMethod', () => {
+  it('returns the base method when the toggle is off', () => {
+    const rows = [row({ method: 'LightGBM+exo', case_exo_tier: 'necessary' })];
+    expect(effectiveMethod(rows, 'case_a', 'LightGBM', false)).toBe('LightGBM');
+  });
+
+  it('returns the base method when there is no +exo sibling', () => {
+    const rows = [row({ method: 'LightGBM', case_exo_tier: 'necessary' })];
+    expect(effectiveMethod(rows, 'case_a', 'LightGBM', true)).toBe('LightGBM');
+  });
+
+  it('returns the base method when the case has no exogenous data', () => {
+    const rows = [
+      row({ method: 'LightGBM', case_exo_tier: 'none' }),
+      row({ method: 'LightGBM+exo', case_exo_tier: 'none' }),
+    ];
+    expect(effectiveMethod(rows, 'case_a', 'LightGBM', true)).toBe('LightGBM');
+  });
+
+  it('swaps to the +exo sibling when the toggle is on and the case has exogenous data', () => {
+    const rows = [
+      row({ method: 'LightGBM', case_exo_tier: 'necessary' }),
+      row({ method: 'LightGBM+exo', case_exo_tier: 'necessary' }),
+    ];
+    expect(effectiveMethod(rows, 'case_a', 'LightGBM', true)).toBe('LightGBM+exo');
   });
 });
 
