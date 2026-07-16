@@ -8,6 +8,17 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-16 — Split the method-info strip into per-method collapsible, resizable cards
+
+The bottom method-info strip (up to `MAX_OVERLAY_METHODS` = 3 cards) used to be one flex-wrap
+container where cards grew to fill space, which read as a single blended block rather than
+distinct per-method panels. Reworked it into fixed-width (320px) cards docked side by side, each
+independently collapsible down to just its title bar and resizable in height (120–520px) by
+dragging a handle along its top edge — reusing the `useEdgeResize` hook generalized (from an
+x-only `useResizablePanelWidth`) for the case panel's width-resize. Collapse state and height are
+local to each card, keyed by method name, so they reset if a method is deselected and reselected
+or the case changes, rather than persisting — same call as the case panel's width.
+
 ## 2026-07-16 — Made the React case detail panel resizable
 
 The right-hand case detail panel had a fixed 460px width, which cramped the training/test plots
