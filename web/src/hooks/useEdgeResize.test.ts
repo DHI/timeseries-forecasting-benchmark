@@ -42,4 +42,38 @@ describe('useEdgeResize', () => {
     });
     expect(onResize).toHaveBeenCalledWith(270);
   });
+
+  it('keeps dragging across renders that pass a brand-new onResize identity each time', () => {
+    // Regression test: a caller that passes an inline callback (a new function every render,
+    // as React re-renders on each onResize-triggered state update) must not have its drag cut
+    // short after the first mousemove.
+    let height = 220;
+    const seen: number[] = [];
+    const makeCallback = () => (h: number) => {
+      seen.push(h);
+      height = h;
+    };
+
+    const { result, rerender } = renderHook(
+      ({ size, cb }: { size: number; cb: (h: number) => void }) => useEdgeResize('y', size, cb),
+      { initialProps: { size: height, cb: makeCallback() } },
+    );
+
+    act(() => {
+      result.current.onMouseDown({
+        preventDefault: () => {},
+        clientX: 0,
+        clientY: 400,
+      } as React.MouseEvent);
+    });
+    act(() => {
+      window.dispatchEvent(new MouseEvent('mousemove', { clientY: 380 }));
+    });
+    rerender({ size: height, cb: makeCallback() });
+    act(() => {
+      window.dispatchEvent(new MouseEvent('mousemove', { clientY: 340 }));
+    });
+
+    expect(seen).toEqual([240, 280]);
+  });
 });

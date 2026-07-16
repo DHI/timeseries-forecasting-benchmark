@@ -21,13 +21,21 @@ export function useEdgeResize(
   onResize: (size: number) => void,
 ): { onMouseDown: (event: ReactMouseEvent) => void } {
   const dragStart = useRef<{ pos: number; size: number } | null>(null);
+  // Read via a ref rather than closing over `onResize` directly: if the caller passes an
+  // inline callback (a new function identity every render), closing over it would change
+  // handleMouseMove's identity mid-drag, which tears down the drag's own event listeners
+  // through the stopDragging/useEffect cleanup chain after the first move.
+  const onResizeRef = useRef(onResize);
+  onResizeRef.current = onResize;
 
   const handleMouseMove = useCallback(
     (event: MouseEvent) => {
       if (!dragStart.current) return;
-      onResize(dragStart.current.size - (clientPos(event, axis) - dragStart.current.pos));
+      onResizeRef.current(
+        dragStart.current.size - (clientPos(event, axis) - dragStart.current.pos),
+      );
     },
-    [axis, onResize],
+    [axis],
   );
 
   const stopDragging = useCallback(() => {
