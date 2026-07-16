@@ -8,6 +8,15 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-16 — Made the React case detail panel resizable
+
+The right-hand case detail panel had a fixed 460px width, which cramped the training/test plots
+on smaller screens and wasted space on wide ones. Added a drag handle on the panel's left border
+so users can resize it, clamped to 320–900px. The width lives in the app-state reducer alongside
+the existing `sidebarCollapsed` toggle and resets to the 460px default on reload rather than
+persisting via localStorage, matching how the sidebar toggle already behaves — simplest option,
+and nothing in the app currently persists UI state across sessions.
+
 ## 2026-07-15 — Fixed the React case panel's training/test charts showing timestamps on both axes
 
 The training-data chart in the React app's case panel plotted dates on both x and y instead of
