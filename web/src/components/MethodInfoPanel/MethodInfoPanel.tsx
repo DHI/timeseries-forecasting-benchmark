@@ -6,12 +6,10 @@ const PANEL_STYLE = {
   position: 'sticky' as const,
   bottom: 0,
   display: 'flex',
-  flexWrap: 'wrap' as const,
-  gap: 16,
-  padding: '12px 16px',
-  background: 'var(--bg)',
-  borderTop: '1px solid var(--border)',
-  boxShadow: '0 -2px 6px rgba(0,0,0,0.08)',
+  alignItems: 'flex-end' as const,
+  gap: 12,
+  overflowX: 'auto' as const,
+  padding: '0 16px',
   boxSizing: 'border-box' as const,
 };
 
@@ -24,10 +22,10 @@ type Props = {
   showExogenous: boolean;
 };
 
-/** Strip docked to the bottom of the viewport: one card per selected method, colour-matched
- * to that method's chip/forecast line. Rendered as the last child of the matrix column so its
- * width always matches that column. Port of app/app.py's `method-info-panel` /
- * `render_method_info_panel`. */
+/** Dock at the bottom of the viewport: one fixed-width, independently collapsible and
+ * height-resizable card per selected method, colour-matched to that method's chip/forecast
+ * line. Rendered as the last child of the matrix column so it's positioned within that
+ * column. Port of app/app.py's `method-info-panel` / `render_method_info_panel`. */
 export function MethodInfoPanel({
   caseId,
   caseMeta,
