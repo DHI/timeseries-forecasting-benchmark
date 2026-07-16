@@ -31,7 +31,15 @@ export function MethodInfoCard({ method, index, caseMeta, methodMeta }: Props) {
       <details style={{ marginTop: 6 }}>
         <summary style={{ fontSize: '0.85em', cursor: 'pointer' }}>Implementation detail</summary>
         <div style={{ fontSize: '0.85em', marginTop: 4 }}>
-          <Markdown>{methodInfoDetail(methodMeta)}</Markdown>
+          <Markdown
+            components={{
+              pre: ({ children }) => (
+                <pre style={{ overflowX: 'auto', maxWidth: '100%' }}>{children}</pre>
+              ),
+            }}
+          >
+            {methodInfoDetail(methodMeta)}
+          </Markdown>
         </div>
       </details>
     </div>

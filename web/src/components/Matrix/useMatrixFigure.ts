@@ -217,6 +217,8 @@ export function useMatrixFigure(
         constrain: 'domain',
         fixedrange: true,
         showticklabels: false,
+        showgrid: false,
+        ticks: '',
       },
       yaxis: {
         autorange: 'reversed',
@@ -224,6 +226,8 @@ export function useMatrixFigure(
         scaleratio: 1,
         fixedrange: true,
         showticklabels: false,
+        showgrid: false,
+        ticks: '',
       },
     };
 
