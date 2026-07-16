@@ -1,6 +1,6 @@
 import { format as d3format } from 'd3-format';
 import { useMemo } from 'react';
-import type { Annotations, Data, Layout, LayoutAxis, Shape } from 'plotly.js';
+import type { Annotations, AxisName, Data, Layout, LayoutAxis, Shape } from 'plotly.js';
 import Plot from '../../plotly';
 import { METHOD_COLORS } from '../../data/constants';
 import { freqToMs } from '../../data/freq';
@@ -13,6 +13,13 @@ const AXIS_STYLE = {
   showline: true,
   linecolor: 'black',
   ticks: 'outside' as const,
+};
+
+const X_AXIS_STYLE = {
+  ...AXIS_STYLE,
+  tickangle: 0 as const,
+  tickformat: '%b %d, %H:%M',
+  nticks: 4,
 };
 
 function effectiveVariant(
@@ -86,8 +93,6 @@ export function SnapshotGrid({
         y: actualValues,
         name: 'Actual',
         line: { color: 'black', width: 2 },
-        legendgroup: 'Actual',
-        showlegend: i === 0,
         xaxis: axes.xaxisRef,
         yaxis: axes.yaxisRef,
       } as Data);
@@ -104,8 +109,6 @@ export function SnapshotGrid({
           y: predValues,
           name: label,
           line: { color: colorOf.get(method), width: 2 },
-          legendgroup: method,
-          showlegend: i === 0,
           xaxis: axes.xaxisRef,
           yaxis: axes.yaxisRef,
         } as Data);
@@ -135,28 +138,28 @@ export function SnapshotGrid({
         font: { size: 12 },
       });
 
-      axisLayout[axes.xaxisKey] = { domain: axes.xDomain, ...AXIS_STYLE };
-      axisLayout[axes.yaxisKey] = { domain: axes.yDomain, ...AXIS_STYLE };
+      axisLayout[axes.xaxisKey] = {
+        domain: axes.xDomain,
+        anchor: axes.yaxisRef as AxisName,
+        ...X_AXIS_STYLE,
+      };
+      axisLayout[axes.yaxisKey] = {
+        domain: axes.yDomain,
+        anchor: axes.xaxisRef as AxisName,
+        ...AXIS_STYLE,
+      };
     });
 
     const layout: Partial<Layout> = {
       ...(axisLayout as Partial<Layout>),
-      height: 240 * curated.length + 60,
-      margin: { l: 50, t: 60, r: 20, b: 40 },
+      height: 220 * curated.length + 30,
+      margin: { l: 50, t: 30, r: 20, b: 40 },
       paper_bgcolor: 'white',
       plot_bgcolor: 'white',
       font: { family: 'system-ui, sans-serif' },
       annotations,
       shapes,
-      legend: {
-        orientation: 'h',
-        yanchor: 'bottom',
-        y: 1.02,
-        xanchor: 'left',
-        x: 0,
-        bgcolor: 'rgba(0,0,0,0)',
-        borderwidth: 0,
-      },
+      showlegend: false,
     };
 
     return { data, layout };

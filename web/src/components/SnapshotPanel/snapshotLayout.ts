@@ -14,7 +14,7 @@ export type PanelAxes = {
   titleY: number;
 };
 
-const GAP = 0.06;
+const GAP = 0.05;
 
 /** Per-panel axis domains for a `maxCols`-wide grid of `panelCount` subplots, stacking
  * rows top-to-bottom (panel 0 at the top-left) — Plotly's own multi-axis layout has no

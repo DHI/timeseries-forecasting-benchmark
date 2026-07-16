@@ -48,19 +48,19 @@ export function CasePanel({ caseId, caseMeta, scores, methods, showGlobal }: Pro
         <DistributionPlot distribution={distribution} caseId={caseId} />
         <p style={CAPTION_STYLE}>Train / val / test split</p>
         <ProportionsBar counts={splitCounts} caseId={caseId} />
+        <TrainingStats
+          scores={scores}
+          caseMeta={caseMeta}
+          caseId={caseId}
+          methods={methods}
+          extended={extended}
+        />
       </details>
       <hr />
       <details open>
         <summary style={SUMMARY_STYLE}>Case summary</summary>
         <div style={{ marginTop: 4 }}>
           <CaseSummary caseMeta={caseMeta} />
-          <TrainingStats
-            scores={scores}
-            caseMeta={caseMeta}
-            caseId={caseId}
-            methods={methods}
-            extended={extended}
-          />
         </div>
       </details>
     </div>

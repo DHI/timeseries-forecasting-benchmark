@@ -247,6 +247,7 @@ function MainLayout({
             padding: 16,
             borderLeft: '1px solid var(--border)',
             overflowY: 'auto',
+            background: '#ffffff',
           }}
         >
           <CasePanel
