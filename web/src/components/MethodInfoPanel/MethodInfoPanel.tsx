@@ -9,7 +9,7 @@ const PANEL_STYLE = {
   alignItems: 'flex-end' as const,
   gap: 12,
   overflowX: 'auto' as const,
-  padding: '0 16px',
+  padding: '0 16px 12px',
   boxSizing: 'border-box' as const,
 };
 
