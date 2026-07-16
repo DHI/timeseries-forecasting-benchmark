@@ -9,6 +9,7 @@ import { BenchmarkDesign } from './components/BenchmarkDesign/BenchmarkDesign';
 import { CasePanel } from './components/CasePanel/CasePanel';
 import { MethodInfoPanel } from './components/MethodInfoPanel/MethodInfoPanel';
 import { SnapshotPanel } from './components/SnapshotPanel/SnapshotPanel';
+import { useResizablePanelWidth } from './hooks/useResizablePanelWidth';
 import { DOMAIN_RESTRICTED_METRICS } from './data/metricConfig';
 import {
   casesEligibleForMetric,
@@ -123,6 +124,11 @@ function MainLayout({
     [dispatch],
   );
   const handleClear = useCallback(() => dispatch({ type: 'CLEAR_SELECTION' }), [dispatch]);
+  const handleCasePanelResize = useCallback(
+    (width: number) => dispatch({ type: 'SET_CASE_PANEL_WIDTH', width }),
+    [dispatch],
+  );
+  const casePanelResize = useResizablePanelWidth(state.casePanelWidth, handleCasePanelResize);
 
   const filteredRows = useMemo(() => {
     if (!state.metric) return [];
@@ -238,8 +244,8 @@ function MainLayout({
       {state.selection.case_id && cases[state.selection.case_id] && (
         <div
           style={{
-            flex: '0 0 460px',
-            width: 460,
+            flex: `0 0 ${state.casePanelWidth}px`,
+            width: state.casePanelWidth,
             boxSizing: 'border-box',
             position: 'sticky',
             top: 0,
@@ -250,6 +256,18 @@ function MainLayout({
             background: '#ffffff',
           }}
         >
+          <div
+            onMouseDown={casePanelResize.onMouseDown}
+            title="Drag to resize"
+            style={{
+              position: 'absolute',
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: 6,
+              cursor: 'col-resize',
+            }}
+          />
           <CasePanel
             caseId={state.selection.case_id}
             caseMeta={cases[state.selection.case_id]!}
