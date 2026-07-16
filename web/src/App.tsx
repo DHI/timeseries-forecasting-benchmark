@@ -9,7 +9,7 @@ import { BenchmarkDesign } from './components/BenchmarkDesign/BenchmarkDesign';
 import { CasePanel } from './components/CasePanel/CasePanel';
 import { MethodInfoPanel } from './components/MethodInfoPanel/MethodInfoPanel';
 import { SnapshotPanel } from './components/SnapshotPanel/SnapshotPanel';
-import { useResizablePanelWidth } from './hooks/useResizablePanelWidth';
+import { useEdgeResize } from './hooks/useEdgeResize';
 import { DOMAIN_RESTRICTED_METRICS } from './data/metricConfig';
 import {
   casesEligibleForMetric,
@@ -128,7 +128,7 @@ function MainLayout({
     (width: number) => dispatch({ type: 'SET_CASE_PANEL_WIDTH', width }),
     [dispatch],
   );
-  const casePanelResize = useResizablePanelWidth(state.casePanelWidth, handleCasePanelResize);
+  const casePanelResize = useEdgeResize('x', state.casePanelWidth, handleCasePanelResize);
 
   const filteredRows = useMemo(() => {
     if (!state.metric) return [];
