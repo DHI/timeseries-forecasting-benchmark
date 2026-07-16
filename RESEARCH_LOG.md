@@ -8,6 +8,19 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-16 — Fixed method-info card height-drag stopping after one pixel
+
+Dragging a method-info card's resize handle up barely moved it. Root cause: `useEdgeResize`'s
+`handleMouseMove` closed over the `onResize` callback, so its identity — and the identity of the
+`stopDragging`/cleanup-effect chain built on top of it — changed whenever `onResize` did.
+`MethodInfoCard` passes an inline callback, recreated on every render, so the first `onResize`
+call during a drag triggered a re-render whose new callback identity tore down the drag's own
+mouse listeners via React's effect-cleanup-on-dependency-change. The case panel's width-resize
+never hit this because its callback happens to come from a stable `useCallback`. Fixed by routing
+`onResize` through a ref inside the hook, so `handleMouseMove`'s identity no longer depends on the
+caller's callback identity; added a regression test that simulates a mid-drag re-render with a new
+callback to catch a recurrence.
+
 ## 2026-07-16 — Split the method-info strip into per-method collapsible, resizable cards
 
 The bottom method-info strip (up to `MAX_OVERLAY_METHODS` = 3 cards) used to be one flex-wrap
