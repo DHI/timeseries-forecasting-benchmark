@@ -5,7 +5,7 @@ import { useEdgeResize } from '../../hooks/useEdgeResize';
 import { methodInfo, methodInfoDetail } from '../../data/methodText';
 import type { CaseMeta, MethodMeta } from '../../types/data';
 
-const CARD_WIDTH = 320;
+const CARD_MIN_WIDTH = 220;
 const DEFAULT_CONTENT_HEIGHT = 220;
 const MIN_CONTENT_HEIGHT = 120;
 const MAX_CONTENT_HEIGHT = 520;
@@ -17,11 +17,11 @@ type Props = {
   methodMeta: MethodMeta | undefined;
 };
 
-/** One card per selected method, docked to the bottom of the viewport next to its siblings.
- * The title bar stays put at the bottom edge and can be collapsed down to just that bar;
- * expanded, its content height is user-adjustable via a drag handle along its top edge.
- * Colour-matched to that method's chip/forecast line. Port of app/app.py's
- * `_method_info_cards`. */
+/** One card per selected method, docked to the bottom of the viewport next to its siblings and
+ * sharing the row's width evenly with them, so together they span the full matrix column. The
+ * title bar stays put at the bottom edge and can be collapsed down to just that bar; expanded,
+ * its content height is user-adjustable via a drag handle along its top edge. Colour-matched to
+ * that method's chip/forecast line. Port of app/app.py's `_method_info_cards`. */
 export function MethodInfoCard({ method, index, caseMeta, methodMeta }: Props) {
   const [collapsed, setCollapsed] = useState(false);
   const [contentHeight, setContentHeight] = useState(DEFAULT_CONTENT_HEIGHT);
@@ -34,8 +34,8 @@ export function MethodInfoCard({ method, index, caseMeta, methodMeta }: Props) {
   return (
     <div
       style={{
-        flex: `0 0 ${CARD_WIDTH}px`,
-        width: CARD_WIDTH,
+        flex: `1 1 ${CARD_MIN_WIDTH}px`,
+        minWidth: CARD_MIN_WIDTH,
         display: 'flex',
         flexDirection: 'column',
         background: 'var(--bg)',

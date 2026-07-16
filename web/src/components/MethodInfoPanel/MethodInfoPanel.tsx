@@ -22,10 +22,11 @@ type Props = {
   showExogenous: boolean;
 };
 
-/** Dock at the bottom of the viewport: one fixed-width, independently collapsible and
- * height-resizable card per selected method, colour-matched to that method's chip/forecast
- * line. Rendered as the last child of the matrix column so it's positioned within that
- * column. Port of app/app.py's `method-info-panel` / `render_method_info_panel`. */
+/** Dock at the bottom of the viewport: one independently collapsible and height-resizable
+ * card per selected method, colour-matched to that method's chip/forecast line. The cards
+ * share the row's width evenly, so together they span the full matrix column between the
+ * sidebar and the case detail panel. Rendered as the last child of the matrix column. Port
+ * of app/app.py's `method-info-panel` / `render_method_info_panel`. */
 export function MethodInfoPanel({
   caseId,
   caseMeta,
