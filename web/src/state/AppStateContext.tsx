@@ -3,6 +3,14 @@ import type { Dispatch, ReactNode } from 'react';
 import { EMPTY_SELECTION, nextSelection } from './selectionReducer';
 import type { SelectionAction, SelectionState } from './selectionReducer';
 
+export const CASE_PANEL_MIN_WIDTH = 320;
+export const CASE_PANEL_MAX_WIDTH = 900;
+export const CASE_PANEL_DEFAULT_WIDTH = 460;
+
+function clampCasePanelWidth(width: number): number {
+  return Math.min(CASE_PANEL_MAX_WIDTH, Math.max(CASE_PANEL_MIN_WIDTH, width));
+}
+
 export type AppState = {
   metric: string;
   domains: string[];
@@ -10,6 +18,7 @@ export type AppState = {
   sidebarCollapsed: boolean;
   showGlobal: boolean;
   showExogenous: boolean;
+  casePanelWidth: number;
   selection: SelectionState;
 };
 
@@ -20,6 +29,7 @@ export type AppAction =
   | { type: 'TOGGLE_SIDEBAR' }
   | { type: 'TOGGLE_GLOBAL' }
   | { type: 'TOGGLE_EXOGENOUS' }
+  | { type: 'SET_CASE_PANEL_WIDTH'; width: number }
   | SelectionAction;
 
 export function appReducer(state: AppState, action: AppAction): AppState {
@@ -36,6 +46,8 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, showGlobal: !state.showGlobal };
     case 'TOGGLE_EXOGENOUS':
       return { ...state, showExogenous: !state.showExogenous };
+    case 'SET_CASE_PANEL_WIDTH':
+      return { ...state, casePanelWidth: clampCasePanelWidth(action.width) };
     case 'CELL_CLICK':
     case 'REMOVE_CHIP':
     case 'CLEAR_SELECTION':
@@ -53,6 +65,7 @@ export function initialAppState(overrides: Partial<AppState> = {}): AppState {
     sidebarCollapsed: false,
     showGlobal: false,
     showExogenous: false,
+    casePanelWidth: CASE_PANEL_DEFAULT_WIDTH,
     selection: EMPTY_SELECTION,
     ...overrides,
   };

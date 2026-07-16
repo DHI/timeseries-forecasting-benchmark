@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { appReducer, initialAppState } from './AppStateContext';
+import {
+  appReducer,
+  CASE_PANEL_MAX_WIDTH,
+  CASE_PANEL_MIN_WIDTH,
+  initialAppState,
+} from './AppStateContext';
 
 describe('appReducer', () => {
   it('sets the metric', () => {
@@ -32,6 +37,23 @@ describe('appReducer', () => {
     state = appReducer(state, { type: 'TOGGLE_EXOGENOUS' });
     expect(state.showGlobal).toBe(true);
     expect(state.showExogenous).toBe(true);
+  });
+
+  it('sets the case panel width, clamped to the allowed range', () => {
+    const state = appReducer(initialAppState(), { type: 'SET_CASE_PANEL_WIDTH', width: 600 });
+    expect(state.casePanelWidth).toBe(600);
+
+    const clampedLow = appReducer(initialAppState(), {
+      type: 'SET_CASE_PANEL_WIDTH',
+      width: CASE_PANEL_MIN_WIDTH - 50,
+    });
+    expect(clampedLow.casePanelWidth).toBe(CASE_PANEL_MIN_WIDTH);
+
+    const clampedHigh = appReducer(initialAppState(), {
+      type: 'SET_CASE_PANEL_WIDTH',
+      width: CASE_PANEL_MAX_WIDTH + 50,
+    });
+    expect(clampedHigh.casePanelWidth).toBe(CASE_PANEL_MAX_WIDTH);
   });
 
   it('delegates selection actions to nextSelection', () => {
