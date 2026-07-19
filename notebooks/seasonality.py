@@ -144,7 +144,9 @@ def _(case, mo, pd, robust_period_candidates, extra_input, train):
     robust_result = robust_period_candidates(train["y"].to_numpy(), case.freq)
     _candidates = robust_result["candidates"]
     if not _candidates:
-        _discovery = mo.md("No periodic structure discovered (train split too short or flat).")
+        _discovery = mo.vstack(
+            [mo.md("No periodic structure discovered (train split too short or flat)."), extra_input]
+        )
     else:
         _df = pd.DataFrame(_candidates)[
             [

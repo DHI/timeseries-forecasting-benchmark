@@ -62,7 +62,7 @@ DOMAIN_KEY_DICT = {
 
 
 def pd_isna(v) -> bool:
-    return v is None or (isinstance(v, float) and np.isnan(v))
+    return v is None or (isinstance(v, (float, np.floating)) and np.isnan(v))
 
 
 def _metric_cfg(metric: str) -> dict:
@@ -1413,4 +1413,4 @@ def render_method_info_panel(sel, show_exogenous, n_reload):
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=8050)
+    app.run(debug=False, port=8050)

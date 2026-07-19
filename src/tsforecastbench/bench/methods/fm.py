@@ -380,7 +380,7 @@ class TimesFMForecaster(Forecaster):
             outputs, _xreg = model.forecast_with_covariates(
                 inputs=[context], dynamic_numerical_covariates=covariates
             )
-            y_hat = np.asarray(outputs[0], dtype=np.float64)[:horizon]
+            y_hat = np.asarray(outputs[0], dtype=np.float64)[-horizon:]
         else:
             model = _load_timesfm(self.model_name, self.max_context, max_horizon)
             point_forecast, _quantiles = model.forecast(horizon=horizon, inputs=[context])

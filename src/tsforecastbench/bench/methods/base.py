@@ -41,6 +41,7 @@ def lookback_for(freq: str, h: int) -> int:
     horizons even at large h (freqs not listed default to 4*h).
     """
     f = freq.lower()
+    f = {"d": "1d", "h": "1h", "15t": "15min", "w": "1w"}.get(f, f)
     base = {"1d": 64, "1h": 168, "15min": 192, "1w": 52}.get(f, 4 * h)
     return max(base, 2 * h)
 

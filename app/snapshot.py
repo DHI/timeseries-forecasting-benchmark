@@ -38,15 +38,16 @@ from tsforecastbench.bench.eval.metrics import skill_score as _skill_score
 from tsforecastbench.data.registry import get_case
 from tsforecastbench.data.seasonality import mase_season_for
 
-# Sort direction per matrix metric (see tsforecastbench.bench.viz.METRIC_CONFIG for the
-# same set of names) -- lower is better for error metrics, higher is better for skill
-# scores. Falls back to "min" for any metric not listed here.
 METRIC_LOWER_IS_BETTER = {
     "MAE": True,
     "RMSE": True,
     "MASE": True,
+    "MAPE": True,
+    "sMAPE": True,
     "Skill_vs_Persistence": False,
     "Skill_vs_Mean": False,
+    "NSE": False,
+    "KGE": False,
 }
 
 MAX_COLS = 3
@@ -179,7 +180,10 @@ def _kde_curve(values: pd.Series, x_grid: np.ndarray) -> np.ndarray | None:
     values = values.to_numpy(dtype=float)
     if len(values) < 2 or np.ptp(values) == 0:
         return None
-    return gaussian_kde(values)(x_grid)
+    try:
+        return gaussian_kde(values)(x_grid)
+    except (np.linalg.LinAlgError, ValueError):
+        return None
 
 
 def render_split_distribution(case_id: str, extended: bool = False) -> go.Figure:
@@ -310,8 +314,21 @@ def _origin_metric(case_id: str, origin_preds: pd.DataFrame, metric: str) -> flo
     y = aligned.to_numpy()[mask]
     y_hat = origin_preds["y_hat"].to_numpy(dtype=float)[mask]
 
+    from tsforecastbench.bench.eval.metrics import kge as _kge
+    from tsforecastbench.bench.eval.metrics import mape as _mape
+    from tsforecastbench.bench.eval.metrics import nse as _nse
+    from tsforecastbench.bench.eval.metrics import smape as _smape
+
     if metric == "RMSE":
         return _rmse_score(y, y_hat)
+    if metric == "MAPE":
+        return _mape(y, y_hat)
+    if metric == "sMAPE":
+        return _smape(y, y_hat)
+    if metric == "NSE":
+        return _nse(y, y_hat)
+    if metric == "KGE":
+        return _kge(y, y_hat)
     if metric == "MASE":
         y_train, season = _mase_context(case_id)
         try:
