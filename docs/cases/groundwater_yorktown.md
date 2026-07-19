@@ -17,6 +17,10 @@ flowchart LR
 
 ![EDA](../figures/cases/groundwater_yorktown_eda.png)
 
+*EDA panel: daily depth to water (m below surface) at well We-5020, with ERA5
+precipitation overlaid. Note the y-axis is depth, so a *rising* water table shows as a
+*falling* line.*
+
 ## The forecasting problem
 
 Forecast **depth to water**, **daily**, **30 days** ahead — a longer horizon than the surface-water cases because the system is slow and a month-ahead water-table outlook is the operationally useful product (irrigation, well-field management, low-flow forecasting). Persistence is a very strong baseline; the open question is whether antecedent precipitation buys skill at 2–4 weeks.

@@ -15,6 +15,7 @@ exogenous = ["precip", "temp", "pet"]
 exogenous_known_future = []
 necessary_exogenous = []
 static_attrs = ["area_km2", "imperviousness"]
+domain_metrics = ["NSE", "KGE"]
 data_type = "mixed"
 split_mode = "fraction"
 split_fraction = [0.7, 0.85]

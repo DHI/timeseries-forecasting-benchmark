@@ -136,23 +136,62 @@ def _(case, go, mo):
 @app.cell
 def _(case):
     df = case.load()
+    df_curated = case.load(curated=True)
     splits = case.split_frame(df)
-    return df, splits
+    splits_curated = case.split_frame(df_curated)
+    return df, df_curated, splits, splits_curated
 
 
 @app.cell
-def _(case, go, mo, pd, splits):
-    def _thin(part, max_pts=3000):
-        if len(part) > max_pts:
-            return part.iloc[:: len(part) // max_pts]
-        return part
+def _(case, df, go, mo, np, pd, splits_curated):
+    _MAX_PTS = 3000
+
+    def _envelope(part, edges):
+        # Min/max-per-bin downsampling on a *shared* set of absolute time edges, so every
+        # series (raw or curated) bins against the same grid — a spike surviving in one
+        # series' bin survives identically in every other series' matching bin, and
+        # wherever curated == raw (i.e. outside a filled gap) the two traces stay pointwise
+        # identical rather than drifting apart the way independent per-series striding did.
+        ds = pd.to_datetime(part["ds"])
+        y = pd.to_numeric(part["y"], errors="coerce")
+        bin_id = pd.cut(ds, bins=edges, labels=False, include_lowest=True)
+        agg = (
+            pd.DataFrame({"bin": bin_id, "y": y.to_numpy()})
+            .groupby("bin")["y"]
+            .agg(["idxmin", "idxmax"])
+        )
+        idx = np.unique(agg.dropna(how="all").to_numpy().astype(int))
+        return part.iloc[idx]
+
+    _ds_full = pd.to_datetime(df["ds"])
+    _needs_thin = len(df) > _MAX_PTS
+    _edges = (
+        pd.date_range(_ds_full.min(), _ds_full.max(), periods=_MAX_PTS // 2 + 1)
+        if _needs_thin
+        else None
+    )
 
     fig_ts = go.Figure()
+    # Raw series first, in grey and behind everything, so it's obvious at a glance how
+    # much of the full nominal span the benchmark-ready (curated) data actually covers.
+    _raw = _envelope(df, _edges) if _needs_thin else df
+    fig_ts.add_trace(
+        go.Scatter(
+            x=pd.to_datetime(_raw["ds"]),
+            y=_raw["y"],
+            mode="lines",
+            name="raw (full span)",
+            line=dict(color="#bbb", width=1),
+            opacity=0.6,
+        )
+    )
     for _part, _color, _name in [
-        (_thin(splits["train"]), "#4C72B0", "train"),
-        (_thin(splits["val"]), "#DD8452", "val"),
-        (_thin(splits["test"]), "#55A868", "test"),
+        (splits_curated["train"], "#4C72B0", "train"),
+        (splits_curated["val"], "#DD8452", "val"),
+        (splits_curated["test"], "#55A868", "test"),
     ]:
+        if _needs_thin:
+            _part = _envelope(_part, _edges)
         fig_ts.add_trace(
             go.Scatter(
                 x=pd.to_datetime(_part["ds"]),
@@ -177,7 +216,21 @@ def _(case, go, mo, pd, splits):
         ),
         hovermode="x unified",
     )
-    mo.ui.plotly(fig_ts)
+    mo.vstack(
+        [
+            mo.ui.plotly(fig_ts),
+            mo.md(
+                "_Grey is the raw series over its full nominal span; the coloured "
+                "train/val/test lines on top are the curated (gap-filled, "
+                "tail contiguous span) series the benchmark actually trains and scores "
+                "on. Where grey shows but no colour does, that stretch was dropped by "
+                "the curation gap policy. Very long/high-frequency series are "
+                "downsampled for display using a shared min/max-per-bin grid across raw "
+                "and curated, so the two stay pointwise identical everywhere outside a "
+                "filled gap._"
+            ),
+        ]
+    )
     return
 
 
@@ -219,14 +272,25 @@ def _(df, mo, pd, px):
                 gap=1,
             ),
             mo.ui.plotly(fig_qual),
+            mo.md(
+                "_Fraction of rows with an observed (non-NaN) target per calendar "
+                "year, on the **raw** series — this is where to look for years with "
+                "sensor outages or a dataset that simply doesn't start/end there._"
+            ),
         ]
     )
     return (y,)
 
 
 @app.cell
-def _(go, mo, pd, y):
-    y_vals = y.dropna().values
+def _(df_curated, pd):
+    y_curated = pd.to_numeric(df_curated["y"], errors="coerce")
+    return (y_curated,)
+
+
+@app.cell
+def _(go, mo, pd, y_curated):
+    y_vals = y_curated.dropna().values
     _q1 = float(pd.Series(y_vals).quantile(0.25))
     _med = float(pd.Series(y_vals).median())
     _q3 = float(pd.Series(y_vals).quantile(0.75))
@@ -263,14 +327,19 @@ def _(go, mo, pd, y):
                 gap=1,
             ),
             mo.ui.plotly(fig_dist),
+            mo.md(
+                "_Distribution of the **curated** (gap-filled) target. Look for "
+                "implausible outliers or a long tail that a robust metric (MASE) would "
+                "handle better than a scale-sensitive one (RMSE)._"
+            ),
         ]
     )
     return
 
 
 @app.cell
-def _(case, mo, plot_acf, plt, y):
-    y_acf = y.dropna()
+def _(case, mo, plot_acf, plt, y_curated):
+    y_acf = y_curated.dropna()
     y_acf = y_acf.iloc[-5000:] if len(y_acf) > 5000 else y_acf
 
     _freq_lags = {"15min": 96, "1h": 48, "1D": 30, "1W": 26}
@@ -280,8 +349,18 @@ def _(case, mo, plot_acf, plt, y):
     plot_acf(y_acf, lags=n_lags, ax=ax_acf, alpha=0.05, zero=False)
     ax_acf.set_title(f"Autocorrelation — {case.target} (last {len(y_acf):,} obs, {n_lags} lags)")
     ax_acf.set_xlabel(f"Lag ({case.freq})")
+    ax_acf.set_ylabel("Autocorrelation")
     plt.tight_layout()
-    mo.mpl.interactive(fig_acf)
+    mo.vstack(
+        [
+            mo.mpl.interactive(fig_acf),
+            mo.md(
+                "_Bars outside the shaded band are statistically significant at the "
+                "5% level. A slow decay means long memory (persistence is a strong "
+                "baseline); a sharp cutoff means the series decorrelates fast._"
+            ),
+        ]
+    )
     return
 
 
@@ -343,14 +422,15 @@ def _(case, df, go, make_subplots, mo, pd):
 
 
 @app.cell
-def _(case, df, exo_cols, go, make_subplots, mo, np, pd, splits):
+def _(case, exo_cols, go, make_subplots, mo, np, pd, splits_curated):
     from sklearn.feature_selection import mutual_info_regression as _mi_reg
 
     if not exo_cols:
         _exo_analysis_out = mo.md("_No exogenous variables — skip correlation analysis._")
     else:
-        # Use train + val only to avoid test-set leakage in EDA metrics
-        _df_tv = pd.concat([splits["train"], splits["val"]], ignore_index=True)
+        # Curated train + val only: gap-free (fairer correlation estimate) and avoids
+        # test-set leakage in EDA metrics.
+        _df_tv = pd.concat([splits_curated["train"], splits_curated["val"]], ignore_index=True)
         _y = pd.to_numeric(_df_tv["y"], errors="coerce")
 
         # Lag range tuned to freq so it spans ~2x the primary horizon
@@ -433,6 +513,7 @@ def _(case, df, exo_cols, go, make_subplots, mo, np, pd, splits):
             row=_n_exo,
             col=1,
         )
+        _fig_ccf.update_yaxes(title_text="Pearson r")
         _fig_ccf.update_layout(
             height=max(220, 180 * _n_exo) + 60,
             margin=dict(t=40, b=60, l=60, r=20),
@@ -442,7 +523,8 @@ def _(case, df, exo_cols, go, make_subplots, mo, np, pd, splits):
             [
                 mo.md("### Exogenous variable analysis"),
                 mo.md(
-                    "_**Best lag** = lag δ at which |CCF| is maximised. "
+                    "_Computed on the **curated** train+val series. "
+                    "**Best lag** = lag δ at which |CCF| is maximised. "
                     "Positive δ means the exogenous variable from δ steps ago best predicts the target — "
                     "a leading indicator useful for forecasting. "
                     "**Mutual info** captures non-linear dependence (higher = more informative)._"

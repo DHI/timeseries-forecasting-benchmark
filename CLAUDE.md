@@ -33,9 +33,8 @@ CI runs `uv run ruff check .` and fails the build on any lint violation. Before 
 run `uv run ruff check --fix .` and `uv run ruff format .` and confirm `uv run ruff check .`
 passes clean. Do this for every commit that touches Python files, not just at the end of a task.
 
-
 ## Commit hygiene
-Before implementing any non-trivial code change, or before running any git commit, consult the `jap-commit-preferences` skill.
+Before starting any non-trivial code change, consult the `japr-commit-preferences` skill once. Its rules stay in effect for the rest of that task — no need to re-consult it before each individual commit.
 
 ## Writing style
 

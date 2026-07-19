@@ -12,6 +12,14 @@ from tsforecastbench.data.seasonality import dominant_period, position_in_cycle
 
 class MeanBaseline(Forecaster):
     name = "Mean"
+    family = "baseline"
+    library = "pandas/numpy only"
+    compute_profile = "CPU, negligible — one mean over the training split."
+    limitations = (
+        "Ignores trend, seasonality, and recency entirely; useful only as a floor "
+        "other methods should comfortably beat."
+    )
+    code_snippet = "mean = train['y'].mean()\ny_hat = [mean] * horizon"
 
     def fit(self, case: Case, train: pd.DataFrame) -> None:
         self._mean = float(train["y"].mean())
@@ -30,6 +38,14 @@ class MeanBaseline(Forecaster):
 
 class Persistence(Forecaster):
     name = "Persistence"
+    family = "baseline"
+    library = "pandas/numpy only"
+    compute_profile = "CPU, negligible — no fitting at all."
+    limitations = (
+        "Repeats the last observed value for the whole horizon; degrades fast on any "
+        "series with a trend, cycle, or fast dynamics beyond one step."
+    )
+    code_snippet = "last_value = history['y'].iloc[-1]\ny_hat = [last_value] * horizon"
 
     def fit(self, case: Case, train: pd.DataFrame) -> None:
         pass
@@ -49,6 +65,17 @@ class Persistence(Forecaster):
 
 class SeasonalNaive(Forecaster):
     name = "SeasonalNaive"
+    family = "baseline"
+    library = "pandas/numpy only"
+    compute_profile = "CPU, negligible — tiles the last observed seasonal cycle."
+    limitations = (
+        "Repeats the most recent full cycle of the case's dominant declared seasonal "
+        "period; refuses to run on a case declared non-seasonal, and can't adapt if "
+        "the cycle's shape drifts over time."
+    )
+    code_snippet = (
+        "seasonal_window = train['y'].tail(season_length)\ny_hat = tile(seasonal_window, horizon)"
+    )
 
     def __init__(self, season_length: int | None = None):
         self.season_length = season_length
@@ -94,6 +121,19 @@ class Climatology(Forecaster):
     """
 
     name = "Climatology"
+    family = "baseline"
+    library = "pandas/numpy only"
+    compute_profile = "CPU, negligible — one groupby-mean over the training split."
+    limitations = (
+        "Averages history by position in the dominant seasonal cycle, so it captures a "
+        "stable average shape but not trend, one-off events, or year-to-year drift; "
+        "falls back to the global mean on a case declared non-seasonal."
+    )
+    code_snippet = (
+        "position = position_in_cycle(freq, period, train['ds'])\n"
+        "climatology = train.groupby(position)['y'].mean()\n"
+        "y_hat = [climatology[position_in_cycle(freq, period, ds)] for ds in future_ds]"
+    )
 
     def _key(self, idx: pd.DatetimeIndex) -> np.ndarray:
         return position_in_cycle(self._freq, self._period, idx)

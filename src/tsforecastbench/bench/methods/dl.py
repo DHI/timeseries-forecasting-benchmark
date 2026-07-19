@@ -13,21 +13,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from tsforecastbench.bench.methods.base import Forecaster
+from tsforecastbench.bench.methods.base import Forecaster, lookback_for, segment_arrays
 from tsforecastbench.data.schema import Case
-
-
-def _lookback_for(freq: str) -> int:
-    f = freq.lower()
-    if f in {"1d", "d"}:
-        return 64
-    if f in {"1h", "h"}:
-        return 168
-    if f in {"15min", "15t"}:
-        return 192
-    if f in {"1w", "w"}:
-        return 52
-    return 48
 
 
 def _moving_avg(x: np.ndarray, k: int) -> np.ndarray:
@@ -42,7 +29,27 @@ def _moving_avg(x: np.ndarray, k: int) -> np.ndarray:
 
 class DLinearForecaster(Forecaster):
     name = "DLinear"
+    family = "dl"
+    is_global = True
+    pools_segments = True
     max_samples: int = 8000
+    library = "scikit-learn (Ridge) — no deep-learning framework"
+    compute_profile = (
+        "CPU only, fast; both linear maps collapse into a single closed-form ridge "
+        "fit on the decomposed window, so there's no gradient-descent training loop."
+    )
+    limitations = (
+        "Univariate — ignores exogenous inputs. The trend/remainder decomposition is "
+        "a fixed moving average, not learned, so an unusually shaped trend can leak "
+        "into the remainder term."
+    )
+    code_snippet = (
+        "from sklearn.linear_model import Ridge\n\n"
+        "trend = moving_average(window, kernel)\n"
+        "remainder = window - trend\n"
+        "model = Ridge(alpha=alpha).fit(concat([trend, remainder]), target_window)\n"
+        "y_hat = model.predict(concat([trend, remainder]))"
+    )
 
     def __init__(self, lookback: int | None = None, kernel: int = 25, alpha: float = 1.0):
         self.lookback = lookback
@@ -55,20 +62,28 @@ class DLinearForecaster(Forecaster):
         from tsforecastbench.bench.eval.loop import _horizon_to_steps
 
         self._H = _horizon_to_steps(case.horizon_primary, case.freq)
-        self._L = self.lookback or _lookback_for(case.freq)
-        y = pd.to_numeric(train["y"], errors="coerce").to_numpy(dtype=float)
-        self._last_window = y[-self._L :]
-
+        self._L = self.lookback or lookback_for(case.freq, self._H)
         L, H = self._L, self._H
-        n = len(y) - L - H + 1
-        if n <= 10:  # too short: fall back to persistence at predict time
+
+        # Windows are built per contiguous segment (unique_id) and never across a gap; a
+        # plain local frame is a single segment, so this reduces to the original loop.
+        segs, _tail = segment_arrays(train)
+        counts = [max(0, len(y) - L - H + 1) for y in segs]
+        total = sum(counts)
+        if total <= 10:  # too little data: fall back to persistence at predict time
             self._model = None
             return
-        # stride so we keep at most max_samples training windows
-        stride = max(1, n // self.max_samples)
-        starts = np.arange(0, n, stride)
-        X = np.stack([y[s : s + L] for s in starts])
-        Y = np.stack([y[s + L : s + L + H] for s in starts])
+        # one shared stride across all segments so total windows stay <= max_samples
+        stride = max(1, total // self.max_samples)
+        Xs, Ys = [], []
+        for y, n in zip(segs, counts, strict=True):
+            if n <= 0:
+                continue
+            starts = np.arange(0, n, stride)
+            Xs.append(np.stack([y[s : s + L] for s in starts]))
+            Ys.append(np.stack([y[s + L : s + L + H] for s in starts]))
+        X = np.concatenate(Xs)
+        Y = np.concatenate(Ys)
         feats = self._decompose(X)
         self._model = Ridge(alpha=self.alpha).fit(feats, Y)
 
@@ -88,7 +103,10 @@ class DLinearForecaster(Forecaster):
         if getattr(self, "_model", None) is None:
             last = float(pd.to_numeric(history["y"], errors="coerce").ffill().iloc[-1])
             return pd.DataFrame({"ds": future, "y_hat": np.full(horizon, last)})
-        win = self._last_window.reshape(1, -1)
+        # Inference-only: the lookback window is the tail segment of the history handed in
+        # at this origin, never state captured at fit — so one fit serves every origin.
+        segs, tail = segment_arrays(history)
+        win = segs[tail][-self._L :].reshape(1, -1)
         y_hat = self._model.predict(self._decompose(win))[0]
         if len(y_hat) < horizon:  # horizon longer than trained H: pad with last value
             y_hat = np.concatenate([y_hat, np.full(horizon - len(y_hat), y_hat[-1])])

@@ -127,7 +127,7 @@ def make_report(case_id: str, with_fm: bool, origins: int) -> Path:
     case = get_case(case_id)
     methods = _methods(with_fm)
     print(f"[report] {case_id}: scoring {len(methods)} methods over {origins} origins ...")
-    scores = run_case_rolling(case, methods, n_origins=origins)
+    scores, _ = run_case_rolling(case, methods, n_origins=origins)
     wide = scores.pivot_table(index="method", columns="metric", values="value")
 
     print(f"[report] {case_id}: lead-time curve ...")

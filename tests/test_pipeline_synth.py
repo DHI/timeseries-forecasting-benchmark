@@ -70,7 +70,9 @@ def test_baselines_run(cid):
     case = get_case(cid)
     methods = [MeanBaseline(), Persistence(), SeasonalNaive(), Climatology()]
     res = run_case(case, methods, prefer_synth=True)
-    assert len(res) == len(methods) * 5  # MAE, RMSE, MASE, Skill_vs_Persistence, Skill_vs_Mean
+    assert (
+        len(res) == len(methods) * 9
+    )  # MAE, RMSE, MASE, Skill_vs_Persistence, Skill_vs_Mean, MAPE, sMAPE, NSE, KGE
     if case.seasonalities:
         assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
     else:
@@ -126,7 +128,9 @@ def test_ensemble_baselines_run():
     case = get_case("discharge_lowland_denmark")
     methods = [ensemble_baselines(), ensemble_baselines_theta()]
     res = run_case(case, methods, prefer_synth=True)
-    assert len(res) == len(methods) * 5  # MAE, RMSE, MASE, Skill_vs_Persistence, Skill_vs_Mean
+    assert (
+        len(res) == len(methods) * 9
+    )  # MAE, RMSE, MASE, Skill_vs_Persistence, Skill_vs_Mean, MAPE, sMAPE, NSE, KGE
     assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
 
 
@@ -163,12 +167,26 @@ def test_rolling_matrix_runs():
 
     case = get_case("discharge_flashy_catskills")
     methods = [Persistence(), LightGBMExoForecaster()]
-    res = run_case_rolling(case, methods, n_origins=6, prefer_synth=True)
-    assert len(res) == len(methods) * 5
+    res, snaps = run_case_rolling(case, methods, n_origins=6, prefer_synth=True)
+    assert len(res) == len(methods) * 9
     assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
     # pooled rolling score is finite and persistence skill-vs-itself is ~0
     pers = res[(res.method == "Persistence") & (res.metric == "Skill_vs_Persistence")]["value"]
     assert abs(float(pers.iloc[0])) < 1e-6
+    # snapshots: full predicted series per method x origin, tagged by fit variant and
+    # aligned on shared origins
+    assert set(snaps.columns) == {
+        "case_id",
+        "method",
+        "used_extended_history",
+        "origin_id",
+        "origin_ds",
+        "ds",
+        "y_hat",
+    }
+    assert set(snaps["method"].unique()) == {m.name for m in methods}
+    per_method_origins = snaps.groupby("method")["origin_id"].apply(lambda s: sorted(s.unique()))
+    assert per_method_origins.iloc[0] == per_method_origins.iloc[1]
 
 
 @pytest.mark.parametrize("cid", ["surge_cuxhaven", "waves_oregon", "discharge_lowland_denmark"])
@@ -227,10 +245,16 @@ def test_mstl_is_honestly_inapplicable_on_declared_nonseasonal_case():
 
 
 def test_methods_package_imports_without_fm_deps():
-    """The methods package (incl. the FM wrapper) must import without torch/chronos."""
+    """The methods package (incl. the FM wrappers) must import without torch/chronos."""
     import tsforecastbench.bench.methods as m
 
     assert hasattr(m, "ChronosForecaster")
+    assert hasattr(m, "Chronos2Forecaster")
+    assert hasattr(m, "Chronos2ExoForecaster")
+    assert hasattr(m, "TimesFMForecaster")
+    assert hasattr(m, "TimesFMExoForecaster")
+    assert hasattr(m, "Moirai2Forecaster")
+    assert hasattr(m, "Moirai2ExoForecaster")
 
 
 def test_chronos_runs_if_installed():
@@ -238,6 +262,87 @@ def test_chronos_runs_if_installed():
     from tsforecastbench.bench.methods import ChronosForecaster
 
     res = run_case(get_case("waves_oregon"), [ChronosForecaster()], prefer_synth=True)
+    assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
+
+
+def test_chronos2_runs_if_installed():
+    pytest.importorskip("chronos")
+    from tsforecastbench.bench.methods import Chronos2Forecaster
+
+    res = run_case(get_case("waves_oregon"), [Chronos2Forecaster()], prefer_synth=True)
+    assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
+
+
+def test_chronos2_exo_runs_if_installed():
+    """+exo variant conditions on waves_oregon's declared covariates via predict_df."""
+    pytest.importorskip("chronos")
+    from tsforecastbench.bench.methods import Chronos2ExoForecaster
+
+    res = run_case(get_case("waves_oregon"), [Chronos2ExoForecaster()], prefer_synth=True)
+    assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
+    assert res["uses_exogenous"].all()
+
+
+def test_chronos2_exo_on_univariate_case():
+    """+exo variant reduces to univariate (no crash) on a case with no covariates."""
+    pytest.importorskip("chronos")
+    from tsforecastbench.bench.methods import Chronos2ExoForecaster
+
+    res = run_case(get_case("demand_ltown"), [Chronos2ExoForecaster()], prefer_synth=True)
+    assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
+
+
+def test_timesfm_runs_if_installed():
+    pytest.importorskip("timesfm")
+    from tsforecastbench.bench.methods import TimesFMForecaster
+
+    res = run_case(get_case("waves_oregon"), [TimesFMForecaster()], prefer_synth=True)
+    assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
+
+
+def test_timesfm_exo_runs_if_installed():
+    """+exo variant fits an xreg regressor on waves_oregon's declared covariates."""
+    pytest.importorskip("timesfm")
+    from tsforecastbench.bench.methods import TimesFMExoForecaster
+
+    res = run_case(get_case("waves_oregon"), [TimesFMExoForecaster()], prefer_synth=True)
+    assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
+    assert res["uses_exogenous"].all()
+
+
+def test_timesfm_exo_on_univariate_case():
+    """+exo variant reduces to univariate (no crash) on a case with no covariates."""
+    pytest.importorskip("timesfm")
+    from tsforecastbench.bench.methods import TimesFMExoForecaster
+
+    res = run_case(get_case("demand_ltown"), [TimesFMExoForecaster()], prefer_synth=True)
+    assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
+
+
+def test_moirai2_runs_if_installed():
+    pytest.importorskip("uni2ts")
+    from tsforecastbench.bench.methods import Moirai2Forecaster
+
+    res = run_case(get_case("waves_oregon"), [Moirai2Forecaster()], prefer_synth=True)
+    assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
+
+
+def test_moirai2_exo_runs_if_installed():
+    """+exo variant feeds declared covariates in as feat_dynamic_real."""
+    pytest.importorskip("uni2ts")
+    from tsforecastbench.bench.methods import Moirai2ExoForecaster
+
+    res = run_case(get_case("waves_oregon"), [Moirai2ExoForecaster()], prefer_synth=True)
+    assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
+    assert res["uses_exogenous"].all()
+
+
+def test_moirai2_exo_on_univariate_case():
+    """+exo variant reduces to univariate (no crash) on a case with no covariates."""
+    pytest.importorskip("uni2ts")
+    from tsforecastbench.bench.methods import Moirai2ExoForecaster
+
+    res = run_case(get_case("demand_ltown"), [Moirai2ExoForecaster()], prefer_synth=True)
     assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
 
 

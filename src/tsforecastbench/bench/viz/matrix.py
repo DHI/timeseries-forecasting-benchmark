@@ -13,7 +13,7 @@ from matplotlib.colors import TwoSlopeNorm
 # cell (e.g. an MLP at skill -16) would otherwise compress the whole colormap so every
 # meaningful difference looks identical. Cells beyond the clamp saturate to the end colour
 # while their true value is still written in the cell.
-_METRIC_CONFIG = {
+METRIC_CONFIG = {
     "MASE": {
         "cmap": "RdYlGn_r",
         "center": 1.0,
@@ -21,6 +21,7 @@ _METRIC_CONFIG = {
         "vhi": 2.0,
         "label": "MASE (lower=better; 1 = seasonal naive; colour clamped to [0, 2])",
         "fmt": "{:.2f}",
+        "lower_is_better": True,
     },
     "Skill_vs_Persistence": {
         "cmap": "RdYlGn",
@@ -29,6 +30,7 @@ _METRIC_CONFIG = {
         "vhi": 1.0,
         "label": "Skill vs persistence (higher=better; 0 = no better; colour clamped to [-1, 1])",
         "fmt": "{:+.2f}",
+        "lower_is_better": False,
     },
     "Skill_vs_Mean": {
         "cmap": "RdYlGn",
@@ -37,9 +39,57 @@ _METRIC_CONFIG = {
         "vhi": 1.0,
         "label": "Skill vs mean (higher=better; 0 = no better; colour clamped to [-1, 1])",
         "fmt": "{:+.2f}",
+        "lower_is_better": False,
     },
-    "MAE": {"cmap": "Reds", "center": None, "label": "MAE (lower is better)", "fmt": "{:.3g}"},
-    "RMSE": {"cmap": "Reds", "center": None, "label": "RMSE (lower is better)", "fmt": "{:.3g}"},
+    "MAE": {
+        "cmap": "Reds",
+        "center": None,
+        "label": "MAE (lower is better)",
+        "fmt": "{:.3g}",
+        "lower_is_better": True,
+    },
+    "RMSE": {
+        "cmap": "Reds",
+        "center": None,
+        "label": "RMSE (lower is better)",
+        "fmt": "{:.3g}",
+        "lower_is_better": True,
+    },
+    "MAPE": {
+        "cmap": "Reds",
+        "center": None,
+        "label": "MAPE (lower is better)",
+        "fmt": "{:.1%}",
+        "lower_is_better": True,
+    },
+    "sMAPE": {
+        "cmap": "Reds",
+        "center": None,
+        "label": "sMAPE (lower is better)",
+        "fmt": "{:.1%}",
+        "lower_is_better": True,
+    },
+    # NSE/KGE are domain-restricted (see `Case.domain_metrics`): being listed here makes
+    # them selectable, but the app additionally filters matrix rows down to only the cases
+    # that declare eligibility, so they never appear against a domain they don't fit.
+    "NSE": {
+        "cmap": "RdYlGn",
+        "center": 0.0,
+        "vlo": -1.0,
+        "vhi": 1.0,
+        "label": "NSE (higher=better; 1=perfect; 0=no better than the mean; colour clamped to [-1, 1])",
+        "fmt": "{:.2f}",
+        "lower_is_better": False,
+    },
+    "KGE": {
+        "cmap": "RdYlGn",
+        "center": 0.0,
+        "vlo": -1.0,
+        "vhi": 1.0,
+        "label": "KGE (higher=better; 1=perfect; colour clamped to [-1, 1])",
+        "fmt": "{:.2f}",
+        "lower_is_better": False,
+    },
 }
 
 
@@ -52,7 +102,7 @@ def render_matrix(
     vlo: float | None = None,
     vhi: float | None = None,
 ) -> plt.Figure:
-    cfg = _METRIC_CONFIG.get(
+    cfg = METRIC_CONFIG.get(
         metric, {"cmap": "viridis", "center": None, "label": metric, "fmt": "{:.3g}"}
     )
 
