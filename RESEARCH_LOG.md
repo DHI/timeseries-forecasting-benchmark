@@ -20,6 +20,115 @@ the dedicated leap-year boundary test.
 **Decision.** Wrap the result in `np.asarray(...)` instead of calling `.to_numpy()`. No behavior
 change beyond fixing the crash — full suite passes again.
 
+## 2026-07-08 — Swapped statsforecast's MSTL wrapper for statsmodels' directly
+
+`_mstl_decompose` (used by `detect_candidates`'s MSTL-strength corroboration and by the
+seasonality curation notebook's decomposition plot) called `statsforecast.mstl.mstl`, a thin
+wrapper over `statsmodels.tsa.STL`. Since statsmodels exposes its own `MSTL` class directly and
+the wrapper added no behavior this code relied on, switched to calling
+`statsmodels.tsa.seasonal.MSTL` directly and dropped the indirection. `statsforecast` stays a
+dependency — `classical.py`'s MSTL-ETS/MSTL-ARIMA forecasters still use it for the actual
+forecasting models, which is a separate use from decomposition-for-evidence.
+
+One shape difference to note for anyone touching this code: statsforecast's wrapper returned a
+DataFrame with named columns (`seasonal`, or `seasonal{period}` per period, plus `remainder`);
+statsmodels' `MSTL(...).fit()` returns a `DecomposeResult` with `.trend`/`.seasonal`/`.resid`
+attributes, where `.seasonal` is a 1D array for a single period and a 2D array (columns in the
+order `periods` was passed) for multiple. `_mstl_strengths` and the notebook's decomposition
+plot were updated to index by position instead of by name. Behavior is otherwise unchanged —
+existing `test_seasonality.py` coverage of MSTL corroboration passes unmodified.
+
+## 2026-07-08 — Audit of the RobustPeriod implementation: three weaknesses found and fixed
+
+Audited `robust_period_candidates` and its helpers with synthetic-data probes beyond the
+existing test suite. The core machinery checks out — MODWT energy preservation and band
+mapping, the biweight level ranking, the IRLS Huber periodogram, multi-cycle discovery under
+trend and spikes, harmonic flagging, and dedup all behave as designed. Three weaknesses were
+confirmed empirically and fixed in the same pass (each with a regression test):
+
+- **The `prominent` flag is not calibrated for series length.** `_spectral_ratio` takes the
+  *max* power over a ±2% window around the candidate frequency; that window holds
+  `0.04·n/period` Fourier bins, so on long series the max over many noise bins inflates the
+  ratio. On pure white noise at n=100k, period 24, a quarter of random draws cleared
+  POWER_RATIO_MIN=10; AR(1) noise (φ=0.99, n=20k) produced falsely prominent periods on 3 of
+  3 seeds. The discovery path is hit harder than the menu path because the tested period was
+  itself picked from the data's ACF (post-selection bias) and prominence is the only gate —
+  there is no ACF/MSTL corroboration like `detect_candidates` has. **Fix:** the bar is raised
+  by `log2` of the window's bin count (the max of k exponential-ish noise bins grows like
+  `ln k`, so this holds the noise clearance probability at its single-bin level), and each
+  candidate now reports its `prominence_bar` so the reviewer sees the margin, not just the
+  flag. An ACF second gate was considered and rejected: band-pass-filtered noise has in-band
+  ACF peaks by construction, so it would not discriminate. After the fix, white noise at
+  n=100k produces no prominent candidates on any seed tried, and AR(1) red noise is clean on
+  5 of 6 seeds — the survivor is a marginal 12.5 against a bar of 11.6 at period 240, driven
+  by the red-noise spectral slope itself rather than window width, and visibly marginal in
+  the evidence table. Genuine cycles sit orders of magnitude above the bar either way.
+- **Period-2 (Nyquist) candidates return garbage amplitudes.** At frequency 0.5 the sine
+  column of the Huber regression design is numerically zero, the normal equations are
+  near-singular, and `robust_amplitude` comes out around 10^11 for a unit-amplitude signal.
+  Reached through the full pipeline in 8 of 30 seeded runs on an alternating series. **Fix:**
+  discovery skips periods below 3. A period-2 cycle is below anything this benchmark declares,
+  and detection at the Nyquist edge is unreliable regardless (its ACF peak sits at a dyadic
+  band edge, so period 2 was also read as 4 or 6 depending on noise).
+- **`_huber_clean` silently does nothing when the MAD is zero** (more than half the values
+  identical — flat, censored, or zero-inflated series), returning the data uncleaned, so
+  spikes pass straight into the spectrum. **Fix:** the scale falls back to the mean absolute
+  deviation (Gaussian-consistent via `sqrt(pi/2)`), which is nonzero unless the series is
+  constant, restoring the winsorisation the method is named for.
+
+Minor notes, left as-is: subharmonics (integer multiples of a strong cycle, e.g. 48 under a pure 24)
+surface unflagged by `harmonic_of`, but come out non-prominent in practice; the
+`robust_period_candidates` docstring says "Huber-ACF" where `_band_period` computes a plain
+ACF of the Huber-cleaned series' coefficients; a period at exactly n/2 in a power-of-two
+band is caught by the level below (verified — found as 1023 for a true 1024), so the
+truncated top band self-heals.
+
+## 2026-07-08 — RobustPeriod: data-driven seasonality discovery for curation
+
+The seasonality curation notebook (`notebooks/seasonality.py`) scored a fixed menu of
+physically motivated periods per frequency and, for off-menu cycles, ranked raw periodogram
+peaks (`suggest_peak_candidates`). Raw peaks are fragile on environmental data: red-noise
+variance, occasional spikes, and two blurred-together cycles all fool them, so the off-menu
+half leaned heavily on a human reading scattered plots. We wanted a principled discovery step.
+
+**Decision.** Implement RobustPeriod (Wen et al., SIGMOD 2021) in-repo as a discovery pass in
+`data/seasonality.py` (`robust_period_candidates`). The series is linearly detrended and
+Huber-winsorised (robust to trend and spikes), decomposed by an FFT-based MODWT into dyadic
+frequency bands so coexisting cycles land in separate levels, and each energised level
+contributes its dominant in-band period (read off a Wiener-Khinchin autocorrelation). Every
+candidate is scored by spectral prominence (the same red-noise-robust ratio the menu evidence
+uses) and by a robust amplitude from the exact Huber periodogram, then returned ranked, with
+flags for harmonics, resolution-limited long periods, and the nearest menu period.
+
+**Two deviations from the paper, both deliberate:**
+- *Huber periodogram.* The paper's Huber periodogram is a per-frequency robust regression
+  (O(n²) over all Fourier frequencies) — infeasible on our 100k–150k-point cases. We compute
+  the cheap FFT periodogram of the Huber-cleaned signal for peak-finding, and evaluate the
+  exact Huber M-estimate (solved by IRLS, same optimum as the paper's ADMM for this convex
+  two-parameter fit) only at each level's candidate peak frequency. This uses the real robust
+  estimator where it decides the outcome and runs in under a second on the largest case.
+- *Fisher's g-test dropped.* The paper applies Fisher's g-test per wavelet level. Empirically
+  it flags every level significant, even on white noise: a band-pass-filtered level is not
+  white and its periodogram ordinates are correlated, so the test's white-noise null is
+  grossly violated. We gate on spectral prominence instead (and rank by it); wavelet variance
+  ranking plus the prominence bar cleanly separate real cycles from noise and harmonics.
+
+**Validation, and a correction to how we judge it.** We do *not* validate against the
+`seasonalities` already declared in each case.toml — that list came from the old tooling plus
+human judgment, so matching it is circular. Judged instead by whether the tool honestly
+surfaces the periodic structure in the data: on `demand_ltown` it ranks 24, 12 (flagged a
+harmonic of 24), and ~168 far above everything else; on `surge_cuxhaven` it finds a strong
+off-menu 4 h cycle (a plausible shallow-water M6 tidal overtide); on `waves_oregon` it reports
+only weak, broad structure — the honest answer for broadband swell. Notably the declared list
+is not gospel: `demand_ltown`'s 12 h cycle (spectral ratio ~1200) is strongly present but
+undeclared, while its declared 96 has a ratio of ~5.
+
+**Going forward.** Discovery is advisory and semi-automated: the reviewer reads the ranked
+evidence and decides what to log. `suggest_peak_candidates` is left in place for now; retiring
+it is a possible follow-up. Confirmation tests (Friedman/QS on position-in-cycle) were scoped
+out of this pass and remain a candidate next step to turn "prominent" into a formal per-period
+verdict.
+
 ## 2026-07-08 — Non-seasonal MSTL test now builds its own non-seasonal case
 
 `test_mstl_is_honestly_inapplicable_on_declared_nonseasonal_case` checks that MSTL refuses to
