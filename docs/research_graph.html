@@ -253,22 +253,18 @@
 {
   "nodes": [
     {
-      "id": "2026-07-19-leap-year-fix",
-      "date": "2026-07-19",
-      "title": "Fixed leap-year bug in the 365-day position-in-cycle path",
-      "category": "bug-fix",
-      "summary": "A leftover `.to_numpy()` call crashed every 365-day seasonal position lookup with an AttributeError, breaking Climatology, SeasonalNaive-via-ensemble, and any ML feature keyed on an annual cycle.",
-      "detail": "`_dayofyear_365` (used by `position_in_cycle` for the annual cycle, which backs Climatology, SeasonalNaive-via-ensemble, and any ML feature keyed on a 365-day period) called `idx.is_leap_year.to_numpy(...)`, but `DatetimeIndex.is_leap_year` already returns a plain numpy array rather than a pandas object, so the `.to_numpy()` call raised `AttributeError` on every call. This broke all baseline/ensemble tests on cases with a declared 365-day seasonality plus the dedicated leap-year boundary test.\n\nWrapped the result in `np.asarray(...)` instead of calling `.to_numpy()` — no behavior change beyond fixing the crash, full suite passes again.",
-      "tags": ["seasonality", "climatology", "leap-year", "crash-fix"]
-    },
-    {
       "id": "2026-07-09-persist-real-forecasts",
       "date": "2026-07-09",
       "title": "Persist real per-origin forecasts and overlay methods in the results app",
       "category": "app-tooling",
       "summary": "The eval pipeline now saves full per-origin forecast series alongside metrics, and the app can overlay several methods' forecasts on the same panel.",
       "detail": "The results-matrix app showed seeded placeholder forecasts because the eval pipeline only ever saved metrics, not the forecast series behind them. `run_case_rolling` now keeps the full-horizon per-origin forecasts it was already computing and returns them alongside the metrics as a tidy `(case_id, method, origin_id, origin_ds, ds, y_hat)` frame, written incrementally to `results/pilot_snapshots.parquet` (single hold-out `--fast` runs don't produce snapshots).\n\nOrigins are now chosen once per case, before the method loop, so `origin_id`/`origin_ds` line up across methods — the app uses this to overlay several methods' forecasts on the same panel by clicking cells along a matrix row. Actuals are reloaded from the case's curated series rather than duplicated into the snapshot file. A fresh pilot run is needed to regenerate the snapshot artifact before the app shows real forecasts.",
-      "tags": ["results-app", "snapshots", "forecasts", "eval-pipeline"]
+      "tags": [
+        "results-app",
+        "snapshots",
+        "forecasts",
+        "eval-pipeline"
+      ]
     },
     {
       "id": "2026-07-09-streamlit-to-dash",
@@ -277,7 +273,12 @@
       "category": "app-tooling",
       "summary": "Migrated the results-matrix app from Streamlit to Dash because Plotly's Heatmap trace has no selection module, so Streamlit could never natively catch a cell click.",
       "detail": "The results-matrix app moved from Streamlit to Dash because Plotly's `Heatmap` trace has no selection module, so Streamlit's `on_select=\"rerun\"` could never fire on a cell click — the earlier workaround (an invisible `Scatter` overlay per cell just to catch clicks) worked but was fragile against reversed axes and cell layout. Dash's heatmap emits `clickData` natively, so the click-to-snapshot interaction is now a plain callback with no overlay hack.\n\n`data.py` and `snapshot.py` carried over unchanged since they only ever built pandas frames and Plotly figures; `app.py` was rewritten, and `@st.cache_data` was swapped for stdlib `functools.cache`. Run command is now `uv run --extra app python app/app.py`. One known gap: the reload button re-reads the parquet but won't show a brand-new domain or family in the filter widgets until the app restarts.",
-      "tags": ["results-app", "dash", "streamlit", "migration"]
+      "tags": [
+        "results-app",
+        "dash",
+        "streamlit",
+        "migration"
+      ]
     },
     {
       "id": "2026-07-09-two-app-bugs",
@@ -286,7 +287,12 @@
       "category": "bug-fix",
       "summary": "A real-browser test of the results-matrix app surfaced a DOMAIN_KEY_DICT gap causing row-label crashes and a click-to-select failure caused by a Plotly Heatmap limitation.",
       "detail": "First manual, real-browser test of the results-matrix app (headless checks alone hadn't caught these) surfaced two pre-existing bugs. `DOMAIN_KEY_DICT` only covered 4 of the 8 real domains, so `spectral_waves`, `storm_surge`, `wastewater_treatment`, and `water_quality` cases crashed the matrix's row labels with a `KeyError` — fixed by filling in the missing abbreviations and falling back to the plain domain name instead of raising.\n\nClicking a matrix cell also did nothing: Plotly.js's `Heatmap` trace has no `selectPoints` module at all, so it can never emit the click event Streamlit's `on_select=\"rerun\"` needs, regardless of app-level config — fixed at the time with an invisible `Scatter` overlay per cell, later replaced outright by the Dash migration. Worth clicking through a running app before trusting headless checks whenever a Streamlit+Plotly interaction is added — headless harnesses can't catch a client-side trace limitation like this one.",
-      "tags": ["results-app", "bug", "testing", "streamlit"]
+      "tags": [
+        "results-app",
+        "bug",
+        "testing",
+        "streamlit"
+      ]
     },
     {
       "id": "2026-07-09-multi-snapshot-panel",
@@ -295,7 +301,12 @@
       "category": "app-tooling",
       "summary": "Replaced the flat placeholder forecast line in the click-to-detail panel with a Plotly view of 3 evenly-spaced forecast-origin snapshots and a real time axis.",
       "detail": "The results-matrix app's cell-click detail panel showed one flat placeholder line with no time axis. Replaced it with `app/snapshot.py`, a Plotly panel showing 3 evenly-spaced forecast-origin snapshots side by side, each with actual values, predicted values, and a dashed line marking where the forecast starts — following a matplotlib sketch (`app/snapshot_example.py`) worked out first.\n\nUsed Plotly rather than matplotlib to stay visually consistent with the rest of the app, and a fixed count of 3 snapshots rather than a configurable one since nothing yet needed more than a quick visual check. The time axis was real (`freq` and `horizon_primary` pulled from each case's case.toml) but the actual/predicted values were still placeholders at this point — resolved by the snapshot-persistence entry above.",
-      "tags": ["results-app", "snapshot", "plotly", "forecast-panel"]
+      "tags": [
+        "results-app",
+        "snapshot",
+        "plotly",
+        "forecast-panel"
+      ]
     },
     {
       "id": "2026-07-08-interactive-app",
@@ -304,7 +315,12 @@
       "category": "app-tooling",
       "summary": "Added a Streamlit + Plotly app rendering the case × method skill matrix interactively, with hover, metric switching, filters, and a click-to-detail panel.",
       "detail": "Added `app/app.py`, a local Streamlit app rendering the same case × method grid as the static `results/pilot_matrix_*.png` plots, but interactive: hover for the metric value plus run diagnostics, switch metrics from a dropdown, and filter or remove rows and columns by case, domain, method, or method family.\n\nTwo supporting changes: every `Forecaster` subclass now declares a `family` (baseline/classical/ml/deep_learning/foundation_model/ensemble), read by the app via direct import rather than added to `pilot_metrics.parquet` — family is a property of the method, not of a run; and `matrix.py`'s per-metric colormap config was made public (`METRIC_CONFIG`) and imported by the app, so the interactive heatmap and the static PNG can't drift apart on how a metric is colored. Clicking a cell opens a detail panel with the case's review notes and a forecast-preview chart — the chart used placeholder data until the eval pipeline was later changed to persist real per-origin forecasts. Run with `uv run --extra app streamlit run app/app.py`.",
-      "tags": ["results-app", "streamlit", "plotly", "matrix"]
+      "tags": [
+        "results-app",
+        "streamlit",
+        "plotly",
+        "matrix"
+      ]
     },
     {
       "id": "2026-07-08-mstl-statsmodels-swap",
@@ -313,7 +329,12 @@
       "category": "app-tooling",
       "summary": "Replaced statsforecast's thin MSTL wrapper with statsmodels' MSTL directly for decomposition, since it added no behavior this code relied on.",
       "detail": "`_mstl_decompose` called `statsforecast.mstl.mstl`, a thin wrapper over `statsmodels.tsa.STL` that added no behavior this code relied on. Switched to calling `statsmodels.tsa.seasonal.MSTL` directly.\n\nOne shape difference for anyone touching this code: statsmodels' `MSTL(...).fit()` returns a `DecomposeResult` with `.seasonal` as a 1D array for a single period or 2D (columns in period order) for multiple, rather than statsforecast's named-column DataFrame — `_mstl_strengths` and the notebook's decomposition plot now index by position instead of name. `statsforecast` stays a dependency since `classical.py`'s MSTL-ETS/MSTL-ARIMA forecasters still use it for actual forecasting, a separate use from decomposition-for-evidence.",
-      "tags": ["mstl", "statsmodels", "decomposition", "refactor"]
+      "tags": [
+        "mstl",
+        "statsmodels",
+        "decomposition",
+        "refactor"
+      ]
     },
     {
       "id": "2026-07-08-robustperiod-audit",
@@ -322,7 +343,12 @@
       "category": "methodology",
       "summary": "A targeted audit of robust_period_candidates found and fixed three real weaknesses — an uncalibrated prominence threshold, garbage Nyquist-period amplitudes, and a silent no-op in the Huber cleaning step.",
       "detail": "Audited `robust_period_candidates` with synthetic-data probes beyond the existing test suite and found three weaknesses, each fixed with a regression test. The `prominent` flag wasn't calibrated for series length — `_spectral_ratio`'s max-over-window approach let long series with many noise bins clear the threshold by chance (a quarter of white-noise draws at n=100k falsely cleared it); fixed by raising the bar by log2 of the window's bin count and reporting each candidate's `prominence_bar` so a reviewer sees the margin.\n\nPeriod-2 (Nyquist) candidates returned garbage amplitudes because the regression's sine term is numerically zero at that frequency; fixed by skipping periods below 3. `_huber_clean` silently did nothing when the MAD was zero (common on flat or zero-inflated series), letting spikes pass straight into the spectrum; fixed with a mean-absolute-deviation fallback. The core MODWT/periodogram/dedup machinery itself checked out fine across all probes.",
-      "tags": ["seasonality", "robustperiod", "audit", "methodology"]
+      "tags": [
+        "seasonality",
+        "robustperiod",
+        "audit",
+        "methodology"
+      ]
     },
     {
       "id": "2026-07-08-robustperiod-intro",
@@ -331,7 +357,12 @@
       "category": "methodology",
       "summary": "Implemented RobustPeriod (Wen et al., SIGMOD 2021) as a new, data-driven seasonality discovery pass to surface off-menu cycles that raw periodogram peaks were missing.",
       "detail": "The seasonality curation notebook scored a fixed menu of physically-motivated periods and, for off-menu cycles, ranked raw periodogram peaks — fragile on environmental data, since red-noise variance and blurred-together cycles fool raw peaks and leave the off-menu half resting on a human reading scattered plots. Implemented RobustPeriod as a new discovery pass, `robust_period_candidates` in `data/seasonality.py`: the series is detrended and Huber-winsorised, decomposed by MODWT into dyadic frequency bands so coexisting cycles land in separate levels, and each level's dominant period is scored by spectral prominence and a robust Huber-periodogram amplitude.\n\nTwo deliberate deviations from the paper: the O(n²) per-frequency Huber periodogram is evaluated only at each level's candidate peak to stay fast on 100k+ point cases, and Fisher's g-test was dropped in favor of the spectral-prominence gate since the g-test flagged every wavelet level significant even on white noise. Validated by checking whether the tool honestly surfaces known structure rather than against each case's already-declared seasonalities, since that list came from the old tooling plus human judgment and matching it would be circular. Discovery is advisory: a reviewer still reads the ranked evidence and decides what to commit to case.toml.",
-      "tags": ["seasonality", "robustperiod", "discovery", "methodology"]
+      "tags": [
+        "seasonality",
+        "robustperiod",
+        "discovery",
+        "methodology"
+      ]
     },
     {
       "id": "2026-07-08-nonseasonal-mstl-test",
@@ -340,7 +371,11 @@
       "category": "bug-fix",
       "summary": "The test asserting MSTL refuses to run on a non-seasonal case had drifted onto a case that curation later made seasonal, so it was silently exercising the wrong path.",
       "detail": "The test asserting MSTL refuses to run on a non-seasonal case used `discharge_flashy_catskills` as its example — but since curation gave every committed case a declared `seasonalities` list, that case is no longer non-seasonal and the test was silently exercising the wrong path. Fixed by constructing the non-seasonal case explicitly via `model_copy` with `seasonalities` overridden to `[]`, since the synthetic data generator doesn't read that field anyway.\n\nWorth flagging: with all committed cases now seasonal, MSTL's inapplicability guard and the SeasonalNaive non-seasonal branch are only ever exercised by synthetic overrides, never by a real case in the suite.",
-      "tags": ["mstl", "testing", "seasonality"]
+      "tags": [
+        "mstl",
+        "testing",
+        "seasonality"
+      ]
     },
     {
       "id": "2026-07-08-dominant-period-fit-time",
@@ -349,7 +384,11 @@
       "category": "methodology",
       "summary": "dominant_period now picks whichever declared seasonality best explains a fold's own training window, by single-sinusoid R², instead of trusting curation-time ordering.",
       "detail": "`dominant_period` used to return the first entry of a case's declared `seasonalities`, trusting curation-time ordering — but in a rolling evaluation, the globally dominant cycle isn't always what a given fold's window shows most strongly. Changed it to pick, at fit time, whichever declared period's sinusoid explains the most variance of the detrended training target in that fold's own window.\n\nChose a single-sinusoid R² over a per-cycle-position seasonal mean or an ANOVA F-statistic because declared periods are almost always multiples of each other (12|24, 24|168), which would bias raw explained-variance toward always picking the longest period, while the sinusoid's fixed two-parameter cost compares periods fairly even with few cycles in a fold. This affects SeasonalNaive, Climatology, the ML sin/cos feature, and TBATS/Theta's default `season_length` — predictions can shift for any case with more than one declared seasonality, and `docs/RESULTS.md` needs regenerating on the next benchmark run for those cases.",
-      "tags": ["seasonality", "dominant-period", "methodology"]
+      "tags": [
+        "seasonality",
+        "dominant-period",
+        "methodology"
+      ]
     },
     {
       "id": "2026-07-07-climatology-seasonal-key",
@@ -358,7 +397,12 @@
       "category": "methodology",
       "summary": "Climatology's lookup key moved from a frequency-dispatch table to the case's declared dominant seasonality, so every seasonal component of the suite now keys the same way at every frequency.",
       "detail": "`Climatology`'s lookup key came from a frequency-dispatch table (day-of-year for daily, hour-of-day for hourly, weekday×hour for sub-daily), so how hard a baseline it was changed with sampling rate rather than the series' actual seasonal structure — weekly data collapsed to the global mean, hourly data ignored weekday effects. Changed it to key on position within the case's dominant declared period (`case.seasonalities`), the same source SeasonalNaive and the ML sin/cos features already use, so every seasonal component of the suite now keys the same way at every frequency.\n\nA non-seasonal case (`seasonalities = []`) has no cycle to key on, so it falls back to one global bucket — deliberately matching the Mean baseline there rather than raising. Only Climatology's own predictions change; the Climatology row and the naive-ensemble median need regenerating on the next benchmark run, but no other method's numbers move.",
-      "tags": ["climatology", "seasonality", "baseline", "issue-54"]
+      "tags": [
+        "climatology",
+        "seasonality",
+        "baseline",
+        "issue-54"
+      ]
     },
     {
       "id": "2026-07-07-pacf-panel",
@@ -367,7 +411,12 @@
       "category": "methodology",
       "summary": "Added a PACF panel next to ACF in the seasonality notebook, since PACF nets out shorter lags already regressed out and disambiguates a period that's a multiple of a shorter one.",
       "detail": "The seasonality notebook's ACF plot shows peaks at every multiple of a candidate period, which is ambiguous given this project's candidate menu — within a frequency, longer menu periods are exact multiples of shorter ones, so a strong 12h cycle mechanically inflates ACF(24) whether or not an independent 24h effect exists. Added a PACF panel alongside ACF, since PACF nets out shorter lags already regressed out, so a candidate that's a multiple of a shorter one only spikes if it carries independent information.\n\nThis is reviewer-facing only — the acceptance gate in `detect_candidates()` still uses ACF plus MSTL strength, since PACF's max lag is capped below half the sample size and its cutoff interpretation isn't guaranteed for arbitrary periodic shapes.",
-      "tags": ["seasonality", "pacf", "acf", "notebook"]
+      "tags": [
+        "seasonality",
+        "pacf",
+        "acf",
+        "notebook"
+      ]
     },
     {
       "id": "2026-07-07-interactive-periodogram",
@@ -376,7 +425,12 @@
       "category": "methodology",
       "summary": "Reworked the seasonality notebook's periodogram into an interactive, log-frequency-resampled find_peaks tool so off-menu peaks stop hiding between under-resolved bins.",
       "detail": "The seasonality notebook's periodogram was buried near the bottom, and off-menu peaks appeared only as a static, non-interactive text list. Reworked it to sit under the case dropdown with a fully interactive `find_peaks` overlay. The key fix: `scipy.signal.periodogram` is uniform in frequency but seasonality lives in period on a log axis, so the raw spectrum is wildly over-resolved at short periods and under-resolved at long ones — a daily case's annual peak can fall between two bins.\n\nResampling log-power onto a uniform log-frequency grid (aggregated by max, not mean, to avoid averaging a sharp seasonal line into the noise floor) fixes this and makes `find_peaks` parameters finally comparable across the spectrum and across cases. Peak-detection parameters are now exposed as live text inputs, and three marker colors distinguish the fixed candidate menu, detected peaks, and manually-entered candidates. This is discovery/inspection tooling only — nothing enters a case's declared seasonalities without the full ACF/power-ratio evidence and written justification `detect_candidates()` already requires.",
-      "tags": ["seasonality", "periodogram", "notebook", "find-peaks"]
+      "tags": [
+        "seasonality",
+        "periodogram",
+        "notebook",
+        "find-peaks"
+      ]
     },
     {
       "id": "2026-07-03-periodogram-peak-suggestions",
@@ -385,7 +439,11 @@
       "category": "methodology",
       "summary": "Added suggest_peak_candidates() to surface up to 5 ranked, advisory periodogram peaks for periods outside the fixed candidate menu.",
       "detail": "The seasonality notebook could only evidence periods a human already thought to test — its fixed candidate menu is deliberately narrow, so a case with a different physical driver (e.g. `waves_oregon`'s 17h swell) had no way to surface unless someone already suspected it. Added `suggest_peak_candidates()`: finds periodogram local maxima, applies the same prominence bar as `detect_candidates`, and drops anything within 10% of a menu/excluded period as spectral leakage.\n\nIt's advisory only — up to 5 ranked suggestions the reviewer can copy into the extra-candidates box to get full evidence, not an acceptance path in itself. Superseded in practice by the interactive periodogram added 2026-07-07, but the underlying function is still used by the registry and tests.",
-      "tags": ["seasonality", "periodogram", "discovery"]
+      "tags": [
+        "seasonality",
+        "periodogram",
+        "discovery"
+      ]
     },
     {
       "id": "2026-07-03-curated-seasonalities",
@@ -394,7 +452,12 @@
       "category": "methodology",
       "summary": "Every case now declares its own seasonalities list in case.toml, replacing a hardcoded frequency → seasonality map that assumed every hourly/daily case shared the same cycles.",
       "detail": "Seasonal periods were hardcoded per sampling frequency, assuming every hourly case carries 24h/168h cycles and every daily case 7d/365d — wrong for much of the environmental half of the benchmark (waves and de-tided surge have no diurnal cycle; rivers have no work week) and consequential, since that map also set the MASE denominator, distorting cross-case MASE comparisons. Each case now declares `seasonalities` in its case.toml — required, dominant-first, `[]` meaning explicitly non-seasonal — as the single source of truth for SeasonalNaive, TBATS, AutoTheta, MSTL, and the ML feature pipeline; the old frequency maps were deleted with no fallback.\n\nCandidates come from a fixed physically-motivated menu per frequency and are accepted only with ≥2 full train-split cycles, a periodogram peak exceeding 10× the surrounding octave band's median power, and ACF ≥ 0.1 at that lag. Two upstream assumptions didn't survive: hourly cases are mostly tidal (12h), not diurnal, and one daily case (`discharge_flashy_catskills`) is genuinely non-seasonal. New cases must declare `seasonalities` (schema-enforced), and MASE values shift on any case where the declared dominant period differs from the old frequency default.",
-      "tags": ["seasonality", "case-toml", "mase", "curation"]
+      "tags": [
+        "seasonality",
+        "case-toml",
+        "mase",
+        "curation"
+      ]
     },
     {
       "id": "2026-07-03-tbats-boxcox-warning",
@@ -403,7 +466,11 @@
       "category": "bug-fix",
       "summary": "Passing use_boxcox=False explicitly whenever a Yeo-Johnson pre-transform already ran removed a spurious TBATS warning, since TBATS's own internal Box-Cox was expected to be a no-op anyway.",
       "detail": "`TBATSForecaster.fit` pre-applies a Yeo-Johnson transform for cases with non-positive targets (e.g. `watertemp_james`), so TBATS's own internal Box-Cox is expected to be a no-op — but Yeo-Johnson with `standardize=False` isn't positivity-guaranteeing, so some transformed points still landed at or below zero and triggered TBATS's own warning-and-disable logic.\n\nFixed by passing `use_boxcox=False` explicitly whenever the pre-transform was applied, producing an identical fit without the noise; `use_boxcox` stays at its default when the raw data is already positive, so TBATS can still decide for itself whether a Box-Cox transform helps.",
-      "tags": ["tbats", "box-cox", "warning"]
+      "tags": [
+        "tbats",
+        "box-cox",
+        "warning"
+      ]
     },
     {
       "id": "2026-07-03-gap-handling-policy",
@@ -412,7 +479,11 @@
       "category": "methodology",
       "summary": "Replaced two inconsistent, on-the-fly gap-filling layers with one materialized policy — interpolate only up to an ACF-derived cap, then keep only the longest contiguous segment — tracked by a y_observed mask.",
       "detail": "Missing target data was handled in two places — the eval loop imputed gaps on the fly (linear interpolation then mean-fill), and several methods also interpolated or dropped NaNs internally, inconsistently. Worse, mean-fill let models train on large fabricated stretches — one 6574-step block was 54% of `discharge_lowland_denmark`, a single interpolated straight line.\n\nReplaced both layers with one materialized policy in `data/curate.py`: gaps are interpolatable only up to a per-case cap (the lag at which the target's ACF first drops below 0.8, bounded by one seasonal cycle), gaps larger than the cap are treated as hard boundaries, and only the longest contiguous segment is kept — chosen over most-recent because a big gap near `waves_massachusetts`'s train/test boundary would have starved it to 5 training points. A `y_observed` mask on the curated data tracks which points were genuinely measured, so metrics and origin selection never score a filled point as real. `scripts/curate_data.py` writes `data/curated/<case>.parquet` once; re-run it after any data refresh or a change to the ACF threshold.",
-      "tags": ["gap-handling", "data-quality", "curation"]
+      "tags": [
+        "gap-handling",
+        "data-quality",
+        "curation"
+      ]
     },
     {
       "id": "2026-07-03-ensemble-baselines",
@@ -421,7 +492,11 @@
       "category": "methodology",
       "summary": "Added a generic EnsembleForecaster combining member forecasts by median, closing the method-suite audit's flagged gap in ensemble-of-baselines coverage.",
       "detail": "Added a generic `EnsembleForecaster` that composes existing Forecasters and combines their per-step forecasts by median (robust to one member going badly off, e.g. Persistence during a spike), closing the method-suite audit's \"no ensemble-of-baselines column\" gap. Two columns are registered: `EnsembleBaselines` (median of the four naive baselines) and `EnsembleBaselinesTheta` (the same four plus Theta), bracketing a pure zero-cost reference and a naive+classical blend.\n\nA member that raises at predict time is dropped for that origin; the ensemble only raises if every member fails. An early smoke test on `discharge_lowland_denmark` showed the intended calibration signal — EnsembleBaselinesTheta beat persistence while the naive-only ensemble trailed it on that flashy series.",
-      "tags": ["ensemble", "baselines", "issue-59"]
+      "tags": [
+        "ensemble",
+        "baselines",
+        "issue-59"
+      ]
     },
     {
       "id": "2026-07-02-seasonal-classical-baselines",
@@ -430,7 +505,12 @@
       "category": "methodology",
       "summary": "Added dedicated seasonal MSTL-ETS/MSTL-ARIMA columns and made Theta seasonal by default, fixing an asymmetry where classical methods ran non-seasonal while ML methods got seasonal features.",
       "detail": "AutoARIMA/AutoETS/AutoTheta all ran non-seasonal (`season_length=1`) while the windowed-ML methods got calendar features and seasonal lags, so any \"classical vs ML\" comparison was partly an artifact of deliberately de-seasonalized classical baselines. Since seasonal ARIMA/ETS cost explodes with large periods, kept AutoARIMA/AutoETS as non-seasonal short-memory baselines and added dedicated seasonal columns instead: MSTL-ETS and MSTL-ARIMA (strips seasonal components via STL, fits on the residual, then re-seasonalizes) and made Theta seasonal by default, since its classical deseasonalization is cheap at any frequency.\n\nIf a training window doesn't support even the smallest declared period, MSTL raises rather than silently falling back to a bare non-seasonal forecaster, which would have made the new columns byte-identical fakes of the existing ones. This makes \"classical vs ML\" a genuine methodology contrast rather than an artifact of an unfair setup.",
-      "tags": ["mstl", "theta", "classical", "issue-46"]
+      "tags": [
+        "mstl",
+        "theta",
+        "classical",
+        "issue-46"
+      ]
     },
     {
       "id": "2026-07-02-method-suite-audit",
@@ -439,7 +519,11 @@
       "category": "methodology",
       "summary": "A full audit of every method wrapper flagged the classical-vs-ML seasonality asymmetry as the biggest validity concern, plus several correctness bugs and design risks to prioritize.",
       "detail": "Reviewed all method wrappers (`naive.py`, `classical.py`, `ml.py`, `dl.py`, `fm.py`, `nf_models.py`, `torchdl.py`) and how the eval loops call them, recording findings to prioritize rather than fixing them immediately. Biggest validity concern: classical methods ran non-seasonal by default while ML methods got seasonal features; also flagged were asymmetric training budgets between statsforecast's auto-selection and the neural methods' fixed tiny step counts, unscaled MLP features, and Chronos scoring its median against a mean-optimal metric.\n\nCorrectness issues found: `_complete_for_fit` ran on the full train+test frame before slicing, leaking test-period information into training gap-fills; DLinear/N-HiTS/PatchTST silently fell back to persistence on short series while reporting status \"ok\"; and several frequency-dispatch tables only handled {daily, hourly, 15-min, weekly} with silent generic defaults otherwise. Design risks noted: `predict(history=...)` is dead in every non-naive method, and the exogenous tier conflated historical-only and known-future covariates. Suite gaps flagged included the missing ensemble-of-baselines and MSTL columns, a single foundation model, and a strategy confound between recursive mlforecast methods and direct-multi-output DL methods.",
-      "tags": ["method-suite", "audit", "methodology"]
+      "tags": [
+        "method-suite",
+        "audit",
+        "methodology"
+      ]
     },
     {
       "id": "2026-07-02-rolling-origin-fix",
@@ -448,7 +532,11 @@
       "category": "methodology",
       "summary": "Origin selection was truncating to the first half of the usable test range instead of spreading across it, silently missing any regime shift near the end of a case's test period.",
       "detail": "`run_case_rolling`'s origin selection was supposed to spread `n_origins` cutoffs across the whole test period, but it oversampled 2×n candidates, filtered for ≥50% observed horizon, then truncated to the first `n_origins` of the sorted list — since the list was sorted ascending, that's the front ~50% of the range, not a spread sample. On `discharge_lowland_denmark` (H=7, test range 1241–1453) the last origin used was ~1347 instead of 1453, so only 46% of the usable test range was ever scored. This bites hardest when horizon is small relative to test length.\n\nFixed by extracting `_select_rolling_origins()`, which now evenly downsamples the filtered survivor list via `linspace` over indices rather than truncating it; `run_leadtime_curve` wasn't affected since it already samples origins directly via `linspace`. This changes which points get scored, so any published matrix numbers generated before this fix should be treated as based on only the first half of each case's test period — re-running the pilot is the fix.",
-      "tags": ["rolling-origin", "eval", "bug-fix"]
+      "tags": [
+        "rolling-origin",
+        "eval",
+        "bug-fix"
+      ]
     },
     {
       "id": "2026-07-02-discharge-saugeen-docs",
@@ -457,7 +545,11 @@
       "category": "project-data",
       "summary": "Filled in the missing docs page, EDA figure, and README entry for discharge_saugeen, framing its role as the deliberate univariate control against the three exogenous hydrology cases.",
       "detail": "`discharge_saugeen` had case code (case.toml, download.py, synth.py) but no docs page, EDA figure, or entry in `docs/README.md`'s case table — added all three, framing the case's role as the deliberate univariate control against the three exogenous hydrology cases, isolating pure autoregressive/seasonal skill. No case behavior changed.",
-      "tags": ["discharge-saugeen", "docs", "case"]
+      "tags": [
+        "discharge-saugeen",
+        "docs",
+        "case"
+      ]
     },
     {
       "id": "2026-07-02-drop-optional-exogenous",
@@ -466,7 +558,11 @@
       "category": "methodology",
       "summary": "optional_exogenous was pure duplication of the exogenous complement, so it became a derived property instead of a stored, validator-policed field.",
       "detail": "`Case.optional_exogenous` was a stored case.toml field, but given the fixed set of available columns and which are necessary, \"optional\" is always just the complement — pure duplication that only needed a validator to police it. Made it a derived property instead (`(exogenous ∪ exogenous_known_future) − necessary_exogenous`) and removed the field from all 9 case.toml files that had it; `Case.exo_tier` and everything downstream is unaffected.",
-      "tags": ["exogenous", "case-toml", "refactor"]
+      "tags": [
+        "exogenous",
+        "case-toml",
+        "refactor"
+      ]
     },
     {
       "id": "2026-07-02-exo-necessity-schema",
@@ -475,7 +571,11 @@
       "category": "methodology",
       "summary": "Promoted the exogenous-necessity judgment into schema (necessary_exogenous/exo_tier) and persisted it as plain metadata on every result row, deliberately not used to aggregate or rank methods in the matrix.",
       "detail": "Promoted the exogenous necessity judgment (recorded in prose the same day) into schema: added `necessary_exogenous`/`optional_exogenous` fields to `Case` with a validator requiring every exogenous column to be classified as exactly one, plus a derived `exo_tier` property (`none`/`optional`/`necessary`). Considered splitting the results matrix by tier or demoting univariate methods to a \"reference floor\" on necessary-exo cases, but rejected both — the matrix never aggregates or ranks methods by design, and demoting some methods on some cases is aggregation by another name.\n\nLanded instead on metadata-only labeling: `case.exo_tier` and each method's `uses_exogenous` flag are now persisted as plain columns on every result row, so downstream consumers can filter or facet by tier without the benchmark itself declaring which methods \"count\" for which cases.",
-      "tags": ["exogenous", "schema", "results-matrix"]
+      "tags": [
+        "exogenous",
+        "schema",
+        "results-matrix"
+      ]
     },
     {
       "id": "2026-07-02-exo-necessity-notes",
@@ -484,7 +584,11 @@
       "category": "methodology",
       "summary": "Recorded, in prose, which cases treat exogenous input as domain-essential versus a nice-to-have enrichment — a domain call that isn't inferable from measured skill deltas alone.",
       "detail": "Mixing cases where exogenous input is domain-essential (e.g. storm surge needs wind/pressure) with cases where it's a nice-to-have enrichment makes a single results matrix hard to read, since a method's ranking on one isn't comparable to its ranking on the other — and this necessity judgment is a domain call, not something inferable from measured skill deltas alone. As a first step, recorded that judgment in prose in each case's `notes` field: extracted from existing case descriptions where the necessity claim was already implicit (`surge_cuxhaven`, `watertemp_james`, `discharge_snowmelt_yosemite`, `groundwater_yorktown`), and flagged as a fresh, arguable assumption where it wasn't (`discharge_flashy_catskills`, `discharge_lowland_denmark`, `sewerlevel_bellinge`, the two wave cases).\n\nThis is prose only — no schema or pipeline change yet; promoting it to structured fields followed the same day.",
-      "tags": ["exogenous", "case-notes", "domain-judgment"]
+      "tags": [
+        "exogenous",
+        "case-notes",
+        "domain-judgment"
+      ]
     },
     {
       "id": "2026-07-02-catboost-added",
@@ -493,7 +597,11 @@
       "category": "methodology",
       "summary": "Added CatBoost/CatBoost+exo alongside LightGBM in the windowed-ML family with a matched training budget, giving the benchmark a second GBDT implementation.",
       "detail": "Added `CatBoost`/`CatBoost+exo` to the windowed-ML column family, slotting into the same shared lag+calendar feature pipeline as LightGBM with a matched training budget (200 iterations, 0.05 learning rate) so the two GBDT methods are compared on roughly equal footing. Gives the benchmark a second GBDT implementation — useful since CatBoost's ordered-boosting scheme handles the same lag/calendar features differently and may behave better or worse depending on how noisy a case's covariates are. No methodology change, straightforward column addition.",
-      "tags": ["catboost", "gbdt", "windowed-ml"]
+      "tags": [
+        "catboost",
+        "gbdt",
+        "windowed-ml"
+      ]
     },
     {
       "id": "2026-07-02-log-backfill",
@@ -502,7 +610,11 @@
       "category": "project-data",
       "summary": "This log started empty, so its earliest entries were reconstructed from the original scoping documents and git history, surfacing several undocumented drifts between the plan and the shipped codebase.",
       "detail": "This entry and those below it were written on this date, reconstructing the project's decision history from `research_plan.md`, `docs/SCOPING.md`, `docs/review_responses_pr2.md`, and git history, since this log started empty — dates reflect when decisions actually happened, not when they were logged.\n\nComparing the original plan to the codebase surfaced several undocumented drifts: only Chronos-Bolt zero-shot was ever implemented of the six foundation models the plan called for, and recurrent nets plus the fine-tuning phase were never started; process-model reference columns and hybrid ML residual correction, called out in the plan as central, were pushed back on by domain expert Rocco during scoping review and never built; NSE/KGE metrics were agreed as a queued change but still aren't implemented; the Nixtla-based library strategy landed but wrapped behind a project-own `Forecaster` interface; and the package split into `tsforecastbench.data`/`tsforecastbench.bench` on 2026-06-13, deliberately so the two halves could become separate repos later. None of this needed fixing — the codebase and docs are internally consistent with what actually exists; `research_plan.md` should just be read as the original proposal, not a description of the current system.",
-      "tags": ["project-history", "backfill", "scoping"]
+      "tags": [
+        "project-history",
+        "backfill",
+        "scoping"
+      ]
     },
     {
       "id": "2026-06-25-discharge-saugeen-case",
@@ -511,7 +623,10 @@
       "category": "project-data",
       "summary": "Added discharge_saugeen — a long-record, exogenous-free discharge series — as a methodological contrast to the exogenous-rich cases, rather than another geographic contrast.",
       "detail": "Added `discharge_saugeen` (daily discharge, Saugeen River, Ontario, 65 years of record, no exogenous inputs) alongside `discharge_flashy_catskills`, answering an open question about whether to add a second Danish catchment or an alpine one — with a third option instead: a long-record, exogenous-free univariate series as a methodological contrast to the exogenous-rich cases, rather than another geographic contrast. Brings the case count to 12.",
-      "tags": ["discharge-saugeen", "case-selection"]
+      "tags": [
+        "discharge-saugeen",
+        "case-selection"
+      ]
     },
     {
       "id": "2026-06-12-scoping-review-rocco",
@@ -520,7 +635,12 @@
       "category": "project-data",
       "summary": "A pre-scale-up review with hydrology expert Rocco reframed the project's purpose around a fair, dimensionless cross-domain comparison and de-scoped process-model reference columns and hybrid residual correction.",
       "detail": "Before scaling past 6 cases and 9 methods, sent a scoping review to Rocco (internal urban + catchment hydrology expert) to sanity-check case selection and design choices against operational reality. The purpose got reframed as a result: this benchmark isn't about finding the best model per case, but about a fair comparison of the same methods across very different water/environment domains — which is why the matrix must stay a dimensionless score (MASE) and domain-specific metrics (NSE/KGE, event hit-rate) live as per-case sidebars, never matrix cells.\n\nProcess-model reference columns and hybrid ML residual correction, central to the original plan, were de-scoped on Rocco's view that comparing against simulated output complicates the picture without being necessary. Exogenous inputs were also decided to not be optional everywhere: for Bellinge and the WWTP case the rainfall response is the phenomenon being forecast, so a univariate run there is a floor, not a real entry. The architecture split into `tsforecastbench.data`/`tsforecastbench.bench` also landed in this window, along with exogenous-aware windowed-ML methods and a skill-vs-mean metric.",
-      "tags": ["scoping", "rocco", "project-history", "review"]
+      "tags": [
+        "scoping",
+        "rocco",
+        "project-history",
+        "review"
+      ]
     },
     {
       "id": "2026-05-29-data-quality-bugs",
@@ -529,7 +649,12 @@
       "category": "project-data",
       "summary": "Early EDA found the Bellinge sensor was mostly inactive and the BattLeDIM demand target was a square wave from a single scheduled pump — both invalidated earlier real-data numbers and led to a standing per-case review gate.",
       "detail": "Early EDA over the first six real-data cases surfaced two bugs serious enough to invalidate earlier real-data numbers. The originally chosen Bellinge level sensor was only active for a small fraction of its nominal 2010–2020 span (near-zero the rest of the time), so an earlier suspiciously good SeasonalNaive MASE of 0.32 was effectively scored on near-zero data — fixed by adding a `--scan` coverage mode to the downloader and switching to a sensor confirmed 100% active.\n\nThe BattLeDIM demand target had been a single pump's flow, which alternates on/off with a second pump under scheduling, producing a square wave rather than a demand signal — fixed by summing all pump columns for total network inflow. This is why a per-case quality gate (`scripts/review_case.py`, the `/review-case` skill) became a standing requirement for adding any new case.",
-      "tags": ["data-quality", "bellinge", "battledim", "review-gate"]
+      "tags": [
+        "data-quality",
+        "bellinge",
+        "battledim",
+        "review-gate"
+      ]
     },
     {
       "id": "2026-05-27-initial-scoping-plan",
@@ -538,37 +663,645 @@
       "category": "project-data",
       "summary": "research_plan.md laid out an ambitious original proposal; the initial commit deliberately scoped down to a small working pipeline with CI in place from day one, rather than building the full scope upfront.",
       "detail": "`research_plan.md` laid out the original proposal: 10-11 candidate cases spanning the water cycle, ~16 forecasters from naive baselines to foundation models, a phased roadmap, and a Parquet/Pydantic storage design. The initial commit scoped this down to a first working pipeline — 6 cases, 9 methods — with the matrix and lead-time evaluation working end-to-end and CI in place from day one, a deliberate \"lock the interfaces first\" move rather than building out the full scope before anything ran.",
-      "tags": ["project-history", "scoping", "scaffold"]
+      "tags": [
+        "project-history",
+        "scoping",
+        "scaffold"
+      ]
+    },
+    {
+      "id": "2026-07-19-decision-graph-tool",
+      "date": "2026-07-19",
+      "title": "Interactive decision graph for the research log",
+      "category": "app-tooling",
+      "summary": "Added a self-contained D3 force-directed graph over this log's entries, with hover summaries, a click-through detail panel, drag-to-pin, and pan/zoom.",
+      "detail": "This log had grown to entries whose cross-references only existed as prose, making related decisions hard to trace without reading the whole file. Added `docs/research_graph.html`, a self-contained D3 force-directed graph — one node per log entry, hover for a summary, click for full detail plus a list of connections, drag to pin nodes, pan/zoom.\n\nNode and edge data (relation types: supersedes/fixes-bug-in/depends-on/relates-to) were hand-extracted from the log's own cross-reference prose and embedded directly in the file, so it opens with no server or fetch; this log's own instructions now ask for a matching node whenever a new entry is added. Categories are capped at four (methodology, app & tooling, bug fix, project & data) rather than a finer split, since a force layout can place any two categories next to each other and the project's palette validator fails a 6-color categorical set under that all-pairs condition.",
+      "tags": [
+        "research-graph",
+        "d3",
+        "visualization",
+        "app-tooling"
+      ]
+    },
+    {
+      "id": "2026-07-19-eda-react-pages-workflow",
+      "date": "2026-07-19",
+      "title": "Combined the EDA and React Pages workflows into one",
+      "category": "app-tooling",
+      "summary": "Merged the EDA-only Pages workflow and the new React app's deploy into one workflow, since GitHub Pages only allows one deploy per repo.",
+      "detail": "GitHub Pages only lets one workflow deploy per repo, so the existing EDA-only `pages.yml` couldn't run alongside a separate workflow for the new React results-matrix app in `web/` without one clobbering the other. Merged them into a single workflow that builds both sites and copies the React build to the site root with the EDA browser under `/eda/`.\n\nPushing the change surfaced a separate problem: the git credential in use came from the `gh` CLI's login, which lacked the `workflow` scope GitHub requires for editing files under `.github/workflows/`, so `gh auth refresh -h github.com -s workflow` was needed before the push could go through.",
+      "tags": [
+        "github-pages",
+        "ci",
+        "react",
+        "eda"
+      ]
+    },
+    {
+      "id": "2026-07-19-marker-swatch",
+      "date": "2026-07-19",
+      "title": "Replaced marker descriptions with a visual swatch",
+      "category": "app-tooling",
+      "summary": "Added a MarkerSwatch component that draws the actual corner-triangle marker instead of describing it in words, reusing the matrix overlay's own geometry.",
+      "detail": "The \"Global methods\" and \"Exogenous inputs\" sidebar sections described their corner-triangle markers in words (\"marked with a corner triangle\", \"marks it with a teal corner\"). Added a `MarkerSwatch` component that draws a small square with the actual colored triangle in the matching corner, reusing the same `cornerTrianglePath` geometry the matrix overlay uses, so the preview matches the real marker exactly. The prose was trimmed to drop the now-redundant shape/color description, keeping only the part explaining when each marker appears.",
+      "tags": [
+        "react",
+        "ui",
+        "matrix-overlay"
+      ]
+    },
+    {
+      "id": "2026-07-19-method-card-title-top",
+      "date": "2026-07-19",
+      "title": "Moved the method-info card title to the top when expanded",
+      "category": "app-tooling",
+      "summary": "Reworked MethodInfoCard so an expanded card's title bar sits at the top instead of the bottom, matching normal top-to-bottom reading order.",
+      "detail": "The method-info cards showed their method name in a title bar that stayed at the bottom of the card in both states, so an expanded card read top-to-bottom with the resize handle first and the name last, below the content. Reworked `MethodInfoCard` to render the same title bar first when expanded, so the method name sits at the top of the open card, with the resize handle and content below it. Collapsed cards are unaffected — the title bar is still the only thing rendered, in the same position as before.",
+      "tags": [
+        "react",
+        "ui",
+        "method-info-card"
+      ]
+    },
+    {
+      "id": "2026-07-16-card-resize-drag-fix",
+      "date": "2026-07-16",
+      "title": "Fixed method-info card height-drag stopping after one pixel",
+      "category": "bug-fix",
+      "summary": "A stale-closure bug in useEdgeResize tore down its own drag listeners after the first mouse-move, since MethodInfoCard passed a new callback identity on every render.",
+      "detail": "Dragging a method-info card's resize handle up barely moved it. Root cause: `useEdgeResize`'s `handleMouseMove` closed over the `onResize` callback, so its identity — and the identity of the `stopDragging`/cleanup-effect chain built on top of it — changed whenever `onResize` did. `MethodInfoCard` passes an inline callback, recreated on every render, so the first `onResize` call during a drag triggered a re-render whose new callback identity tore down the drag's own mouse listeners via React's effect-cleanup-on-dependency-change.\n\nThe case panel's width-resize never hit this because its callback happens to come from a stable `useCallback`. Fixed by routing `onResize` through a ref inside the hook, so `handleMouseMove`'s identity no longer depends on the caller's callback identity; added a regression test that simulates a mid-drag re-render with a new callback to catch a recurrence.",
+      "tags": [
+        "react",
+        "bug",
+        "use-edge-resize",
+        "method-info-card"
+      ]
+    },
+    {
+      "id": "2026-07-16-method-info-cards-split",
+      "date": "2026-07-16",
+      "title": "Split the method-info strip into per-method collapsible, resizable cards",
+      "category": "app-tooling",
+      "summary": "Replaced the single flex-wrap method-info strip with fixed-width, independently collapsible and resizable per-method cards, reusing the case panel's resize hook.",
+      "detail": "The bottom method-info strip (up to `MAX_OVERLAY_METHODS` = 3 cards) used to be one flex-wrap container where cards grew to fill space, which read as a single blended block rather than distinct per-method panels. Reworked it into fixed-width (320px) cards docked side by side, each independently collapsible down to just its title bar and resizable in height (120-520px) by dragging a handle along its top edge — reusing the `useEdgeResize` hook generalized (from an x-only `useResizablePanelWidth`) for the case panel's width-resize.\n\nCollapse state and height are local to each card, keyed by method name, so they reset if a method is deselected and reselected or the case changes, rather than persisting — same call as the case panel's width.",
+      "tags": [
+        "react",
+        "ui",
+        "method-info-card",
+        "resize"
+      ]
+    },
+    {
+      "id": "2026-07-16-case-panel-resizable",
+      "date": "2026-07-16",
+      "title": "Made the React case detail panel resizable",
+      "category": "app-tooling",
+      "summary": "Added a drag handle to the React case detail panel's left border so its width can be resized between 320-900px, instead of a fixed 460px.",
+      "detail": "The right-hand case detail panel had a fixed 460px width, which cramped the training/test plots on smaller screens and wasted space on wide ones. Added a drag handle on the panel's left border so users can resize it, clamped to 320-900px. The width lives in the app-state reducer alongside the existing `sidebarCollapsed` toggle and resets to the 460px default on reload rather than persisting via localStorage, matching how the sidebar toggle already behaves — simplest option, and nothing in the app currently persists UI state across sessions.",
+      "tags": [
+        "react",
+        "ui",
+        "case-panel",
+        "resize"
+      ]
+    },
+    {
+      "id": "2026-07-15-react-training-test-axis-fix",
+      "date": "2026-07-15",
+      "title": "Fixed the React case panel's training/test charts showing timestamps on both axes",
+      "category": "bug-fix",
+      "summary": "A shared AXIS_STYLE object passed by reference into Plotly's layout got mutated in place by Plotly's own axis-type auto-detection, leaking a date axis type onto unrelated y-axes.",
+      "detail": "The training-data chart in the React app's case panel plotted dates on both x and y instead of dates on x and values on y (Dash was unaffected). Root cause: `LineSnapshot.tsx`'s shared `AXIS_STYLE` object was passed to Plotly's `xaxis` by reference rather than copied, and Plotly.js auto-detects an axis's type from its data and writes that type back onto the layout object it was given — so the first date-valued x-axis it saw permanently stamped `type: 'date'` onto the shared `AXIS_STYLE` singleton, which then leaked into every later plot's y-axis (already built as `{...AXIS_STYLE}`, so it inherited the mutation instead of a clean object).\n\nFixed by always spreading `AXIS_STYLE` into a fresh object before handing it to Plotly, for both axes; applied the same defensive copy in `DistributionPlot.tsx`, which has the identical pattern but had stayed harmless only because its x-data happens to be numeric. Lesson for any future Plotly-based component here: never pass a shared style object literal straight into a `layout` prop — Plotly.js treats it as mutable state, not a read-only style constant.",
+      "tags": [
+        "react",
+        "plotly",
+        "bug",
+        "case-panel"
+      ]
+    },
+    {
+      "id": "2026-07-15-react-dash-parity-gaps",
+      "date": "2026-07-15",
+      "title": "Closed two React/Dash parity gaps: method-info panel placement, missing benchmark-design text",
+      "category": "app-tooling",
+      "summary": "The React port, despite being logged as feature-complete, still misplaced the method-info panel and was missing the static Benchmark Design writeup entirely.",
+      "detail": "Found two spots where the React port, despite being logged as feature-complete, didn't actually match `app/app.py`. First, the method-info cards (family, description, exogenous usage, implementation detail per selected method) were rendered inline at the bottom of the snapshot panel, inside the right-hand detail column — unlike Dash, where they sit in their own strip docked to the bottom of the viewport, spanning the width of the matrix column. Moved that block into a new `MethodInfoPanel` component, rendered as the last child of the matrix column with `position: sticky; bottom: 0`, matching the Dash layout; `SnapshotPanel` no longer needs the method registry.\n\nSecond, the static \"Benchmark Design\" writeup below the matrix (splits, curation, model parameters, case description, exogenous inputs) was missing from React entirely — ported verbatim into a new `BenchmarkDesign` component. Both are a reminder that \"closes out the migration\" in the earlier entry meant functional parity for the interactive panels, not a line-by-line diff against `app.py`'s layout.",
+      "tags": [
+        "react",
+        "dash",
+        "parity",
+        "method-info-panel"
+      ]
+    },
+    {
+      "id": "2026-07-15-react-port-started",
+      "date": "2026-07-15",
+      "title": "Started a React port of the results-matrix app for GitHub Pages",
+      "category": "app-tooling",
+      "summary": "Began porting the Dash results-matrix app to a static React + TypeScript site deployable on GitHub Pages, with a Python export script precomputing everything the browser needs.",
+      "detail": "`app/app.py` only runs as a live Dash server, so it can't be hosted on GitHub Pages. Decided to port it to React + TypeScript in a new `web/` directory, built as static files and deployed via GitHub Actions, with `app/app.py` staying as-is. Key design call: rather than reimplementing `app/data.py`'s statistics client-side (KDE curves, per-origin MASE/skill-score, method-family introspection), a new Python export script will precompute everything into static JSON — the React app is a pure presentation layer, same as `docs/figures/benchmark/matrix_*.png` is already a precomputed artifact of the same data.\n\nSince GitHub Pages only serves one site per repo and the existing `pages.yml` already deploys a separate marimo EDA browser there, the React app will take the root Pages URL and the EDA site moves to `/eda/` under one combined deploy workflow. Scaffolding (Vite+React+TS, oxlint, Prettier, Vitest) landed first, then `scripts/export_web_data.py` and a working static matrix with the same colours, cell text, and group boundaries as `render_matrix`. Next, the hover tooltip, click-to-select, and the global-history/exogenous toggles landed, along with their corner-triangle overlays. Testing the toggle swap logic surfaced a real bug: a case/method with both a local and an extended-history row silently picked whichever came last in array order instead of always defaulting to the local row — fixed by explicitly filtering to the local row before pivoting. The case detail panel landed next (training tail, test split, KDE curves), noting `surge_cuxhaven`'s ~5MB `cases.json` as worth revisiting if more cases reach that scale. The forecast-snapshot panel landed last, with curated best/median/worst origins precomputed server-side so the browser never re-derives MASE/skill-score. This closes the last functional gap from `app/app.py`; `.github/workflows/pages.yml` now builds and deploys both static sites in one run, verified locally by serving the combined output under the real base path first.",
+      "tags": [
+        "react",
+        "github-pages",
+        "results-app",
+        "migration"
+      ]
+    },
+    {
+      "id": "2026-07-15-fm-exo-variants",
+      "date": "2026-07-15",
+      "title": "Gave Chronos-2, TimesFM 2.5 and Moirai-2.0 +exo variants",
+      "category": "methodology",
+      "summary": "Each foundation model that natively supports covariates now has a +exo sibling using future covariate values as the eval loop's perfect-forecast proxy, closing the 2026-07-14 follow-up.",
+      "detail": "Closed the covariate follow-up flagged in the 2026-07-14 FM entry: each of the three foundation models that natively supports covariates (Chronos-2 via `predict_df`'s `future_df`, TimesFM via `forecast_with_covariates`, Moirai via `feat_dynamic_real`) now has a `+exo` sibling, mirroring the LightGBM/CatBoost/LinearLags `+exo` pattern — future covariate values are the eval loop's perfect-forecast proxy, not a real forecast of those covariates. Chronos-Bolt stays univariate-only; its architecture has no covariate mechanism to expose.\n\nOne real gotcha: TimesFM's `forecast_with_covariates` requires `return_backcast=True` at compile time, but that flag silently changes what plain `forecast()` returns — so the covariate path now compiles and caches a second model instance, keeping the univariate path's compiled model and output shape untouched. All three variants were smoke-tested end-to-end against real cached model weights on a covariate-bearing case and a covariate-free one before committing.",
+      "tags": [
+        "foundation-model",
+        "exogenous",
+        "chronos",
+        "timesfm",
+        "moirai"
+      ]
+    },
+    {
+      "id": "2026-07-14-customdata-crash-fix",
+      "date": "2026-07-14",
+      "title": "Fixed matrix cell clicks crashing with KeyError: 'customdata'",
+      "category": "bug-fix",
+      "summary": "Dash's Heatmap clickData never carries customdata (only pointNumber-indexed traces do), so the exo-toggle's method lookup crashed on every cell click; fixed by resolving the method from x/y instead.",
+      "detail": "Every click on a matrix cell in `app/app.py` raised `KeyError: 'customdata'`. Root cause: Dash's `clickData` only reconstructs a trace's `customdata` for points indexed by a flat `pointNumber`/`pointNumbers` (how 1D traces like scatter work) — a Heatmap addresses cells by `x`/`y` instead, so Dash silently omits `customdata` from every heatmap click regardless of what the figure sets it to. The exo-toggle's effective-method lookup had relied on reading it from `customdata[5]`.\n\nFixed by resolving the effective method server-side from the clicked `x` (base method) plus the `show-exogenous` toggle state and the case's `case_exo_tier`, the same swap condition `render_matrix` already uses — no more reliance on `customdata` for heatmap clicks. Any future click-driven feature on this matrix should read `x`/`y` off the click point, not `customdata`.",
+      "tags": [
+        "dash",
+        "bug",
+        "matrix",
+        "plotly"
+      ]
+    },
+    {
+      "id": "2026-07-14-three-fms-added",
+      "date": "2026-07-14",
+      "title": "Added three zero-shot foundation models (Chronos-2, TimesFM 2.5, Moirai-2.0)",
+      "category": "methodology",
+      "summary": "Added three univariate zero-shot foundation models alongside Chronos-Bolt, which forced the project onto Python 3.11-3.12 to satisfy Moirai's uni2ts dependency pins.",
+      "detail": "Chronos-Bolt was the only foundation model implemented of the six the plan called for; added Chronos-2, TimesFM 2.5 and Moirai-2.0 alongside it, each as a univariate zero-shot wrapper behind the common `Forecaster` interface and added to `run_pilot --with-fm`. They're univariate for now — the models' covariate modes are a possible follow-up rather than part of this change. All three install through a single `fm` extra, so one command sets up everything `--with-fm` scores.\n\nMoirai's `uni2ts` is the binding dependency: it hard-pins scipy~=1.11.3 / numpy~=1.26 / torch<2.5, none of which have Python-3.13 wheels, so the whole project is now capped at **Python 3.11-3.12** and its base stack drops to numpy 1.26 / scipy 1.11 / torch 2.4 to keep every model installable in one environment. TimeMoE, TimeGPT and Lag-Llama were dropped from the near-term plan (TimeGPT is API-only; all three have been overtaken in recent comparisons). No benchmark numbers yet — scoring these needs a `--with-fm` pilot run.",
+      "tags": [
+        "foundation-model",
+        "chronos",
+        "timesfm",
+        "moirai",
+        "python-version"
+      ]
+    },
+    {
+      "id": "2026-07-14-exo-toggle-folded",
+      "date": "2026-07-14",
+      "title": "Folded +exo method variants into an app-level toggle; retired +calendar",
+      "category": "methodology",
+      "summary": "Replaced separate +exo matrix columns with one sidebar toggle that swaps in the exogenous-aware score, and made calendar features always-on rather than a separate +calendar variant.",
+      "detail": "Replaced the separate `LightGBM+exo`/`CatBoost+exo`/`LinearLags+exo` matrix columns with one column per algorithm plus a sidebar checkbox that swaps in the exogenous-aware score (marked with a teal corner) for cases with real exogenous data — the same swap-and-mark mechanism the app already used for the extended-history toggle. This also settled an open question about calendar/seasonal features: unlike genuine exogenous covariates, they're deterministic and free for any future timestamp, so they no longer sit behind a separate `+calendar` variant and are now always included for every windowed-ML method.\n\nWhile wiring this up, found that `run_case_rolling` — the default pilot path — never emitted the `case_exo_tier`/`uses_exogenous` fields the toggle depends on (only the `--fast` path did), so the committed `docs/results/scores.parquet` doesn't have them yet: the pilot needs a re-run before the checkbox works, and the method list is three columns shorter as a result.",
+      "tags": [
+        "exogenous",
+        "matrix",
+        "app-toggle",
+        "methodology"
+      ]
+    },
+    {
+      "id": "2026-07-14-scores-committed-to-docs",
+      "date": "2026-07-14",
+      "title": "Committed distilled scores to docs/ for onboarding (issue #19)",
+      "category": "app-tooling",
+      "summary": "run_pilot.py now also writes distilled metrics and matrix figures into docs/, committed to the repo, so a fresh clone can open the app with real scores before running the pilot.",
+      "detail": "`run_pilot.py` now writes its distilled metrics to `docs/results/scores.parquet` and the three main matrix PNGs to `docs/figures/benchmark/`, in addition to the full working output in gitignored `results/`. The results-matrix app (`app/data.py`) now reads from that committed file too, so a fresh clone can open the app and see real scores without running the pilot first; per-origin snapshots (the click-through forecast detail) still need a local pilot run, since those stay in `results/` and aren't committed.\n\nWhile wiring this up, found that `.gitignore`'s `results/` rule was unanchored and silently swallowed `docs/results/` as well — fixed to `/results/` so only the top-level directory is ignored. `docs/results/scores.parquet` and the three matrix figures are now populated from the most recent pilot run and should be regenerated and committed after future runs.",
+      "tags": [
+        "onboarding",
+        "docs",
+        "results",
+        "issue-19"
+      ]
+    },
+    {
+      "id": "2026-07-13-metrics-mape-nse-kge",
+      "date": "2026-07-13",
+      "title": "Added MAPE, sMAPE, NSE, and KGE (issue #34)",
+      "category": "methodology",
+      "summary": "Both eval paths now compute MAPE, sMAPE, NSE, and KGE; NSE/KGE are gated per-case by a new domain_metrics field since they're only meaningful for flow/level cases.",
+      "detail": "Both eval paths (single hold-out and rolling-origin) now also compute MAPE, sMAPE, NSE, and KGE for every case and method, alongside the existing five metrics. MAPE/sMAPE are dimensionless like MASE, so they're a plain addition to the matrix's metric dropdown. NSE and KGE are hydrology-standard but only meaningful for flow/level cases, so each case now declares eligibility in `case.toml` via a new `domain_metrics` field; the app still lists NSE/KGE in the same dropdown as everything else, but narrows the matrix rows to only the cases that declare them, rather than adding a separate sidebar UI.\n\nEligibility is set for the 3 discharge cases (confirmed by Rocco's review) plus `sewerlevel_bellinge` and `wwtp_influent_n2o_350k`, flagged in their `case.toml` notes as an unconfirmed extension. `results/pilot_metrics.parquet` needs a full re-run before the new metrics show real values in the app.",
+      "tags": [
+        "metrics",
+        "nse",
+        "kge",
+        "issue-34"
+      ]
+    },
+    {
+      "id": "2026-07-13-fit-once-not-refit",
+      "date": "2026-07-13",
+      "title": "Windowed ML/DL methods are now fit once per case, not refit at every rolling origin",
+      "category": "methodology",
+      "summary": "Global methods (windowed ML/DL, Chronos) are now trained once and scored across every rolling origin by inference, instead of being refit at each origin, using the existing is_global flag to draw the line.",
+      "detail": "The rolling-origin eval used to refit every method at each of `n_origins` cutoffs, so a learned method (LightGBM, CatBoost, MLP, LinearLags, DLinear, and the optional torch/neuralforecast models) paid a full retrain per origin and its cost grew with `--origins`. Those methods keep a trained model separate from its input, so the repeat training was never needed to stay leak-free — the train/val/test boundary already does that.\n\nThey are now fit once, on data strictly before the test period, and scored across every origin by inference. The existing `is_global` flag already draws this line, so no new flag was needed — global methods are fit once, while local methods (AutoARIMA, AutoETS, Theta, TBATS, MSTL, the naive baselines) keep refitting, since for them the fit *is* the forecast. Raising `--origins` is now cheap, but this shifts the windowed ML/DL scores (they no longer see test-period data in training), so earlier pilot numbers for those methods are stale and need a re-run; baseline, classical, and Chronos scores are unchanged. The torch and neuralforecast paths were not exercised locally — verify them on a WSL run before trusting those columns.",
+      "tags": [
+        "eval",
+        "is-global",
+        "performance",
+        "methodology"
+      ]
+    },
+    {
+      "id": "2026-07-13-snapshot-curated-origins",
+      "date": "2026-07-13",
+      "title": "Snapshot panel now shows curated best/median/worst origins, ranked by whichever metric the matrix is showing",
+      "category": "app-tooling",
+      "summary": "The snapshot panel now picks the best/median/worst-performing origin for the clicked method instead of showing forecasts in arbitrary storage order, ranked by the matrix's active metric.",
+      "detail": "The snapshot panel used to show every rolling-origin forecast stored in `pilot_snapshots.parquet`, in whatever order the eval pipeline happened to produce them. It now picks up to three: the best, median, and worst performing origin for the first-clicked method, so a viewer sees a representative spread instead of an arbitrary sequence. Ranking follows whichever metric is selected on the matrix, rather than a fixed MAE, so switching the matrix's metric dropdown also reorders the snapshots.\n\nNo per-origin error existed anywhere in the eval pipeline before this, so the app recomputes each metric itself from the stored predictions and the case's actual series, replicating `rolling.py`'s own per-origin math. Spot-checked against the matrix's pooled scores for one case/method: every per-origin value falls in the expected range, and a method that predicts the historical mean scores exactly 0 `Skill_vs_Mean` at every origin. When several methods are overlaid, they all plot on the same three origins so the comparison stays apples-to-apples. The current pilot data has only 3 origins per case, so today this mostly relabels the existing panels rather than filtering anything out.",
+      "tags": [
+        "snapshot-panel",
+        "metrics",
+        "app-tooling"
+      ]
+    },
+    {
+      "id": "2026-07-13-method-info-library-cost",
+      "date": "2026-07-13",
+      "title": "Method-info panel now shows library, compute cost, limitations, and a code snippet",
+      "category": "app-tooling",
+      "summary": "Grew the method-info panel with library/compute-cost/limitations/code-snippet fields declared directly as class attributes on each Forecaster, so a method's self-description can't drift from its implementation.",
+      "detail": "Grew the method-info panel beyond family/description/exogenous-inputs to answer the question a non-ML user actually needs answered when comparing methods: what library does the work, how expensive is it to run, when should you not trust it, and what does the pipeline actually look like in code. The new fields live as plain class attributes directly on each `Forecaster` subclass (`library`, `compute_profile`, `limitations`, `code_snippet` in `base.py`), the same way `family` already does, rather than in a separate metadata file — so a method's description of itself can't drift out of sync with its implementation.\n\nSeveral method families share a base class that holds the real pipeline, so the shared fields — especially the code snippet — are set once on the base and only `library` gets overridden per leaf, to avoid repeating the same snippet 4-8 times. The detail is collapsed by default behind an \"Implementation detail\" toggle, so the panel's default view is unchanged. Couldn't get a headless-browser screenshot of the panel in this environment (no root to install Chromium's system libraries), so verification here relies on checking every registered method has all four fields populated and inspecting the rendered markdown directly — worth a manual look in a real browser before trusting the layout at a glance.",
+      "tags": [
+        "method-info-panel",
+        "documentation",
+        "app-tooling"
+      ]
+    },
+    {
+      "id": "2026-07-10-bottom-method-info-panel",
+      "date": "2026-07-10",
+      "title": "Added a bottom method-info panel, capped the method overlay at 3",
+      "category": "app-tooling",
+      "summary": "Clicking a cell now opens a bottom panel describing that method and its exogenous inputs, drawn from the Forecaster's own docstring; same-row method overlay capped at 3 with oldest-eviction.",
+      "detail": "Clicking a cell now also opens a panel docked to the bottom of the screen with a brief description of that method and which of the case's exogenous inputs (if any) it used — placeholder content while we figure out what's actually worth showing there. The description comes straight from each Forecaster subclass's own docstring, so it's free as methods gain or lose docstrings rather than a second copy to keep in sync; methods with no docstring anywhere in their class hierarchy just show a \"no description yet\" placeholder.\n\nSince both the snapshot graph and this new panel lay per-method content out side by side, the same-row method overlay is now capped at 3: clicking a 4th method evicts the oldest instead of piling on indefinitely.",
+      "tags": [
+        "method-info-panel",
+        "app-tooling"
+      ]
+    },
+    {
+      "id": "2026-07-10-merge-case-snapshot-panels",
+      "date": "2026-07-10",
+      "title": "Merged the case-info and snapshot panels into one collapsible column",
+      "category": "app-tooling",
+      "summary": "Merged the separate case-info and forecast-snapshot side panels into one right-hand column in natural reading order, with case info collapsible via a native <details> element.",
+      "detail": "The results viewer used to open two separate side-by-side panels on a cell click: case info on the left, forecast snapshots on the right. Merged them into a single right-hand column, case info on top and snapshots below, matching the natural reading order. The case-info block (the four graphs plus the case summary text) is now wrapped in a native HTML `<details>`/`<summary>` element so it can be collapsed to make more room for the snapshots, defaulting to open so nothing changes for someone who never touches it.",
+      "tags": [
+        "case-panel",
+        "snapshot-panel",
+        "layout"
+      ]
+    },
+    {
+      "id": "2026-07-10-move-snapshot-vertical-column",
+      "date": "2026-07-10",
+      "title": "Moved the snapshot panel into a vertical column next to case info",
+      "category": "app-tooling",
+      "summary": "Moved the full-width snapshot panel into a sticky column next to case info, dropping the now-redundant notes column and stacking snapshot origins one per row.",
+      "detail": "The forecast-snapshot panel used to sit below the matrix, full width, with a \"case review notes\" column next to the forecast graph. Moved it into a sticky column of its own between the matrix and the existing case-info panel, and dropped the notes column — that content already lives in the case-info panel, so it was redundant. Since a narrow column can't fit the old three-wide grid of forecast-origin snapshots, `render_snapshots` now takes a `max_cols` argument and the app passes `max_cols=1` so origins stack one per row. Selecting methods, the chip row, and the clear button all work the same as before.",
+      "tags": [
+        "snapshot-panel",
+        "layout"
+      ]
+    },
+    {
+      "id": "2026-07-10-extended-history-viewer-toggle",
+      "date": "2026-07-10",
+      "title": "Results viewer can show the extended-history fit for gappy cases",
+      "category": "app-tooling",
+      "summary": "Fixed the viewer's matrix pivot to default to the local fit and added a sidebar checkbox to swap in the extended-history fit for is_global methods, marking swapped cells with a hash pattern.",
+      "detail": "The interactive viewer (`app/app.py`) previously pivoted on every row in `pilot_metrics.parquet` without splitting out `used_extended_history`, so once a case had both a local and an extended-history row for an `is_global` method the matrix pivot would hit duplicate `(case_id, method)` pairs. Fixed the viewer to plot the local fit by default, and added a sidebar checkbox that swaps in the extended fit for `is_global` methods on the five cases with data beyond the curated span, marking those cells with a thin hotpink diagonal hash so they read as not directly comparable to the rest of the row.\n\nThe checkbox originally only changed the matrix's metric, not the forecast-snapshot panel, because `run_case_rolling` computed the extended fit's predictions but never saved them — snapshots came from the local fit only. Fixed by tagging every snapshot row with `used_extended_history` too, and having the snapshot panel pick a method's extended fit when the toggle is on and one exists for the case, labelling the swapped trace \"(global fit)\" in the legend. This needs a rerun of `scripts/run_pilot.py` to regenerate `pilot_snapshots.parquet` with the new column. Checked end-to-end on `discharge_lowland_denmark`: toggling swaps exactly the ten `is_global` methods' matrix values and their snapshot forecasts, everything else unchanged.",
+      "tags": [
+        "is-global",
+        "extended-history",
+        "app-tooling"
+      ]
+    },
+    {
+      "id": "2026-07-10-extended-history-per-segment",
+      "date": "2026-07-10",
+      "title": "Made the extended-history fit live via per-segment training (supersedes the \"inert\" entry below)",
+      "category": "methodology",
+      "summary": "Replaced the gap-free-or-fallback rule with segment-aware training that splits the extended frame at big gaps and builds windows per segment, making the extended-history fit deliver a real, measurable gain.",
+      "detail": "The extended-history path added earlier today was inert because it refused any extended frame containing a gap, and a gap is exactly where the extra history lives. Replaced that gap-free-or-fallback rule with segment-aware training: `_segment_extended` (in `bench/eval/loop.py`) splits the extended frame at its big gaps into contiguous segments, each carrying its own `unique_id`, and the `is_global` methods now build windows per segment so no training sample ever straddles a gap. The tail segment equals the shared curated span, so the local and extended fits are scored against identical persistence/mean/seasonal-naive references and the same held-out window — the extended row isolates the gain from more training data, nothing else.\n\nEach `is_global`+`pools_segments` method now emits two result rows per gappy case (`used_extended_history` False/True); the main matrix shows the local fit, the `_global` matrix the extended fit. A quick 3-origin check on `discharge_lowland_denmark` already shows the gain is real (LinearLags MASE 0.24→0.20, DLinear 0.24→0.20). Five of the twelve cases have history beyond the curated span; the other seven are gap-free and produce the local row only. Zero-shot Chronos and the fixed-`n_series` iTransformer keep `pools_segments=False` (they can't absorb extra segments), and the unused cross-series `fit_pooled` seam was removed. `results/pilot_metrics.parquet` and the matrix PNGs are still stale and must be regenerated before the numbers reflect this.",
+      "tags": [
+        "is-global",
+        "extended-history",
+        "methodology"
+      ]
+    },
+    {
+      "id": "2026-07-10-is-global-flag-inert",
+      "date": "2026-07-10",
+      "title": "Added an is_global capability flag and an extended-history training path (currently inert)",
+      "category": "methodology",
+      "summary": "Added Forecaster.is_global and a full single-series-history path for methods that could use more data than the shared curated span, but found every case's extra history is gap-bounded so nothing changes yet.",
+      "detail": "Added `Forecaster.is_global` marking methods whose architecture could use more data than the shared curated span — on for the ml/deep_learning/foundation_model families, off for baseline/classical/ensemble. Alongside it, curation now anchors the held-out tail segment to the record's most recent observation instead of picking the longest gap-bounded segment anywhere in the series. `Case.load_extended()` and a new `data/curated_extended/` cache give `is_global` methods the full single-series history back to the tail segment's `val_end`, wired into both eval paths.\n\nThe finding that matters most: the tail segment is always bounded by the nearest preceding gap, so any case where extended history would be meaningfully longer necessarily crosses that same gap. Checked across all 12 cases: every one either has no gap at all or falls back to the shared curated data, because bridging a gap bigger than the per-case cap would mean either fabricating a value across it or letting a windowed model treat the rows on either side as adjacent — no method's `fit` handles gaps today. So right now `is_global` routing changes nothing measurable; each result row's new `used_extended_history` column reads `False` everywhere. That's deliberate, not a bug — it's the honest baseline for the follow-up that would actually deliver value: gap-aware or cross-series-pooled training, which is why `Forecaster.fit_pooled` exists already as an unimplemented hook.",
+      "tags": [
+        "is-global",
+        "extended-history",
+        "methodology"
+      ]
+    },
+    {
+      "id": "2026-07-10-eda-figure-quality-review",
+      "date": "2026-07-10",
+      "title": "Closed out EDA figure-quality review comments (issue #36)",
+      "category": "project-data",
+      "summary": "Fixed stale case-id titles, missing axis units/captions, and a raw-vs-curated overlay bug in EDA figures, discovering an unfixed stuck-sensor artifact in the Bellinge series along the way.",
+      "detail": "Worked through Rocco's PR #2 figure comments (B5/B6/C3 + the WWTP figures): missing axis units, missing captions, and a stale/spiky Bellinge panel. Two `docs/figures/cases/*_eda.png` had never been regenerated since the case-id rename and still showed the old titles — regenerating them, plus labelling every exogenous-overlay axis with its unit, resolved most of what looked \"off.\" Added captions to every case doc, and gave `notebooks/eda.py` a raw-vs-curated overlay on the full-series plot.\n\nThat overlay initially thinned raw and curated series to 3000 points each independently, so the two series' strides diverged and made spikes in the raw line look smoothed away in the curated line even though the underlying values were identical outside gap-filled stretches. Fixed by plotting both at full resolution except when a series is too large to render, using min/max-per-bin binning on a single shared set of time edges so a spike always survives and the two traces match exactly outside a filled gap. One finding didn't get fixed: `sewerlevel_bellinge`'s level series has two ~67-hour flatline plateaus at a fixed value — a stuck-sensor/logger fault that curation's gap-fill doesn't remove, needing a filter calibrated against the raw 1-min CSV, which is still open.",
+      "tags": [
+        "eda",
+        "figures",
+        "issue-36",
+        "bellinge"
+      ]
+    },
+    {
+      "id": "2026-07-10-mlp-scaling-fix",
+      "date": "2026-07-10",
+      "title": "Scaled features ahead of MLPRegressor (issue #48)",
+      "category": "methodology",
+      "summary": "MLPForecaster fed unscaled lag/calendar features straight into sklearn's MLPRegressor, likely explaining its scores more than its architecture did; fixed with a StandardScaler pipeline step.",
+      "detail": "`MLPForecaster` was feeding raw lags and calendar features straight into `sklearn`'s `MLPRegressor` with no scaling, even though those features span very different ranges (lags near the target's scale, `dayofyear` up to 366). MLPs are sensitive to input scale, so its scores were likely reflecting that missing preprocessing step rather than anything about the architecture, which would undermine any MLP-vs-GBDT comparison in the matrix. Fixed by wrapping the regressor in an `sklearn` `Pipeline` with a `StandardScaler` step first.\n\nThat exposed a latent bug: the code that reads back the prediction column name assumed the fitted model object's class name matched mlforecast's internal alias, which breaks for any model wrapped in a `Pipeline`. Fixed that first, in its own commit, by reading the alias directly from mlforecast's model dict instead of re-deriving it from the object's type — a fix that's also correct for the unwrapped models, so it carries no risk for `LightGBM`/`CatBoost`/`Ridge`. Any MLP results generated before this fix should be treated as unreliable and re-run.",
+      "tags": [
+        "mlp",
+        "scaling",
+        "issue-48",
+        "methodology"
+      ]
+    },
+    {
+      "id": "2026-07-10-dedupe-method-helpers",
+      "date": "2026-07-10",
+      "title": "Cleaned up duplicated helper logic across method wrappers (issue #58)",
+      "category": "bug-fix",
+      "summary": "Consolidated three cases of drifted duplicate helper code across method wrappers found in the earlier method-suite audit, including a silently-dropped floor in one copy of a shared lookback helper.",
+      "detail": "Fixed three cases of drifted duplicate code found in the 2026-07-02 method-suite audit. `classical.py`'s five AutoARIMA/AutoETS/TBATS/Theta/MSTL forecasters each repeated the same tz-strip-and-truncate block; that's now one `_prepare_train` helper. `_lookback_for` existed in three near-identical copies (`dl.py`, `torchdl.py`, and `nf_models.py`'s differently-named `_input_size`), and `dl.py`'s had silently drifted to drop the `max(base, 2*h)` floor the other two had — merged into one `lookback_for` in `base.py` with the floor applied everywhere. `nf_models.py`'s TFT/iTransformer/TimesNet models were also unseeded, unlike the other DL families, so `fit()` now calls `pytorch_lightning.seed_everything(0)` for reproducibility. No test asserted the pre-fix behavior, so nothing needed updating beyond the three files.",
+      "tags": [
+        "refactor",
+        "method-suite",
+        "issue-58"
+      ]
+    },
+    {
+      "id": "2026-07-09-case-context-panel",
+      "date": "2026-07-09",
+      "title": "Added a case-context side panel to the results-matrix app",
+      "category": "app-tooling",
+      "summary": "Clicking a matrix cell now opens a right-hand panel showing the case's recent training data and static config, separate from the existing forecast-snapshot panel.",
+      "detail": "Clicking a matrix cell now opens a right-hand panel next to the matrix, separate from the existing forecast-snapshot panel below it, showing the last 1,000 points of that case's training split and a summary of the case's static config (domain, target, frequency, horizon, exogenous inputs, source). The point cap keeps the plot fast on long series; there's no existing formatter for `Case` metadata elsewhere in the codebase, so `app/data.py` gained a small `case_summary()` that reads straight off the `Case` model rather than any generated report. The panel only depends on the clicked case, so it stays open across method-chip clicks that change the row's overlay selection.",
+      "tags": [
+        "case-panel",
+        "app-tooling"
+      ]
+    },
+    {
+      "id": "2026-07-09-heatmap-lockdown",
+      "date": "2026-07-09",
+      "title": "Locked down the results-matrix heatmap to click-and-download only",
+      "category": "app-tooling",
+      "summary": "Disabled pan/zoom/select/drag on the results-matrix heatmap so the only interactions left are clicking a cell and downloading a PNG via the mode bar.",
+      "detail": "The matrix heatmap is the app's centerpiece, so it's now locked against pan, zoom, box/lasso select, and axis dragging — visitors can click a cell to open its snapshot panel or use the mode bar's camera icon to download a PNG, and nothing else. This is a `dcc.Graph` `config` plus `fixedrange`/`dragmode=False` change in `app/app.py`; the click-to-select callback needed no changes since `clickData` still fires normally.",
+      "tags": [
+        "matrix",
+        "plotly",
+        "app-tooling"
+      ]
     }
   ],
   "edges": [
-    { "source": "2026-07-09-persist-real-forecasts", "target": "2026-07-08-interactive-app", "type": "fixes-bug-in" },
-    { "source": "2026-07-09-persist-real-forecasts", "target": "2026-07-09-multi-snapshot-panel", "type": "fixes-bug-in" },
-    { "source": "2026-07-09-streamlit-to-dash", "target": "2026-07-08-interactive-app", "type": "supersedes" },
-    { "source": "2026-07-09-streamlit-to-dash", "target": "2026-07-09-two-app-bugs", "type": "supersedes" },
-    { "source": "2026-07-09-two-app-bugs", "target": "2026-07-08-interactive-app", "type": "depends-on" },
-    { "source": "2026-07-09-multi-snapshot-panel", "target": "2026-07-08-interactive-app", "type": "depends-on" },
-    { "source": "2026-07-08-robustperiod-audit", "target": "2026-07-08-robustperiod-intro", "type": "fixes-bug-in" },
-    { "source": "2026-07-08-mstl-statsmodels-swap", "target": "2026-07-02-seasonal-classical-baselines", "type": "relates-to" },
-    { "source": "2026-07-08-nonseasonal-mstl-test", "target": "2026-07-03-curated-seasonalities", "type": "depends-on" },
-    { "source": "2026-07-08-dominant-period-fit-time", "target": "2026-07-03-curated-seasonalities", "type": "depends-on" },
-    { "source": "2026-07-07-climatology-seasonal-key", "target": "2026-07-03-curated-seasonalities", "type": "depends-on" },
-    { "source": "2026-07-08-dominant-period-fit-time", "target": "2026-07-07-climatology-seasonal-key", "type": "depends-on" },
-    { "source": "2026-07-07-interactive-periodogram", "target": "2026-07-03-periodogram-peak-suggestions", "type": "supersedes" },
-    { "source": "2026-07-07-pacf-panel", "target": "2026-07-03-curated-seasonalities", "type": "depends-on" },
-    { "source": "2026-07-07-interactive-periodogram", "target": "2026-07-03-curated-seasonalities", "type": "depends-on" },
-    { "source": "2026-07-08-robustperiod-intro", "target": "2026-07-03-curated-seasonalities", "type": "depends-on" },
-    { "source": "2026-07-08-robustperiod-intro", "target": "2026-07-03-periodogram-peak-suggestions", "type": "supersedes" },
-    { "source": "2026-07-03-ensemble-baselines", "target": "2026-07-02-method-suite-audit", "type": "fixes-bug-in" },
-    { "source": "2026-07-02-seasonal-classical-baselines", "target": "2026-07-02-method-suite-audit", "type": "fixes-bug-in" },
-    { "source": "2026-07-03-gap-handling-policy", "target": "2026-07-02-method-suite-audit", "type": "fixes-bug-in" },
-    { "source": "2026-07-02-exo-necessity-schema", "target": "2026-07-02-exo-necessity-notes", "type": "depends-on" },
-    { "source": "2026-07-02-drop-optional-exogenous", "target": "2026-07-02-exo-necessity-schema", "type": "depends-on" },
-    { "source": "2026-07-02-discharge-saugeen-docs", "target": "2026-06-25-discharge-saugeen-case", "type": "depends-on" },
-    { "source": "2026-07-02-log-backfill", "target": "2026-06-25-discharge-saugeen-case", "type": "relates-to" },
-    { "source": "2026-07-02-log-backfill", "target": "2026-06-12-scoping-review-rocco", "type": "relates-to" },
-    { "source": "2026-07-02-log-backfill", "target": "2026-05-29-data-quality-bugs", "type": "relates-to" },
-    { "source": "2026-07-02-log-backfill", "target": "2026-05-27-initial-scoping-plan", "type": "relates-to" }
+    {
+      "source": "2026-07-09-persist-real-forecasts",
+      "target": "2026-07-08-interactive-app",
+      "type": "fixes-bug-in"
+    },
+    {
+      "source": "2026-07-09-persist-real-forecasts",
+      "target": "2026-07-09-multi-snapshot-panel",
+      "type": "fixes-bug-in"
+    },
+    {
+      "source": "2026-07-09-streamlit-to-dash",
+      "target": "2026-07-08-interactive-app",
+      "type": "supersedes"
+    },
+    {
+      "source": "2026-07-09-streamlit-to-dash",
+      "target": "2026-07-09-two-app-bugs",
+      "type": "supersedes"
+    },
+    {
+      "source": "2026-07-09-two-app-bugs",
+      "target": "2026-07-08-interactive-app",
+      "type": "depends-on"
+    },
+    {
+      "source": "2026-07-09-multi-snapshot-panel",
+      "target": "2026-07-08-interactive-app",
+      "type": "depends-on"
+    },
+    {
+      "source": "2026-07-08-robustperiod-audit",
+      "target": "2026-07-08-robustperiod-intro",
+      "type": "fixes-bug-in"
+    },
+    {
+      "source": "2026-07-08-mstl-statsmodels-swap",
+      "target": "2026-07-02-seasonal-classical-baselines",
+      "type": "relates-to"
+    },
+    {
+      "source": "2026-07-08-nonseasonal-mstl-test",
+      "target": "2026-07-03-curated-seasonalities",
+      "type": "depends-on"
+    },
+    {
+      "source": "2026-07-08-dominant-period-fit-time",
+      "target": "2026-07-03-curated-seasonalities",
+      "type": "depends-on"
+    },
+    {
+      "source": "2026-07-07-climatology-seasonal-key",
+      "target": "2026-07-03-curated-seasonalities",
+      "type": "depends-on"
+    },
+    {
+      "source": "2026-07-08-dominant-period-fit-time",
+      "target": "2026-07-07-climatology-seasonal-key",
+      "type": "depends-on"
+    },
+    {
+      "source": "2026-07-07-interactive-periodogram",
+      "target": "2026-07-03-periodogram-peak-suggestions",
+      "type": "supersedes"
+    },
+    {
+      "source": "2026-07-07-pacf-panel",
+      "target": "2026-07-03-curated-seasonalities",
+      "type": "depends-on"
+    },
+    {
+      "source": "2026-07-07-interactive-periodogram",
+      "target": "2026-07-03-curated-seasonalities",
+      "type": "depends-on"
+    },
+    {
+      "source": "2026-07-08-robustperiod-intro",
+      "target": "2026-07-03-curated-seasonalities",
+      "type": "depends-on"
+    },
+    {
+      "source": "2026-07-08-robustperiod-intro",
+      "target": "2026-07-03-periodogram-peak-suggestions",
+      "type": "supersedes"
+    },
+    {
+      "source": "2026-07-03-ensemble-baselines",
+      "target": "2026-07-02-method-suite-audit",
+      "type": "fixes-bug-in"
+    },
+    {
+      "source": "2026-07-02-seasonal-classical-baselines",
+      "target": "2026-07-02-method-suite-audit",
+      "type": "fixes-bug-in"
+    },
+    {
+      "source": "2026-07-03-gap-handling-policy",
+      "target": "2026-07-02-method-suite-audit",
+      "type": "fixes-bug-in"
+    },
+    {
+      "source": "2026-07-02-exo-necessity-schema",
+      "target": "2026-07-02-exo-necessity-notes",
+      "type": "depends-on"
+    },
+    {
+      "source": "2026-07-02-drop-optional-exogenous",
+      "target": "2026-07-02-exo-necessity-schema",
+      "type": "depends-on"
+    },
+    {
+      "source": "2026-07-02-discharge-saugeen-docs",
+      "target": "2026-06-25-discharge-saugeen-case",
+      "type": "depends-on"
+    },
+    {
+      "source": "2026-07-02-log-backfill",
+      "target": "2026-06-25-discharge-saugeen-case",
+      "type": "relates-to"
+    },
+    {
+      "source": "2026-07-02-log-backfill",
+      "target": "2026-06-12-scoping-review-rocco",
+      "type": "relates-to"
+    },
+    {
+      "source": "2026-07-02-log-backfill",
+      "target": "2026-05-29-data-quality-bugs",
+      "type": "relates-to"
+    },
+    {
+      "source": "2026-07-02-log-backfill",
+      "target": "2026-05-27-initial-scoping-plan",
+      "type": "relates-to"
+    },
+    {
+      "source": "2026-07-10-mlp-scaling-fix",
+      "target": "2026-07-02-method-suite-audit",
+      "type": "fixes-bug-in"
+    },
+    {
+      "source": "2026-07-10-dedupe-method-helpers",
+      "target": "2026-07-02-method-suite-audit",
+      "type": "fixes-bug-in"
+    },
+    {
+      "source": "2026-07-10-extended-history-per-segment",
+      "target": "2026-07-10-is-global-flag-inert",
+      "type": "supersedes"
+    },
+    {
+      "source": "2026-07-10-extended-history-viewer-toggle",
+      "target": "2026-07-10-is-global-flag-inert",
+      "type": "depends-on"
+    },
+    {
+      "source": "2026-07-13-fit-once-not-refit",
+      "target": "2026-07-10-is-global-flag-inert",
+      "type": "depends-on"
+    },
+    {
+      "source": "2026-07-13-method-info-library-cost",
+      "target": "2026-07-10-bottom-method-info-panel",
+      "type": "depends-on"
+    },
+    {
+      "source": "2026-07-19-method-card-title-top",
+      "target": "2026-07-16-method-info-cards-split",
+      "type": "depends-on"
+    },
+    {
+      "source": "2026-07-16-card-resize-drag-fix",
+      "target": "2026-07-16-method-info-cards-split",
+      "type": "fixes-bug-in"
+    },
+    {
+      "source": "2026-07-16-method-info-cards-split",
+      "target": "2026-07-16-case-panel-resizable",
+      "type": "depends-on"
+    },
+    {
+      "source": "2026-07-15-react-training-test-axis-fix",
+      "target": "2026-07-15-react-port-started",
+      "type": "fixes-bug-in"
+    },
+    {
+      "source": "2026-07-15-react-dash-parity-gaps",
+      "target": "2026-07-15-react-port-started",
+      "type": "fixes-bug-in"
+    },
+    {
+      "source": "2026-07-15-fm-exo-variants",
+      "target": "2026-07-14-three-fms-added",
+      "type": "fixes-bug-in"
+    },
+    {
+      "source": "2026-07-14-customdata-crash-fix",
+      "target": "2026-07-14-exo-toggle-folded",
+      "type": "fixes-bug-in"
+    },
+    {
+      "source": "2026-07-14-exo-toggle-folded",
+      "target": "2026-07-02-exo-necessity-schema",
+      "type": "depends-on"
+    },
+    {
+      "source": "2026-07-19-eda-react-pages-workflow",
+      "target": "2026-07-15-react-port-started",
+      "type": "relates-to"
+    },
+    {
+      "source": "2026-07-10-merge-case-snapshot-panels",
+      "target": "2026-07-09-case-context-panel",
+      "type": "depends-on"
+    },
+    {
+      "source": "2026-07-10-merge-case-snapshot-panels",
+      "target": "2026-07-09-multi-snapshot-panel",
+      "type": "depends-on"
+    },
+    {
+      "source": "2026-07-10-move-snapshot-vertical-column",
+      "target": "2026-07-10-merge-case-snapshot-panels",
+      "type": "depends-on"
+    }
   ]
 }
 </script>

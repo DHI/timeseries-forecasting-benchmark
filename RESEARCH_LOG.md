@@ -10,7 +10,7 @@ Entries are in reverse-chronological order (newest first).
 
 ## 2026-07-19 — Interactive decision graph for the research log
 
-This log had grown to 32 entries whose cross-references only existed as prose, making related
+This log had grown to enough entries that cross-references only existing as prose made related
 decisions hard to trace without reading the whole file. Added `docs/research_graph.html`, a
 self-contained D3 force-directed graph — one node per log entry, hover for a summary, click for
 full detail plus a list of connections, drag to pin nodes, pan/zoom. Node and edge data (relation
