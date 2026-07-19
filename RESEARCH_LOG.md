@@ -8,6 +8,17 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-19 — Combined the EDA and React Pages workflows into one
+
+GitHub Pages only lets one workflow deploy per repo, so the existing EDA-only
+`pages.yml` couldn't run alongside a separate workflow for the new React results-matrix
+app in `web/` without one clobbering the other. Merged them into a single workflow that
+builds both sites and copies the React build to the site root with the EDA browser under
+`/eda/`. Pushing the change surfaced a separate problem: the git credential in use came
+from the `gh` CLI's login, which lacked the `workflow` scope GitHub requires for editing
+files under `.github/workflows/`, so `gh auth refresh -h github.com -s workflow` was
+needed before the push could go through.
+
 ## 2026-07-19 — Replaced marker descriptions with a visual swatch
 
 The "Global methods" and "Exogenous inputs" sidebar sections described their corner-triangle
