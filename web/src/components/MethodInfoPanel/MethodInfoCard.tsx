@@ -19,9 +19,10 @@ type Props = {
 
 /** One card per selected method, docked to the bottom of the viewport next to its siblings and
  * sharing the row's width evenly with them, so together they span the full matrix column. The
- * title bar stays put at the bottom edge and can be collapsed down to just that bar; expanded,
- * its content height is user-adjustable via a drag handle along its top edge. Colour-matched to
- * that method's chip/forecast line. Port of app/app.py's `_method_info_cards`. */
+ * title bar sits at the top when expanded and can be collapsed down to just that bar (which then
+ * sits alone at the bottom edge); expanded, its content height is user-adjustable via a drag
+ * handle below the title bar. Colour-matched to that method's chip/forecast line. Port of
+ * app/app.py's `_method_info_cards`. */
 export function MethodInfoCard({ method, index, caseMeta, methodMeta }: Props) {
   const [collapsed, setCollapsed] = useState(false);
   const [contentHeight, setContentHeight] = useState(DEFAULT_CONTENT_HEIGHT);
@@ -29,6 +30,34 @@ export function MethodInfoCard({ method, index, caseMeta, methodMeta }: Props) {
 
   const resize = useEdgeResize('y', contentHeight, (height) =>
     setContentHeight(Math.min(MAX_CONTENT_HEIGHT, Math.max(MIN_CONTENT_HEIGHT, height))),
+  );
+
+  const titleBar = (
+    <button
+      type="button"
+      onClick={() => setCollapsed((c) => !c)}
+      title={collapsed ? 'Expand' : 'Collapse'}
+      style={{
+        flex: '0 0 auto',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 6,
+        padding: '6px 10px',
+        font: 'inherit',
+        fontWeight: 'bold',
+        textAlign: 'left',
+        background: 'none',
+        border: 'none',
+        borderLeft: `6px solid ${color}`,
+        ...(collapsed
+          ? { borderTop: '1px solid var(--border)' }
+          : { borderBottom: '1px solid var(--border)' }),
+        cursor: 'pointer',
+      }}
+    >
+      <span>{collapsed ? '▲' : '▼'}</span>
+      <span>{method}</span>
+    </button>
   );
 
   return (
@@ -44,6 +73,7 @@ export function MethodInfoCard({ method, index, caseMeta, methodMeta }: Props) {
         boxSizing: 'border-box',
       }}
     >
+      {!collapsed && titleBar}
       {!collapsed && (
         <>
           <div
@@ -56,7 +86,6 @@ export function MethodInfoCard({ method, index, caseMeta, methodMeta }: Props) {
               height: contentHeight,
               overflowY: 'auto',
               padding: '0 10px 8px',
-              borderLeft: `3px solid ${color}`,
               boxSizing: 'border-box',
             }}
           >
@@ -71,7 +100,19 @@ export function MethodInfoCard({ method, index, caseMeta, methodMeta }: Props) {
                 <Markdown
                   components={{
                     pre: ({ children }) => (
-                      <pre style={{ overflowX: 'auto', maxWidth: '100%' }}>{children}</pre>
+                      <pre
+                        style={{
+                          overflowX: 'auto',
+                          maxWidth: '100%',
+                          background: '#161b22',
+                          color: '#e6edf3',
+                          padding: '8px 10px',
+                          borderRadius: 4,
+                          boxSizing: 'border-box',
+                        }}
+                      >
+                        {children}
+                      </pre>
                     ),
                   }}
                 >
@@ -82,29 +123,7 @@ export function MethodInfoCard({ method, index, caseMeta, methodMeta }: Props) {
           </div>
         </>
       )}
-      <button
-        type="button"
-        onClick={() => setCollapsed((c) => !c)}
-        title={collapsed ? 'Expand' : 'Collapse'}
-        style={{
-          flex: '0 0 auto',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-          padding: '6px 10px',
-          font: 'inherit',
-          fontWeight: 'bold',
-          textAlign: 'left',
-          background: 'none',
-          border: 'none',
-          borderLeft: `3px solid ${color}`,
-          borderTop: '1px solid var(--border)',
-          cursor: 'pointer',
-        }}
-      >
-        <span>{collapsed ? '▲' : '▼'}</span>
-        <span>{method}</span>
-      </button>
+      {collapsed && titleBar}
     </div>
   );
 }

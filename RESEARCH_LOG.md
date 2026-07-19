@@ -8,6 +8,15 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-19 — Moved the method-info card title to the top when expanded
+
+The method-info cards showed their method name in a title bar that stayed at the bottom of the
+card in both states, so an expanded card read top-to-bottom with the resize handle first and the
+name last, below the content. Reworked `MethodInfoCard` to render the same title bar first when
+expanded, so the method name sits at the top of the open card, with the resize handle and content
+below it. Collapsed cards are unaffected — the title bar is still the only thing rendered, in the
+same position as before.
+
 ## 2026-07-16 — Fixed method-info card height-drag stopping after one pixel
 
 Dragging a method-info card's resize handle up barely moved it. Root cause: `useEdgeResize`'s
