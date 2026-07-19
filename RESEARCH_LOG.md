@@ -8,6 +8,15 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-19 — Replaced marker descriptions with a visual swatch
+
+The "Global methods" and "Exogenous inputs" sidebar sections described their corner-triangle
+markers in words ("marked with a corner triangle", "marks it with a teal corner"). Added a
+`MarkerSwatch` component that draws a small square with the actual colored triangle in the
+matching corner, reusing the same `cornerTrianglePath` geometry the matrix overlay uses, so the
+preview matches the real marker exactly. The prose was trimmed to drop the now-redundant
+shape/color description, keeping only the part explaining when each marker appears.
+
 ## 2026-07-19 — Moved the method-info card title to the top when expanded
 
 The method-info cards showed their method name in a title bar that stayed at the bottom of the

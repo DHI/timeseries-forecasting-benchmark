@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from 'react';
 import { DomainChecklist } from './components/Sidebar/DomainChecklist';
 import { FamilyMultiSelect } from './components/Sidebar/FamilyMultiSelect';
+import { MarkerSwatch } from './components/Sidebar/MarkerSwatch';
 import { MetricDropdown } from './components/Sidebar/MetricDropdown';
 import { ToggleExogenous } from './components/Sidebar/ToggleExogenous';
 import { ToggleGlobal } from './components/Sidebar/ToggleGlobal';
@@ -192,9 +193,12 @@ function MainLayout({
           checked={state.showGlobal}
           onChange={() => dispatch({ type: 'TOGGLE_GLOBAL' })}
         />
-        <p style={{ color: '#666', fontSize: '0.8em', marginTop: 4 }}>
-          Some global models have been trained with longer history, marked with a corner triangle.
-        </p>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginTop: 4 }}>
+          <MarkerSwatch corner="top-right" color="#FF1493" />
+          <p style={{ color: '#666', fontSize: '0.8em', margin: 0 }}>
+            Some global models have been trained with longer history.
+          </p>
+        </div>
         <label style={{ fontWeight: 'bold', display: 'block', marginTop: 16 }}>
           Exogenous inputs
         </label>
@@ -202,11 +206,14 @@ function MainLayout({
           checked={state.showExogenous}
           onChange={() => dispatch({ type: 'TOGGLE_EXOGENOUS' })}
         />
-        <p style={{ color: '#666', fontSize: '0.8em', marginTop: 4 }}>
-          Where a method has an exogenous-aware variant and the case provides exogenous data, this
-          swaps in that variant's score for the cell and marks it with a teal corner. Cases or
-          methods without an exogenous option are unaffected.
-        </p>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginTop: 4 }}>
+          <MarkerSwatch corner="bottom-left" color="#0B7285" />
+          <p style={{ color: '#666', fontSize: '0.8em', margin: 0 }}>
+            Where a method has an exogenous-aware variant and the case provides exogenous data, this
+            swaps in that variant's score for the cell. Cases or methods without an exogenous option
+            are unaffected.
+          </p>
+        </div>
       </aside>
       <button
         type="button"
