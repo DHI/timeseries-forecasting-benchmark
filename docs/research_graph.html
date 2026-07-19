@@ -1,0 +1,871 @@
+<title>Research Log — Decision Graph</title>
+<style>
+  .viz-root {
+    color-scheme: light;
+    --surface-1:      #fcfcfb;
+    --surface-2:      #f9f9f7;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted:     #898781;
+    --gridline:       #e1e0d9;
+    --baseline:       #c3c2b7;
+    --border:         rgba(11,11,11,0.10);
+    --cat-methodology:  #2a78d6;
+    --cat-app-tooling:  #008300;
+    --cat-bug-fix:      #e87ba4;
+    --cat-project-data: #eda100;
+    --edge-ink: #898781;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) .viz-root {
+      color-scheme: dark;
+      --surface-1:      #1a1a19;
+      --surface-2:      #0d0d0d;
+      --text-primary:   #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted:     #898781;
+      --gridline:       #2c2c2a;
+      --baseline:       #383835;
+      --border:         rgba(255,255,255,0.10);
+      --cat-methodology:  #3987e5;
+      --cat-app-tooling:  #008300;
+      --cat-bug-fix:      #d55181;
+      --cat-project-data: #c98500;
+      --edge-ink: #898781;
+    }
+  }
+  :root[data-theme="dark"] .viz-root {
+    color-scheme: dark;
+    --surface-1:      #1a1a19;
+    --surface-2:      #0d0d0d;
+    --text-primary:   #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted:     #898781;
+    --gridline:       #2c2c2a;
+    --baseline:       #383835;
+    --border:         rgba(255,255,255,0.10);
+    --cat-methodology:  #3987e5;
+    --cat-app-tooling:  #008300;
+    --cat-bug-fix:      #d55181;
+    --cat-project-data: #c98500;
+    --edge-ink: #898781;
+  }
+
+  html, body { margin: 0; padding: 0; height: 100%; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    overflow: hidden;
+  }
+  .viz-root {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    background: var(--surface-1);
+    color: var(--text-primary);
+  }
+
+  header.hud {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    z-index: 10;
+    padding: 14px 18px 10px;
+    pointer-events: none;
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+  header.hud h1 {
+    font-size: 15px;
+    font-weight: 600;
+    margin: 0;
+    color: var(--text-primary);
+  }
+  header.hud .hint {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  #graph-svg { display: block; width: 100%; height: 100%; cursor: grab; }
+  #graph-svg:active { cursor: grabbing; }
+
+  .legend {
+    position: absolute;
+    left: 18px;
+    bottom: 18px;
+    z-index: 10;
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.9;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+  }
+  .legend .row { display: flex; align-items: center; gap: 8px; }
+  .legend .swatch {
+    width: 10px; height: 10px; border-radius: 50%;
+    flex: none;
+    border: 1px solid var(--border);
+  }
+  .legend .edge-key { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--gridline); }
+  .legend .edge-row { display: flex; align-items: center; gap: 8px; }
+  .legend svg.edge-sample { flex: none; }
+
+  .tooltip {
+    position: fixed;
+    z-index: 30;
+    pointer-events: none;
+    max-width: 280px;
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 12.5px;
+    line-height: 1.45;
+    color: var(--text-primary);
+    box-shadow: 0 4px 18px rgba(0,0,0,0.16);
+    opacity: 0;
+    transition: opacity 0.08s ease;
+  }
+  .tooltip.visible { opacity: 1; }
+  .tooltip .t-title { font-weight: 600; margin-bottom: 2px; }
+  .tooltip .t-meta { display: flex; align-items: center; gap: 6px; color: var(--text-muted); font-size: 11px; margin-bottom: 6px; }
+  .tooltip .t-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .tooltip .t-summary { color: var(--text-secondary); }
+
+  .panel {
+    position: fixed;
+    top: 0; right: 0;
+    z-index: 20;
+    width: min(380px, 92vw);
+    height: 100vh;
+    background: var(--surface-1);
+    border-left: 1px solid var(--border);
+    box-shadow: -6px 0 24px rgba(0,0,0,0.14);
+    transform: translateX(100%);
+    transition: transform 0.18s ease;
+    overflow-y: auto;
+    box-sizing: border-box;
+    padding: 20px 22px 40px;
+  }
+  .panel.open { transform: translateX(0); }
+  .panel .close-btn {
+    position: absolute;
+    top: 14px; right: 16px;
+    border: none;
+    background: none;
+    color: var(--text-muted);
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 4px;
+  }
+  .panel .close-btn:hover { color: var(--text-primary); }
+  .panel .p-meta { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted); margin-bottom: 8px; }
+  .panel .p-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  .panel h2 {
+    font-size: 17px;
+    line-height: 1.35;
+    margin: 0 0 12px;
+    padding-right: 24px;
+  }
+  .panel .p-detail { font-size: 13.5px; line-height: 1.6; color: var(--text-secondary); }
+  .panel .p-detail p { margin: 0 0 10px; }
+  .panel .p-detail code {
+    background: var(--surface-2);
+    border: 1px solid var(--gridline);
+    border-radius: 3px;
+    padding: 1px 4px;
+    font-size: 0.92em;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  .panel .p-tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 18px; }
+  .panel .p-tag {
+    font-size: 11px;
+    color: var(--text-muted);
+    background: var(--surface-2);
+    border: 1px solid var(--gridline);
+    border-radius: 10px;
+    padding: 2px 9px;
+  }
+  .panel .p-section-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+    margin: 18px 0 8px;
+    border-top: 1px solid var(--gridline);
+    padding-top: 14px;
+  }
+  .panel .p-conn {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: 1px solid var(--gridline);
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin-bottom: 6px;
+    cursor: pointer;
+    font-family: inherit;
+    color: var(--text-primary);
+  }
+  .panel .p-conn:hover { background: var(--surface-2); }
+  .panel .p-conn .c-rel { font-size: 10.5px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em; }
+  .panel .p-conn .c-title { font-size: 12.5px; margin-top: 2px; }
+  .panel .p-empty { font-size: 12.5px; color: var(--text-muted); font-style: italic; }
+
+  .node circle { stroke: var(--surface-1); stroke-width: 1.5px; cursor: pointer; }
+  .node circle.selected { stroke: var(--text-primary); stroke-width: 2.5px; }
+  .node text {
+    font-size: 9.5px;
+    fill: var(--text-secondary);
+    pointer-events: none;
+    paint-order: stroke;
+    stroke: var(--surface-1);
+    stroke-width: 3px;
+    stroke-linejoin: round;
+  }
+  .link { fill: none; stroke: var(--edge-ink); stroke-opacity: 0.55; }
+</style>
+
+<div class="viz-root">
+  <header class="hud">
+    <h1>Research Log — Decision Graph</h1>
+    <span class="hint">scroll/pinch to zoom · drag canvas to pan · drag a node to pin it, double-click to release · hover for a summary · click for detail</span>
+  </header>
+
+  <svg id="graph-svg"></svg>
+
+  <div class="legend" id="legend"></div>
+  <div class="tooltip" id="tooltip"></div>
+
+  <aside class="panel" id="panel">
+    <button class="close-btn" id="panel-close" aria-label="Close">&times;</button>
+    <div id="panel-body"></div>
+  </aside>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+<script type="application/json" id="graph-data">
+{
+  "nodes": [
+    {
+      "id": "2026-07-19-leap-year-fix",
+      "date": "2026-07-19",
+      "title": "Fixed leap-year bug in the 365-day position-in-cycle path",
+      "category": "bug-fix",
+      "summary": "A leftover `.to_numpy()` call crashed every 365-day seasonal position lookup with an AttributeError, breaking Climatology, SeasonalNaive-via-ensemble, and any ML feature keyed on an annual cycle.",
+      "detail": "`_dayofyear_365` (used by `position_in_cycle` for the annual cycle, which backs Climatology, SeasonalNaive-via-ensemble, and any ML feature keyed on a 365-day period) called `idx.is_leap_year.to_numpy(...)`, but `DatetimeIndex.is_leap_year` already returns a plain numpy array rather than a pandas object, so the `.to_numpy()` call raised `AttributeError` on every call. This broke all baseline/ensemble tests on cases with a declared 365-day seasonality plus the dedicated leap-year boundary test.\n\nWrapped the result in `np.asarray(...)` instead of calling `.to_numpy()` — no behavior change beyond fixing the crash, full suite passes again.",
+      "tags": ["seasonality", "climatology", "leap-year", "crash-fix"]
+    },
+    {
+      "id": "2026-07-09-persist-real-forecasts",
+      "date": "2026-07-09",
+      "title": "Persist real per-origin forecasts and overlay methods in the results app",
+      "category": "app-tooling",
+      "summary": "The eval pipeline now saves full per-origin forecast series alongside metrics, and the app can overlay several methods' forecasts on the same panel.",
+      "detail": "The results-matrix app showed seeded placeholder forecasts because the eval pipeline only ever saved metrics, not the forecast series behind them. `run_case_rolling` now keeps the full-horizon per-origin forecasts it was already computing and returns them alongside the metrics as a tidy `(case_id, method, origin_id, origin_ds, ds, y_hat)` frame, written incrementally to `results/pilot_snapshots.parquet` (single hold-out `--fast` runs don't produce snapshots).\n\nOrigins are now chosen once per case, before the method loop, so `origin_id`/`origin_ds` line up across methods — the app uses this to overlay several methods' forecasts on the same panel by clicking cells along a matrix row. Actuals are reloaded from the case's curated series rather than duplicated into the snapshot file. A fresh pilot run is needed to regenerate the snapshot artifact before the app shows real forecasts.",
+      "tags": ["results-app", "snapshots", "forecasts", "eval-pipeline"]
+    },
+    {
+      "id": "2026-07-09-streamlit-to-dash",
+      "date": "2026-07-09",
+      "title": "Moved the results-matrix app from Streamlit to Dash",
+      "category": "app-tooling",
+      "summary": "Migrated the results-matrix app from Streamlit to Dash because Plotly's Heatmap trace has no selection module, so Streamlit could never natively catch a cell click.",
+      "detail": "The results-matrix app moved from Streamlit to Dash because Plotly's `Heatmap` trace has no selection module, so Streamlit's `on_select=\"rerun\"` could never fire on a cell click — the earlier workaround (an invisible `Scatter` overlay per cell just to catch clicks) worked but was fragile against reversed axes and cell layout. Dash's heatmap emits `clickData` natively, so the click-to-snapshot interaction is now a plain callback with no overlay hack.\n\n`data.py` and `snapshot.py` carried over unchanged since they only ever built pandas frames and Plotly figures; `app.py` was rewritten, and `@st.cache_data` was swapped for stdlib `functools.cache`. Run command is now `uv run --extra app python app/app.py`. One known gap: the reload button re-reads the parquet but won't show a brand-new domain or family in the filter widgets until the app restarts.",
+      "tags": ["results-app", "dash", "streamlit", "migration"]
+    },
+    {
+      "id": "2026-07-09-two-app-bugs",
+      "date": "2026-07-09",
+      "title": "Two app bugs found on first real-browser test, both pre-existing",
+      "category": "bug-fix",
+      "summary": "A real-browser test of the results-matrix app surfaced a DOMAIN_KEY_DICT gap causing row-label crashes and a click-to-select failure caused by a Plotly Heatmap limitation.",
+      "detail": "First manual, real-browser test of the results-matrix app (headless checks alone hadn't caught these) surfaced two pre-existing bugs. `DOMAIN_KEY_DICT` only covered 4 of the 8 real domains, so `spectral_waves`, `storm_surge`, `wastewater_treatment`, and `water_quality` cases crashed the matrix's row labels with a `KeyError` — fixed by filling in the missing abbreviations and falling back to the plain domain name instead of raising.\n\nClicking a matrix cell also did nothing: Plotly.js's `Heatmap` trace has no `selectPoints` module at all, so it can never emit the click event Streamlit's `on_select=\"rerun\"` needs, regardless of app-level config — fixed at the time with an invisible `Scatter` overlay per cell, later replaced outright by the Dash migration. Worth clicking through a running app before trusting headless checks whenever a Streamlit+Plotly interaction is added — headless harnesses can't catch a client-side trace limitation like this one.",
+      "tags": ["results-app", "bug", "testing", "streamlit"]
+    },
+    {
+      "id": "2026-07-09-multi-snapshot-panel",
+      "date": "2026-07-09",
+      "title": "Multi-snapshot forecast panel for the results-matrix app",
+      "category": "app-tooling",
+      "summary": "Replaced the flat placeholder forecast line in the click-to-detail panel with a Plotly view of 3 evenly-spaced forecast-origin snapshots and a real time axis.",
+      "detail": "The results-matrix app's cell-click detail panel showed one flat placeholder line with no time axis. Replaced it with `app/snapshot.py`, a Plotly panel showing 3 evenly-spaced forecast-origin snapshots side by side, each with actual values, predicted values, and a dashed line marking where the forecast starts — following a matplotlib sketch (`app/snapshot_example.py`) worked out first.\n\nUsed Plotly rather than matplotlib to stay visually consistent with the rest of the app, and a fixed count of 3 snapshots rather than a configurable one since nothing yet needed more than a quick visual check. The time axis was real (`freq` and `horizon_primary` pulled from each case's case.toml) but the actual/predicted values were still placeholders at this point — resolved by the snapshot-persistence entry above.",
+      "tags": ["results-app", "snapshot", "plotly", "forecast-panel"]
+    },
+    {
+      "id": "2026-07-08-interactive-app",
+      "date": "2026-07-08",
+      "title": "Interactive results-matrix app (Streamlit + Plotly)",
+      "category": "app-tooling",
+      "summary": "Added a Streamlit + Plotly app rendering the case × method skill matrix interactively, with hover, metric switching, filters, and a click-to-detail panel.",
+      "detail": "Added `app/app.py`, a local Streamlit app rendering the same case × method grid as the static `results/pilot_matrix_*.png` plots, but interactive: hover for the metric value plus run diagnostics, switch metrics from a dropdown, and filter or remove rows and columns by case, domain, method, or method family.\n\nTwo supporting changes: every `Forecaster` subclass now declares a `family` (baseline/classical/ml/deep_learning/foundation_model/ensemble), read by the app via direct import rather than added to `pilot_metrics.parquet` — family is a property of the method, not of a run; and `matrix.py`'s per-metric colormap config was made public (`METRIC_CONFIG`) and imported by the app, so the interactive heatmap and the static PNG can't drift apart on how a metric is colored. Clicking a cell opens a detail panel with the case's review notes and a forecast-preview chart — the chart used placeholder data until the eval pipeline was later changed to persist real per-origin forecasts. Run with `uv run --extra app streamlit run app/app.py`.",
+      "tags": ["results-app", "streamlit", "plotly", "matrix"]
+    },
+    {
+      "id": "2026-07-08-mstl-statsmodels-swap",
+      "date": "2026-07-08",
+      "title": "Swapped statsforecast's MSTL wrapper for statsmodels' directly",
+      "category": "app-tooling",
+      "summary": "Replaced statsforecast's thin MSTL wrapper with statsmodels' MSTL directly for decomposition, since it added no behavior this code relied on.",
+      "detail": "`_mstl_decompose` called `statsforecast.mstl.mstl`, a thin wrapper over `statsmodels.tsa.STL` that added no behavior this code relied on. Switched to calling `statsmodels.tsa.seasonal.MSTL` directly.\n\nOne shape difference for anyone touching this code: statsmodels' `MSTL(...).fit()` returns a `DecomposeResult` with `.seasonal` as a 1D array for a single period or 2D (columns in period order) for multiple, rather than statsforecast's named-column DataFrame — `_mstl_strengths` and the notebook's decomposition plot now index by position instead of name. `statsforecast` stays a dependency since `classical.py`'s MSTL-ETS/MSTL-ARIMA forecasters still use it for actual forecasting, a separate use from decomposition-for-evidence.",
+      "tags": ["mstl", "statsmodels", "decomposition", "refactor"]
+    },
+    {
+      "id": "2026-07-08-robustperiod-audit",
+      "date": "2026-07-08",
+      "title": "Audit of the RobustPeriod implementation — three weaknesses found and fixed",
+      "category": "methodology",
+      "summary": "A targeted audit of robust_period_candidates found and fixed three real weaknesses — an uncalibrated prominence threshold, garbage Nyquist-period amplitudes, and a silent no-op in the Huber cleaning step.",
+      "detail": "Audited `robust_period_candidates` with synthetic-data probes beyond the existing test suite and found three weaknesses, each fixed with a regression test. The `prominent` flag wasn't calibrated for series length — `_spectral_ratio`'s max-over-window approach let long series with many noise bins clear the threshold by chance (a quarter of white-noise draws at n=100k falsely cleared it); fixed by raising the bar by log2 of the window's bin count and reporting each candidate's `prominence_bar` so a reviewer sees the margin.\n\nPeriod-2 (Nyquist) candidates returned garbage amplitudes because the regression's sine term is numerically zero at that frequency; fixed by skipping periods below 3. `_huber_clean` silently did nothing when the MAD was zero (common on flat or zero-inflated series), letting spikes pass straight into the spectrum; fixed with a mean-absolute-deviation fallback. The core MODWT/periodogram/dedup machinery itself checked out fine across all probes.",
+      "tags": ["seasonality", "robustperiod", "audit", "methodology"]
+    },
+    {
+      "id": "2026-07-08-robustperiod-intro",
+      "date": "2026-07-08",
+      "title": "RobustPeriod — data-driven seasonality discovery for curation",
+      "category": "methodology",
+      "summary": "Implemented RobustPeriod (Wen et al., SIGMOD 2021) as a new, data-driven seasonality discovery pass to surface off-menu cycles that raw periodogram peaks were missing.",
+      "detail": "The seasonality curation notebook scored a fixed menu of physically-motivated periods and, for off-menu cycles, ranked raw periodogram peaks — fragile on environmental data, since red-noise variance and blurred-together cycles fool raw peaks and leave the off-menu half resting on a human reading scattered plots. Implemented RobustPeriod as a new discovery pass, `robust_period_candidates` in `data/seasonality.py`: the series is detrended and Huber-winsorised, decomposed by MODWT into dyadic frequency bands so coexisting cycles land in separate levels, and each level's dominant period is scored by spectral prominence and a robust Huber-periodogram amplitude.\n\nTwo deliberate deviations from the paper: the O(n²) per-frequency Huber periodogram is evaluated only at each level's candidate peak to stay fast on 100k+ point cases, and Fisher's g-test was dropped in favor of the spectral-prominence gate since the g-test flagged every wavelet level significant even on white noise. Validated by checking whether the tool honestly surfaces known structure rather than against each case's already-declared seasonalities, since that list came from the old tooling plus human judgment and matching it would be circular. Discovery is advisory: a reviewer still reads the ranked evidence and decides what to commit to case.toml.",
+      "tags": ["seasonality", "robustperiod", "discovery", "methodology"]
+    },
+    {
+      "id": "2026-07-08-nonseasonal-mstl-test",
+      "date": "2026-07-08",
+      "title": "Non-seasonal MSTL test now builds its own non-seasonal case",
+      "category": "bug-fix",
+      "summary": "The test asserting MSTL refuses to run on a non-seasonal case had drifted onto a case that curation later made seasonal, so it was silently exercising the wrong path.",
+      "detail": "The test asserting MSTL refuses to run on a non-seasonal case used `discharge_flashy_catskills` as its example — but since curation gave every committed case a declared `seasonalities` list, that case is no longer non-seasonal and the test was silently exercising the wrong path. Fixed by constructing the non-seasonal case explicitly via `model_copy` with `seasonalities` overridden to `[]`, since the synthetic data generator doesn't read that field anyway.\n\nWorth flagging: with all committed cases now seasonal, MSTL's inapplicability guard and the SeasonalNaive non-seasonal branch are only ever exercised by synthetic overrides, never by a real case in the suite.",
+      "tags": ["mstl", "testing", "seasonality"]
+    },
+    {
+      "id": "2026-07-08-dominant-period-fit-time",
+      "date": "2026-07-08",
+      "title": "Dominant period is now chosen at fit time by variance explained",
+      "category": "methodology",
+      "summary": "dominant_period now picks whichever declared seasonality best explains a fold's own training window, by single-sinusoid R², instead of trusting curation-time ordering.",
+      "detail": "`dominant_period` used to return the first entry of a case's declared `seasonalities`, trusting curation-time ordering — but in a rolling evaluation, the globally dominant cycle isn't always what a given fold's window shows most strongly. Changed it to pick, at fit time, whichever declared period's sinusoid explains the most variance of the detrended training target in that fold's own window.\n\nChose a single-sinusoid R² over a per-cycle-position seasonal mean or an ANOVA F-statistic because declared periods are almost always multiples of each other (12|24, 24|168), which would bias raw explained-variance toward always picking the longest period, while the sinusoid's fixed two-parameter cost compares periods fairly even with few cycles in a fold. This affects SeasonalNaive, Climatology, the ML sin/cos feature, and TBATS/Theta's default `season_length` — predictions can shift for any case with more than one declared seasonality, and `docs/RESULTS.md` needs regenerating on the next benchmark run for those cases.",
+      "tags": ["seasonality", "dominant-period", "methodology"]
+    },
+    {
+      "id": "2026-07-07-climatology-seasonal-key",
+      "date": "2026-07-07",
+      "title": "Climatology baseline now keys on the declared dominant seasonality (issue #54)",
+      "category": "methodology",
+      "summary": "Climatology's lookup key moved from a frequency-dispatch table to the case's declared dominant seasonality, so every seasonal component of the suite now keys the same way at every frequency.",
+      "detail": "`Climatology`'s lookup key came from a frequency-dispatch table (day-of-year for daily, hour-of-day for hourly, weekday×hour for sub-daily), so how hard a baseline it was changed with sampling rate rather than the series' actual seasonal structure — weekly data collapsed to the global mean, hourly data ignored weekday effects. Changed it to key on position within the case's dominant declared period (`case.seasonalities`), the same source SeasonalNaive and the ML sin/cos features already use, so every seasonal component of the suite now keys the same way at every frequency.\n\nA non-seasonal case (`seasonalities = []`) has no cycle to key on, so it falls back to one global bucket — deliberately matching the Mean baseline there rather than raising. Only Climatology's own predictions change; the Climatology row and the naive-ensemble median need regenerating on the next benchmark run, but no other method's numbers move.",
+      "tags": ["climatology", "seasonality", "baseline", "issue-54"]
+    },
+    {
+      "id": "2026-07-07-pacf-panel",
+      "date": "2026-07-07",
+      "title": "Added a PACF panel to the seasonality notebook, alongside ACF",
+      "category": "methodology",
+      "summary": "Added a PACF panel next to ACF in the seasonality notebook, since PACF nets out shorter lags already regressed out and disambiguates a period that's a multiple of a shorter one.",
+      "detail": "The seasonality notebook's ACF plot shows peaks at every multiple of a candidate period, which is ambiguous given this project's candidate menu — within a frequency, longer menu periods are exact multiples of shorter ones, so a strong 12h cycle mechanically inflates ACF(24) whether or not an independent 24h effect exists. Added a PACF panel alongside ACF, since PACF nets out shorter lags already regressed out, so a candidate that's a multiple of a shorter one only spikes if it carries independent information.\n\nThis is reviewer-facing only — the acceptance gate in `detect_candidates()` still uses ACF plus MSTL strength, since PACF's max lag is capped below half the sample size and its cutoff interpretation isn't guaranteed for arbitrary periodic shapes.",
+      "tags": ["seasonality", "pacf", "acf", "notebook"]
+    },
+    {
+      "id": "2026-07-07-interactive-periodogram",
+      "date": "2026-07-07",
+      "title": "Interactive periodogram + find_peaks in the seasonality notebook",
+      "category": "methodology",
+      "summary": "Reworked the seasonality notebook's periodogram into an interactive, log-frequency-resampled find_peaks tool so off-menu peaks stop hiding between under-resolved bins.",
+      "detail": "The seasonality notebook's periodogram was buried near the bottom, and off-menu peaks appeared only as a static, non-interactive text list. Reworked it to sit under the case dropdown with a fully interactive `find_peaks` overlay. The key fix: `scipy.signal.periodogram` is uniform in frequency but seasonality lives in period on a log axis, so the raw spectrum is wildly over-resolved at short periods and under-resolved at long ones — a daily case's annual peak can fall between two bins.\n\nResampling log-power onto a uniform log-frequency grid (aggregated by max, not mean, to avoid averaging a sharp seasonal line into the noise floor) fixes this and makes `find_peaks` parameters finally comparable across the spectrum and across cases. Peak-detection parameters are now exposed as live text inputs, and three marker colors distinguish the fixed candidate menu, detected peaks, and manually-entered candidates. This is discovery/inspection tooling only — nothing enters a case's declared seasonalities without the full ACF/power-ratio evidence and written justification `detect_candidates()` already requires.",
+      "tags": ["seasonality", "periodogram", "notebook", "find-peaks"]
+    },
+    {
+      "id": "2026-07-03-periodogram-peak-suggestions",
+      "date": "2026-07-03",
+      "title": "Periodogram-peak suggestions for off-menu seasonalities",
+      "category": "methodology",
+      "summary": "Added suggest_peak_candidates() to surface up to 5 ranked, advisory periodogram peaks for periods outside the fixed candidate menu.",
+      "detail": "The seasonality notebook could only evidence periods a human already thought to test — its fixed candidate menu is deliberately narrow, so a case with a different physical driver (e.g. `waves_oregon`'s 17h swell) had no way to surface unless someone already suspected it. Added `suggest_peak_candidates()`: finds periodogram local maxima, applies the same prominence bar as `detect_candidates`, and drops anything within 10% of a menu/excluded period as spectral leakage.\n\nIt's advisory only — up to 5 ranked suggestions the reviewer can copy into the extra-candidates box to get full evidence, not an acceptance path in itself. Superseded in practice by the interactive periodogram added 2026-07-07, but the underlying function is still used by the registry and tests.",
+      "tags": ["seasonality", "periodogram", "discovery"]
+    },
+    {
+      "id": "2026-07-03-curated-seasonalities",
+      "date": "2026-07-03",
+      "title": "Per-case curated seasonalities replace the freq → seasonality map",
+      "category": "methodology",
+      "summary": "Every case now declares its own seasonalities list in case.toml, replacing a hardcoded frequency → seasonality map that assumed every hourly/daily case shared the same cycles.",
+      "detail": "Seasonal periods were hardcoded per sampling frequency, assuming every hourly case carries 24h/168h cycles and every daily case 7d/365d — wrong for much of the environmental half of the benchmark (waves and de-tided surge have no diurnal cycle; rivers have no work week) and consequential, since that map also set the MASE denominator, distorting cross-case MASE comparisons. Each case now declares `seasonalities` in its case.toml — required, dominant-first, `[]` meaning explicitly non-seasonal — as the single source of truth for SeasonalNaive, TBATS, AutoTheta, MSTL, and the ML feature pipeline; the old frequency maps were deleted with no fallback.\n\nCandidates come from a fixed physically-motivated menu per frequency and are accepted only with ≥2 full train-split cycles, a periodogram peak exceeding 10× the surrounding octave band's median power, and ACF ≥ 0.1 at that lag. Two upstream assumptions didn't survive: hourly cases are mostly tidal (12h), not diurnal, and one daily case (`discharge_flashy_catskills`) is genuinely non-seasonal. New cases must declare `seasonalities` (schema-enforced), and MASE values shift on any case where the declared dominant period differs from the old frequency default.",
+      "tags": ["seasonality", "case-toml", "mase", "curation"]
+    },
+    {
+      "id": "2026-07-03-tbats-boxcox-warning",
+      "date": "2026-07-03",
+      "title": "Silencing a spurious TBATS Box-Cox warning",
+      "category": "bug-fix",
+      "summary": "Passing use_boxcox=False explicitly whenever a Yeo-Johnson pre-transform already ran removed a spurious TBATS warning, since TBATS's own internal Box-Cox was expected to be a no-op anyway.",
+      "detail": "`TBATSForecaster.fit` pre-applies a Yeo-Johnson transform for cases with non-positive targets (e.g. `watertemp_james`), so TBATS's own internal Box-Cox is expected to be a no-op — but Yeo-Johnson with `standardize=False` isn't positivity-guaranteeing, so some transformed points still landed at or below zero and triggered TBATS's own warning-and-disable logic.\n\nFixed by passing `use_boxcox=False` explicitly whenever the pre-transform was applied, producing an identical fit without the noise; `use_boxcox` stays at its default when the raw data is already positive, so TBATS can still decide for itself whether a Box-Cox transform helps.",
+      "tags": ["tbats", "box-cox", "warning"]
+    },
+    {
+      "id": "2026-07-03-gap-handling-policy",
+      "date": "2026-07-03",
+      "title": "Gap handling: one materialized policy (cap + longest-segment trim)",
+      "category": "methodology",
+      "summary": "Replaced two inconsistent, on-the-fly gap-filling layers with one materialized policy — interpolate only up to an ACF-derived cap, then keep only the longest contiguous segment — tracked by a y_observed mask.",
+      "detail": "Missing target data was handled in two places — the eval loop imputed gaps on the fly (linear interpolation then mean-fill), and several methods also interpolated or dropped NaNs internally, inconsistently. Worse, mean-fill let models train on large fabricated stretches — one 6574-step block was 54% of `discharge_lowland_denmark`, a single interpolated straight line.\n\nReplaced both layers with one materialized policy in `data/curate.py`: gaps are interpolatable only up to a per-case cap (the lag at which the target's ACF first drops below 0.8, bounded by one seasonal cycle), gaps larger than the cap are treated as hard boundaries, and only the longest contiguous segment is kept — chosen over most-recent because a big gap near `waves_massachusetts`'s train/test boundary would have starved it to 5 training points. A `y_observed` mask on the curated data tracks which points were genuinely measured, so metrics and origin selection never score a filled point as real. `scripts/curate_data.py` writes `data/curated/<case>.parquet` once; re-run it after any data refresh or a change to the ACF threshold.",
+      "tags": ["gap-handling", "data-quality", "curation"]
+    },
+    {
+      "id": "2026-07-03-ensemble-baselines",
+      "date": "2026-07-03",
+      "title": "Ensemble-of-baselines columns (issue #59)",
+      "category": "methodology",
+      "summary": "Added a generic EnsembleForecaster combining member forecasts by median, closing the method-suite audit's flagged gap in ensemble-of-baselines coverage.",
+      "detail": "Added a generic `EnsembleForecaster` that composes existing Forecasters and combines their per-step forecasts by median (robust to one member going badly off, e.g. Persistence during a spike), closing the method-suite audit's \"no ensemble-of-baselines column\" gap. Two columns are registered: `EnsembleBaselines` (median of the four naive baselines) and `EnsembleBaselinesTheta` (the same four plus Theta), bracketing a pure zero-cost reference and a naive+classical blend.\n\nA member that raises at predict time is dropped for that origin; the ensemble only raises if every member fails. An early smoke test on `discharge_lowland_denmark` showed the intended calibration signal — EnsembleBaselinesTheta beat persistence while the naive-only ensemble trailed it on that flashy series.",
+      "tags": ["ensemble", "baselines", "issue-59"]
+    },
+    {
+      "id": "2026-07-02-seasonal-classical-baselines",
+      "date": "2026-07-02",
+      "title": "Seasonal classical baselines: MSTL forecasters + seasonally-adjusted Theta (issue #46)",
+      "category": "methodology",
+      "summary": "Added dedicated seasonal MSTL-ETS/MSTL-ARIMA columns and made Theta seasonal by default, fixing an asymmetry where classical methods ran non-seasonal while ML methods got seasonal features.",
+      "detail": "AutoARIMA/AutoETS/AutoTheta all ran non-seasonal (`season_length=1`) while the windowed-ML methods got calendar features and seasonal lags, so any \"classical vs ML\" comparison was partly an artifact of deliberately de-seasonalized classical baselines. Since seasonal ARIMA/ETS cost explodes with large periods, kept AutoARIMA/AutoETS as non-seasonal short-memory baselines and added dedicated seasonal columns instead: MSTL-ETS and MSTL-ARIMA (strips seasonal components via STL, fits on the residual, then re-seasonalizes) and made Theta seasonal by default, since its classical deseasonalization is cheap at any frequency.\n\nIf a training window doesn't support even the smallest declared period, MSTL raises rather than silently falling back to a bare non-seasonal forecaster, which would have made the new columns byte-identical fakes of the existing ones. This makes \"classical vs ML\" a genuine methodology contrast rather than an artifact of an unfair setup.",
+      "tags": ["mstl", "theta", "classical", "issue-46"]
+    },
+    {
+      "id": "2026-07-02-method-suite-audit",
+      "date": "2026-07-02",
+      "title": "Audit of the method suite (bench/methods/) — flaws and gaps identified",
+      "category": "methodology",
+      "summary": "A full audit of every method wrapper flagged the classical-vs-ML seasonality asymmetry as the biggest validity concern, plus several correctness bugs and design risks to prioritize.",
+      "detail": "Reviewed all method wrappers (`naive.py`, `classical.py`, `ml.py`, `dl.py`, `fm.py`, `nf_models.py`, `torchdl.py`) and how the eval loops call them, recording findings to prioritize rather than fixing them immediately. Biggest validity concern: classical methods ran non-seasonal by default while ML methods got seasonal features; also flagged were asymmetric training budgets between statsforecast's auto-selection and the neural methods' fixed tiny step counts, unscaled MLP features, and Chronos scoring its median against a mean-optimal metric.\n\nCorrectness issues found: `_complete_for_fit` ran on the full train+test frame before slicing, leaking test-period information into training gap-fills; DLinear/N-HiTS/PatchTST silently fell back to persistence on short series while reporting status \"ok\"; and several frequency-dispatch tables only handled {daily, hourly, 15-min, weekly} with silent generic defaults otherwise. Design risks noted: `predict(history=...)` is dead in every non-naive method, and the exogenous tier conflated historical-only and known-future covariates. Suite gaps flagged included the missing ensemble-of-baselines and MSTL columns, a single foundation model, and a strategy confound between recursive mlforecast methods and direct-multi-output DL methods.",
+      "tags": ["method-suite", "audit", "methodology"]
+    },
+    {
+      "id": "2026-07-02-rolling-origin-fix",
+      "date": "2026-07-02",
+      "title": "Fixed rolling-origin selection collapsing onto the front of the test set",
+      "category": "methodology",
+      "summary": "Origin selection was truncating to the first half of the usable test range instead of spreading across it, silently missing any regime shift near the end of a case's test period.",
+      "detail": "`run_case_rolling`'s origin selection was supposed to spread `n_origins` cutoffs across the whole test period, but it oversampled 2×n candidates, filtered for ≥50% observed horizon, then truncated to the first `n_origins` of the sorted list — since the list was sorted ascending, that's the front ~50% of the range, not a spread sample. On `discharge_lowland_denmark` (H=7, test range 1241–1453) the last origin used was ~1347 instead of 1453, so only 46% of the usable test range was ever scored. This bites hardest when horizon is small relative to test length.\n\nFixed by extracting `_select_rolling_origins()`, which now evenly downsamples the filtered survivor list via `linspace` over indices rather than truncating it; `run_leadtime_curve` wasn't affected since it already samples origins directly via `linspace`. This changes which points get scored, so any published matrix numbers generated before this fix should be treated as based on only the first half of each case's test period — re-running the pilot is the fix.",
+      "tags": ["rolling-origin", "eval", "bug-fix"]
+    },
+    {
+      "id": "2026-07-02-discharge-saugeen-docs",
+      "date": "2026-07-02",
+      "title": "Added missing discharge_saugeen case doc and EDA panel",
+      "category": "project-data",
+      "summary": "Filled in the missing docs page, EDA figure, and README entry for discharge_saugeen, framing its role as the deliberate univariate control against the three exogenous hydrology cases.",
+      "detail": "`discharge_saugeen` had case code (case.toml, download.py, synth.py) but no docs page, EDA figure, or entry in `docs/README.md`'s case table — added all three, framing the case's role as the deliberate univariate control against the three exogenous hydrology cases, isolating pure autoregressive/seasonal skill. No case behavior changed.",
+      "tags": ["discharge-saugeen", "docs", "case"]
+    },
+    {
+      "id": "2026-07-02-drop-optional-exogenous",
+      "date": "2026-07-02",
+      "title": "Dropped optional_exogenous as a redundant stored field",
+      "category": "methodology",
+      "summary": "optional_exogenous was pure duplication of the exogenous complement, so it became a derived property instead of a stored, validator-policed field.",
+      "detail": "`Case.optional_exogenous` was a stored case.toml field, but given the fixed set of available columns and which are necessary, \"optional\" is always just the complement — pure duplication that only needed a validator to police it. Made it a derived property instead (`(exogenous ∪ exogenous_known_future) − necessary_exogenous`) and removed the field from all 9 case.toml files that had it; `Case.exo_tier` and everything downstream is unaffected.",
+      "tags": ["exogenous", "case-toml", "refactor"]
+    },
+    {
+      "id": "2026-07-02-exo-necessity-schema",
+      "date": "2026-07-02",
+      "title": "Structured exo-necessity fields, persisted as result metadata (not matrix aggregation)",
+      "category": "methodology",
+      "summary": "Promoted the exogenous-necessity judgment into schema (necessary_exogenous/exo_tier) and persisted it as plain metadata on every result row, deliberately not used to aggregate or rank methods in the matrix.",
+      "detail": "Promoted the exogenous necessity judgment (recorded in prose the same day) into schema: added `necessary_exogenous`/`optional_exogenous` fields to `Case` with a validator requiring every exogenous column to be classified as exactly one, plus a derived `exo_tier` property (`none`/`optional`/`necessary`). Considered splitting the results matrix by tier or demoting univariate methods to a \"reference floor\" on necessary-exo cases, but rejected both — the matrix never aggregates or ranks methods by design, and demoting some methods on some cases is aggregation by another name.\n\nLanded instead on metadata-only labeling: `case.exo_tier` and each method's `uses_exogenous` flag are now persisted as plain columns on every result row, so downstream consumers can filter or facet by tier without the benchmark itself declaring which methods \"count\" for which cases.",
+      "tags": ["exogenous", "schema", "results-matrix"]
+    },
+    {
+      "id": "2026-07-02-exo-necessity-notes",
+      "date": "2026-07-02",
+      "title": "Recorded necessary-vs-optional exogenous judgment in case notes",
+      "category": "methodology",
+      "summary": "Recorded, in prose, which cases treat exogenous input as domain-essential versus a nice-to-have enrichment — a domain call that isn't inferable from measured skill deltas alone.",
+      "detail": "Mixing cases where exogenous input is domain-essential (e.g. storm surge needs wind/pressure) with cases where it's a nice-to-have enrichment makes a single results matrix hard to read, since a method's ranking on one isn't comparable to its ranking on the other — and this necessity judgment is a domain call, not something inferable from measured skill deltas alone. As a first step, recorded that judgment in prose in each case's `notes` field: extracted from existing case descriptions where the necessity claim was already implicit (`surge_cuxhaven`, `watertemp_james`, `discharge_snowmelt_yosemite`, `groundwater_yorktown`), and flagged as a fresh, arguable assumption where it wasn't (`discharge_flashy_catskills`, `discharge_lowland_denmark`, `sewerlevel_bellinge`, the two wave cases).\n\nThis is prose only — no schema or pipeline change yet; promoting it to structured fields followed the same day.",
+      "tags": ["exogenous", "case-notes", "domain-judgment"]
+    },
+    {
+      "id": "2026-07-02-catboost-added",
+      "date": "2026-07-02",
+      "title": "Added CatBoost to the windowed-ML method set",
+      "category": "methodology",
+      "summary": "Added CatBoost/CatBoost+exo alongside LightGBM in the windowed-ML family with a matched training budget, giving the benchmark a second GBDT implementation.",
+      "detail": "Added `CatBoost`/`CatBoost+exo` to the windowed-ML column family, slotting into the same shared lag+calendar feature pipeline as LightGBM with a matched training budget (200 iterations, 0.05 learning rate) so the two GBDT methods are compared on roughly equal footing. Gives the benchmark a second GBDT implementation — useful since CatBoost's ordered-boosting scheme handles the same lag/calendar features differently and may behave better or worse depending on how noisy a case's covariates are. No methodology change, straightforward column addition.",
+      "tags": ["catboost", "gbdt", "windowed-ml"]
+    },
+    {
+      "id": "2026-07-02-log-backfill",
+      "date": "2026-07-02",
+      "title": "Backfilling this log from the scoping documents",
+      "category": "project-data",
+      "summary": "This log started empty, so its earliest entries were reconstructed from the original scoping documents and git history, surfacing several undocumented drifts between the plan and the shipped codebase.",
+      "detail": "This entry and those below it were written on this date, reconstructing the project's decision history from `research_plan.md`, `docs/SCOPING.md`, `docs/review_responses_pr2.md`, and git history, since this log started empty — dates reflect when decisions actually happened, not when they were logged.\n\nComparing the original plan to the codebase surfaced several undocumented drifts: only Chronos-Bolt zero-shot was ever implemented of the six foundation models the plan called for, and recurrent nets plus the fine-tuning phase were never started; process-model reference columns and hybrid ML residual correction, called out in the plan as central, were pushed back on by domain expert Rocco during scoping review and never built; NSE/KGE metrics were agreed as a queued change but still aren't implemented; the Nixtla-based library strategy landed but wrapped behind a project-own `Forecaster` interface; and the package split into `tsforecastbench.data`/`tsforecastbench.bench` on 2026-06-13, deliberately so the two halves could become separate repos later. None of this needed fixing — the codebase and docs are internally consistent with what actually exists; `research_plan.md` should just be read as the original proposal, not a description of the current system.",
+      "tags": ["project-history", "backfill", "scoping"]
+    },
+    {
+      "id": "2026-06-25-discharge-saugeen-case",
+      "date": "2026-06-25",
+      "title": "Added a second, unforced hydrology contrast case",
+      "category": "project-data",
+      "summary": "Added discharge_saugeen — a long-record, exogenous-free discharge series — as a methodological contrast to the exogenous-rich cases, rather than another geographic contrast.",
+      "detail": "Added `discharge_saugeen` (daily discharge, Saugeen River, Ontario, 65 years of record, no exogenous inputs) alongside `discharge_flashy_catskills`, answering an open question about whether to add a second Danish catchment or an alpine one — with a third option instead: a long-record, exogenous-free univariate series as a methodological contrast to the exogenous-rich cases, rather than another geographic contrast. Brings the case count to 12.",
+      "tags": ["discharge-saugeen", "case-selection"]
+    },
+    {
+      "id": "2026-06-12-scoping-review-rocco",
+      "date": "2026-06-12",
+      "title": "Scoping review with Rocco (domain expert), and the response",
+      "category": "project-data",
+      "summary": "A pre-scale-up review with hydrology expert Rocco reframed the project's purpose around a fair, dimensionless cross-domain comparison and de-scoped process-model reference columns and hybrid residual correction.",
+      "detail": "Before scaling past 6 cases and 9 methods, sent a scoping review to Rocco (internal urban + catchment hydrology expert) to sanity-check case selection and design choices against operational reality. The purpose got reframed as a result: this benchmark isn't about finding the best model per case, but about a fair comparison of the same methods across very different water/environment domains — which is why the matrix must stay a dimensionless score (MASE) and domain-specific metrics (NSE/KGE, event hit-rate) live as per-case sidebars, never matrix cells.\n\nProcess-model reference columns and hybrid ML residual correction, central to the original plan, were de-scoped on Rocco's view that comparing against simulated output complicates the picture without being necessary. Exogenous inputs were also decided to not be optional everywhere: for Bellinge and the WWTP case the rainfall response is the phenomenon being forecast, so a univariate run there is a floor, not a real entry. The architecture split into `tsforecastbench.data`/`tsforecastbench.bench` also landed in this window, along with exogenous-aware windowed-ML methods and a skill-vs-mean metric.",
+      "tags": ["scoping", "rocco", "project-history", "review"]
+    },
+    {
+      "id": "2026-05-29-data-quality-bugs",
+      "date": "2026-05-29",
+      "title": "Two data-quality bugs found before scaling further",
+      "category": "project-data",
+      "summary": "Early EDA found the Bellinge sensor was mostly inactive and the BattLeDIM demand target was a square wave from a single scheduled pump — both invalidated earlier real-data numbers and led to a standing per-case review gate.",
+      "detail": "Early EDA over the first six real-data cases surfaced two bugs serious enough to invalidate earlier real-data numbers. The originally chosen Bellinge level sensor was only active for a small fraction of its nominal 2010–2020 span (near-zero the rest of the time), so an earlier suspiciously good SeasonalNaive MASE of 0.32 was effectively scored on near-zero data — fixed by adding a `--scan` coverage mode to the downloader and switching to a sensor confirmed 100% active.\n\nThe BattLeDIM demand target had been a single pump's flow, which alternates on/off with a second pump under scheduling, producing a square wave rather than a demand signal — fixed by summing all pump columns for total network inflow. This is why a per-case quality gate (`scripts/review_case.py`, the `/review-case` skill) became a standing requirement for adding any new case.",
+      "tags": ["data-quality", "bellinge", "battledim", "review-gate"]
+    },
+    {
+      "id": "2026-05-27-initial-scoping-plan",
+      "date": "2026-05-27",
+      "title": "Initial scoping plan and repo scaffold",
+      "category": "project-data",
+      "summary": "research_plan.md laid out an ambitious original proposal; the initial commit deliberately scoped down to a small working pipeline with CI in place from day one, rather than building the full scope upfront.",
+      "detail": "`research_plan.md` laid out the original proposal: 10-11 candidate cases spanning the water cycle, ~16 forecasters from naive baselines to foundation models, a phased roadmap, and a Parquet/Pydantic storage design. The initial commit scoped this down to a first working pipeline — 6 cases, 9 methods — with the matrix and lead-time evaluation working end-to-end and CI in place from day one, a deliberate \"lock the interfaces first\" move rather than building out the full scope before anything ran.",
+      "tags": ["project-history", "scoping", "scaffold"]
+    }
+  ],
+  "edges": [
+    { "source": "2026-07-09-persist-real-forecasts", "target": "2026-07-08-interactive-app", "type": "fixes-bug-in" },
+    { "source": "2026-07-09-persist-real-forecasts", "target": "2026-07-09-multi-snapshot-panel", "type": "fixes-bug-in" },
+    { "source": "2026-07-09-streamlit-to-dash", "target": "2026-07-08-interactive-app", "type": "supersedes" },
+    { "source": "2026-07-09-streamlit-to-dash", "target": "2026-07-09-two-app-bugs", "type": "supersedes" },
+    { "source": "2026-07-09-two-app-bugs", "target": "2026-07-08-interactive-app", "type": "depends-on" },
+    { "source": "2026-07-09-multi-snapshot-panel", "target": "2026-07-08-interactive-app", "type": "depends-on" },
+    { "source": "2026-07-08-robustperiod-audit", "target": "2026-07-08-robustperiod-intro", "type": "fixes-bug-in" },
+    { "source": "2026-07-08-mstl-statsmodels-swap", "target": "2026-07-02-seasonal-classical-baselines", "type": "relates-to" },
+    { "source": "2026-07-08-nonseasonal-mstl-test", "target": "2026-07-03-curated-seasonalities", "type": "depends-on" },
+    { "source": "2026-07-08-dominant-period-fit-time", "target": "2026-07-03-curated-seasonalities", "type": "depends-on" },
+    { "source": "2026-07-07-climatology-seasonal-key", "target": "2026-07-03-curated-seasonalities", "type": "depends-on" },
+    { "source": "2026-07-08-dominant-period-fit-time", "target": "2026-07-07-climatology-seasonal-key", "type": "depends-on" },
+    { "source": "2026-07-07-interactive-periodogram", "target": "2026-07-03-periodogram-peak-suggestions", "type": "supersedes" },
+    { "source": "2026-07-07-pacf-panel", "target": "2026-07-03-curated-seasonalities", "type": "depends-on" },
+    { "source": "2026-07-07-interactive-periodogram", "target": "2026-07-03-curated-seasonalities", "type": "depends-on" },
+    { "source": "2026-07-08-robustperiod-intro", "target": "2026-07-03-curated-seasonalities", "type": "depends-on" },
+    { "source": "2026-07-08-robustperiod-intro", "target": "2026-07-03-periodogram-peak-suggestions", "type": "supersedes" },
+    { "source": "2026-07-03-ensemble-baselines", "target": "2026-07-02-method-suite-audit", "type": "fixes-bug-in" },
+    { "source": "2026-07-02-seasonal-classical-baselines", "target": "2026-07-02-method-suite-audit", "type": "fixes-bug-in" },
+    { "source": "2026-07-03-gap-handling-policy", "target": "2026-07-02-method-suite-audit", "type": "fixes-bug-in" },
+    { "source": "2026-07-02-exo-necessity-schema", "target": "2026-07-02-exo-necessity-notes", "type": "depends-on" },
+    { "source": "2026-07-02-drop-optional-exogenous", "target": "2026-07-02-exo-necessity-schema", "type": "depends-on" },
+    { "source": "2026-07-02-discharge-saugeen-docs", "target": "2026-06-25-discharge-saugeen-case", "type": "depends-on" },
+    { "source": "2026-07-02-log-backfill", "target": "2026-06-25-discharge-saugeen-case", "type": "relates-to" },
+    { "source": "2026-07-02-log-backfill", "target": "2026-06-12-scoping-review-rocco", "type": "relates-to" },
+    { "source": "2026-07-02-log-backfill", "target": "2026-05-29-data-quality-bugs", "type": "relates-to" },
+    { "source": "2026-07-02-log-backfill", "target": "2026-05-27-initial-scoping-plan", "type": "relates-to" }
+  ]
+}
+</script>
+
+<script>
+(function () {
+  "use strict";
+
+  const DATA = JSON.parse(document.getElementById("graph-data").textContent);
+
+  const CATEGORY_META = {
+    "methodology":  { label: "Methodology & evaluation design", varName: "--cat-methodology" },
+    "app-tooling":  { label: "App & tooling",                    varName: "--cat-app-tooling" },
+    "bug-fix":      { label: "Bug fix",                          varName: "--cat-bug-fix" },
+    "project-data": { label: "Project history & data",           varName: "--cat-project-data" },
+  };
+
+  const EDGE_META = {
+    "supersedes":    { label: "supersedes",    dash: "6,3",  arrow: true },
+    "fixes-bug-in":  { label: "fixes bug in",  dash: "1,3",  arrow: true },
+    "depends-on":    { label: "depends on",    dash: null,   arrow: true },
+    "relates-to":    { label: "relates to",    dash: null,   arrow: false },
+  };
+
+  const root = document.querySelector(".viz-root");
+  const rootStyle = getComputedStyle(root);
+  function cssVar(name) { return rootStyle.getPropertyValue(name).trim(); }
+  function categoryColor(cat) { return cssVar(CATEGORY_META[cat].varName); }
+
+  // --- lightweight markdown-ish renderer: `code`, **bold**, blank-line paragraphs ---
+  function escapeHtml(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+  function renderDetail(text) {
+    const paragraphs = text.split(/\n\n+/);
+    return paragraphs
+      .map((p) => {
+        let h = escapeHtml(p);
+        h = h.replace(/`([^`]+)`/g, "<code>$1</code>");
+        h = h.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+        return `<p>${h}</p>`;
+      })
+      .join("");
+  }
+
+  // --- build node/edge working copies (D3 mutates these in place) ---
+  const nodeById = new Map(DATA.nodes.map((n) => [n.id, n]));
+  const nodes = DATA.nodes.map((n) => ({ ...n, dateObj: new Date(n.date) }));
+  const links = DATA.edges.map((e) => ({ ...e }));
+
+  const degree = new Map(nodes.map((n) => [n.id, 0]));
+  links.forEach((e) => {
+    degree.set(e.source, (degree.get(e.source) || 0) + 1);
+    degree.set(e.target, (degree.get(e.target) || 0) + 1);
+  });
+
+  const connectionsByNode = new Map(nodes.map((n) => [n.id, []]));
+  links.forEach((e) => {
+    connectionsByNode.get(e.source).push({ otherId: e.target, type: e.type, direction: "out" });
+    connectionsByNode.get(e.target).push({ otherId: e.source, type: e.type, direction: "in" });
+  });
+
+  const svg = d3.select("#graph-svg");
+  const tooltip = d3.select("#tooltip");
+  const panel = document.getElementById("panel");
+  const panelBody = document.getElementById("panel-body");
+  const panelClose = document.getElementById("panel-close");
+
+  let width = window.innerWidth;
+  let height = window.innerHeight;
+  svg.attr("viewBox", [0, 0, width, height]);
+
+  const zoomLayer = svg.append("g").attr("class", "zoom-layer");
+
+  // arrowhead marker (shared, since edge type is encoded by dash pattern, not color)
+  const defs = svg.append("defs");
+  defs
+    .append("marker")
+    .attr("id", "arrow")
+    .attr("viewBox", "0 -5 10 10")
+    .attr("refX", 20)
+    .attr("refY", 0)
+    .attr("markerWidth", 7)
+    .attr("markerHeight", 7)
+    .attr("orient", "auto")
+    .append("path")
+    .attr("d", "M0,-5L10,0L0,5")
+    .attr("fill", cssVar("--edge-ink"));
+
+  const linkGroup = zoomLayer.append("g").attr("class", "links");
+  const nodeGroup = zoomLayer.append("g").attr("class", "nodes");
+
+  const dateExtent = d3.extent(nodes, (d) => d.dateObj);
+  const xForce = d3
+    .scaleTime()
+    .domain(dateExtent)
+    .range([90, Math.max(180, width - 90)]);
+
+  function radiusFor(d) {
+    return 7 + Math.min(degree.get(d.id) || 0, 6) * 1.4;
+  }
+
+  const simulation = d3
+    .forceSimulation(nodes)
+    .force(
+      "link",
+      d3
+        .forceLink(links)
+        .id((d) => d.id)
+        .distance(85)
+        .strength(0.35)
+    )
+    .force("charge", d3.forceManyBody().strength(-230))
+    .force("collide", d3.forceCollide().radius((d) => radiusFor(d) + 14))
+    .force("x", d3.forceX((d) => xForce(d.dateObj)).strength(0.09))
+    .force("y", d3.forceY(() => height / 2).strength(0.03));
+
+  const link = linkGroup
+    .selectAll("path")
+    .data(links)
+    .join("path")
+    .attr("class", "link")
+    .attr("stroke-width", 1.4)
+    .attr("stroke-dasharray", (d) => EDGE_META[d.type].dash)
+    .attr("marker-end", (d) => (EDGE_META[d.type].arrow ? "url(#arrow)" : null));
+
+  const node = nodeGroup
+    .selectAll("g.node")
+    .data(nodes, (d) => d.id)
+    .join("g")
+    .attr("class", "node");
+
+  node
+    .append("circle")
+    .attr("r", radiusFor)
+    .attr("fill", (d) => categoryColor(d.category));
+
+  node
+    .append("text")
+    .attr("x", (d) => radiusFor(d) + 4)
+    .attr("y", 3)
+    .text((d) => (d.title.length > 46 ? d.title.slice(0, 44) + "…" : d.title));
+
+  let selectedId = null;
+
+  node.on("mouseenter", function (event, d) {
+    tooltip
+      .html(
+        `<div class="t-title">${escapeHtml(d.title)}</div>` +
+          `<div class="t-meta"><span class="t-dot" style="background:${categoryColor(
+            d.category
+          )}"></span>${d.date} · ${CATEGORY_META[d.category].label}</div>` +
+          `<div class="t-summary">${escapeHtml(d.summary)}</div>`
+      )
+      .classed("visible", true);
+  });
+  node.on("mousemove", function (event) {
+    const pad = 16;
+    let left = event.clientX + pad;
+    let top = event.clientY + pad;
+    const tw = tooltip.node().offsetWidth;
+    const th = tooltip.node().offsetHeight;
+    if (left + tw > window.innerWidth - 8) left = event.clientX - tw - pad;
+    if (top + th > window.innerHeight - 8) top = event.clientY - th - pad;
+    tooltip.style("left", left + "px").style("top", top + "px");
+  });
+  node.on("mouseleave", function () {
+    tooltip.classed("visible", false);
+  });
+
+  node.on("click", function (event, d) {
+    event.stopPropagation();
+    openPanel(d.id);
+  });
+
+  function openPanel(id) {
+    const d = nodeById.get(id);
+    selectedId = id;
+    node.select("circle").classed("selected", (n) => n.id === id);
+
+    const conns = connectionsByNode.get(id);
+    const connHtml = conns.length
+      ? conns
+          .map((c) => {
+            const other = nodeById.get(c.otherId);
+            const relLabel =
+              c.direction === "out"
+                ? EDGE_META[c.type].label
+                : EDGE_META[c.type].label + " (reverse)";
+            return `<button class="p-conn" data-target="${c.otherId}">
+                <div class="c-rel">${relLabel}</div>
+                <div class="c-title">${escapeHtml(other.title)} · ${other.date}</div>
+              </button>`;
+          })
+          .join("")
+      : `<div class="p-empty">No recorded connections to other entries.</div>`;
+
+    panelBody.innerHTML = `
+      <div class="p-meta">
+        <span class="p-dot" style="background:${categoryColor(d.category)}"></span>
+        ${d.date} · ${CATEGORY_META[d.category].label}
+      </div>
+      <h2>${escapeHtml(d.title)}</h2>
+      <div class="p-detail">${renderDetail(d.detail)}</div>
+      <div class="p-tags">${d.tags.map((t) => `<span class="p-tag">${escapeHtml(t)}</span>`).join("")}</div>
+      <div class="p-section-title">Connections</div>
+      ${connHtml}
+    `;
+    panelBody.querySelectorAll(".p-conn").forEach((btn) => {
+      btn.addEventListener("click", () => openPanel(btn.dataset.target));
+    });
+
+    panel.classList.add("open");
+  }
+
+  panelClose.addEventListener("click", () => {
+    panel.classList.remove("open");
+    selectedId = null;
+    node.select("circle").classed("selected", false);
+  });
+  svg.on("click", () => {
+    panel.classList.remove("open");
+    selectedId = null;
+    node.select("circle").classed("selected", false);
+  });
+
+  // --- drag: pin on drag, keep pinned after release, double-click to unpin ---
+  function dragstarted(event, d) {
+    if (!event.active) simulation.alphaTarget(0.25).restart();
+    d.fx = d.x;
+    d.fy = d.y;
+  }
+  function dragged(event, d) {
+    d.fx = event.x;
+    d.fy = event.y;
+  }
+  function dragended(event) {
+    if (!event.active) simulation.alphaTarget(0);
+  }
+  node.call(d3.drag().on("start", dragstarted).on("drag", dragged).on("end", dragended));
+
+  node.on("dblclick", function (event, d) {
+    event.stopPropagation();
+    d.fx = null;
+    d.fy = null;
+    simulation.alphaTarget(0.25).restart();
+    setTimeout(() => simulation.alphaTarget(0), 200);
+  });
+
+  // --- pan / zoom ---
+  const zoom = d3
+    .zoom()
+    .scaleExtent([0.3, 4])
+    .on("zoom", (event) => {
+      zoomLayer.attr("transform", event.transform);
+    });
+  svg.call(zoom);
+
+  function linkPath(d) {
+    return `M${d.source.x},${d.source.y}L${d.target.x},${d.target.y}`;
+  }
+
+  simulation.on("tick", () => {
+    link.attr("d", linkPath);
+    node.attr("transform", (d) => `translate(${d.x},${d.y})`);
+  });
+
+  // --- legend (static color key + edge-type key) ---
+  const legend = document.getElementById("legend");
+  const catRows = Object.entries(CATEGORY_META)
+    .map(
+      ([, meta]) =>
+        `<div class="row"><span class="swatch" style="background:${cssVar(meta.varName)}"></span>${meta.label}</div>`
+    )
+    .join("");
+  const edgeRows = Object.entries(EDGE_META)
+    .map(([, meta]) => {
+      const dash = meta.dash ? `stroke-dasharray="${meta.dash}"` : "";
+      const marker = meta.arrow ? `marker-end="url(#arrow)"` : "";
+      return `<div class="edge-row">
+          <svg class="edge-sample" width="28" height="10">
+            <line x1="1" y1="5" x2="22" y2="5" stroke="${cssVar("--edge-ink")}" stroke-width="1.4" ${dash} ${marker}></line>
+          </svg>
+          ${meta.label}
+        </div>`;
+    })
+    .join("");
+  legend.innerHTML = catRows + `<div class="edge-key">${edgeRows}</div>`;
+
+  // --- resize handling ---
+  window.addEventListener("resize", () => {
+    width = window.innerWidth;
+    height = window.innerHeight;
+    svg.attr("viewBox", [0, 0, width, height]);
+    xForce.range([90, Math.max(180, width - 90)]);
+    simulation.force("y", d3.forceY(() => height / 2).strength(0.03));
+    simulation.alpha(0.3).restart();
+  });
+})();
+</script>
