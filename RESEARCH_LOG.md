@@ -20,6 +20,143 @@ the dedicated leap-year boundary test.
 **Decision.** Wrap the result in `np.asarray(...)` instead of calling `.to_numpy()`. No behavior
 change beyond fixing the crash — full suite passes again.
 
+## 2026-07-19 — Combined the EDA and React Pages workflows into one
+
+GitHub Pages only lets one workflow deploy per repo, so the existing EDA-only
+`pages.yml` couldn't run alongside a separate workflow for the new React results-matrix
+app in `web/` without one clobbering the other. Merged them into a single workflow that
+builds both sites and copies the React build to the site root with the EDA browser under
+`/eda/`. Pushing the change surfaced a separate problem: the git credential in use came
+from the `gh` CLI's login, which lacked the `workflow` scope GitHub requires for editing
+files under `.github/workflows/`, so `gh auth refresh -h github.com -s workflow` was
+needed before the push could go through.
+
+## 2026-07-19 — Replaced marker descriptions with a visual swatch
+
+The "Global methods" and "Exogenous inputs" sidebar sections described their corner-triangle
+markers in words ("marked with a corner triangle", "marks it with a teal corner"). Added a
+`MarkerSwatch` component that draws a small square with the actual colored triangle in the
+matching corner, reusing the same `cornerTrianglePath` geometry the matrix overlay uses, so the
+preview matches the real marker exactly. The prose was trimmed to drop the now-redundant
+shape/color description, keeping only the part explaining when each marker appears.
+
+## 2026-07-19 — Moved the method-info card title to the top when expanded
+
+The method-info cards showed their method name in a title bar that stayed at the bottom of the
+card in both states, so an expanded card read top-to-bottom with the resize handle first and the
+name last, below the content. Reworked `MethodInfoCard` to render the same title bar first when
+expanded, so the method name sits at the top of the open card, with the resize handle and content
+below it. Collapsed cards are unaffected — the title bar is still the only thing rendered, in the
+same position as before.
+
+## 2026-07-16 — Fixed method-info card height-drag stopping after one pixel
+
+Dragging a method-info card's resize handle up barely moved it. Root cause: `useEdgeResize`'s
+`handleMouseMove` closed over the `onResize` callback, so its identity — and the identity of the
+`stopDragging`/cleanup-effect chain built on top of it — changed whenever `onResize` did.
+`MethodInfoCard` passes an inline callback, recreated on every render, so the first `onResize`
+call during a drag triggered a re-render whose new callback identity tore down the drag's own
+mouse listeners via React's effect-cleanup-on-dependency-change. The case panel's width-resize
+never hit this because its callback happens to come from a stable `useCallback`. Fixed by routing
+`onResize` through a ref inside the hook, so `handleMouseMove`'s identity no longer depends on the
+caller's callback identity; added a regression test that simulates a mid-drag re-render with a new
+callback to catch a recurrence.
+
+## 2026-07-16 — Split the method-info strip into per-method collapsible, resizable cards
+
+The bottom method-info strip (up to `MAX_OVERLAY_METHODS` = 3 cards) used to be one flex-wrap
+container where cards grew to fill space, which read as a single blended block rather than
+distinct per-method panels. Reworked it into fixed-width (320px) cards docked side by side, each
+independently collapsible down to just its title bar and resizable in height (120–520px) by
+dragging a handle along its top edge — reusing the `useEdgeResize` hook generalized (from an
+x-only `useResizablePanelWidth`) for the case panel's width-resize. Collapse state and height are
+local to each card, keyed by method name, so they reset if a method is deselected and reselected
+or the case changes, rather than persisting — same call as the case panel's width.
+
+## 2026-07-16 — Made the React case detail panel resizable
+
+The right-hand case detail panel had a fixed 460px width, which cramped the training/test plots
+on smaller screens and wasted space on wide ones. Added a drag handle on the panel's left border
+so users can resize it, clamped to 320–900px. The width lives in the app-state reducer alongside
+the existing `sidebarCollapsed` toggle and resets to the 460px default on reload rather than
+persisting via localStorage, matching how the sidebar toggle already behaves — simplest option,
+and nothing in the app currently persists UI state across sessions.
+
+## 2026-07-15 — Fixed the React case panel's training/test charts showing timestamps on both axes
+
+The training-data chart in the React app's case panel plotted dates on both x and y instead of
+dates on x and values on y (Dash was unaffected). Root cause: `LineSnapshot.tsx`'s shared
+`AXIS_STYLE` object was passed to Plotly's `xaxis` by reference rather than copied, and Plotly.js
+auto-detects an axis's type from its data and writes that type back onto the layout object it was
+given — so the first date-valued x-axis it saw permanently stamped `type: 'date'` onto the shared
+`AXIS_STYLE` singleton, which then leaked into every later plot's y-axis (already built as
+`{...AXIS_STYLE}`, so it inherited the mutation instead of a clean object). Fixed by always
+spreading `AXIS_STYLE` into a fresh object before handing it to Plotly, for both axes; applied the
+same defensive copy in `DistributionPlot.tsx`, which has the identical pattern but had stayed
+harmless only because its x-data happens to be numeric. Lesson for any future Plotly-based
+component here: never pass a shared style object literal straight into a `layout` prop — Plotly.js
+treats it as mutable state, not a read-only style constant.
+
+## 2026-07-15 — Closed two React/Dash parity gaps: method-info panel placement, missing benchmark-design text
+
+Found two spots where the React port, despite being logged as feature-complete, didn't actually
+match `app/app.py`. First, the method-info cards (family, description, exogenous usage,
+implementation detail per selected method) were rendered inline at the bottom of the snapshot
+panel, inside the right-hand detail column — unlike Dash, where they sit in their own strip docked
+to the bottom of the viewport, spanning the width of the matrix column. Moved that block into a new
+`MethodInfoPanel` component, rendered as the last child of the matrix column with `position:
+sticky; bottom: 0`, matching the Dash layout; `SnapshotPanel` no longer needs the method registry.
+Second, the static "Benchmark Design" writeup below the matrix (splits, curation, model
+parameters, case description, exogenous inputs) was missing from React entirely — ported verbatim
+into a new `BenchmarkDesign` component. Both are a reminder that "closes out the migration" in the
+earlier entry meant functional parity for the interactive panels, not a line-by-line diff against
+`app.py`'s layout.
+
+## 2026-07-15 — Started a React port of the results-matrix app for GitHub Pages
+
+`app/app.py` only runs as a live Dash server, so it can't be hosted on GitHub Pages. Decided to
+port it to React + TypeScript in a new `web/` directory, built as static files and deployed via
+GitHub Actions, with `app/app.py` staying as-is. Key design call: rather than reimplementing
+`app/data.py`'s statistics client-side (KDE curves, per-origin MASE/skill-score, method-family
+introspection), a new Python export script will precompute everything into static JSON — the React
+app is a pure presentation layer, same as `docs/figures/benchmark/matrix_*.png` is already a
+precomputed artifact of the same data. This also means the forecast-snapshot panel, whose source
+parquet (`results/pilot_snapshots.parquet`) isn't committed today, will ship as a new bounded and
+committed JSON artifact. Since GitHub Pages only serves one site per repo and the existing
+`pages.yml` already deploys a separate marimo EDA browser there, the React app will take the root
+Pages URL and the EDA site moves to `/eda/` under one combined deploy workflow — anyone relying on
+the EDA site's current root URL should expect it to move. Scaffolding (Vite+React+TS, oxlint,
+Prettier, Vitest) landed first, then `scripts/export_web_data.py` (importing `app/data.py`
+directly rather than reimplementing its statistics) and a working static matrix: the sidebar's
+metric/domain/family filters and the case x method heatmap render from the exported JSON with the
+same colours, cell text, best-cell bolding, and domain/family group boundaries as `render_matrix`.
+Next, the hover tooltip (same pixel-geometry crosshair, now driven by onHover instead of a Dash
+clientside callback), click-to-select, and the global-history/exogenous toggles all landed, along
+with their corner-triangle overlays and selection outlines. Along the way, testing the toggle swap
+logic surfaced a real bug in the first matrix pass: a case/method with both a local and an
+extended-history row (5 of the 12 cases have one) silently picked whichever row came last in array
+order instead of always defaulting to the local row — fixed by explicitly filtering to the local
+row before pivoting, then overlaying the extended value only when the toggle is on. The case detail
+panel landed next: `cases.json` now carries each case's training tail, full test split, split
+counts, and train-vs-test KDE curves (local and extended-history variants), and the React panel
+renders them plus the case-summary/training-time markdown, matching `render_case_panel`. One
+side effect worth knowing: `surge_cuxhaven`'s test split alone is ~32k points, pushing `cases.json`
+to ~5MB — still fine for a static site (gzip compresses numeric JSON well, and the Dash app already
+pays this same "no decimation" cost when rendering it server-side), but worth revisiting if more
+cases at that scale get added. The forecast-snapshot panel landed last: a new
+`snapshots/<case_id>.json` per case (2.8MB total) carries every rolling origin's actual-series
+window and every method's prediction, plus curation (best/median/worst by whatever metric/method
+is anchored) precomputed via `snapshot.curate_origins` so the browser never re-derives MASE/
+skill-score. Methods with a real extended-history fit or a "+exo" sibling get both variants, and
+the client resolves which one to show the same way the matrix does (`showGlobal`/`showExogenous`
+toggles). This closes the last functional gap from `app/app.py` — matrix, case detail, and
+forecast snapshots are all ported. Last, `.github/workflows/pages.yml` now builds and deploys both
+static sites in one run — the React app into the repo's root Pages URL, the existing marimo EDA
+browser into `/eda/` — since `actions/deploy-pages` only publishes one site per repo; verified
+locally by assembling the combined output and serving it under the real base path before trusting
+the workflow. This closes out the migration: `web/` now covers everything `app/app.py` does, deploys
+as static files, and `app/app.py` itself is untouched for anyone who still wants the live version.
+
 ## 2026-07-15 — Gave Chronos-2, TimesFM 2.5 and Moirai-2.0 `+exo` variants
 
 Closed the covariate follow-up flagged in the 2026-07-14 FM entry: each of the three
