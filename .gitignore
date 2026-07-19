@@ -38,3 +38,6 @@ notebooks/__marimo__/
 # Static EDA site build output (scripts/build_site.py)
 site/
 _site/
+
+web/node_modules/
+web/dist/
