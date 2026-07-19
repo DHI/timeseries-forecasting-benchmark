@@ -26,7 +26,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dl = ["torch>=2.2"]  # N-HiTS / PatchTST implemented directly on torch — portable (Win/Linux/CI)
+dl = ["torch>=2.13.0"]  # N-HiTS / PatchTST implemented directly on torch — portable (Win/Linux/CI)
 # Full neuralforecast model zoo (TFT, TimesNet, iTransformer, Auto*). Pulls ray, which has
 # no Windows / py3.13 wheels, so the dependency is marker-gated to Linux + py<3.13 (i.e. WSL).
 # It stays out of the universal lock everywhere else; install on WSL with `uv sync --extra nf`.
