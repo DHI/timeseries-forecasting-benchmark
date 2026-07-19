@@ -75,6 +75,12 @@ def test_position_in_cycle_bounded_below_period():
         assert pos.min() >= 0 and pos.max() < period
 
 
+def test_position_in_cycle_daily_365_stays_within_bounds_in_leap_year():
+    idx = pd.date_range("2020-12-30", periods=2, freq="1D")  # includes 2020-12-31 (day 366)
+    pos = position_in_cycle("1D", 365, idx)
+    assert pos.min() >= 0 and pos.max() < 365
+
+
 def test_position_in_cycle_is_deterministic_across_calls():
     # Fit and predict must derive the same position for the same timestamp.
     idx = pd.date_range("2021-07-01 03:00", periods=200, freq="1h")

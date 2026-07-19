@@ -8,6 +8,18 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-19 — Fixed leap-year bug in the 365-day position-in-cycle path
+
+`_dayofyear_365` (used by `position_in_cycle` for the annual cycle, which backs Climatology,
+SeasonalNaive-via-ensemble, and any ML feature keyed on a 365-day period) called
+`idx.is_leap_year.to_numpy(...)`, but `DatetimeIndex.is_leap_year` already returns a plain numpy
+array rather than a pandas object, so the `.to_numpy()` call raised `AttributeError` on every
+call. This broke all baseline/ensemble tests on cases with a declared 365-day seasonality plus
+the dedicated leap-year boundary test.
+
+**Decision.** Wrap the result in `np.asarray(...)` instead of calling `.to_numpy()`. No behavior
+change beyond fixing the crash — full suite passes again.
+
 ## 2026-07-15 — Gave Chronos-2, TimesFM 2.5 and Moirai-2.0 `+exo` variants
 
 Closed the covariate follow-up flagged in the 2026-07-14 FM entry: each of the three

@@ -166,10 +166,18 @@ def dominant_period(seasonalities: list[int], y: np.ndarray) -> int:
 
 
 # Position-in-cycle from calendar fields for the canonical (freq, period) pairs: exact
-# across leap years and DST-free naive timestamps, unlike an epoch-anchored step count.
+# across DST-free naive timestamps. For the 365-day "annual" cycle, drop Feb 29 in leap
+# years so positions stay in 0..364.
+def _dayofyear_365(idx: pd.DatetimeIndex) -> np.ndarray:
+    doy0 = idx.dayofyear.to_numpy(dtype=int) - 1
+    leap = np.asarray(idx.is_leap_year, dtype=bool)
+    after_feb28 = doy0 >= 59
+    return doy0 - (leap & after_feb28).astype(int)
+
+
 _CANONICAL_POSITIONS = {
     ("1d", 7): lambda idx: idx.dayofweek,
-    ("1d", 365): lambda idx: idx.dayofyear - 1,
+    ("1d", 365): _dayofyear_365,
     ("1h", 12): lambda idx: idx.hour % 12,
     ("1h", 24): lambda idx: idx.hour,
     ("1h", 168): lambda idx: idx.dayofweek * 24 + idx.hour,
@@ -601,7 +609,7 @@ def robust_period_candidates(
 
     The series is linearly detrended and Huber-cleaned (robust to trend and spikes), then a
     MODWT splits it into dyadic frequency bands so coexisting cycles land in different levels.
-    Each level with real energy contributes its dominant in-band period (from the Huber-ACF),
+    Each level with real energy contributes its dominant in-band period (from the ACF of the Huber-cleaned coefficients),
     scored by two independent measures: `spectral_ratio` — the peak's prominence over its local
     spectral neighborhood, the same red-noise-robust discriminator `detect_candidates` uses —
     and `robust_amplitude`, the cycle's amplitude in the units of `y` from the exact Huber
