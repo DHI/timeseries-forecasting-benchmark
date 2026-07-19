@@ -65,12 +65,6 @@ class Case(BaseModel):
     target: str
     target_unit: str = ""
     freq: str
-    # Seasonal periods in steps of `freq`, dominant first; [] = non-seasonal. The single
-    # source of truth for seasonality in the train/predict cycle (methods and the MASE
-    # season all resolve from here — there is no frequency-based fallback). Values are
-    # fixed once at curation time from train-split evidence (notebooks/seasonality.py);
-    # deviations from the detection proposal need a justification in `notes`.
-    seasonalities: list[int]
     horizon_primary: str
     horizons_eval: list[str] = Field(default_factory=list)
     input_window: str
@@ -92,15 +86,6 @@ class Case(BaseModel):
     # to series whose record doesn't cover the calendar window.
     split_mode: Literal["calendar", "fraction"] = "calendar"
     split_fraction: list[float] = Field(default_factory=lambda: [0.7, 0.85])
-
-    @field_validator("seasonalities")
-    @classmethod
-    def _seasonalities_valid(cls, v: list[int]) -> list[int]:
-        if any(p < 2 for p in v):
-            raise ValueError(f"seasonalities must all be >= 2 steps, got {v}")
-        if len(set(v)) != len(v):
-            raise ValueError(f"seasonalities must be unique, got {v}")
-        return v
 
     @model_validator(mode="after")
     def _necessary_exogenous_is_available(self) -> Case:

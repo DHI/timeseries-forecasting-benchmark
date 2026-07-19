@@ -10,11 +10,6 @@ from tsforecastbench.bench.methods.classical import (
     ThetaForecaster,
 )
 from tsforecastbench.bench.methods.dl import DLinearForecaster
-from tsforecastbench.bench.methods.ensemble import (
-    EnsembleForecaster,
-    ensemble_baselines,
-    ensemble_baselines_theta,
-)
 from tsforecastbench.bench.methods.fm import ChronosForecaster
 from tsforecastbench.bench.methods.ml import (
     CatBoostExoForecaster,
@@ -48,7 +43,6 @@ __all__ = [
     "ChronosForecaster",
     "Climatology",
     "DLinearForecaster",
-    "EnsembleForecaster",
     "Forecaster",
     "ITransformerForecaster",
     "LightGBMCalendarExoForecaster",
@@ -69,6 +63,4 @@ __all__ = [
     "TFTForecaster",
     "ThetaForecaster",
     "TimesNetForecaster",
-    "ensemble_baselines",
-    "ensemble_baselines_theta",
 ]

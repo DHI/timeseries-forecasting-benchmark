@@ -17,7 +17,6 @@ import pandas as pd
 
 from tsforecastbench.bench.methods.base import Forecaster
 from tsforecastbench.data.schema import Case
-from tsforecastbench.data.seasonality import dominant_period, position_in_cycle
 
 
 def _date_features_for(freq: str) -> list[str]:
@@ -31,40 +30,60 @@ def _date_features_for(freq: str) -> list[str]:
     return ["dayofweek", "month"]
 
 
-def _sincos_features_for(case: Case, y: np.ndarray) -> list:
-    """Sin/cos encoding of the case's dominant period ([] -> no cyclic features). The
-    dominant period is chosen from the declared seasonalities by variance explained on the
-    fit-window target `y` (see `dominant_period`).
+def _sincos_features_for(freq: str) -> list:
+    """Sin/cos encoding of the dominant seasonal period for the given frequency.
 
-    MLForecast passes a DatetimeIndex to each callable (no .dt accessor) and names the
-    feature column after the callable's __name__. Position within the cycle comes from
-    the shared `position_in_cycle` helper, the same rule the Climatology baseline keys on.
+    MLForecast passes a DatetimeIndex to each callable (no .dt accessor).
     """
-    p = dominant_period(case.seasonalities, y)
-    if p == 1:
-        return []
-    freq = case.freq
+    f = freq.lower()
+    if f in {"1d", "d"}:
 
-    def sin_feat(ds):
-        return np.sin(2 * np.pi * position_in_cycle(freq, p, ds) / p)
+        def sin_week(ds):
+            return np.sin(2 * np.pi * ds.dayofweek / 7)
 
-    def cos_feat(ds):
-        return np.cos(2 * np.pi * position_in_cycle(freq, p, ds) / p)
+        def cos_week(ds):
+            return np.cos(2 * np.pi * ds.dayofweek / 7)
 
-    sin_feat.__name__ = f"sin{p}"
-    cos_feat.__name__ = f"cos{p}"
-    return [sin_feat, cos_feat]
+        return [sin_week, cos_week]
+    if f in {"1h", "h"}:
+
+        def sin_day(ds):
+            return np.sin(2 * np.pi * ds.hour / 24)
+
+        def cos_day(ds):
+            return np.cos(2 * np.pi * ds.hour / 24)
+
+        return [sin_day, cos_day]
+    if f in {"15min", "15t"}:
+
+        def sin_d15(ds):
+            pos = ds.hour * 4 + ds.minute // 15
+            return np.sin(2 * np.pi * pos / 96)
+
+        def cos_d15(ds):
+            pos = ds.hour * 4 + ds.minute // 15
+            return np.cos(2 * np.pi * pos / 96)
+
+        return [sin_d15, cos_d15]
+
+    def sin_fb(ds):
+        return np.sin(2 * np.pi * ds.dayofweek / 7)
+
+    def cos_fb(ds):
+        return np.cos(2 * np.pi * ds.dayofweek / 7)
+
+    return [sin_fb, cos_fb]
 
 
-def _lags_for(case: Case) -> list[int]:
-    """Uniform geometric memory ladder plus the case's declared seasonal periods.
-
-    The ladder is recent autoregressive state, identical for every case and frequency —
-    it makes no cycle claim (the regressor is free to ignore any lag). Seasonal structure
-    enters only through the declared periods, keeping the case.toml the single source of
-    seasonal configuration."""
-    ladder = [1, 2, 4, 8, 16, 32]
-    return sorted(set(ladder) | set(case.seasonalities))
+def _lags_for(freq: str) -> list[int]:
+    f = freq.lower()
+    if f in {"1d", "d"}:
+        return [1, 2, 3, 7, 14, 30]
+    if f in {"1h", "h"}:
+        return [1, 2, 3, 6, 12, 24, 48, 168]
+    if f in {"15min", "15t"}:
+        return [1, 2, 4, 8, 16, 96]
+    return [1, 2, 3]
 
 
 def _exo_cols(case: Case) -> list[str]:
@@ -126,12 +145,12 @@ class _WindowedMLBase(Forecaster):
 
         date_feats = list(_date_features_for(case.freq))
         if self.use_calendar:
-            date_feats += _sincos_features_for(case, df["y"].to_numpy())
+            date_feats += _sincos_features_for(case.freq)
 
         self._fcst = MLForecast(
             models=[self._make_model()],
             freq=case.freq,
-            lags=_lags_for(case),
+            lags=_lags_for(case.freq),
             date_features=date_feats,
         )
         self._fcst.fit(df, static_features=[])

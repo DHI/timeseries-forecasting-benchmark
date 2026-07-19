@@ -21,8 +21,8 @@ import pandas as pd
 from tsforecastbench.bench.eval.config import DEFAULT_ORIGINS
 from tsforecastbench.bench.eval.loop import _horizon_to_steps, _raw_y
 from tsforecastbench.bench.methods.base import Forecaster
+from tsforecastbench.bench.methods.naive import _default_season_length
 from tsforecastbench.data.schema import Case
-from tsforecastbench.data.seasonality import mase_season_for
 
 
 def _select_rolling_origins(
@@ -81,8 +81,9 @@ def run_case_rolling(
         raise ValueError(f"Case {case.id}: test span too short for horizon {H}")
     origins = _select_rolling_origins(test_start, last_origin, raw_y, H, n_origins)
 
+    season = _default_season_length(case.freq)
     y_pre = full_fit["y"].iloc[:test_start].to_numpy(dtype=float)
-    s = mase_season_for(case.seasonalities, len(y_pre))
+    s = min(season, max(1, len(y_pre) // 2))
     naive_scale = float(np.mean(np.abs(y_pre[s:] - y_pre[:-s]))) if len(y_pre) > s else float("nan")
 
     metric_names = ("MAE", "RMSE", "MASE", "Skill_vs_Persistence", "Skill_vs_Mean")

@@ -7,7 +7,36 @@ import pandas as pd
 
 from tsforecastbench.bench.methods.base import Forecaster
 from tsforecastbench.data.schema import Case
-from tsforecastbench.data.seasonality import dominant_period, position_in_cycle
+
+
+def _default_season_length(freq: str) -> int:
+    f = freq.lower()
+    if f in {"1d", "d"}:
+        return 365
+    if f in {"1h", "h"}:
+        return 24
+    if f in {"15min", "15t"}:
+        return 96
+    if f in {"1w", "w"}:
+        return 52
+    return 24
+
+
+def _seasonal_periods(freq: str) -> list[int]:
+    """Natural multi-seasonal period set for a frequency, for MSTL-style decomposition.
+
+    Returns the dominant cycles (shortest first): e.g. hourly data has both a daily (24)
+    and weekly (168) cycle. Callers that fit a decomposition must still drop periods the
+    training series is too short to support (STL needs >=2 full cycles of each period).
+    """
+    f = freq.lower()
+    if f in {"1d", "d"}:
+        return [7, 365]
+    if f in {"1h", "h"}:
+        return [24, 168]
+    if f in {"15min", "15t"}:
+        return [96, 672]
+    return [_default_season_length(freq)]
 
 
 class MeanBaseline(Forecaster):
@@ -54,12 +83,7 @@ class SeasonalNaive(Forecaster):
         self.season_length = season_length
 
     def fit(self, case: Case, train: pd.DataFrame) -> None:
-        self._s = self.season_length or dominant_period(case.seasonalities, train["y"].to_numpy())
-        if self._s == 1:
-            raise ValueError(
-                f"Case {case.id} is declared non-seasonal (seasonalities = []) — "
-                "SeasonalNaive would degenerate into a duplicate Persistence column"
-            )
+        self._s = self.season_length or _default_season_length(case.freq)
         self._tail = train["y"].tail(self._s).to_numpy()
 
     def predict(
@@ -84,23 +108,24 @@ class SeasonalNaive(Forecaster):
 
 
 class Climatology(Forecaster):
-    """Mean target value by position within the case's dominant declared seasonal cycle
-    (`case.seasonalities`). Keying on the declared seasonality means the baseline has the
-    same meaning at every frequency, rather than shifting between day-of-year, hour, and
-    weekday x hour depending on the sampling rate. A non-seasonal case (`seasonalities =
-    []`) has no cycle to key on, so every timestamp shares one bucket and the baseline is
-    the global training mean. A stronger 'no-skill' reference than Mean for series with a
-    stable seasonal/diurnal cycle.
+    """Mean value by seasonal position (day-of-year for daily, hour for hourly,
+    day-of-week x hour for sub-daily). A stronger 'no-skill' reference than Mean
+    for series with a stable seasonal/diurnal cycle.
     """
 
     name = "Climatology"
 
     def _key(self, idx: pd.DatetimeIndex) -> np.ndarray:
-        return position_in_cycle(self._freq, self._period, idx)
+        f = self._freq
+        if f in {"1d", "d"}:
+            return idx.dayofyear.to_numpy()
+        if f in {"1h", "h"}:
+            return idx.hour.to_numpy()
+        # sub-daily: combine weekday and hour
+        return (idx.dayofweek * 24 + idx.hour).to_numpy()
 
     def fit(self, case: Case, train: pd.DataFrame) -> None:
-        self._freq = case.freq
-        self._period = dominant_period(case.seasonalities, train["y"].to_numpy())
+        self._freq = case.freq.lower()
         idx = pd.DatetimeIndex(pd.to_datetime(train["ds"]))
         keys = self._key(idx)
         s = pd.Series(pd.to_numeric(train["y"], errors="coerce").to_numpy())
