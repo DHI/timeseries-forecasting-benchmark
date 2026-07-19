@@ -24,8 +24,6 @@ from tsforecastbench.bench.methods import (
     CatBoostForecaster,
     Climatology,
     DLinearForecaster,
-    LightGBMCalendarExoForecaster,
-    LightGBMCalendarForecaster,
     LightGBMExoForecaster,
     LightGBMForecaster,
     LinearLagsExoForecaster,
@@ -76,8 +74,6 @@ def build_methods():
         DLinearForecaster(),
         LinearLagsExoForecaster(),
         LightGBMExoForecaster(),
-        LightGBMCalendarForecaster(),
-        LightGBMCalendarExoForecaster(),
         CatBoostExoForecaster(),
     ]
 
@@ -103,7 +99,8 @@ def main() -> int:
     p.add_argument(
         "--with-fm",
         action="store_true",
-        help="Add the zero-shot foundation model (Chronos-Bolt; needs the 'fm' extra).",
+        help="Add the zero-shot foundation models (Chronos-Bolt, Chronos-2, TimesFM-2.5, "
+        "Moirai-2.0; all installed via the 'fm' extra).",
     )
     p.add_argument(
         "--with-dl",
@@ -140,9 +137,25 @@ def main() -> int:
 
         methods += [TFTForecaster(), ITransformerForecaster(), TimesNetForecaster()]
     if args.with_fm:
-        from tsforecastbench.bench.methods import ChronosForecaster
+        from tsforecastbench.bench.methods import (
+            Chronos2ExoForecaster,
+            Chronos2Forecaster,
+            ChronosForecaster,
+            Moirai2ExoForecaster,
+            Moirai2Forecaster,
+            TimesFMExoForecaster,
+            TimesFMForecaster,
+        )
 
-        methods.append(ChronosForecaster())
+        methods += [
+            ChronosForecaster(),
+            Chronos2Forecaster(),
+            TimesFMForecaster(),
+            Moirai2Forecaster(),
+            Chronos2ExoForecaster(),
+            TimesFMExoForecaster(),
+            Moirai2ExoForecaster(),
+        ]
     method_order = [m.name for m in methods]
 
     mode = "single hold-out" if args.fast else f"rolling-origin ({args.origins} origins)"

@@ -33,6 +33,7 @@ from data import (
     FAMILY_ORDER,
     case_has_extended_history,
     case_summary,
+    case_training_stats,
     cases_eligible_for_metric,
     load_metrics,
     load_snapshots,
@@ -66,7 +67,15 @@ def pd_isna(v) -> bool:
 
 def _metric_cfg(metric: str) -> dict:
     return METRIC_CONFIG.get(
-        metric, {"cmap": "viridis", "center": None, "vlo": None, "vhi": None, "fmt": "{:.3g}"}
+        metric,
+        {
+            "cmap": "viridis",
+            "center": None,
+            "vlo": None,
+            "vhi": None,
+            "fmt": "{:.3g}",
+            "lower_is_better": True,
+        },
     )
 
 
@@ -103,10 +112,14 @@ def _group_labels(ordered_keys: list[str], key_of: dict[str, str]) -> list[tuple
     return labels
 
 
-def _corner_triangle_path(x0: float, y0: float, x1: float, y1: float, frac: float = 0.35) -> str:
-    """SVG path for a small filled triangle in the top-right corner of one cell's box,
-    sized as `frac` of the cell's edge length."""
+def _corner_triangle_path(
+    x0: float, y0: float, x1: float, y1: float, frac: float = 0.35, corner: str = "top-right"
+) -> str:
+    """SVG path for a small filled triangle in one corner of a cell's box, sized as `frac`
+    of the cell's edge length."""
     s = (x1 - x0) * frac
+    if corner == "bottom-left":
+        return f"M {x0},{y1} L {x0 + s},{y1} L {x0},{y1 - s} Z"
     return f"M {x1},{y0} L {x1 - s},{y0} L {x1},{y0 + s} Z"
 
 
@@ -133,6 +146,45 @@ def _global_overlay_shapes(
             }
         )
     return shapes
+
+
+def _exogenous_overlay_shapes(
+    cells: list[tuple[str, str]], row_order: list[str], col_order: list[str]
+) -> list[dict]:
+    """Small teal corner triangle (opposite corner from the global-history marker, so the
+    two never collide) over cells whose displayed value was swapped in from the method's
+    exogenous-aware (+exo) sibling — see the `show_exo` branch in `render_matrix`."""
+    shapes = []
+    for case_id, method in cells:
+        if case_id not in row_order or method not in col_order:
+            continue
+        y = row_order.index(case_id)
+        x = col_order.index(method)
+        shapes.append(
+            {
+                "type": "path",
+                "path": _corner_triangle_path(
+                    x - 0.5, y - 0.5, x + 0.5, y + 0.5, corner="bottom-left"
+                ),
+                "line": {"color": "#0B7285", "width": 0},
+                "fillcolor": "#0B7285",
+                "opacity": 0.8,
+                "layer": "above",
+            }
+        )
+    return shapes
+
+
+def _row_best_methods(values, lower_is_better: bool) -> dict[str, str]:
+    """The best-scoring method per row (case), by the displayed (post-overlay) values.
+    Rows with no finite value are omitted."""
+    best = {}
+    for case_id, row in values.iterrows():
+        finite = row.dropna()
+        if finite.empty:
+            continue
+        best[case_id] = finite.idxmin() if lower_is_better else finite.idxmax()
+    return best
 
 
 def _selection_shapes(
@@ -173,6 +225,7 @@ def render_matrix(
     methods: list[str],
     selection: dict | None = None,
     show_global: bool = False,
+    show_exo: bool = False,
 ) -> tuple[go.Figure, int]:
     """Returns the heatmap figure plus its row count (unused by the current caller, kept
     since it falls out of the same pivot work the figure needs anyway).
@@ -184,6 +237,12 @@ def render_matrix(
     `show_global` is True, those cells are swapped in for the local score and marked
     with a corner triangle (see `_global_overlay_shapes`), since they're fit on more
     data than the rest of the row and aren't directly comparable.
+
+    A method with an exogenous-aware sibling (e.g. "LightGBM" / "LightGBM+exo") is shown
+    as a single column ("LightGBM"). When `show_exo` is True, cases with real exogenous
+    data (`case_exo_tier != "none"`) get that sibling's score swapped in and marked with a
+    teal corner (see `_exogenous_overlay_shapes`) — same swap-and-mark mechanism as
+    `show_global`, on a different axis.
     """
     df_metric = df[
         (df["metric"] == metric) & df["case_id"].isin(case_ids) & df["method"].isin(methods)
@@ -198,6 +257,7 @@ def render_matrix(
     frac_finite = _pivot(df_local, row_order, col_order, "frac_finite_test")
     seconds = _pivot(df_local, row_order, col_order, "seconds")
     horizon = _pivot(df_local, row_order, col_order, "horizon").fillna("—")
+    effective_method = np.tile(np.array(col_order, dtype=object), (len(row_order), 1))
 
     overlay_cells: list[tuple[str, str]] = []
     if show_global:
@@ -211,6 +271,26 @@ def render_matrix(
             frac_finite.loc[row.case_id, row.method] = row.frac_finite_test
             seconds.loc[row.case_id, row.method] = row.seconds
             overlay_cells.append((row.case_id, row.method))
+
+    exo_overlay_cells: list[tuple[str, str]] = []
+    if show_exo:
+        exo_pairs = {m: f"{m}+exo" for m in col_order if f"{m}+exo" in df_local["method"].unique()}
+        if exo_pairs:
+            tier_of = df_metric.drop_duplicates("case_id").set_index("case_id")["case_exo_tier"]
+            df_exo = df_local[df_local["method"].isin(exo_pairs.values())]
+            for row in df_exo.itertuples(index=False):
+                base = row.method.removesuffix("+exo")
+                if base not in values.columns or row.case_id not in values.index:
+                    continue
+                if tier_of.get(row.case_id, "none") == "none":
+                    continue  # nothing to swap in — case has no exogenous data
+                values.loc[row.case_id, base] = row.value
+                status.loc[row.case_id, base] = row.status
+                n_origins.loc[row.case_id, base] = row.n_origins
+                frac_finite.loc[row.case_id, base] = row.frac_finite_test
+                seconds.loc[row.case_id, base] = row.seconds
+                effective_method[row_order.index(row.case_id), col_order.index(base)] = row.method
+                exo_overlay_cells.append((row.case_id, base))
 
     cfg = _metric_cfg(metric)
     fmt = cfg.get("fmt", "{:.3g}")
@@ -232,6 +312,7 @@ def render_matrix(
             frac_finite.map(fmt_pct).to_numpy(dtype=object),
             seconds.map(fmt_secs).to_numpy(dtype=object),
             horizon.to_numpy(dtype=object),
+            effective_method,
         ]
     )
 
@@ -240,9 +321,6 @@ def render_matrix(
         x=col_order,
         y=row_order,
         colorscale=cfg["cmap"],
-        text=text.to_numpy(dtype=object),
-        texttemplate="%{text}",
-        textfont={"size": 10},
         customdata=customdata,
         # Native per-cell hover label is off; the row/col name tooltips are drawn as HTML
         # overlays by the `hover-tooltips` clientside callback. "none" (not "skip") keeps
@@ -272,6 +350,32 @@ def render_matrix(
 
     fig = go.Figure(go.Heatmap(**heatmap_kwargs))
 
+    # Per-cell number, drawn as annotations rather than the heatmap's own texttemplate:
+    # Heatmap.textfont only takes one size/weight for the whole trace, but each row's best
+    # method needs to stand out from the rest of that same row. Built as a plain list and
+    # assigned once via `update_layout(annotations=...)` below, rather than one
+    # `add_annotation` call per cell — each `add_annotation` call re-validates/copies the
+    # whole existing annotations tuple, so looping it per cell is quadratic in cell count
+    # and was the cause of a multi-second render regression for ~300 cells.
+    best_of_row = _row_best_methods(values, cfg.get("lower_is_better", True))
+    annotations = []
+    for case_id in row_order:
+        best_method = best_of_row.get(case_id)
+        for method in col_order:
+            cell_text = text.loc[case_id, method]
+            is_best = method == best_method
+            annotations.append(
+                dict(
+                    x=method,
+                    y=case_id,
+                    xref="x",
+                    yref="y",
+                    text=f"<b>{cell_text}</b>" if is_best else cell_text,
+                    showarrow=False,
+                    font={"size": 13 if is_best else 10},
+                )
+            )
+
     n_rows, n_cols = len(row_order), len(col_order)
     domain_of = df_metric.drop_duplicates("case_id").set_index("case_id")["domain"].to_dict()
     family_of = df_metric.drop_duplicates("method").set_index("method")["family"].to_dict()
@@ -283,39 +387,46 @@ def render_matrix(
         fig.add_shape(type="line", x0=x, x1=x, y0=-0.5, y1=n_rows - 0.5, line=boundary_line)
     for shape in _global_overlay_shapes(overlay_cells, row_order, col_order):
         fig.add_shape(**shape)
+    for shape in _exogenous_overlay_shapes(exo_overlay_cells, row_order, col_order):
+        fig.add_shape(**shape)
     for shape in _selection_shapes(selection, row_order, col_order):
         fig.add_shape(**shape)
 
     for pos, label in _group_labels(col_order, family_of):
-        fig.add_annotation(
-            x=pos,
-            y=-0.5,
-            xref="x",
-            yref="y",
-            yanchor="bottom",
-            yshift=6,
-            text=f"<b>{label.replace('_', '<br>').capitalize()}</b>",
-            showarrow=False,
-            font={"size": 13},
+        annotations.append(
+            dict(
+                x=pos,
+                y=-0.5,
+                xref="x",
+                yref="y",
+                yanchor="bottom",
+                yshift=6,
+                text=f"<b>{label.replace('_', '<br>').capitalize()}</b>",
+                showarrow=False,
+                font={"size": 13},
+            )
         )
     for pos, label in _group_labels(row_order, domain_of):
-        fig.add_annotation(
-            x=-0.5,
-            y=pos,
-            xref="x",
-            yref="y",
-            xanchor="right",
-            xshift=-6,
-            text=f"<b>{DOMAIN_KEY_DICT.get(label, label)}</b>",
-            showarrow=False,
-            font={"size": 13},
-            textangle=-90,
+        annotations.append(
+            dict(
+                x=-0.5,
+                y=pos,
+                xref="x",
+                yref="y",
+                xanchor="right",
+                xshift=-6,
+                text=f"<b>{DOMAIN_KEY_DICT.get(label, label)}</b>",
+                showarrow=False,
+                font={"size": 13},
+                textangle=-90,
+            )
         )
 
     # Size the figure so square cells fill the plot area exactly: with the height fixed
     # at CELL*n_rows (plus title margins), matching the width to CELL*n_cols leaves no
     # centering gap, so the colorbar and the group titles sit flush against the grid.
     fig.update_layout(
+        annotations=annotations,
         height=CELL * n_rows + MATRIX_MARGIN,
         width=CELL * n_cols + 170,
         margin={"l": 90, "t": 40, "r": 80, "b": 80},
@@ -428,10 +539,17 @@ _CASE_PLOT_CAPTION_STYLE = {
     "margin": "12px 0 4px 0",
     "flex": "0 0 auto",
 }
+# Shared look for every collapsible subsection header in the detail column (training/test
+# data, case summary, prediction snapshots), so the three read as one consistent pattern.
+_SUBSECTION_SUMMARY_STYLE = {"cursor": "pointer", "fontWeight": "bold", "fontSize": "1em"}
 
-# Full-width strip docked to the bottom of the viewport (sticky, not fixed, so it scrolls
-# into place with the rest of the page rather than always overlapping content) — one card
-# per selected method, colour-matched to that method's chip/forecast line.
+# Strip docked to the bottom of the viewport (sticky, not fixed, so it scrolls into place
+# with the rest of the page rather than always overlapping content) — one card per
+# selected method, colour-matched to that method's chip/forecast line. Nested as the last
+# child of the middle content column (not a top-level sibling), so its width always
+# matches that column: it widens automatically when the sidebar is collapsed, and never
+# overlaps the sidebar or the detail column.
+
 _METHOD_INFO_STYLE = {
     "position": "sticky",
     "bottom": "0",
@@ -578,6 +696,24 @@ app.layout = html.Div(
                             "Some global models have been trained with longer history, marked with a corner triangle.",
                             style={"color": "#666", "fontSize": "0.8em", "marginTop": "4px"},
                         ),
+                        html.Label("Exogenous inputs", style=_LABEL_STYLE),
+                        dcc.Checklist(
+                            id="show-exogenous",
+                            options=[
+                                {
+                                    "label": " Use exogenous inputs where available.",
+                                    "value": "on",
+                                }
+                            ],
+                            value=[],
+                        ),
+                        html.P(
+                            "Where a method has an exogenous-aware variant and the case "
+                            "provides exogenous data, this swaps in that variant's score "
+                            "for the cell and marks it with a teal corner. Cases or "
+                            "methods without an exogenous option are unaffected.",
+                            style={"color": "#666", "fontSize": "0.8em", "marginTop": "4px"},
+                        ),
                     ],
                 ),
                 html.Button(
@@ -696,9 +832,43 @@ app.layout = html.Div(
                                         "alone can tell you.",
                                     ]
                                 ),
+                                html.P(
+                                    [
+                                        html.B("Exogenous inputs. "),
+                                        "Each case declares its exogenous tier — "
+                                        "none, optional, or necessary — a domain "
+                                        "judgment, not something inferable from "
+                                        "measured skill deltas. LinearLags, LightGBM, "
+                                        "and CatBoost each have an exogenous-aware "
+                                        "sibling; the matrix shows one column per "
+                                        'algorithm, and the "Use exogenous inputs '
+                                        'where available" checkbox swaps in that '
+                                        "sibling's score for cases with real "
+                                        "exogenous data, marking the cell with a "
+                                        "teal corner. Toggling it changes which of "
+                                        "two already-computed scores is shown per "
+                                        "cell — it never adds columns, drops cases, "
+                                        "or aggregates across them, matching the "
+                                        "matrix's design elsewhere. Calendar and "
+                                        "seasonal features (day-of-week, "
+                                        "sin/cos-of-period) sit outside this toggle "
+                                        "entirely: they're deterministic and free "
+                                        "for any future timestamp, so every "
+                                        "windowed-ML method always includes them. "
+                                        "Genuine exogenous covariates don't have "
+                                        "that guarantee — future values fed to the "
+                                        "exogenous-aware methods here come from "
+                                        "observed reanalysis data (a perfect-"
+                                        "forecast proxy), so their scores are an "
+                                        "upper bound on real operational skill, "
+                                        "which depends on actual forecast quality "
+                                        "for those covariates.",
+                                    ]
+                                ),
                             ],
                         ),
                         dcc.Store(id="snapshot-selection", data={"case_id": None, "methods": []}),
+                        html.Div(id="method-info-panel", style=_METHOD_INFO_HIDDEN_STYLE),
                     ],
                 ),
                 html.Div(
@@ -709,17 +879,20 @@ app.layout = html.Div(
                             id="case-panel",
                             style=_CASE_PANEL_HIDDEN_STYLE,
                             children=[
+                                html.Div(
+                                    id="case-panel-title",
+                                    style={
+                                        "fontWeight": "bold",
+                                        "fontSize": "1.1em",
+                                        "margin": "0 0 4px 0",
+                                    },
+                                ),
                                 html.Details(
                                     open=True,
                                     children=[
                                         html.Summary(
-                                            id="case-panel-title",
-                                            style={
-                                                "cursor": "pointer",
-                                                "fontWeight": "bold",
-                                                "fontSize": "1.1em",
-                                                "margin": "0 0 4px 0",
-                                            },
+                                            "Training & test data",
+                                            style=_SUBSECTION_SUMMARY_STYLE,
                                         ),
                                         html.P(
                                             id="case-training-caption",
@@ -760,18 +933,19 @@ app.layout = html.Div(
                                             config={"displayModeBar": False},
                                             style={"flex": "0 0 auto", "width": "100%"},
                                         ),
-                                        html.Hr(style={"flex": "0 0 auto", "width": "100%"}),
-                                        html.P(
+                                    ],
+                                ),
+                                html.Hr(style={"flex": "0 0 auto", "width": "100%"}),
+                                html.Details(
+                                    open=True,
+                                    children=[
+                                        html.Summary(
                                             "Case summary",
-                                            style={
-                                                "color": "#666",
-                                                "fontSize": "0.9em",
-                                                "flex": "0 0 auto",
-                                            },
+                                            style=_SUBSECTION_SUMMARY_STYLE,
                                         ),
                                         html.Div(
                                             id="case-summary",
-                                            style={"flex": "0 0 auto"},
+                                            style={"flex": "0 0 auto", "marginTop": "4px"},
                                         ),
                                     ],
                                 ),
@@ -800,37 +974,45 @@ app.layout = html.Div(
                                     id="snapshot-panel",
                                     style={"display": "none"},
                                     children=[
-                                        html.H2(id="snapshot-title"),
-                                        html.P(
-                                            id="snapshot-caption",
-                                            style={
-                                                "color": "#666",
-                                                "fontSize": "0.85em",
-                                                "margin": "0 0 8px 0",
-                                            },
-                                        ),
-                                        html.Div(
-                                            style={
-                                                "display": "flex",
-                                                "gap": "8px",
-                                                "alignItems": "center",
-                                                "flexWrap": "wrap",
-                                                "marginBottom": "8px",
-                                            },
+                                        html.Details(
+                                            open=True,
                                             children=[
-                                                html.Span(
-                                                    id="snapshot-chips",
-                                                    style={"display": "contents"},
+                                                html.Summary(
+                                                    id="snapshot-title",
+                                                    style=_SUBSECTION_SUMMARY_STYLE,
                                                 ),
-                                                html.Button(
-                                                    "Clear",
-                                                    id="clear-btn",
-                                                    n_clicks=0,
-                                                    style={"marginLeft": "auto"},
+                                                html.P(
+                                                    id="snapshot-caption",
+                                                    style={
+                                                        "color": "#666",
+                                                        "fontSize": "0.85em",
+                                                        "margin": "0 0 8px 0",
+                                                    },
                                                 ),
+                                                html.Div(
+                                                    style={
+                                                        "display": "flex",
+                                                        "gap": "8px",
+                                                        "alignItems": "center",
+                                                        "flexWrap": "wrap",
+                                                        "marginBottom": "8px",
+                                                    },
+                                                    children=[
+                                                        html.Span(
+                                                            id="snapshot-chips",
+                                                            style={"display": "contents"},
+                                                        ),
+                                                        html.Button(
+                                                            "Clear",
+                                                            id="clear-btn",
+                                                            n_clicks=0,
+                                                            style={"marginLeft": "auto"},
+                                                        ),
+                                                    ],
+                                                ),
+                                                dcc.Graph(id="snapshot-graph"),
                                             ],
                                         ),
-                                        dcc.Graph(id="snapshot-graph"),
                                     ],
                                 ),
                             ],
@@ -839,7 +1021,6 @@ app.layout = html.Div(
                 ),
             ],
         ),
-        html.Div(id="method-info-panel", style=_METHOD_INFO_HIDDEN_STYLE),
     ],
 )
 
@@ -932,10 +1113,12 @@ def toggle_sidebar(n_clicks):
     Input("reload-btn", "n_clicks"),
     Input("snapshot-selection", "data"),
     Input("show-global", "value"),
+    Input("show-exogenous", "value"),
 )
-def update_matrix(metric, domains, families, n_reload, selection, show_global):
+def update_matrix(metric, domains, families, n_reload, selection, show_global, show_exogenous):
     df = load_metrics(n_reload or 0)
     show_global = "on" in (show_global or [])
+    show_exo = "on" in (show_exogenous or [])
     if not metric or not domains or not families:
         return _empty_fig("Select a metric, at least one domain, and one method family.")
 
@@ -948,7 +1131,7 @@ def update_matrix(metric, domains, families, n_reload, selection, show_global):
             "or the selected metric doesn't apply to any of them."
         )
 
-    fig, _n_rows = render_matrix(df, metric, case_ids, methods, selection, show_global)
+    fig, _n_rows = render_matrix(df, metric, case_ids, methods, selection, show_global, show_exo)
     return fig
 
 
@@ -1029,13 +1212,32 @@ EMPTY_SELECTION = {"case_id": None, "methods": []}
 MAX_OVERLAY_METHODS = 3
 
 
-def next_selection(trigger, trigger_value, click_data: dict | None, sel: dict) -> dict:
+def _effective_method(df, case_id: str, method: str, show_exo: bool) -> str:
+    """The method that actually produced this cell's score — `method` unless the
+    exogenous toggle swapped in its "+exo" sibling's score, which happens only for
+    cases with real exogenous data (see the `show_exo` branch in `render_matrix`)."""
+    if not show_exo:
+        return method
+    exo_method = f"{method}+exo"
+    if exo_method not in df["method"].unique():
+        return method
+    tier = df.loc[df["case_id"] == case_id, "case_exo_tier"]
+    if tier.empty or tier.iloc[0] == "none":
+        return method
+    return exo_method
+
+
+def next_selection(
+    trigger, trigger_value, case_id: str | None, method: str | None, sel: dict
+) -> dict:
     """Pure transition for the overlay selection — the logic behind `update_selection`,
     factored out of Dash's callback context so it can be reasoned about and tested.
 
     `trigger` is the triggering component id (a str, or a pattern-matching dict for a
-    method chip); `trigger_value` is that input's value. Raises `PreventUpdate` when the
-    event shouldn't change the selection.
+    method chip); `trigger_value` is that input's value. `case_id`/`method` are the
+    already-resolved matrix-click target (`None` when the trigger wasn't a click, e.g. a
+    chip removal or Clear). Raises `PreventUpdate` when the event shouldn't change the
+    selection.
     """
     sel = sel or EMPTY_SELECTION
 
@@ -1050,10 +1252,8 @@ def next_selection(trigger, trigger_value, click_data: dict | None, sel: dict) -
         methods = [m for m in sel["methods"] if m != trigger["method"]]
         return {"case_id": sel["case_id"], "methods": methods} if methods else dict(EMPTY_SELECTION)
 
-    points = (click_data or {}).get("points") or []
-    if not points:
+    if case_id is None:
         raise PreventUpdate
-    case_id, method = points[0]["y"], points[0]["x"]
     if case_id != sel["case_id"]:
         return {"case_id": case_id, "methods": [method]}
     if method in sel["methods"]:
@@ -1077,8 +1277,22 @@ def update_selection(click_data, clear_clicks, chip_clicks, sel):
     Same-row clicks accumulate methods, up to `MAX_OVERLAY_METHODS` (beyond that, the
     oldest is evicted; re-click removes, when Plotly re-fires it); a click in a
     different row resets to that case; chip clicks and Clear remove methods.
+
+    Stores the clicked column's base method name, not its exogenous-swapped sibling —
+    the exo toggle can change after a cell is selected, and resolving the swap here
+    would freeze a stale name that no longer matches the next click on the same
+    column (see `_effective_method`, resolved instead at render time).
+
+    Reads the clicked cell's case/method off `x`/`y` rather than `customdata`: Dash's
+    clickData only reconstructs `customdata` for traces indexed by a flat
+    `pointNumber`/`pointNumbers`, which a Heatmap never sets, so it's silently absent on
+    every heatmap click regardless of what the figure sets it to.
     """
-    return next_selection(ctx.triggered_id, ctx.triggered[0]["value"], click_data, sel)
+    points = (click_data or {}).get("points") or []
+    case_id = method = None
+    if points:
+        case_id, method = points[0]["y"], points[0]["x"]
+    return next_selection(ctx.triggered_id, ctx.triggered[0]["value"], case_id, method, sel)
 
 
 @app.callback(
@@ -1092,24 +1306,35 @@ def update_selection(click_data, clear_clicks, chip_clicks, sel):
     Output("case-panel", "style"),
     Input("snapshot-selection", "data"),
     Input("show-global", "value"),
+    Input("show-exogenous", "value"),
     Input("reload-btn", "n_clicks"),
 )
-def render_case_panel(sel, show_global, n_reload):
+def render_case_panel(sel, show_global, show_exogenous, n_reload):
     """Right-hand panel: training/test snapshots, a train-vs-test distribution, a
     train/val/test proportions bar, and case metadata for the clicked cell's case.
-    Depends only on `case_id` (plus the global toggle), so it stays open across method
-    chip clicks. When `show_global` reveals extended history for this case (see
-    `data.case_has_extended_history`), the training snapshot, distribution, and
-    proportions bar all swap in the extended-history train split."""
+    Depends on `case_id` plus the global/exogenous toggles, so it stays open across
+    method chip clicks. When `show_global` reveals extended history for this case (see
+    `data.case_has_extended_history`), the training snapshot, distribution, proportions
+    bar, and sample counts all swap in the extended-history train split. The training
+    time shown is per selected method (resolved to its exogenous-aware sibling when the
+    exo toggle applies — see `_effective_method`)."""
     case_id = (sel or {}).get("case_id")
+    methods = (sel or {}).get("methods") or []
     if not case_id:
         empty = go.Figure()
         return "", "", empty, empty, empty, empty, "", _CASE_PANEL_HIDDEN_STYLE
 
     show_global = "on" in (show_global or [])
-    extended = show_global and case_has_extended_history(load_metrics(n_reload or 0), case_id)
+    show_exo = "on" in (show_exogenous or [])
+    df = load_metrics(n_reload or 0)
+    extended = show_global and case_has_extended_history(df, case_id)
     caption = f"Training data (last {TRAINING_TAIL_N:,} points"
     caption += ", including extended history)" if extended else ")"
+
+    effective_methods = [_effective_method(df, case_id, m, show_exo) for m in methods]
+    summary_md = "\n\n".join(
+        [case_summary(case_id), case_training_stats(df, case_id, effective_methods, extended)]
+    )
 
     return (
         case_id.replace("_", " ").upper(),
@@ -1118,7 +1343,7 @@ def render_case_panel(sel, show_global, n_reload):
         render_test_snapshot(case_id),
         render_split_distribution(case_id, extended=extended),
         render_split_proportions(case_id, extended=extended),
-        dcc.Markdown(case_summary(case_id)),
+        dcc.Markdown(summary_md),
         _CASE_PANEL_VISIBLE_STYLE,
     )
 
@@ -1133,23 +1358,27 @@ def render_case_panel(sel, show_global, n_reload):
     Input("snapshot-selection", "data"),
     Input("reload-btn", "n_clicks"),
     Input("show-global", "value"),
+    Input("show-exogenous", "value"),
     Input("metric", "value"),
 )
-def render_panel(sel, n_reload, show_global, metric):
+def render_panel(sel, n_reload, show_global, show_exogenous, metric):
     sel = sel or {}
     case_id, methods = sel.get("case_id"), sel.get("methods") or []
     if not case_id or not methods:
         return "", "", go.Figure(), [], {"display": "none"}, {"color": "#666"}
 
     show_global = "on" in (show_global or [])
+    show_exo = "on" in (show_exogenous or [])
+    df = load_metrics(n_reload or 0)
+    effective_methods = [_effective_method(df, case_id, m, show_exo) for m in methods]
     title = "[Test] Prediction Snapshots"
-    caption = f"Origins curated by {methods[0]}'s {metric} (best / median / worst)."
+    caption = f"Origins curated by {effective_methods[0]}'s {metric} (best / median / worst)."
     return (
         title,
         caption,
         render_snapshots(
             case_id,
-            methods,
+            effective_methods,
             load_snapshots(n_reload or 0),
             show_global,
             max_cols=1,
@@ -1165,8 +1394,10 @@ def render_panel(sel, n_reload, show_global, metric):
     Output("method-info-panel", "children"),
     Output("method-info-panel", "style"),
     Input("snapshot-selection", "data"),
+    Input("show-exogenous", "value"),
+    Input("reload-btn", "n_clicks"),
 )
-def render_method_info_panel(sel):
+def render_method_info_panel(sel, show_exogenous, n_reload):
     """Bottom panel: one card per selected method with a brief description and its
     exogenous-input usage for this case (see `data.method_info`), plus a collapsed
     "Implementation detail" section (library, compute cost, limitations, a code
@@ -1175,7 +1406,10 @@ def render_method_info_panel(sel):
     case_id, methods = sel.get("case_id"), sel.get("methods") or []
     if not case_id or not methods:
         return [], _METHOD_INFO_HIDDEN_STYLE
-    return _method_info_cards(case_id, methods), _METHOD_INFO_STYLE
+    show_exo = "on" in (show_exogenous or [])
+    df = load_metrics(n_reload or 0)
+    effective_methods = [_effective_method(df, case_id, m, show_exo) for m in methods]
+    return _method_info_cards(case_id, effective_methods), _METHOD_INFO_STYLE
 
 
 if __name__ == "__main__":

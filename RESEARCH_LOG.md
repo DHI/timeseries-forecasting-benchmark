@@ -8,6 +8,66 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-15 — Gave Chronos-2, TimesFM 2.5 and Moirai-2.0 `+exo` variants
+
+Closed the covariate follow-up flagged in the 2026-07-14 FM entry: each of the three
+foundation models that natively supports covariates (Chronos-2 via `predict_df`'s
+`future_df`, TimesFM via `forecast_with_covariates`, Moirai via `feat_dynamic_real`) now
+has a `+exo` sibling, mirroring the LightGBM/CatBoost/LinearLags `+exo` pattern — future
+covariate values are the eval loop's perfect-forecast proxy, not a real forecast of those
+covariates. Chronos-Bolt stays univariate-only; its architecture has no covariate
+mechanism to expose. One real gotcha: TimesFM's `forecast_with_covariates` requires
+`return_backcast=True` at compile time, but that flag silently changes what plain
+`forecast()` returns (backcast prepended ahead of the horizon rather than just the
+horizon) — so the covariate path now compiles and caches a second model instance,
+keeping the univariate path's compiled model and output shape untouched. All three
+variants were smoke-tested end-to-end against real cached model weights (not just
+synthetic placeholders) on a covariate-bearing case and a covariate-free one before
+committing.
+
+## 2026-07-14 — Fixed matrix cell clicks crashing with `KeyError: 'customdata'`
+
+Every click on a matrix cell in `app/app.py` raised `KeyError: 'customdata'`. Root cause: Dash's
+`clickData` only reconstructs a trace's `customdata` for points indexed by a flat
+`pointNumber`/`pointNumbers` (how 1D traces like scatter work) — a Heatmap addresses cells by
+`x`/`y` instead, so Dash silently omits `customdata` from every heatmap click regardless of what
+the figure sets it to. The exo-toggle's effective-method lookup (added in the entry below) had
+relied on reading it from `customdata[5]`. Fixed by resolving the effective method server-side
+from the clicked `x` (base method) plus the `show-exogenous` toggle state and the case's
+`case_exo_tier`, the same swap condition `render_matrix` already uses — no more reliance on
+`customdata` for heatmap clicks. Any future click-driven feature on this matrix should read
+`x`/`y` off the click point, not `customdata`.
+
+## 2026-07-14 — Added three zero-shot foundation models (Chronos-2, TimesFM 2.5, Moirai-2.0)
+
+Chronos-Bolt was the only foundation model implemented of the six the plan called for; added
+Chronos-2, TimesFM 2.5 and Moirai-2.0 alongside it, each as a univariate zero-shot wrapper
+behind the common `Forecaster` interface and added to `run_pilot --with-fm`. They're
+univariate for now (matching the existing Chronos-Bolt precedent) — the models' covariate
+modes are a possible follow-up rather than part of this change. All three install through a
+single `fm` extra (`uv sync --extra fm`), so one command sets up everything `--with-fm`
+scores. Moirai's `uni2ts` is the binding dependency: it hard-pins scipy~=1.11.3 / numpy~=1.26
+/ torch<2.5, none of which have Python-3.13 wheels, so the whole project is now capped at
+**Python 3.11–3.12** (`requires-python = ">=3.11,<3.13"`) and its base stack drops to
+numpy 1.26 / scipy 1.11 / torch 2.4 to keep every model installable in one environment.
+Chronos and TimesFM both fit comfortably inside those bounds. TimeMoE, TimeGPT and Lag-Llama
+were dropped from the near-term plan (TimeGPT is API-only; all three have been overtaken in
+recent comparisons). No benchmark numbers yet — scoring these needs a `--with-fm` pilot run.
+
+## 2026-07-14 — Folded +exo method variants into an app-level toggle; retired +calendar
+
+Replaced the separate `LightGBM+exo`/`CatBoost+exo`/`LinearLags+exo` matrix columns with one
+column per algorithm plus a sidebar checkbox that swaps in the exogenous-aware score (marked
+with a teal corner) for cases with real exogenous data — the same swap-and-mark mechanism the
+app already used for the extended-history toggle. This also settled an open question about
+calendar/seasonal features: unlike genuine exogenous covariates, they're deterministic and free
+for any future timestamp, so they no longer sit behind a separate `+calendar` variant (only
+LightGBM had one) and are now always included for every windowed-ML method. While wiring this
+up, found that `run_case_rolling` — the default pilot path — never emitted the
+`case_exo_tier`/`uses_exogenous` fields the toggle depends on (only the `--fast` path did), so
+the committed `docs/results/scores.parquet` doesn't have them yet: the pilot needs a re-run
+before the checkbox works, and the method list is three columns shorter as a result.
+
 ## 2026-07-14 — Committed distilled scores to docs/ for onboarding (issue #19)
 
 `run_pilot.py` now writes its distilled metrics to `docs/results/scores.parquet` and the
