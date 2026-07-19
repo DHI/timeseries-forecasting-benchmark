@@ -8,14 +8,6 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
-## 2026-07-19 — Reverted the seasonalities merge (PR #67)
-
-PR #67 (structural decomposition / seasonality detection, ensemble method, related case config
-and test changes) was merged to `main` by mistake and has been reverted with a single revert
-commit. Nothing is lost: the original branch and commits are untouched, and the PR can be
-reopened and merged again later to bring this work back. Anyone who pulled `main` between the
-merge and this revert should re-pull before continuing work.
-
 ## 2026-07-03 — Silencing a spurious TBATS Box-Cox warning
 
 `scripts/run_pilot.py` was emitting a `UserWarning: Data contains zero or negative values,
