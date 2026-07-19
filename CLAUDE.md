@@ -27,6 +27,9 @@ into a single entry rather than logging each step separately.
 Create the file if it doesn't exist yet. New entries go at the top, under the "newest first"
 marker.
 
+When adding a new entry, also add a matching node (and any relevant edges) to the embedded data
+in `docs/research_graph.html`, the interactive graph view of this log.
+
 ## Code formatting
 
 CI runs `uv run ruff check .` and fails the build on any lint violation. Before committing,
