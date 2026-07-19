@@ -311,8 +311,21 @@ def _origin_metric(case_id: str, origin_preds: pd.DataFrame, metric: str) -> flo
     y = aligned.to_numpy()[mask]
     y_hat = origin_preds["y_hat"].to_numpy(dtype=float)[mask]
 
+    from tsforecastbench.bench.eval.metrics import kge as _kge
+    from tsforecastbench.bench.eval.metrics import mape as _mape
+    from tsforecastbench.bench.eval.metrics import nse as _nse
+    from tsforecastbench.bench.eval.metrics import smape as _smape
+
     if metric == "RMSE":
         return _rmse_score(y, y_hat)
+    if metric == "MAPE":
+        return _mape(y, y_hat)
+    if metric == "sMAPE":
+        return _smape(y, y_hat)
+    if metric == "NSE":
+        return _nse(y, y_hat)
+    if metric == "KGE":
+        return _kge(y, y_hat)
     if metric == "MASE":
         y_train, season = _mase_context(case_id)
         try:
