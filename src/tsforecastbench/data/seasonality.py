@@ -609,7 +609,7 @@ def robust_period_candidates(
 
     The series is linearly detrended and Huber-cleaned (robust to trend and spikes), then a
     MODWT splits it into dyadic frequency bands so coexisting cycles land in different levels.
-    Each level with real energy contributes its dominant in-band period (from the Huber-ACF),
+    Each level with real energy contributes its dominant in-band period (from the ACF of the Huber-cleaned coefficients),
     scored by two independent measures: `spectral_ratio` — the peak's prominence over its local
     spectral neighborhood, the same red-noise-robust discriminator `detect_candidates` uses —
     and `robust_amplitude`, the cycle's amplitude in the units of `y` from the exact Huber
