@@ -587,10 +587,10 @@
   };
 
   const EDGE_META = {
-    "supersedes":    { label: "supersedes",    dash: "6,3",  arrow: true },
-    "fixes-bug-in":  { label: "fixes bug in",  dash: "1,3",  arrow: true },
-    "depends-on":    { label: "depends on",    dash: null,   arrow: true },
-    "relates-to":    { label: "relates to",    dash: null,   arrow: false },
+    "supersedes":    { label: "supersedes",    reverseLabel: "superseded by",    dash: "6,3",  arrow: true },
+    "fixes-bug-in":  { label: "fixes bug in",  reverseLabel: "bug fixed by",     dash: "1,3",  arrow: true },
+    "depends-on":    { label: "depends on",    reverseLabel: "depended on by",   dash: null,   arrow: true },
+    "relates-to":    { label: "relates to",    reverseLabel: "relates to",       dash: null,   arrow: false },
   };
 
   const root = document.querySelector(".viz-root");
@@ -755,9 +755,7 @@
           .map((c) => {
             const other = nodeById.get(c.otherId);
             const relLabel =
-              c.direction === "out"
-                ? EDGE_META[c.type].label
-                : EDGE_META[c.type].label + " (reverse)";
+              c.direction === "out" ? EDGE_META[c.type].label : EDGE_META[c.type].reverseLabel;
             return `<button class="p-conn" data-target="${c.otherId}">
                 <div class="c-rel">${relLabel}</div>
                 <div class="c-title">${escapeHtml(other.title)} · ${other.date}</div>
