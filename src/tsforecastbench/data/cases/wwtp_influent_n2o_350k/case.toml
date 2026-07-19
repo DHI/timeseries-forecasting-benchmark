@@ -6,7 +6,7 @@ target = "influent_flow"
 target_unit = "m3/h"
 
 freq = "1h"
-seasonalities = [24]
+seasonalities = [12,24]
 horizon_primary = "24h"
 horizons_eval = ["6h", "24h"]
 input_window = "14D"

@@ -7,6 +7,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
@@ -346,3 +347,228 @@ def test_suggestions_drop_leakage_near_a_menu_period():
 
     assert 13 not in suggest_peak_candidates(y, "1h")
     assert 11 not in suggest_peak_candidates(y, "1h")
+
+
+# --- RobustPeriod: MODWT -----------------------------------------------------
+
+from tsforecastbench.data.seasonality import (  # noqa: E402
+    _band_period,
+    _biweight_midvariance,
+    _huber_clean,
+    _huber_periodogram_at,
+    _modwt,
+)
+
+
+def test_modwt_preserves_energy():
+    # The MODWT is an energy-preserving transform: the sum of squared detail coefficients
+    # across all levels plus the squared final scaling coefficients equals the input energy.
+    # This is the tightest single check that the hardcoded sym4 filter bank is correct.
+    for n in (256, 2556, 5000):
+        x = RNG.standard_normal(n)
+        level = min(int(np.floor(np.log2(n / 4))), 11)
+        details, scaling = _modwt(x, level)
+        energy_out = float(np.sum(details**2) + np.sum(scaling**2))
+        assert energy_out == pytest.approx(float(np.sum(x**2)), rel=1e-9)
+
+
+def test_modwt_localises_period_to_its_dyadic_band():
+    # A cycle of period P concentrates its energy in the level whose band [2**j, 2**(j+1)]
+    # contains P: period 24 -> level 4 ([16, 32]), period 168 -> level 7 ([128, 256]).
+    n = 24 * 7 * 40
+    y = _sine(n, period=24) + 0.7 * _sine(n, period=168)
+    details, _ = _modwt(y, 9)
+    variances = [_biweight_midvariance(w) for w in details]
+    assert int(np.argmax(variances)) + 1 == 4
+    # The runner-up energy level holds the weekly cycle.
+    assert int(np.argsort(variances)[-2]) + 1 == 7
+
+
+# --- RobustPeriod: robust estimators -----------------------------------------
+
+
+def test_huber_clean_pulls_in_spikes_but_keeps_the_cycle():
+    n = 24 * 40
+    y = _sine(n, period=24)
+    y[::97] += 50.0  # sparse large spikes
+    cleaned = _huber_clean(y)
+    # The spikes are winsorised to near the bulk range, but the cycle is preserved.
+    assert cleaned.max() < 5.0
+    assert np.corrcoef(cleaned, _sine(n, period=24))[0, 1] > 0.9
+
+
+def test_huber_clean_still_winsorises_when_the_mad_is_zero():
+    # A zero-inflated series (most values identical) has MAD 0; the cleaning must fall back
+    # to another scale and still pull the spikes in, not return the data untouched.
+    y = np.zeros(200)
+    y[::20] = 1000.0
+    cleaned = _huber_clean(y)
+    assert cleaned.max() < 300.0
+
+
+def test_huber_periodogram_recovers_amplitude_despite_outliers():
+    n = 24 * 60
+    amp = 3.0
+    clean = amp * np.sin(2 * np.pi * np.arange(n) / 24)
+    spiked = clean.copy()
+    spiked[::50] += 40.0  # outliers that would wreck an ordinary (least-squares) periodogram
+    power = _huber_periodogram_at(spiked, 1.0 / 24)
+    recovered_amp = np.sqrt(4.0 * power / n)
+    assert recovered_amp == pytest.approx(amp, rel=0.15)
+
+
+def test_band_period_reads_period_within_the_band():
+    n = 24 * 80
+    coeffs = _sine(n, period=24)
+    assert _band_period(coeffs, 16, 32) == 24
+    # A period outside the queried band is not returned; the strongest in-band lag is.
+    assert _band_period(coeffs, 100, 200) != 24
+
+
+# --- RobustPeriod: discovery -------------------------------------------------
+
+from tsforecastbench.data.seasonality import (  # noqa: E402
+    robust_period_candidates,
+)
+
+
+def _prominent_periods(result) -> list[int]:
+    return [c["period"] for c in result["candidates"] if c["prominent"]]
+
+
+def test_discovers_multiple_coexisting_cycles():
+    n = 24 * 7 * 40
+    y = _sine(n, period=24, amp=2.0) + _sine(n, period=168, amp=1.0)
+    y += 0.3 * RNG.standard_normal(n)
+
+    prominent = _prominent_periods(robust_period_candidates(y, "1h"))
+
+    assert 24 in prominent
+    assert any(abs(p - 168) / 168 <= 0.05 for p in prominent)
+
+
+def test_discovery_ranks_by_spectral_prominence():
+    # The stronger cycle (24) must outrank the weaker (168) in the returned order.
+    n = 24 * 7 * 40
+    y = _sine(n, period=24, amp=3.0) + _sine(n, period=168, amp=1.0)
+    y += 0.3 * RNG.standard_normal(n)
+
+    periods = [c["period"] for c in robust_period_candidates(y, "1h")["candidates"]]
+
+    assert periods[0] == 24
+
+
+def test_discovery_survives_trend_and_spikes():
+    # RobustPeriod's whole point: a linear trend and sparse spikes do not stop it recovering
+    # the cycles, where a plain periodogram would be swamped.
+    n = 24 * 7 * 40
+    y = _sine(n, period=24, amp=2.0) + _sine(n, period=168, amp=1.0)
+    y += 0.002 * np.arange(n)  # trend
+    spikes = RNG.choice(n, size=n // 200, replace=False)
+    y[spikes] += 30.0 * RNG.standard_normal(len(spikes))
+
+    prominent = _prominent_periods(robust_period_candidates(y, "1h"))
+
+    assert 24 in prominent
+
+
+def test_discovers_off_menu_period_and_leaves_it_unsnapped():
+    # 17 is not on the 1h menu (12, 24, 168); it should surface as a prominent candidate with
+    # no menu_period attached.
+    y = _sine(17 * 200, period=17) + 0.3 * RNG.standard_normal(17 * 200)
+
+    result = robust_period_candidates(y, "1h")
+    seventeen = next(c for c in result["candidates"] if c["period"] == 17)
+
+    assert seventeen["prominent"]
+    assert seventeen["menu_period"] is None
+
+
+def test_near_menu_discovery_carries_the_menu_period():
+    # A cycle a little off a menu period still points at it for reference (within 10%).
+    y = _sine(366 * 8, period=366) + 0.2 * RNG.standard_normal(366 * 8)
+
+    result = robust_period_candidates(y, "1D")
+    annual = next(c for c in result["candidates"] if c["menu_period"] == 365)
+
+    assert annual["prominent"]
+    assert abs(annual["period"] - 365) / 365 <= 0.1
+
+
+def test_flags_a_harmonic_of_a_stronger_cycle():
+    # A non-sinusoidal (here, two-harmonic) cycle of period 24 puts real power at 12 as well;
+    # 12 must be flagged as a harmonic of the stronger 24, not read as an independent cycle.
+    n = 24 * 120
+    t = np.arange(n)
+    y = np.sin(2 * np.pi * t / 24) + 0.5 * np.sin(2 * np.pi * t / 12)
+    y += 0.2 * RNG.standard_normal(n)
+
+    candidates = robust_period_candidates(y, "1h")["candidates"]
+    twelve = next(c for c in candidates if c["period"] == 12)
+
+    assert twelve["harmonic_of"] == 24
+
+
+def test_nyquist_alternating_series_yields_no_garbage_amplitude():
+    # A period-2 (Nyquist) cycle sits where the Huber periodogram's cos/sin design is
+    # degenerate: sin(pi*t) is numerically zero at every sample, so the fit returns an
+    # astronomically wrong amplitude (~1e11 for a unit signal). Such candidates are skipped.
+    rng = np.random.default_rng(3)  # a seed that surfaced a period-2 candidate before the guard
+    y = (-1.0) ** np.arange(400) + 0.3 * rng.standard_normal(400)
+
+    candidates = robust_period_candidates(y, "1h")["candidates"]
+
+    assert all(c["period"] != 2 for c in candidates)
+    assert all(c["robust_amplitude"] < 10.0 for c in candidates)
+
+
+def test_white_noise_yields_no_prominent_cycles():
+    result = robust_period_candidates(RNG.standard_normal(24 * 90), "1h")
+
+    assert _prominent_periods(result) == []
+    assert set(result["menu_periods_missing"]) == {12, 24, 168}
+
+
+def test_long_series_white_noise_yields_no_prominent_cycles():
+    # The spectral-peak window spans ~0.04*n/period Fourier bins, and the ratio takes the max
+    # over them: at n=100k a fixed bar let that max clear POWER_RATIO_MIN on a quarter of pure-
+    # noise draws. The size-adjusted prominence bar must keep long noise non-prominent.
+    y = np.random.default_rng(0).standard_normal(100_000)
+
+    assert _prominent_periods(robust_period_candidates(y, "1h")) == []
+
+
+def test_red_noise_yields_no_prominent_cycles():
+    # Strongly persistent AR(1) noise is the classic seasonality decoy on environmental data;
+    # discovery may list its bumps but must not flag them prominent.
+    from scipy.signal import lfilter
+
+    for seed in (0, 3):
+        e = np.random.default_rng(seed).standard_normal(20_000)
+        ar = lfilter([1.0], [1.0, -0.99], e)
+
+        assert _prominent_periods(robust_period_candidates(ar, "1h")) == []
+
+
+def test_long_period_is_flagged_approximate():
+    # An annual cycle seen over only six years (< 10 cycles) is resolution-limited, so it is
+    # flagged approximate even though it is found; with many cycles the flag clears.
+    n = 365 * 6
+    y = _sine(n, period=365) + 0.2 * RNG.standard_normal(n)
+
+    result = robust_period_candidates(y, "1D")
+    annual = next(c for c in result["candidates"] if c["menu_period"] == 365)
+
+    assert annual["approximate"]
+    assert annual["prominent"]
+
+
+def test_discovery_is_fast_on_a_long_series():
+    # Guards against an accidental O(n^2) path: a 150k-point series must finish quickly.
+    import time
+
+    n = 150_000
+    y = _sine(n, period=24) + _sine(n, period=168) + 0.5 * RNG.standard_normal(n)
+    start = time.perf_counter()
+    robust_period_candidates(y, "1h")
+    assert time.perf_counter() - start < 15.0
