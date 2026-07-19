@@ -234,6 +234,7 @@ def extend_frame(
         ds_cmp = ds_cmp.dt.tz_convert("UTC").dt.tz_localize(None)
     df = df[ds_cmp <= cutoff].reset_index(drop=True)
 
+    n_total = len(df)
     y = pd.to_numeric(df["y"], errors="coerce")
     observed = y.notna().to_numpy()
     if not observed.any():
@@ -241,7 +242,6 @@ def extend_frame(
     first_obs = int(np.flatnonzero(observed)[0])
     df = df.iloc[first_obs:].copy().reset_index(drop=True)
     observed = observed[first_obs:]
-    n_total = len(df)
 
     cap = gap_cap(pd.to_numeric(df["y"], errors="coerce"), freq, threshold)
 
