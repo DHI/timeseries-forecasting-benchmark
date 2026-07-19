@@ -25,9 +25,12 @@ from tsforecastbench.bench.methods import (  # noqa: E402
     MeanBaseline,
     Persistence,
     SeasonalNaive,
+    ensemble_baselines,
+    ensemble_baselines_theta,
 )
 from tsforecastbench.bench.viz import plot_leadtime_curve, render_matrix  # noqa: E402
 from tsforecastbench.data.registry import discover_cases, get_case  # noqa: E402
+from tsforecastbench.data.seasonality import dominant_period  # noqa: E402
 
 ALL_CASES = list(discover_cases())
 
@@ -68,7 +71,81 @@ def test_baselines_run(cid):
     methods = [MeanBaseline(), Persistence(), SeasonalNaive(), Climatology()]
     res = run_case(case, methods, prefer_synth=True)
     assert len(res) == len(methods) * 5  # MAE, RMSE, MASE, Skill_vs_Persistence, Skill_vs_Mean
+    if case.seasonalities:
+        assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
+    else:
+        # A declared-non-seasonal case makes SeasonalNaive honestly inapplicable (it
+        # would duplicate Persistence); every other baseline still runs.
+        sn = res["method"] == "SeasonalNaive"
+        assert (res.loc[~sn, "status"] == "ok").all()
+        assert res.loc[sn, "status"].str.contains("non-seasonal").all()
+
+
+def test_climatology_forecast_is_periodic_in_declared_dominant_period():
+    # Climatology keys on the case's dominant period, so its forecast repeats with that
+    # period regardless of frequency (issue #54). demand_ltown is hourly; its strong
+    # hour-of-day swing makes 24 the period that explains the most variance, so
+    # dominant_period selects 24 and the forecast cycles cleanly every 24 steps.
+    case = get_case("demand_ltown")
+    train = case.split_frame(case.synth())["train"]
+    period = dominant_period(case.seasonalities, train["y"].to_numpy())
+
+    clim = Climatology()
+    clim.fit(case, train)
+    horizon = 2 * period + 5
+    preds = clim.predict(case, train, horizon)["y_hat"].to_numpy()
+    np.testing.assert_allclose(preds[:period], preds[period : 2 * period])
+
+
+def test_climatology_on_nonseasonal_case_is_global_mean():
+    # A declared-non-seasonal case has no cycle to key on, so every position collapses to
+    # one bucket and the forecast is the global training mean (decision B on issue #54).
+    from tsforecastbench.data.schema import Case
+
+    case = Case(
+        id="dummy",
+        domain="test",
+        target="y",
+        freq="1h",
+        seasonalities=[],
+        horizon_primary="6h",
+        input_window="24h",
+        splits={"train_end": "2020-01-01", "val_end": "2021-01-01", "test_end": "2022-01-01"},
+        source={"name": "test"},
+    )
+    ds = pd.date_range("2019-01-01", periods=240, freq="1h")
+    train = pd.DataFrame({"ds": ds, "y": np.arange(240, dtype=float)})
+
+    clim = Climatology()
+    clim.fit(case, train)
+    preds = clim.predict(case, train, 6)["y_hat"].to_numpy()
+    np.testing.assert_allclose(preds, train["y"].mean())
+
+
+def test_ensemble_baselines_run():
+    case = get_case("discharge_lowland_denmark")
+    methods = [ensemble_baselines(), ensemble_baselines_theta()]
+    res = run_case(case, methods, prefer_synth=True)
+    assert len(res) == len(methods) * 5  # MAE, RMSE, MASE, Skill_vs_Persistence, Skill_vs_Mean
     assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
+
+
+def test_ensemble_is_median_of_members():
+    case = get_case("discharge_lowland_denmark")
+    train = case.split_frame(case.synth())["train"]
+    horizon = 24
+
+    ens = ensemble_baselines()
+    ens.fit(case, train)
+    combined = ens.predict(case, train, horizon)["y_hat"].to_numpy()
+
+    member_preds = []
+    for member in ens.members:
+        member.fit(case, train)
+        member_preds.append(member.predict(case, train, horizon)["y_hat"].to_numpy())
+    expected = np.nanmedian(np.vstack(member_preds), axis=0)
+
+    np.testing.assert_allclose(combined, expected)
 
 
 def test_lightgbm_runs_on_one_case():
@@ -129,13 +206,24 @@ def test_mstl_classicals_run():
     )
 
     res = run_case(
-        get_case("discharge_flashy_catskills"),
+        get_case("discharge_lowland_denmark"),
         [MSTLAutoETSForecaster(), MSTLAutoARIMAForecaster()],
         prefer_synth=True,
     )
     assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
     mase = res[res["metric"] == "MASE"]["value"]
     assert mase.notna().all() and (mase > 0).all()
+
+
+def test_mstl_is_honestly_inapplicable_on_declared_nonseasonal_case():
+    # Every committed case now declares seasonalities, so we build a non-seasonal variant
+    # explicitly: same synthetic data, seasonalities overridden to []. MSTL must then report
+    # itself inapplicable rather than degenerating into the plain non-seasonal trend model.
+    from tsforecastbench.bench.methods import MSTLAutoETSForecaster
+
+    case = get_case("discharge_flashy_catskills").model_copy(update={"seasonalities": []})
+    res = run_case(case, [MSTLAutoETSForecaster()], prefer_synth=True)
+    assert res["status"].str.contains("MSTL inapplicable").all()
 
 
 def test_methods_package_imports_without_fm_deps():
