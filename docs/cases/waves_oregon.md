@@ -18,6 +18,10 @@ flowchart LR
 
 ![EDA](../figures/cases/waves_oregon_eda.png)
 
+*EDA panel: hourly significant wave height H_s (m) at buoy 46050, with the buoy's own
+wind speed overlaid. The zoom window is centred on the month with the largest swell
+event.*
+
 ## The forecasting problem
 
 Forecast **`wvht` (H_s, metres)**, **hourly**, **24 hours** ahead. The 24 h horizon supports marine operations, surf and recreation, offshore vessel-to-platform transfers. Longer horizons (48–72 h) are secondary metrics relevant to commercial shipping.

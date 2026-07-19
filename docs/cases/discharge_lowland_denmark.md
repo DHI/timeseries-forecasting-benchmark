@@ -10,18 +10,19 @@ CAMELS-DK (Koch et al., 2025) ships 1989–2019 daily hydrometeorological series
 
 ```mermaid
 flowchart LR
-    P([Precipitation]) --> S[Soil + unsaturated zone]
-    PET([PET]) -.-> S
-    S --> A[Aquifer]
-    A --> Q((Stream gauge<br/>q_obs))
-    P -.->|small in lowland DK| Q
+    P([Precipitation]) -->|infiltrates| S[Soil + unsaturated zone]
+    PET([Evapotranspiration<br/>PET]) -->|loss| S
+    S -->|slow percolation,<br/>weeks to months| A[(Aquifer)]
+    A -->|baseflow — dominant pathway| Q((Stream gauge<br/>q_obs, mm/d))
+    P -.->|quickflow — minor in lowland DK| Q
 ```
 
 ![EDA](../figures/cases/discharge_lowland_denmark_eda.png)
 
-*EDA panel for catchment `37470707`. **To regenerate (Rocco, PR #2):** check the y-axis
-units — discharge should read in mm/day or m³/s with the unit on the axis label; the
-current panel looks off. The schematic above is also a candidate for a clearer redraw.*
+*EDA panel for catchment `37470707`: daily discharge (mm/d) with precipitation (mm/d)
+overlaid. Only 46% of the nominal 1988–2024 span has an observed `q_obs` value — the
+long blank stretch in the availability strip from the mid-2000s onward is real, not a
+plotting artifact; this gauge's record simply ends there.*
 
 ## The forecasting problem
 

@@ -37,72 +37,84 @@ CASE_HINTS = {
     "discharge_lowland_denmark": {
         "overlay": "precip",
         "overlay_kind": "rain",
+        "overlay_label": "Precip (mm/d)",
         "zoom": "365D",
         "target_label": "Discharge (mm/d)",
     },
     "discharge_flashy_catskills": {
         "overlay": "precip",
         "overlay_kind": "rain",
+        "overlay_label": "Precip (mm/d)",
         "zoom": "365D",
         "target_label": "Discharge (m3/s)",
     },
     "groundwater_yorktown": {
         "overlay": "precip",
         "overlay_kind": "rain",
+        "overlay_label": "Precip (mm/d)",
         "zoom": "365D",
         "target_label": "Depth to water (m)",
     },
     "discharge_snowmelt_yosemite": {
         "overlay": "temp_air",
         "overlay_kind": "line",
+        "overlay_label": "Air temp (degC)",
         "zoom": "365D",
         "target_label": "Discharge (m3/s)",
     },
     "watertemp_james": {
         "overlay": "temp_air",
         "overlay_kind": "line",
+        "overlay_label": "Air temp (degC)",
         "zoom": "365D",
         "target_label": "Water temp (C)",
     },
     "sewerlevel_bellinge": {
         "overlay": "rain_gauge",
         "overlay_kind": "rain",
+        "overlay_label": "Rain gauge (mm)",
         "zoom": "14D",
         "target_label": "Sewer level (m)",
     },
     "demand_ltown": {
         "overlay": None,
         "overlay_kind": None,
+        "overlay_label": None,
         "zoom": "14D",
         "target_label": "Inlet flow (L/s)",
     },
     "discharge_saugeen": {
         "overlay": None,
         "overlay_kind": None,
+        "overlay_label": None,
         "zoom": "730D",
         "target_label": "Discharge (m3/s)",
     },
     "wwtp_influent_n2o_350k": {
         "overlay": None,
         "overlay_kind": None,
+        "overlay_label": None,
         "zoom": "14D",
-        "target_label": "Influent flow",
+        "target_label": "Influent flow (m3/h)",
     },
     "surge_cuxhaven": {
         "overlay": "mslp",
         "overlay_kind": "line",
+        "overlay_label": "MSLP (hPa)",
         "zoom": "30D",
         "target_label": "Residual (m)",
     },
     "waves_oregon": {
         "overlay": "wspd",
         "overlay_kind": "line",
+        "overlay_label": "Wind speed (m/s)",
         "zoom": "30D",
         "target_label": "H_s (m)",
     },
     "waves_massachusetts": {
         "overlay": "wspd",
         "overlay_kind": "line",
+        "overlay_label": "Wind speed (m/s)",
         "zoom": "30D",
         "target_label": "H_s (m)",
     },
@@ -219,7 +231,13 @@ def make_eda(case_id: str) -> Path:
             f"nonzero={ovl_nonzero:,} max={ovl_max:.4g}"
         )
         if ovl_nonzero > 0:
-            _overlay(ax_long, df["ds"], df[ovl], ovl, hint.get("overlay_kind", "line"))
+            _overlay(
+                ax_long,
+                df["ds"],
+                df[ovl],
+                hint.get("overlay_label", ovl),
+                hint.get("overlay_kind", "line"),
+            )
             overlay_drawn = True
     elif ovl:
         print(f"[{case_id}]   overlay {ovl}: NOT in columns {list(df.columns)}")
@@ -269,7 +287,13 @@ def make_eda(case_id: str) -> Path:
     if ovl and ovl in sub.columns:
         sub_v = pd.to_numeric(sub[ovl], errors="coerce")
         if (sub_v.abs() > 1e-9).sum() > 0:
-            _overlay(ax_zoom, sub["ds"], sub[ovl], ovl, hint.get("overlay_kind", "line"))
+            _overlay(
+                ax_zoom,
+                sub["ds"],
+                sub[ovl],
+                hint.get("overlay_label", ovl),
+                hint.get("overlay_kind", "line"),
+            )
     ax_zoom.grid(True, alpha=0.25)
 
     # nicer date ticks

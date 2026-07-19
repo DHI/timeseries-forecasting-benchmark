@@ -17,6 +17,9 @@ flowchart LR
 
 ![EDA](../figures/cases/waves_massachusetts_eda.png)
 
+*EDA panel: hourly significant wave height H_s (m) at buoy 44013, with the buoy's own
+wind speed overlaid — the wind-sea signature this case is built around.*
+
 ## The forecasting problem
 
 Forecast **H_s**, **hourly**, **24 hours** ahead. Wind speed is listed as **known-future**: an operational wave forecast is driven by an NWP wind *forecast*, which we proxy here with the observed wind (a perfect-forecast upper bound). In the wind-sea regime the wind covariate should lift skill well beyond persistence as lead grows — the opposite balance to the swell-dominated Pacific case.

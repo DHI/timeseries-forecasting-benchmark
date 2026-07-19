@@ -31,6 +31,21 @@ class EnsembleForecaster(Forecaster):
     """
 
     family = "ensemble"
+    library = "no additional library — combines member forecasters' own outputs"
+    compute_profile = (
+        "Sum of its members' costs; cheap in practice since the members are the "
+        "naive baselines (and optionally the fast classical Theta method)."
+    )
+    limitations = (
+        "Only as good as its members — a median/mean of weak forecasts is still "
+        "weak. A member that fails at one origin is silently dropped from that "
+        "step's combination rather than failing the whole prediction."
+    )
+    code_snippet = (
+        "member_forecasts = [m.predict(case, history, horizon) for m in members]\n"
+        "stacked = np.vstack([f['y_hat'] for f in member_forecasts])\n"
+        "y_hat = np.nanmedian(stacked, axis=0)   # or np.nanmean if combine='mean'"
+    )
 
     def __init__(
         self,

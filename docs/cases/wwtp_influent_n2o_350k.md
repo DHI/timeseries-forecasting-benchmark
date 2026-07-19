@@ -22,6 +22,9 @@ flowchart LR
 
 ![EDA](../figures/cases/wwtp_influent_n2o_350k_eda.png)
 
+*EDA panel: hourly total raw influent flow (m³/h) at the plant inlet, resampled from
+the native 2-minute record. No exogenous overlay yet — the pilot is univariate.*
+
 ## The forecasting problem
 
 Forecast **`INLET.Q value`** (total raw influent flow) resampled to **hourly**, evaluated at **6 h and 24 h**. 6 h is the more defensible aeration-control horizon; 24 h additionally spans a full diurnal cycle and wet-weather response decisions. *(Rocco, PR #2: agrees the hourly resolution is right and suggests 6 h, or both 6 h and 24 h.)* Pilot is univariate, but for a sewer-driven influent signal that is only a floor — exogenous rainfall is essential for the wet-weather skill, making the exogenous-aware version the highest-leverage Phase B follow-up.

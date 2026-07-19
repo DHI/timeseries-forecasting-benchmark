@@ -14,6 +14,10 @@ flowchart LR
 
 ![EDA](../figures/cases/discharge_saugeen_eda.png)
 
+*EDA panel: daily discharge (m³/s) at the gauge, no exogenous overlay — this case is
+deliberately univariate. The zoom window shows a two-year window with a clear spring
+snowmelt freshet.*
+
 ## The forecasting problem
 
 Forecast **discharge** at the gauge, **daily**, primary horizon **30 days** (also evaluated at 7 and 14 days), from a 60-day input window. With no exogenous inputs (`case_exo_tier = "none"`), every model in the benchmark sees the same information here — this case isolates pure time-series skill (autoregression, seasonality, trend) from the exogenous-forecast skill that the other hydrology cases add on top.

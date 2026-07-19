@@ -15,6 +15,7 @@ exogenous = ["temp_air", "precip"]
 exogenous_known_future = ["temp_air", "precip"]
 necessary_exogenous = ["temp_air"]
 static_attrs = ["lat", "lon"]
+domain_metrics = ["NSE", "KGE"]
 data_type = "mixed"
 split_mode = "fraction"
 split_fraction = [0.7, 0.85]
