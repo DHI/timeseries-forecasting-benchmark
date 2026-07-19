@@ -1,20 +1,28 @@
 """Rolling-origin evaluation producing error-vs-lead-time curves.
 
-For each of `n_origins` cutoffs spaced across the test period, fit each method on the
-curated history up to the cutoff and forecast `horizon` steps. Errors are collected per
-lead time and averaged over all origins, giving the canonical "skill degrades with lead
-time" curve used to compare methods. Scoring uses only genuinely observed points (the
-curated frame's `y_observed` mask); filled points never enter a metric.
+For each of `n_origins` cutoffs spaced across the test period, forecast `horizon` steps;
+errors are pooled per lead time and averaged over all origins, giving the canonical
+"skill degrades with lead time" curve used to compare methods. How the model behind each
+forecast is obtained depends on the method's `is_global` flag (see `methods.base`):
 
-Refit-per-origin is honest but costs more for ARIMA/LightGBM; keep n_origins modest
-for those, or run the cheap baselines (Mean/Persistence/SeasonalNaive/Climatology)
-which refit trivially.
+- Local methods (AutoARIMA, AutoETS, Theta, TBATS, MSTL, and the naive baselines) have no
+  separable trained model, so they are refit on the curated history up to each cutoff --
+  that refit is simply how they fold in the newer data.
+- Global methods (LightGBM, CatBoost, MLP, LinearLags, DLinear, Chronos, and the optional
+  torch/neuralforecast models) estimate a reusable model once, on data strictly before
+  the test period, then evaluate every cutoff by inference alone -- each origin's predict
+  conditions on the real observed history up to that origin without re-estimating any
+  parameters. This stays leak-free and makes raising `n_origins` cheap for the methods
+  that otherwise dominate runtime.
+
+Scoring uses only genuinely observed points (the curated frame's `y_observed` mask);
+filled points never enter a metric.
 
 `run_case_rolling` is `scripts/run_pilot.py`'s default path (single hold-out `run_case`
 only runs under `--fast`), so it gets the same segment-pooled extended-history scoring
 as `eval.loop.run_case` -- see that module's docstring. Methods that are `is_global` and
-`pools_segments` are refit on the extended history at every one of `n_origins` cutoffs,
-producing a second (`used_extended_history=True`) score alongside the local one.
+`pools_segments` get a second (`used_extended_history=True`) score from a single fit on
+the full pre-curated history (its gap-bounded segments), alongside the local one.
 """
 
 from __future__ import annotations
@@ -26,6 +34,7 @@ import pandas as pd
 
 from tsforecastbench.bench.eval.config import DEFAULT_ORIGINS
 from tsforecastbench.bench.eval.loop import _horizon_to_steps, _raw_y, _segment_extended
+from tsforecastbench.bench.eval.metrics import kge, mape, nse, smape
 from tsforecastbench.bench.methods.base import Forecaster
 from tsforecastbench.data.schema import Case
 from tsforecastbench.data.seasonality import mase_season_for
@@ -72,9 +81,11 @@ def run_case_rolling(
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Rolling-origin scores for the cases x methods matrix — robust to single-window luck.
 
-    Each method is refit at `n_origins` cutoffs spread across the test period and forecasts
-    the primary horizon; errors are POOLED across all origins x leads (observed points only)
-    and the matrix metrics computed once on the pool.
+    Each method forecasts the primary horizon at `n_origins` cutoffs spread across the test
+    period; errors are POOLED across all origins x leads (observed points only) and the
+    matrix metrics computed once on the pool. Local methods refit at each cutoff; global
+    methods (`is_global`) are fit once before the test period and evaluated across all
+    cutoffs by inference (see the module docstring).
 
     Returns `(metrics, snapshots)`:
     - `metrics` keeps the tidy record shape of `loop.run_case` (case_id, domain, method,
@@ -139,7 +150,17 @@ def run_case_rolling(
                     "is_global methods use the curated span only."
                 )
 
-    metric_names = ("MAE", "RMSE", "MASE", "Skill_vs_Persistence", "Skill_vs_Mean")
+    metric_names = (
+        "MAE",
+        "RMSE",
+        "MASE",
+        "Skill_vs_Persistence",
+        "Skill_vs_Mean",
+        "MAPE",
+        "sMAPE",
+        "NSE",
+        "KGE",
+    )
     records: list[dict] = []
     snap_frames: list[pd.DataFrame] = []
     for method in methods:
@@ -155,6 +176,18 @@ def run_case_rolling(
             method_snaps: list[pd.DataFrame] = []
             n_ok = 0
             try:
+                # A global method keeps a trained model apart from its input, so it is fit
+                # once, on data strictly before the test period — train+val locally, or the
+                # pre-curated segments for the extended fit — then evaluated across every
+                # origin by inference alone. No origin's forecast sees test data in its
+                # weights, so this stays leak-free while cutting the cost of `--origins` to
+                # one fit per case. A local (non-global) method, whose parameters are a
+                # direct function of the fitted series, refits at each origin below instead.
+                if method.is_global:
+                    fit_frame = (
+                        pd.concat([*segs], ignore_index=True) if used_extended else train_val
+                    )
+                    method.fit(case, fit_frame)
                 for i, o in enumerate(origins):
                     local_hist = full_fit.iloc[:o]
                     if used_extended:
@@ -164,7 +197,8 @@ def run_case_rolling(
                     else:
                         history = local_hist
                     fexog = full_fit.iloc[o : o + H][["ds", *exo_present]] if exo_present else None
-                    method.fit(case, history)
+                    if not method.is_global:
+                        method.fit(case, history)
                     preds = method.predict(case, history, H, future_exog=fexog)
                     y_hat = preds["y_hat"].to_numpy(float)
                     # Full predicted series (all H steps, before masking) so the viewer
@@ -210,6 +244,10 @@ def run_case_rolling(
                     else float("nan"),
                     "Skill_vs_Persistence": 1.0 - mse / float(np.mean((a - ref_p) ** 2)),
                     "Skill_vs_Mean": 1.0 - mse / float(np.mean((a - ref_m) ** 2)),
+                    "MAPE": mape(a, p),
+                    "sMAPE": smape(a, p),
+                    "NSE": nse(a, p),
+                    "KGE": kge(a, p),
                 }
                 status = "ok"
                 snap_frames.extend(method_snaps)
@@ -222,7 +260,9 @@ def run_case_rolling(
                     {
                         "case_id": case.id,
                         "domain": case.domain,
+                        "case_exo_tier": case.exo_tier,
                         "method": method.name,
+                        "uses_exogenous": method.uses_exogenous,
                         "is_global": method.is_global,
                         "used_extended_history": used_extended,
                         "horizon": case.horizon_primary,
@@ -287,13 +327,23 @@ def run_leadtime_curve(
         sq_err = [[] for _ in range(H)]
         signed = [[] for _ in range(H)]
         n_ok = 0
+        # Same protocol as the matrix (see `run_case_rolling`): a global method is fit once,
+        # on train+val only, then evaluated across every origin by inference; a local method
+        # refits per origin below. A failed single fit makes the method unusable on this
+        # case, so it contributes no rows.
+        if method.is_global:
+            try:
+                method.fit(case, full_fit.iloc[:test_start])
+            except Exception:
+                continue
         for o in origins:
             history = full_fit.iloc[: o + 1]
             future_exog = (
                 full_fit.iloc[o + 1 : o + 1 + H][["ds", *exo_present]] if exo_present else None
             )
             try:
-                method.fit(case, history)
+                if not method.is_global:
+                    method.fit(case, history)
                 y_hat = method.predict(case, history, H, future_exog=future_exog)["y_hat"].to_numpy(
                     dtype=float
                 )

@@ -27,7 +27,7 @@ import time
 import numpy as np
 import pandas as pd
 
-from tsforecastbench.bench.eval.metrics import mae, mase, rmse, skill_score
+from tsforecastbench.bench.eval.metrics import kge, mae, mape, mase, nse, rmse, skill_score, smape
 from tsforecastbench.bench.methods.base import Forecaster, lookback_for
 from tsforecastbench.data.schema import Case, _observed_mask
 from tsforecastbench.data.seasonality import mase_season_for
@@ -185,7 +185,17 @@ def run_case(case: Case, methods: list[Forecaster], prefer_synth: bool = False) 
                     "is_global methods use the curated span only."
                 )
 
-    metric_names = ("MAE", "RMSE", "MASE", "Skill_vs_Persistence", "Skill_vs_Mean")
+    metric_names = (
+        "MAE",
+        "RMSE",
+        "MASE",
+        "Skill_vs_Persistence",
+        "Skill_vs_Mean",
+        "MAPE",
+        "sMAPE",
+        "NSE",
+        "KGE",
+    )
     records: list[dict] = []
     for method in methods:
         # Every method is scored on the local span. Methods that pool segments are scored
@@ -213,6 +223,10 @@ def run_case(case: Case, methods: list[Forecaster], prefer_synth: bool = False) 
                     "MASE": mase(yt, yh, y_train, season=season),
                     "Skill_vs_Persistence": skill_score(yt, yh, ref_persistence[finite]),
                     "Skill_vs_Mean": skill_score(yt, yh, ref_mean[finite]),
+                    "MAPE": mape(yt, yh),
+                    "sMAPE": smape(yt, yh),
+                    "NSE": nse(yt, yh),
+                    "KGE": kge(yt, yh),
                 }
                 status = "ok"
             except Exception as exc:

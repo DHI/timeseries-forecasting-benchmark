@@ -1,7 +1,9 @@
 """Windowed ML methods - Nixtla mlforecast with three sklearn-style estimators.
 
 LinearLags (Ridge), LightGBM and MLP share one lag + calendar feature pipeline; they
-differ only in the underlying regressor. Each comes in two flavours:
+differ only in the underlying regressor. Calendar/seasonal features (date parts plus a
+sin/cos encoding of the case's dominant period) are always included — deterministic and
+free for any future timestamp, unlike exogenous covariates. Each comes in two flavours:
 
   * univariate (target lags + calendar features only) — the Tier-1 column;
   * exogenous-aware (``use_exogenous=True``) — additionally feeds the case's declared
@@ -99,7 +101,29 @@ class _WindowedMLBase(Forecaster):
     pools_segments = True
     max_train_steps: int | None = None
     use_exogenous: bool = False
-    use_calendar: bool = False
+    compute_profile = (
+        "CPU only; a lag+calendar feature table is built once, then the regressor "
+        "fits on it directly — fast for the linear/tree models here, slower for the "
+        "MLP (which also cross-validates an early-stopping split)."
+    )
+    limitations = (
+        "Needs enough history to fill its lag windows (shortest lag 1, longest tied "
+        "to the case's declared seasonal periods). The univariate variant ignores "
+        "exogenous inputs entirely; the +exo variant sees only the future covariate "
+        "values supplied at predict time (a perfect-forecast proxy in this "
+        "benchmark, not a real forecast of those covariates)."
+    )
+    code_snippet = (
+        "from mlforecast import MLForecast\n\n"
+        "fcst = MLForecast(\n"
+        "    models=[<regressor>],           # e.g. LGBMRegressor, Ridge, MLPRegressor\n"
+        "    freq=case.freq,\n"
+        "    lags=[1, 2, 4, 8, 16, 32, *case.seasonalities],\n"
+        '    date_features=["dayofweek", "month", ...],\n'
+        ")\n"
+        "fcst.fit(train_df, static_features=[])\n"
+        "y_hat = fcst.predict(h=horizon, ids=[target_uid])"
+    )
 
     def __init__(self):
         self.uses_exogenous = self.use_exogenous
@@ -131,9 +155,10 @@ class _WindowedMLBase(Forecaster):
             for c in self._exo
         }
 
-        date_feats = list(_date_features_for(case.freq))
-        if self.use_calendar:
-            date_feats += _sincos_features_for(case, df["y"].to_numpy())
+        date_feats = [
+            *_date_features_for(case.freq),
+            *_sincos_features_for(case, df["y"].to_numpy()),
+        ]
 
         self._fcst = MLForecast(
             models=[self._make_model()],
@@ -155,14 +180,20 @@ class _WindowedMLBase(Forecaster):
         horizon: int,
         future_exog: pd.DataFrame | None = None,
     ) -> pd.DataFrame:
-        # Predict only the tail segment's series; with a multi-segment extended fit the
-        # other unique_ids are training-only context and their forecasts are discarded.
-        ids = [self._target_uid]
+        # Inference-only: condition the trained regressor on the tail segment's history as
+        # handed in at this origin (mlforecast's `new_df`), never the frame captured at
+        # fit — so one fit serves every rolling origin. Only the tail segment's series is
+        # forecast; a multi-segment extended fit's other unique_ids were training-only.
+        sub = history[history["unique_id"] == self._target_uid]
+        new_df = sub[[c for c in ["unique_id", "ds", "y", *self._exo] if c in sub.columns]].copy()
+        new_df["ds"] = _naive_ds(new_df["ds"]).to_numpy()
+        for c in self._exo:
+            new_df[c] = pd.to_numeric(new_df[c], errors="coerce")
         if self._exo:
             x_df = self._future_X(case, history, horizon, future_exog)
-            preds = self._fcst.predict(h=horizon, ids=ids, X_df=x_df)
+            preds = self._fcst.predict(h=horizon, new_df=new_df, X_df=x_df)
         else:
-            preds = self._fcst.predict(h=horizon, ids=ids)
+            preds = self._fcst.predict(h=horizon, new_df=new_df)
         y_hat = preds[self._model_col].to_numpy().astype(np.float64)
         future = self._future_index(case, history["ds"].max(), horizon)
         return pd.DataFrame({"ds": future, "y_hat": y_hat})
@@ -188,6 +219,7 @@ class _WindowedMLBase(Forecaster):
 
 class LightGBMForecaster(_WindowedMLBase):
     name = "LightGBM"
+    library = "mlforecast + lightgbm"
 
     def _make_model(self):
         from lightgbm import LGBMRegressor
@@ -197,6 +229,7 @@ class LightGBMForecaster(_WindowedMLBase):
 
 class CatBoostForecaster(_WindowedMLBase):
     name = "CatBoost"
+    library = "mlforecast + catboost"
 
     def _make_model(self):
         from catboost import CatBoostRegressor
@@ -208,6 +241,7 @@ class CatBoostForecaster(_WindowedMLBase):
 
 class LinearLagsForecaster(_WindowedMLBase):
     name = "LinearLags"
+    library = "mlforecast + scikit-learn (Ridge)"
 
     def _make_model(self):
         from sklearn.linear_model import Ridge
@@ -219,6 +253,7 @@ class LinearLagsForecaster(_WindowedMLBase):
 class MLPForecaster(_WindowedMLBase):
     name = "MLP"
     max_train_steps = 20000
+    library = "mlforecast + scikit-learn (MLPRegressor)"
 
     def _make_model(self):
         from sklearn.neural_network import MLPRegressor
@@ -241,16 +276,6 @@ class MLPForecaster(_WindowedMLBase):
 
 class LightGBMExoForecaster(LightGBMForecaster):
     name = "LightGBM+exo"
-    use_exogenous = True
-
-
-class LightGBMCalendarForecaster(LightGBMForecaster):
-    name = "LightGBM+calendar"
-    use_calendar = True
-
-
-class LightGBMCalendarExoForecaster(LightGBMCalendarForecaster):
-    name = "LightGBM+calendar+exo"
     use_exogenous = True
 
 

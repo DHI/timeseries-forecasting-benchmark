@@ -1,12 +1,15 @@
 """Forecast-snapshot panel for the results-matrix app.
 
-Draws, for one case, a grid of small charts — one per rolling-origin snapshot the eval
-pipeline persisted to `results/pilot_snapshots.parquet`. Each panel shows the case's real
-actual series around a forecast origin with one predicted line per selected method
-overlaid, so several methods can be compared on the same origins by clicking cells along a
-matrix row.
+Draws, for one case, a grid of small charts — one per curated rolling-origin snapshot the
+eval pipeline persisted to `results/pilot_snapshots.parquet`. Rather than showing every
+stored origin in storage order, the panel picks up to three representative ones (best,
+median, and worst by whichever metric is selected on the matrix — see `curate_origins`)
+so a viewer sees a meaningful spread of outcomes instead of an arbitrary sequence. Each
+panel shows the case's real actual series around a forecast origin with one predicted
+line per selected method overlaid, so several methods can be compared on the same
+curated origins by clicking cells along a matrix row.
 
-The grid is capped at `MAX_COLS` columns and stacks rows until every stored origin is
+The grid is capped at `MAX_COLS` columns and stacks rows until every curated origin is
 placed. Actuals are not stored in the snapshot artifact; they're reloaded from the case's
 curated series so the target lives in exactly one place.
 """
@@ -28,7 +31,24 @@ from data import (
     load_case_split_values,
     load_case_training_tail,
 )
+from tsforecastbench.bench.eval.metrics import mae as _mae_score
+from tsforecastbench.bench.eval.metrics import mase as _mase_score
+from tsforecastbench.bench.eval.metrics import rmse as _rmse_score
+from tsforecastbench.bench.eval.metrics import skill_score as _skill_score
 from tsforecastbench.data.registry import get_case
+from tsforecastbench.data.seasonality import mase_season_for
+
+METRIC_LOWER_IS_BETTER = {
+    "MAE": True,
+    "RMSE": True,
+    "MASE": True,
+    "MAPE": True,
+    "sMAPE": True,
+    "Skill_vs_Persistence": False,
+    "Skill_vs_Mean": False,
+    "NSE": False,
+    "KGE": False,
+}
 
 MAX_COLS = 3
 TRAINING_TAIL_N = 1000
@@ -54,11 +74,38 @@ def _horizon_steps(case) -> int:
 
 @cache
 def _actual_series(case_id: str) -> pd.Series:
-    """The case's real curated target, indexed by timestamp. Cached: curated data is
+    """The case's real curated target, indexed by timestamp -- gap-filled, like the
+    `y` column the eval pipeline fits models on and builds persistence/mean reference
+    forecasts from (see `bench.eval.rolling.run_case_rolling`). Cached: curated data is
     static, and the same series is reused across every origin panel and re-click."""
     case = get_case(case_id)
     df = case.load(curated=True)
     return pd.Series(df["y"].to_numpy(dtype=float), index=pd.DatetimeIndex(df["ds"]))
+
+
+@cache
+def _observed_actual_series(case_id: str) -> pd.Series:
+    """Like `_actual_series`, but with filled (non-observed) points masked back to NaN
+    -- mirrors `bench.eval.loop._raw_y`, so only genuinely-observed points count towards
+    a per-origin metric, matching how the matrix itself scores."""
+    case = get_case(case_id)
+    df = case.load(curated=True)
+    mask = df["y_observed"] if "y_observed" in df.columns else df["y"].notna()
+    y = np.where(mask.to_numpy(), df["y"].to_numpy(dtype=float), np.nan)
+    return pd.Series(y, index=pd.DatetimeIndex(df["ds"]))
+
+
+@cache
+def _mase_context(case_id: str) -> tuple[np.ndarray, int]:
+    """(train+val `y`, seasonal period) for this case's MASE denominator -- mirrors the
+    once-per-case `naive_scale` in `bench.eval.rolling.run_case_rolling`, so a per-origin
+    MASE uses the same fixed scale as the matrix's pooled MASE rather than a per-origin
+    one."""
+    case = get_case(case_id)
+    df = case.load(curated=True)
+    splits = case.split_frame(df)
+    y_train = pd.concat([splits["train"], splits["val"]])["y"].to_numpy(dtype=float)
+    return y_train, mase_season_for(case.seasonalities, len(y_train))
 
 
 def _empty_fig(message: str) -> go.Figure:
@@ -243,22 +290,122 @@ def render_split_proportions(case_id: str, extended: bool = False) -> go.Figure:
     return fig
 
 
+def _origin_metric(case_id: str, origin_preds: pd.DataFrame, metric: str) -> float:
+    """One origin's score on `metric`, computed the same way the matrix's pooled score
+    is (see `bench.eval.rolling.run_case_rolling`), just over a single origin's window
+    instead of pooled across all of them. NaN if the window has no observed actual, or
+    (MASE only) the case's train+val span can't support a seasonal-naive scale.
+
+    MAE/RMSE/MASE compare against the observed-only actual (`_observed_actual_series`);
+    MASE's denominator is the case-level `_mase_context` scale, not a per-origin one.
+    The skill scores compare against a reference forecast built from the *filled*
+    history strictly before this origin (`_actual_series`) -- persistence repeats its
+    last value, mean repeats its average -- mirroring how the pipeline isolates the
+    model's skill from a shifted baseline.
+    """
+    ds = pd.DatetimeIndex(origin_preds["ds"])
+    aligned = _observed_actual_series(case_id).reindex(ds)
+    mask = aligned.notna().to_numpy()
+    if not mask.any():
+        return float("nan")
+    y = aligned.to_numpy()[mask]
+    y_hat = origin_preds["y_hat"].to_numpy(dtype=float)[mask]
+
+    from tsforecastbench.bench.eval.metrics import kge as _kge
+    from tsforecastbench.bench.eval.metrics import mape as _mape
+    from tsforecastbench.bench.eval.metrics import nse as _nse
+    from tsforecastbench.bench.eval.metrics import smape as _smape
+
+    if metric == "RMSE":
+        return _rmse_score(y, y_hat)
+    if metric == "MAPE":
+        return _mape(y, y_hat)
+    if metric == "sMAPE":
+        return _smape(y, y_hat)
+    if metric == "NSE":
+        return _nse(y, y_hat)
+    if metric == "KGE":
+        return _kge(y, y_hat)
+    if metric == "MASE":
+        y_train, season = _mase_context(case_id)
+        try:
+            return _mase_score(y, y_hat, y_train, season=season)
+        except ValueError:
+            return float("nan")
+    if metric in ("Skill_vs_Persistence", "Skill_vs_Mean"):
+        origin_ds = pd.Timestamp(origin_preds["origin_ds"].iloc[0])
+        history = _actual_series(case_id)
+        local_hist = history[history.index < origin_ds].to_numpy()
+        if len(local_hist) == 0:
+            return float("nan")
+        reference = local_hist[-1] if metric == "Skill_vs_Persistence" else np.nanmean(local_hist)
+        return _skill_score(y, y_hat, np.full(mask.sum(), float(reference)))
+    return _mae_score(y, y_hat)  # default / "MAE"
+
+
+def curate_origins(
+    case_preds: pd.DataFrame, anchor_method: str, case_id: str, metric: str = "MAE"
+) -> pd.DataFrame:
+    """Pick up to 3 representative origins for one case — the best, median, and worst
+    performing by `metric` (whichever the matrix currently shows) for `anchor_method`
+    (the first-selected/"anchor" method of the overlay) — so the snapshot grid shows a
+    meaningful spread of outcomes rather than whatever origins happen to be first in
+    storage order. All overlaid methods share this same set of origins so their
+    forecasts remain directly comparable.
+
+    Returns a frame with columns (origin_id, origin_ds, value, label), ordered
+    Best -> Median -> Worst ("Best" always means most-favorable by `metric`, so lowest
+    for an error metric but highest for a skill score -- see `METRIC_LOWER_IS_BETTER`).
+    Origins with an undefined score are dropped before ranking; if fewer than 3 remain,
+    only the labels that make sense are emitted (e.g. just Best/Worst for 2 origins).
+    """
+    anchor_preds = case_preds[case_preds["method"] == anchor_method]
+    origins = anchor_preds[["origin_id", "origin_ds"]].drop_duplicates().reset_index(drop=True)
+    origins["value"] = [
+        _origin_metric(case_id, anchor_preds[anchor_preds["origin_id"] == oid], metric)
+        for oid in origins["origin_id"]
+    ]
+    ascending = METRIC_LOWER_IS_BETTER.get(metric, True)
+    origins = origins.dropna(subset=["value"]).sort_values("value", ascending=ascending)
+    origins = origins.reset_index(drop=True)
+
+    n = len(origins)
+    if n == 0:
+        return origins.assign(label=pd.Series(dtype=object))
+    if n == 1:
+        picks, labels = [0], ["Best"]
+    elif n == 2:
+        picks, labels = [0, 1], ["Best", "Worst"]
+    else:
+        picks = sorted({0, n // 2, n - 1})
+        label_of = {0: "Best", n // 2: "Median", n - 1: "Worst"}
+        labels = [label_of[i] for i in picks]
+
+    curated = origins.loc[picks].copy()
+    curated["label"] = labels
+    return curated
+
+
 def render_snapshots(
     case_id: str,
     methods: list[str],
     preds: pd.DataFrame,
     show_global: bool = False,
     max_cols: int = MAX_COLS,
+    metric: str = "MAE",
 ) -> go.Figure:
-    """Grid of forecast-origin snapshots for one case, overlaying each of `methods`.
+    """Grid of curated forecast-origin snapshots for one case, overlaying each of
+    `methods`.
 
-    `preds` is the snapshot artifact (see `data.load_snapshots`); origins come from it, so
-    every method shares the same panels and the overlays line up. When `show_global` is
-    True, a method with an extended-history fit for this case (see
+    `preds` is the snapshot artifact (see `data.load_snapshots`). Rather than showing
+    every stored origin, origins are curated by `curate_origins` — best/median/worst by
+    `metric` (the matrix's currently-selected metric) for `methods[0]` (the anchor) — so
+    every method shares the same curated panels and the overlays line up. When
+    `show_global` is True, a method with an extended-history fit for this case (see
     `bench.eval.rolling.run_case_rolling`) is drawn from that fit instead of the local one
-    -- matching the matrix's toggle -- with its legend entry flagged accordingly. `max_cols`
-    caps how many origin panels share a row; pass 1 to stack them in a single column, e.g.
-    when rendering into a narrow vertical panel.
+    -- matching the matrix's toggle -- with its legend entry flagged accordingly.
+    `max_cols` caps how many origin panels share a row; pass 1 to stack them in a single
+    column, e.g. when rendering into a narrow vertical panel.
     """
     case_preds = preds[preds["case_id"] == case_id]
     if case_preds.empty:
@@ -279,8 +426,10 @@ def render_snapshots(
     if case_preds.empty:
         return _empty_fig(f"No stored forecasts for {case_id} (needs a rolling pilot run).")
 
-    origins = case_preds[["origin_id", "origin_ds"]].drop_duplicates().sort_values("origin_id")
-    origins = list(origins.itertuples(index=False))
+    curated = curate_origins(case_preds, methods[0], case_id, metric)
+    if curated.empty:
+        return _empty_fig(f"No observed actuals to score any stored origin for {case_id}.")
+    origins = list(curated.itertuples(index=False))
 
     case = get_case(case_id)
     horizon_steps = _horizon_steps(case)
@@ -292,12 +441,12 @@ def render_snapshots(
     n_cols = min(max_cols, n)
     n_rows = math.ceil(n / n_cols)
 
-    # titles = [pd.Timestamp(o.origin_ds).strftime("%Y-%m-%d %H:%M") for o in origins]
+    titles = [f"{o.label} · ({metric} {o.value:.3g})" for o in origins]
     fig = make_subplots(
         rows=n_rows,
         cols=n_cols,
-        shared_yaxes="all",
-        # subplot_titles=titles,
+        shared_yaxes=False,
+        subplot_titles=titles,
         vertical_spacing=0.12,
         horizontal_spacing=0.04,
     )
@@ -306,7 +455,6 @@ def render_snapshots(
 
     for i, origin in enumerate(origins):
         row, col = i // n_cols + 1, i % n_cols + 1
-        first_panel = i == 0
         origin_ds = pd.Timestamp(origin.origin_ds)
         origin_preds = case_preds[case_preds["origin_id"] == origin.origin_id]
 
@@ -320,7 +468,7 @@ def render_snapshots(
                 mode="lines",
                 line={"color": ACTUAL_COLOR, "width": 2},
                 legendgroup="Actual",
-                showlegend=first_panel,
+                showlegend=False,
             ),
             row=row,
             col=col,
@@ -339,7 +487,7 @@ def render_snapshots(
                     mode="lines",
                     line={"color": color_of[method], "width": 2},
                     legendgroup=method,
-                    showlegend=first_panel,
+                    showlegend=False,
                 ),
                 row=row,
                 col=col,

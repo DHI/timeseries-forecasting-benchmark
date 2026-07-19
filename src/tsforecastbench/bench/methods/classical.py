@@ -42,6 +42,23 @@ def _prepare_train(train: pd.DataFrame, max_train_steps: int) -> pd.DataFrame:
 class AutoARIMAForecaster(Forecaster):
     name = "AutoARIMA"
     family = "classical"
+    library = "statsforecast (Nixtla)"
+    compute_profile = (
+        "CPU only; a stepwise order search, typically seconds per case (fit is capped "
+        "at the most recent 5,000 points by default)."
+    )
+    limitations = (
+        "Non-seasonal by default (season_length=1) — a large seasonal period would "
+        "explode SARIMA's search cost, so seasonal structure isn't modeled unless you "
+        "pass season_length explicitly. Univariate: ignores exogenous inputs."
+    )
+    code_snippet = (
+        "from statsforecast import StatsForecast\n"
+        "from statsforecast.models import AutoARIMA\n\n"
+        "sf = StatsForecast(models=[AutoARIMA(season_length=1)], freq=case.freq)\n"
+        "sf.fit(train_df)                     # train_df: unique_id, ds, y\n"
+        'y_hat = sf.predict(h=horizon)["AutoARIMA"]'
+    )
 
     def __init__(self, season_length: int = 1, max_train_steps: int = 5000):
         self.season_length = season_length
@@ -83,6 +100,23 @@ class AutoETSForecaster(Forecaster):
 
     name = "AutoETS"
     family = "classical"
+    library = "statsforecast (Nixtla)"
+    compute_profile = (
+        "CPU only; searches over error/trend/season state combinations, typically "
+        "seconds per case (fit is capped at the most recent 5,000 points by default)."
+    )
+    limitations = (
+        "Non-seasonal by default (season_length=1), like AutoARIMA — its seasonal "
+        "state grows with the period, so a large seasonal period is impractical unless "
+        "you pass season_length explicitly. Univariate: ignores exogenous inputs."
+    )
+    code_snippet = (
+        "from statsforecast import StatsForecast\n"
+        "from statsforecast.models import AutoETS\n\n"
+        "sf = StatsForecast(models=[AutoETS(season_length=1)], freq=case.freq)\n"
+        "sf.fit(train_df)                     # train_df: unique_id, ds, y\n"
+        'y_hat = sf.predict(h=horizon)["AutoETS"]'
+    )
 
     def __init__(self, season_length: int = 1, max_train_steps: int = 5000):
         self.season_length = season_length
@@ -131,6 +165,24 @@ class TBATSForecaster(Forecaster):
 
     name = "TBATS"
     family = "classical"
+    library = "statsforecast (Nixtla)"
+    compute_profile = (
+        "CPU only; the heaviest of the classical methods here, so it's fit on a "
+        "smaller window (3,000 points) than its siblings — still typically seconds "
+        "per case, but noticeably slower than AutoARIMA/AutoETS/Theta."
+    )
+    limitations = (
+        "Univariate: ignores exogenous inputs. Its internal Box-Cox transform assumes "
+        "strictly positive data; a Yeo-Johnson fallback (see below) handles series "
+        "that dip to zero or negative."
+    )
+    code_snippet = (
+        "from statsforecast import StatsForecast\n"
+        "from statsforecast.models import TBATS\n\n"
+        "sf = StatsForecast(models=[TBATS(season_length=season_length)], freq=case.freq)\n"
+        "sf.fit(train_df)                     # train_df: unique_id, ds, y\n"
+        'y_hat = sf.predict(h=horizon)["TBATS"]'
+    )
 
     def __init__(self, season_length: int | list[int] | None = None, max_train_steps: int = 3000):
         self.season_length = season_length
@@ -207,6 +259,23 @@ class ThetaForecaster(Forecaster):
 
     name = "Theta"
     family = "classical"
+    library = "statsforecast (Nixtla)"
+    compute_profile = (
+        "CPU only; a cheap deseasonalize/fit/re-seasonalize decomposition, typically "
+        "the fastest of the classical methods here (fit is capped at 8,000 points)."
+    )
+    limitations = (
+        "Univariate: ignores exogenous inputs. Deseasonalization is a fixed classical "
+        "decomposition rather than a learned model, so it can lag a genuinely "
+        "shifting seasonal shape."
+    )
+    code_snippet = (
+        "from statsforecast import StatsForecast\n"
+        "from statsforecast.models import AutoTheta\n\n"
+        "sf = StatsForecast(models=[AutoTheta(season_length=season_length)], freq=case.freq)\n"
+        "sf.fit(train_df)                     # train_df: unique_id, ds, y\n"
+        'y_hat = sf.predict(h=horizon)["AutoTheta"]'
+    )
 
     def __init__(self, season_length: int | None = None, max_train_steps: int = 8000):
         self.season_length = season_length
@@ -265,6 +334,27 @@ class _MSTLBase(Forecaster):
     name = "MSTL"
     family = "classical"
     max_train_steps = 8000
+    library = "statsforecast (Nixtla)"
+    compute_profile = (
+        "CPU only; a fast STL-based decomposition plus the subclass's trend forecaster "
+        "(fit is capped at 8,000 points) — typically seconds per case."
+    )
+    limitations = (
+        "Univariate: ignores exogenous inputs. Needs at least 2 full cycles of each "
+        "declared seasonal period in the training window to fit at all; raises rather "
+        "than degenerating into a duplicate non-seasonal forecast when a case has no "
+        "seasonality it can use."
+    )
+    code_snippet = (
+        "from statsforecast import StatsForecast\n"
+        "from statsforecast.models import MSTL\n\n"
+        "sf = StatsForecast(\n"
+        "    models=[MSTL(season_length=periods, trend_forecaster=<trend_forecaster>)],\n"
+        "    freq=case.freq,\n"
+        ")\n"
+        "sf.fit(train_df)                     # train_df: unique_id, ds, y\n"
+        'y_hat = sf.predict(h=horizon)["MSTL"]'
+    )
 
     def _make_trend_forecaster(self):
         raise NotImplementedError
@@ -312,6 +402,7 @@ class MSTLAutoETSForecaster(_MSTLBase):
     """MSTL with an AutoETS trend-cycle/residual forecaster (statsforecast's default)."""
 
     name = "MSTL-ETS"
+    library = "statsforecast (Nixtla) — trend forecaster: AutoETS"
 
     def _make_trend_forecaster(self):
         from statsforecast.models import AutoETS
@@ -327,6 +418,7 @@ class MSTLAutoARIMAForecaster(_MSTLBase):
 
     name = "MSTL-ARIMA"
     max_train_steps = 5000
+    library = "statsforecast (Nixtla) — trend forecaster: AutoARIMA"
 
     def _make_trend_forecaster(self):
         from statsforecast.models import AutoARIMA

@@ -21,6 +21,7 @@ METRIC_CONFIG = {
         "vhi": 2.0,
         "label": "MASE (lower=better; 1 = seasonal naive; colour clamped to [0, 2])",
         "fmt": "{:.2f}",
+        "lower_is_better": True,
     },
     "Skill_vs_Persistence": {
         "cmap": "RdYlGn",
@@ -29,6 +30,7 @@ METRIC_CONFIG = {
         "vhi": 1.0,
         "label": "Skill vs persistence (higher=better; 0 = no better; colour clamped to [-1, 1])",
         "fmt": "{:+.2f}",
+        "lower_is_better": False,
     },
     "Skill_vs_Mean": {
         "cmap": "RdYlGn",
@@ -37,9 +39,57 @@ METRIC_CONFIG = {
         "vhi": 1.0,
         "label": "Skill vs mean (higher=better; 0 = no better; colour clamped to [-1, 1])",
         "fmt": "{:+.2f}",
+        "lower_is_better": False,
     },
-    "MAE": {"cmap": "Reds", "center": None, "label": "MAE (lower is better)", "fmt": "{:.3g}"},
-    "RMSE": {"cmap": "Reds", "center": None, "label": "RMSE (lower is better)", "fmt": "{:.3g}"},
+    "MAE": {
+        "cmap": "Reds",
+        "center": None,
+        "label": "MAE (lower is better)",
+        "fmt": "{:.3g}",
+        "lower_is_better": True,
+    },
+    "RMSE": {
+        "cmap": "Reds",
+        "center": None,
+        "label": "RMSE (lower is better)",
+        "fmt": "{:.3g}",
+        "lower_is_better": True,
+    },
+    "MAPE": {
+        "cmap": "Reds",
+        "center": None,
+        "label": "MAPE (lower is better)",
+        "fmt": "{:.1%}",
+        "lower_is_better": True,
+    },
+    "sMAPE": {
+        "cmap": "Reds",
+        "center": None,
+        "label": "sMAPE (lower is better)",
+        "fmt": "{:.1%}",
+        "lower_is_better": True,
+    },
+    # NSE/KGE are domain-restricted (see `Case.domain_metrics`): being listed here makes
+    # them selectable, but the app additionally filters matrix rows down to only the cases
+    # that declare eligibility, so they never appear against a domain they don't fit.
+    "NSE": {
+        "cmap": "RdYlGn",
+        "center": 0.0,
+        "vlo": -1.0,
+        "vhi": 1.0,
+        "label": "NSE (higher=better; 1=perfect; 0=no better than the mean; colour clamped to [-1, 1])",
+        "fmt": "{:.2f}",
+        "lower_is_better": False,
+    },
+    "KGE": {
+        "cmap": "RdYlGn",
+        "center": 0.0,
+        "vlo": -1.0,
+        "vhi": 1.0,
+        "label": "KGE (higher=better; 1=perfect; colour clamped to [-1, 1])",
+        "fmt": "{:.2f}",
+        "lower_is_better": False,
+    },
 }
 
 
