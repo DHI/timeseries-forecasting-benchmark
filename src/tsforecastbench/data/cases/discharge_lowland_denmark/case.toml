@@ -6,6 +6,7 @@ target = "q_obs"
 target_unit = "mm/d"
 
 freq = "1D"
+seasonalities = [365]
 horizon_primary = "7D"
 horizons_eval = ["1D", "7D", "14D"]
 input_window = "60D"

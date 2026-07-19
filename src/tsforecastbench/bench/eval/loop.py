@@ -18,8 +18,8 @@ import pandas as pd
 
 from tsforecastbench.bench.eval.metrics import mae, mase, rmse, skill_score
 from tsforecastbench.bench.methods.base import Forecaster
-from tsforecastbench.bench.methods.naive import _default_season_length
 from tsforecastbench.data.schema import Case, _observed_mask
+from tsforecastbench.data.seasonality import mase_season_for
 
 
 def _horizon_to_steps(horizon: str, freq: str) -> int:
@@ -90,7 +90,10 @@ def run_case(case: Case, methods: list[Forecaster], prefer_synth: bool = False) 
     frac_finite = float(finite.mean()) if len(finite) else 0.0
 
     y_train = train_fit["y"].to_numpy(dtype=float)
-    season = _default_season_length(case.freq)
+    # Declared dominant period the train series can support (>= 2 cycles), else the next
+    # declared period, else 1 — a real season or honest persistence scaling, never an
+    # arbitrary truncated lag.
+    season = mase_season_for(case.seasonalities, len(y_train))
     ref_persistence = np.full(horizon_steps, float(train_fit["y"].iloc[-1]))
     ref_mean = np.full(horizon_steps, float(np.nanmean(y_train)))
 
@@ -111,7 +114,7 @@ def run_case(case: Case, methods: list[Forecaster], prefer_synth: bool = False) 
             metrics = {
                 "MAE": mae(yt, yh),
                 "RMSE": rmse(yt, yh),
-                "MASE": mase(yt, yh, y_train, season=min(season, len(y_train) // 2)),
+                "MASE": mase(yt, yh, y_train, season=season),
                 "Skill_vs_Persistence": skill_score(yt, yh, ref_persistence[finite]),
                 "Skill_vs_Mean": skill_score(yt, yh, ref_mean[finite]),
             }

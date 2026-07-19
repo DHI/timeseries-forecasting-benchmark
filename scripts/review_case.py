@@ -42,7 +42,6 @@ from tsforecastbench.bench.methods.naive import (  # noqa: E402
     MeanBaseline,
     Persistence,
     SeasonalNaive,
-    _default_season_length,
 )
 from tsforecastbench.data.registry import discover_cases  # noqa: E402
 from tsforecastbench.data.schema import Case  # noqa: E402
@@ -456,14 +455,14 @@ def check_config(case: Case, df: pd.DataFrame) -> list[Check]:
     checks: list[Check] = []
     # horizon must fit the test window
     horizon_steps = _horizon_to_steps(case.horizon_primary, case.freq)
-    season = _default_season_length(case.freq)
+    seasons = case.seasonalities
     checks.append(
         Check(
             "horizon",
             PASS,
             f"Primary horizon {case.horizon_primary} = {horizon_steps} steps; "
-            f"default season {season} steps.",
-            {"horizon_steps": horizon_steps, "season": season},
+            f"declared seasonalities {seasons if seasons else '[] (non-seasonal)'}.",
+            {"horizon_steps": horizon_steps, "seasonalities": seasons},
         )
     )
     # required columns
@@ -495,6 +494,66 @@ def check_config(case: Case, df: pd.DataFrame) -> list[Check]:
 
 
 # ---------------------------------------------------------------------------------
+# 5. Seasonality: declared values vs train-split evidence (advisory drift alarm)
+# ---------------------------------------------------------------------------------
+def check_seasonality(case: Case, df: pd.DataFrame) -> list[Check]:
+    """Advisory only: recompute the detection evidence and compare with the declared
+    `seasonalities`. The declared field remains the single source of truth for the
+    train/predict cycle — a WARN here means the data drifted since curation, or a
+    deviation from the evidence that should be justified in the case notes."""
+    from tsforecastbench.data.seasonality import detect_candidates, proposed_seasonalities
+
+    try:
+        data = case.load(curated=True)
+    except Exception:
+        data = df  # synthetic-only case: evidence is indicative at best
+    try:
+        train = case.split_frame(data)["train"]
+        # Declared off-menu periods are added as candidates so each gets evidence too.
+        evidence = detect_candidates(
+            train["y"].to_numpy(), case.freq, extra_candidates=tuple(case.seasonalities)
+        )
+    except Exception as exc:
+        return [Check("seasonality_evidence", WARN, f"could not evaluate: {exc}", {})]
+
+    proposed = proposed_seasonalities(evidence)
+    by_period = {e["period"]: e for e in evidence}
+    declared = case.seasonalities
+    detail = {"declared": declared, "proposed": proposed, "evidence": evidence}
+
+    checks: list[Check] = []
+    unsupported = [p for p in declared if not by_period[p]["accepted"]]
+    undeclared = [p for p in proposed if p not in declared]
+    if unsupported:
+        checks.append(
+            Check(
+                "seasonality_declared_unsupported",
+                WARN,
+                f"Declared period(s) {unsupported} lack train-split evidence "
+                "(see notebooks/seasonality.py); justify the deviation in the case notes.",
+                detail,
+            )
+        )
+    if undeclared:
+        checks.append(
+            Check(
+                "seasonality_undeclared",
+                WARN,
+                f"Evidence supports period(s) {undeclared} that the case does not declare.",
+                detail,
+            )
+        )
+    if not checks:
+        msg = (
+            "Explicitly non-seasonal, confirmed: no candidate period has evidence."
+            if not declared
+            else f"Declared seasonalities {declared} consistent with train-split evidence."
+        )
+        checks.append(Check("seasonality", PASS, msg, detail))
+    return checks
+
+
+# ---------------------------------------------------------------------------------
 # Orchestration + reporting
 # ---------------------------------------------------------------------------------
 def review(case: Case, max_gap: pd.Timedelta) -> dict:
@@ -506,6 +565,7 @@ def review(case: Case, max_gap: pd.Timedelta) -> dict:
         "config": check_config(case, df),
         "fullness": check_fullness(case, df, max_gap),
         "exogenous": check_exogenous(case, df),
+        "seasonality": check_seasonality(case, df),
     }
     fc_checks, fc_res = check_forecastable(case, prefer_synth=not has_parquet)
     sections["forecastable"] = fc_checks

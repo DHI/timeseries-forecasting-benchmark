@@ -6,6 +6,7 @@ target = "inlet_flow"
 target_unit = "L/s"
 
 freq = "1h"
+seasonalities = [24, 96, 168]
 horizon_primary = "24h"
 horizons_eval = ["6h", "24h", "168h"]
 input_window = "14D"
