@@ -94,9 +94,11 @@ The columns of the matrix. Roughly 16 methods, grouped:
 - Lag-Llama (open, smaller)
 
 Chronos-Bolt was the first zero-shot entry; Chronos-2, TimesFM 2.5 and Moirai-2.0 join it as
-univariate wrappers (all four via `run_pilot --with-fm`). Their covariate-aware modes are a
-possible follow-up. TimeMoE, TimeGPT and Lag-Llama are deprioritised — TimeGPT is API-only,
-and both it and the other two have been overtaken by newer entrants in recent comparisons.
+univariate wrappers (all four via `run_pilot --with-fm`). Chronos-2, TimesFM 2.5 and
+Moirai-2.0 also have `+exo` variants that can condition on declared covariates when the
+benchmark supplies future covariate values (a perfect-forecast proxy). TimeMoE, TimeGPT and
+Lag-Llama are deprioritised — TimeGPT is API-only, and both it and the other two have been
+overtaken by newer entrants in recent comparisons.
 
 **Hybrid & operational reference (what clients actually receive today)**
 
