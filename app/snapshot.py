@@ -38,15 +38,16 @@ from tsforecastbench.bench.eval.metrics import skill_score as _skill_score
 from tsforecastbench.data.registry import get_case
 from tsforecastbench.data.seasonality import mase_season_for
 
-# Sort direction per matrix metric (see tsforecastbench.bench.viz.METRIC_CONFIG for the
-# same set of names) -- lower is better for error metrics, higher is better for skill
-# scores. Falls back to "min" for any metric not listed here.
 METRIC_LOWER_IS_BETTER = {
     "MAE": True,
     "RMSE": True,
     "MASE": True,
+    "MAPE": True,
+    "sMAPE": True,
     "Skill_vs_Persistence": False,
     "Skill_vs_Mean": False,
+    "NSE": False,
+    "KGE": False,
 }
 
 MAX_COLS = 3
