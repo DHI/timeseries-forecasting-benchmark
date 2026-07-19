@@ -503,4 +503,4 @@ def render_panel(sel, n_reload):
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=8050)
+    app.run(debug=False, port=8050)
