@@ -128,6 +128,7 @@ def _dayofyear_365(idx: pd.DatetimeIndex) -> np.ndarray:
     after_feb28 = doy0 >= 59
     return doy0 - (leap & after_feb28).astype(int)
 
+
 _CANONICAL_POSITIONS = {
     ("1d", 7): lambda idx: idx.dayofweek,
     ("1d", 365): _dayofyear_365,
