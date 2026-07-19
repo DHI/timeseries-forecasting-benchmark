@@ -17,6 +17,9 @@ flowchart LR
 
 ![EDA](../figures/cases/discharge_flashy_catskills_eda.png)
 
+*EDA panel: daily discharge (m³/s) at the gauge, with ERA5 precipitation overlaid. The
+zoom window is centred on the storm year with the sharpest flood peaks.*
+
 ## The forecasting problem
 
 Forecast **discharge** at the gauge, **daily**, **7 days** ahead. Days 1–2 are near-persistence (the current flood wave is in the channel); days 3–7 depend on the **precipitation forecast** — exactly where the rainfall covariate turns into skill. Richards–Baker flashiness ≈ 0.3 (vs the near-flat DK catchment), so the wet-weather peaks dominate the error.

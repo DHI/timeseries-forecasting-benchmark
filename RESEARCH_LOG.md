@@ -8,6 +8,309 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-15 — Gave Chronos-2, TimesFM 2.5 and Moirai-2.0 `+exo` variants
+
+Closed the covariate follow-up flagged in the 2026-07-14 FM entry: each of the three
+foundation models that natively supports covariates (Chronos-2 via `predict_df`'s
+`future_df`, TimesFM via `forecast_with_covariates`, Moirai via `feat_dynamic_real`) now
+has a `+exo` sibling, mirroring the LightGBM/CatBoost/LinearLags `+exo` pattern — future
+covariate values are the eval loop's perfect-forecast proxy, not a real forecast of those
+covariates. Chronos-Bolt stays univariate-only; its architecture has no covariate
+mechanism to expose. One real gotcha: TimesFM's `forecast_with_covariates` requires
+`return_backcast=True` at compile time, but that flag silently changes what plain
+`forecast()` returns (backcast prepended ahead of the horizon rather than just the
+horizon) — so the covariate path now compiles and caches a second model instance,
+keeping the univariate path's compiled model and output shape untouched. All three
+variants were smoke-tested end-to-end against real cached model weights (not just
+synthetic placeholders) on a covariate-bearing case and a covariate-free one before
+committing.
+
+## 2026-07-14 — Fixed matrix cell clicks crashing with `KeyError: 'customdata'`
+
+Every click on a matrix cell in `app/app.py` raised `KeyError: 'customdata'`. Root cause: Dash's
+`clickData` only reconstructs a trace's `customdata` for points indexed by a flat
+`pointNumber`/`pointNumbers` (how 1D traces like scatter work) — a Heatmap addresses cells by
+`x`/`y` instead, so Dash silently omits `customdata` from every heatmap click regardless of what
+the figure sets it to. The exo-toggle's effective-method lookup (added in the entry below) had
+relied on reading it from `customdata[5]`. Fixed by resolving the effective method server-side
+from the clicked `x` (base method) plus the `show-exogenous` toggle state and the case's
+`case_exo_tier`, the same swap condition `render_matrix` already uses — no more reliance on
+`customdata` for heatmap clicks. Any future click-driven feature on this matrix should read
+`x`/`y` off the click point, not `customdata`.
+
+## 2026-07-14 — Added three zero-shot foundation models (Chronos-2, TimesFM 2.5, Moirai-2.0)
+
+Chronos-Bolt was the only foundation model implemented of the six the plan called for; added
+Chronos-2, TimesFM 2.5 and Moirai-2.0 alongside it, each as a univariate zero-shot wrapper
+behind the common `Forecaster` interface and added to `run_pilot --with-fm`. They're
+univariate for now (matching the existing Chronos-Bolt precedent) — the models' covariate
+modes are a possible follow-up rather than part of this change. All three install through a
+single `fm` extra (`uv sync --extra fm`), so one command sets up everything `--with-fm`
+scores. Moirai's `uni2ts` is the binding dependency: it hard-pins scipy~=1.11.3 / numpy~=1.26
+/ torch<2.5, none of which have Python-3.13 wheels, so the whole project is now capped at
+**Python 3.11–3.12** (`requires-python = ">=3.11,<3.13"`) and its base stack drops to
+numpy 1.26 / scipy 1.11 / torch 2.4 to keep every model installable in one environment.
+Chronos and TimesFM both fit comfortably inside those bounds. TimeMoE, TimeGPT and Lag-Llama
+were dropped from the near-term plan (TimeGPT is API-only; all three have been overtaken in
+recent comparisons). No benchmark numbers yet — scoring these needs a `--with-fm` pilot run.
+
+## 2026-07-14 — Folded +exo method variants into an app-level toggle; retired +calendar
+
+Replaced the separate `LightGBM+exo`/`CatBoost+exo`/`LinearLags+exo` matrix columns with one
+column per algorithm plus a sidebar checkbox that swaps in the exogenous-aware score (marked
+with a teal corner) for cases with real exogenous data — the same swap-and-mark mechanism the
+app already used for the extended-history toggle. This also settled an open question about
+calendar/seasonal features: unlike genuine exogenous covariates, they're deterministic and free
+for any future timestamp, so they no longer sit behind a separate `+calendar` variant (only
+LightGBM had one) and are now always included for every windowed-ML method. While wiring this
+up, found that `run_case_rolling` — the default pilot path — never emitted the
+`case_exo_tier`/`uses_exogenous` fields the toggle depends on (only the `--fast` path did), so
+the committed `docs/results/scores.parquet` doesn't have them yet: the pilot needs a re-run
+before the checkbox works, and the method list is three columns shorter as a result.
+
+## 2026-07-14 — Committed distilled scores to docs/ for onboarding (issue #19)
+
+`run_pilot.py` now writes its distilled metrics to `docs/results/scores.parquet` and the
+three main matrix PNGs to `docs/figures/benchmark/`, in addition to the full working output
+in gitignored `results/`. The results-matrix app (`app/data.py`) now reads from that
+committed file too, so a fresh clone can open the app and see real scores without running
+the pilot first; per-origin snapshots (the click-through forecast detail) still need a
+local pilot run, since those stay in `results/` and aren't committed. While wiring this up,
+found that `.gitignore`'s `results/` rule was unanchored and silently swallowed
+`docs/results/` as well — fixed to `/results/` so only the top-level directory is ignored.
+`docs/results/scores.parquet` and the three matrix figures are now populated from the most
+recent pilot run and should be regenerated (`uv run python scripts/run_pilot.py --with-fm`)
+and committed after future runs.
+
+## 2026-07-13 — Added MAPE, sMAPE, NSE, and KGE (issue #34)
+
+Both eval paths (single hold-out and rolling-origin) now also compute MAPE, sMAPE, NSE, and
+KGE for every case and method, alongside the existing five metrics. MAPE/sMAPE are
+dimensionless like MASE, so they're a plain addition to the matrix's metric dropdown. NSE
+and KGE are hydrology-standard but only meaningful for flow/level cases, so each case now
+declares eligibility in `case.toml` via a new `domain_metrics` field; the app still lists
+NSE/KGE in the same dropdown as everything else, but narrows the matrix rows to only the
+cases that declare them, rather than adding a separate sidebar UI. Eligibility is set for
+the 3 discharge cases (confirmed by Rocco's review) plus `sewerlevel_bellinge` and
+`wwtp_influent_n2o_350k`, flagged in their `case.toml` notes as an unconfirmed extension.
+`results/pilot_metrics.parquet` needs a full re-run before the new metrics show real
+values in the app.
+
+## 2026-07-13 — Windowed ML/DL methods are now fit once per case, not refit at every rolling origin
+
+The rolling-origin eval used to refit every method at each of `n_origins` cutoffs, so a
+learned method (LightGBM, CatBoost, MLP, LinearLags, DLinear, and the optional
+torch/neuralforecast models) paid a full retrain per origin and its cost grew with
+`--origins`. Those methods keep a trained model separate from its input, so the repeat
+training was never needed to stay leak-free — the train/val/test boundary already does
+that. They are now fit once, on data strictly before the test period, and scored across
+every origin by inference: each origin's forecast conditions on the observed history up to
+that cutoff without re-estimating parameters. The existing `is_global` flag already draws
+this line, so no new flag was needed — global methods (the windowed ML/DL models plus
+Chronos) keep a trained model apart from their input and are fit once, while local methods
+(AutoARIMA, AutoETS, Theta, TBATS, MSTL, the naive baselines) keep refitting, since for
+them the fit *is* the forecast and statsforecast cannot forecast from a later origin
+without one. Raising `--origins` is now cheap, but this shifts the windowed ML/DL scores
+(they no
+longer see test-period data in training), so earlier pilot numbers for those methods are
+stale and need a re-run; baseline, classical, and Chronos scores are unchanged. The torch
+and neuralforecast paths were not exercised locally (neither package is installed here) —
+verify them on a WSL run before trusting those columns.
+
+## 2026-07-13 — Snapshot panel now shows curated best/median/worst origins, ranked by whichever metric the matrix is showing
+
+The snapshot panel used to show every rolling-origin forecast stored in
+`pilot_snapshots.parquet`, in whatever order the eval pipeline happened to produce them.
+It now picks up to three: the best, median, and worst performing origin for the
+first-clicked method, so a viewer sees a representative spread instead of an arbitrary
+sequence. Ranking follows whichever metric is selected on the matrix (MAE, RMSE, MASE,
+or one of the two skill scores), rather than a fixed MAE, so switching the matrix's
+metric dropdown also reorders the snapshots. No per-origin error existed anywhere in the
+eval pipeline before this, so the app recomputes each metric itself from the stored
+predictions and the case's actual series — replicating `rolling.py`'s own per-origin
+math (MASE against the case-level train+val naive scale, skill scores against a
+persistence/mean reference built from history strictly before the origin, everything
+scored against observed-only actuals rather than the gap-filled series used for
+plotting). Spot-checked against the matrix's pooled scores for one case/method: every
+per-origin value falls in the expected range around the pooled figure, and a method
+that predicts the historical mean scores exactly 0 `Skill_vs_Mean` at every origin, as
+it should. When several methods are overlaid, they all plot on the same three origins
+(fixed by the first-clicked method) so the comparison stays apples-to-apples. The
+current pilot data has only 3 origins per case, so today this mostly relabels the
+existing panels rather than filtering anything out — the value grows if a future run
+stores more origins per case (`TSFB_ORIGINS`).
+
+
+## 2026-07-13 — Method-info panel now shows library, compute cost, limitations, and a code snippet
+
+Grew the method-info panel beyond family/description/exogenous-inputs to answer the question a
+non-ML user actually needs answered when comparing methods: what library does the work, how
+expensive is it to run, when should you not trust it, and what does the pipeline actually look
+like in code. The new fields live as plain class attributes directly on each `Forecaster`
+subclass (`library`, `compute_profile`, `limitations`, `code_snippet` in `base.py`), the same way
+`family` already does, rather than in a separate metadata file — so a method's description of
+itself can't drift out of sync with its implementation. Several method families share a base
+class that holds the real pipeline (e.g. the windowed-ML lag-feature pipeline, the neuralforecast
+wrapper), so the shared fields — especially the code snippet — are set once on the base and only
+`library` gets overridden per leaf, to avoid repeating the same snippet 4-8 times. The detail is
+collapsed by default behind an "Implementation detail" toggle on each card, so the panel's default
+view is unchanged; only opening it reveals the new fields. Couldn't get a headless-browser
+screenshot of the panel in this environment (no root to install Chromium's system libraries), so
+verification here relies on checking every registered method has all four fields populated and on
+inspecting the rendered markdown directly — worth a manual look in a real browser before trusting
+the layout at a glance.
+
+
+## 2026-07-10 — Added a bottom method-info panel, capped the method overlay at 3
+
+Clicking a cell now also opens a panel docked to the bottom of the screen with a brief
+description of that method and which of the case's exogenous inputs (if any) it used —
+placeholder content while we figure out what's actually worth showing there. The
+description comes straight from each Forecaster subclass's own docstring, so it's free as
+methods gain or lose docstrings rather than a second copy to keep in sync; methods with no
+docstring anywhere in their class hierarchy just show a "no description yet" placeholder.
+Since both the snapshot graph and this new panel lay per-method content out side by side,
+the same-row method overlay is now capped at 3: clicking a 4th method evicts the oldest
+instead of piling on indefinitely.
+
+
+## 2026-07-10 — Merged the case-info and snapshot panels into one collapsible column
+
+The results viewer used to open two separate side-by-side panels on a cell click: case
+info on the left, forecast snapshots on the right. Merged them into a single right-hand
+column, case info on top and snapshots below, matching the natural reading order. The
+case-info block (the four graphs plus the case summary text) is now wrapped in a native
+HTML `<details>`/`<summary>` element so it can be collapsed to make more room for the
+snapshots, defaulting to open so nothing changes for someone who never touches it.
+
+
+## 2026-07-10 — Moved the snapshot panel into a vertical column next to case info
+
+The forecast-snapshot panel used to sit below the matrix, full width, with a
+"case review notes" column next to the forecast graph. Moved it into a sticky
+column of its own between the matrix and the existing case-info panel, and
+dropped the notes column — that content already lives in the case-info panel,
+so it was redundant. Since a narrow column can't fit the old three-wide grid of
+forecast-origin snapshots, `render_snapshots` now takes a `max_cols` argument
+and the app passes `max_cols=1` so origins stack one per row. Selecting
+methods, the chip row, and the clear button all work the same as before.
+
+## 2026-07-10 — Results viewer can show the extended-history fit for gappy cases
+
+The interactive viewer (`app/app.py`) previously pivoted on every row in
+`pilot_metrics.parquet` without splitting out `used_extended_history`, so once a case had
+both a local and an extended-history row for an `is_global` method (see the entry above)
+the matrix pivot would hit duplicate `(case_id, method)` pairs. Fixed the viewer to plot
+the local fit by default, and added a sidebar checkbox that swaps in the extended fit for
+`is_global` methods on the five cases with data beyond the curated span, marking those
+cells with a thin hotpink diagonal hash so they read as not directly comparable to the
+rest of the row.
+
+The checkbox originally only changed the matrix's metric, not the forecast-snapshot
+panel, because `run_case_rolling` computed the extended fit's predictions but never saved
+them — snapshots came from the local fit only. Fixed by tagging every snapshot row with
+`used_extended_history` too, and having the snapshot panel pick a method's extended fit
+when the toggle is on and one exists for the case (falling back to the local fit
+otherwise), labelling the swapped trace "(global fit)" in the legend. This needs a rerun
+of `scripts/run_pilot.py` to regenerate `pilot_snapshots.parquet` with the new column —
+older snapshot artifacts won't have it. Checked end-to-end on `discharge_lowland_denmark`:
+toggling swaps exactly the ten `is_global` methods' matrix values and their snapshot
+forecasts, everything else unchanged.
+
+## 2026-07-10 — Made the extended-history fit live via per-segment training (supersedes the "inert" entry below)
+
+The extended-history path added earlier today was inert because it refused any extended
+frame containing a gap, and a gap is exactly where the extra history lives. Replaced that
+gap-free-or-fallback rule with segment-aware training: `_segment_extended` (in
+`bench/eval/loop.py`) splits the extended frame at its big gaps into contiguous segments,
+each carrying its own `unique_id`, and the `is_global` methods now build windows per
+segment so no training sample ever straddles a gap (`segment_arrays` in `methods/base.py`;
+mlforecast/neuralforecast get this for free, the manual DLinear/torch builders were
+changed to loop over segments). The tail segment equals the shared curated span, so the
+local and extended fits are scored against identical persistence/mean/seasonal-naive
+references and the same held-out window — the extended row isolates the gain from more
+training data, nothing else. Each `is_global`+`pools_segments` method now emits two result
+rows per gappy case (`used_extended_history` False/True); the main matrix shows the local
+fit, the `_global` matrix the extended fit. A quick 3-origin check on
+`discharge_lowland_denmark` already shows the gain is real (LinearLags MASE 0.24→0.20,
+DLinear 0.24→0.20). Five of the twelve cases have history beyond the curated span
+(`discharge_lowland_denmark`, `sewerlevel_bellinge`, `waves_massachusetts`, `waves_oregon`,
+`wwtp_influent_n2o_350k`); the other seven are gap-free and produce the local row only.
+Zero-shot Chronos and the fixed-`n_series` iTransformer keep `pools_segments=False` (they
+can't absorb extra segments), and the unused cross-series `fit_pooled` seam was removed.
+`results/pilot_metrics.parquet` and the matrix PNGs are still stale and must be regenerated
+with `uv run python scripts/run_pilot.py` (add `--with-dl --with-nf --with-fm` for full
+method coverage) before the numbers reflect this.
+
+## 2026-07-10 — Added an is_global capability flag and an extended-history training path (currently inert)
+
+Added `Forecaster.is_global` (`base.py`) marking methods whose architecture could use more
+data than the shared curated span — on for the ml/deep_learning/foundation_model families,
+off for baseline/classical/ensemble. Alongside it, curation now anchors the held-out tail
+segment to the record's most recent observation instead of picking the longest gap-bounded
+segment anywhere in the series — the old rule could put the test window in the middle of a
+case's history with no room to extend backward, and it changed the curated span for
+`discharge_lowland_denmark`, `sewerlevel_bellinge`, `waves_massachusetts`, and
+`wwtp_influent_n2o_350k` (their previous "longest" segment wasn't the tail one). A new
+`min_tail_length` floor makes curation fail loudly instead of silently accepting a span too
+short to use. `Case.load_extended()` and a new `data/curated_extended/` cache give
+`is_global` methods the full single-series history back to the tail segment's `val_end`,
+wired into both eval paths (`eval.loop.run_case`, and the rolling-origin path
+`run_pilot.py` actually uses by default).
+
+The finding that matters most: the tail segment is always bounded by the nearest preceding
+gap, so any case where extended history would be meaningfully longer necessarily crosses
+that same gap. Checked across all 12 cases: every one either has no gap at all (extended
+history comes out identical to what curation already used) or falls back to the shared
+curated data, because bridging a gap bigger than the per-case cap would mean either
+fabricating a value across it or letting a windowed model treat the rows on either side as
+adjacent — no method's `fit` handles gaps today. So right now `is_global` routing changes
+nothing measurable; each result row's new `used_extended_history` column reads `False`
+everywhere. That's deliberate, not a bug — it's the honest baseline for the follow-up that
+would actually deliver value: gap-aware or cross-series-pooled training, which is why
+`Forecaster.fit_pooled` exists already as an unimplemented hook. Pooling across series won't
+fix the gap problem on its own; it needs the same boundary-aware sample construction the gap
+problem needs, generalized to series boundaries too, so building that properly for pooling
+should close both at once.
+
+Nothing has been re-run yet: `results/pilot_metrics.parquet` and the matrix PNGs still
+reflect the old curation and don't have the `is_global`/`used_extended_history` columns.
+Curation itself is already regenerated and committed; `uv run python scripts/run_pilot.py`
+will refresh the results (add `--with-dl --with-nf --with-fm` for full method coverage, or
+`--fast` for a quick single hold-out check) and produce the new `pilot_matrix_*_global.png`
+files alongside the existing ones.
+
+## 2026-07-10 — Closed out EDA figure-quality review comments (issue #36)
+
+Worked through Rocco's PR #2 figure comments (B5/B6/C3 + the WWTP figures): missing
+axis units, missing captions, and a stale/spiky Bellinge panel. Two `docs/figures/cases/*_eda.png`
+had never been regenerated since the case-id rename and still showed the old titles
+(`camels_dk_discharge`, `bellinge_sewer_level`) — regenerating them, plus labelling every
+exogenous-overlay axis with its unit in `case_eda.py`, resolved most of what looked "off."
+Added captions to every case doc and redrew the CAMELS-DK mermaid diagram, and gave
+`notebooks/eda.py` the same treatment (axis labels on the ACF/CCF panels, plus a
+raw-vs-curated overlay on the full-series plot so it's visible how much of the record the
+benchmark actually uses). That overlay initially thinned the raw and curated series to 3000
+points each for plotting, but computed the stride independently per series — since the two
+have different lengths, the strides diverged and the two lines ended up sampling different
+timestamps, making spikes in the raw line (e.g. `demand_ltown` in Jan–Feb 2018) look like
+they'd been smoothed away in the curated line even though the underlying values were
+identical everywhere outside the small gap-filled stretches. Fixed by dropping the
+downsampling entirely and plotting both series at full resolution, so they trace exactly on
+top of each other except where curation actually filled a gap. That broke `waves_oregon` and
+`waves_massachusetts` (hourly data over 2014–2023, ~79k rows), whose full-resolution plot
+exceeds marimo's 8MB cell-output cap. Fixed by only downsampling when a series is too large
+to render, using min/max-per-bin binning on a single shared set of absolute time edges
+across raw and curated (rather than each series computing its own stride), so a spike always
+survives and the two traces still match exactly at every plotted point outside a filled gap.
+One finding didn't get fixed:
+`sewerlevel_bellinge`'s level series
+has two ~67-hour flatline plateaus at a fixed value (2.059/2.013 m against a 0.2–0.6 m
+baseline) — a stuck-sensor/logger fault that neither `data/processed` nor `curate.py`'s
+gap-fill removes. Despiking it needs a filter in `sewerlevel_bellinge/download.py`
+(mirroring the existing rain-sentinel filter) calibrated against the raw 1-min CSV, which
+is still open.
+
 ## 2026-07-10 — Scaled features ahead of MLPRegressor (issue #48)
 
 `MLPForecaster` (`ml.py`) was feeding raw lags and calendar features straight into

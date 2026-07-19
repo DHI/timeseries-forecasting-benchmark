@@ -86,12 +86,19 @@ The columns of the matrix. Roughly 16 methods, grouped:
 
 **Time series foundation models (zero-shot)**
 
-- Chronos-2 (Amazon, currently #1 on GIFT-Eval among pretrained models)
-- TimesFM 2.5 (Google)
-- Moirai 2.0 (Salesforce, native multivariate / covariates)
+- Chronos-2 (Amazon, currently #1 on GIFT-Eval among pretrained models) — implemented (univariate, zero-shot)
+- TimesFM 2.5 (Google) — implemented (univariate, zero-shot)
+- Moirai 2.0 (Salesforce, native multivariate / covariates) — implemented (univariate, zero-shot)
 - TimeMoE (open MoE FM)
 - TimeGPT (Nixtla, API-only)
 - Lag-Llama (open, smaller)
+
+Chronos-Bolt was the first zero-shot entry; Chronos-2, TimesFM 2.5 and Moirai-2.0 join it as
+univariate wrappers (all four via `run_pilot --with-fm`). Chronos-2, TimesFM 2.5 and
+Moirai-2.0 also have `+exo` variants that can condition on declared covariates when the
+benchmark supplies future covariate values (a perfect-forecast proxy). TimeMoE, TimeGPT and
+Lag-Llama are deprioritised — TimeGPT is API-only, and both it and the other two have been
+overtaken by newer entrants in recent comparisons.
 
 **Hybrid & operational reference (what clients actually receive today)**
 

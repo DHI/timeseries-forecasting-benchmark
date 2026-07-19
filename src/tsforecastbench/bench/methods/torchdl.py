@@ -18,21 +18,35 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from tsforecastbench.bench.methods.base import Forecaster, lookback_for
+from tsforecastbench.bench.methods.base import Forecaster, lookback_for, segment_arrays
 from tsforecastbench.data.schema import Case
 
 _MAX_TRAIN = 20000
 _MAX_SAMPLES = 6000
 
 
-def _build_windows(y: np.ndarray, L: int, H: int):
-    n = len(y) - L - H + 1
-    if n <= 10:
+def _build_windows(segs: list[np.ndarray], L: int, H: int):
+    """Stack (input, target) windows over every segment, never across a gap.
+
+    Each segment is capped to its most recent `_MAX_TRAIN` points, then a single shared
+    stride across all segments keeps the total window count <= `_MAX_SAMPLES`. A local
+    (single-segment) frame reduces to the original one-series windowing.
+    """
+    segs = [y[-_MAX_TRAIN:] for y in segs]
+    counts = [max(0, len(y) - L - H + 1) for y in segs]
+    total = sum(counts)
+    if total <= 10:
         return None, None
-    stride = max(1, n // _MAX_SAMPLES)
-    starts = np.arange(0, n, stride)
-    X = np.stack([y[s : s + L] for s in starts]).astype(np.float32)
-    Y = np.stack([y[s + L : s + L + H] for s in starts]).astype(np.float32)
+    stride = max(1, total // _MAX_SAMPLES)
+    Xs, Ys = [], []
+    for y, n in zip(segs, counts, strict=True):
+        if n <= 0:
+            continue
+        starts = np.arange(0, n, stride)
+        Xs.append(np.stack([y[s : s + L] for s in starts]))
+        Ys.append(np.stack([y[s + L : s + L + H] for s in starts]))
+    X = np.concatenate(Xs).astype(np.float32)
+    Y = np.concatenate(Ys).astype(np.float32)
     return X, Y
 
 
@@ -119,10 +133,35 @@ def _make_modules():
 
 class _TorchDLBase(Forecaster):
     name = "TorchDL"
-    family = "deep_learning"
+    family = "dl"
+    is_global = True
+    pools_segments = True
     max_steps = 600
     batch = 256
     lr = 1e-3
+    library = "torch (custom implementation, no ray/lightning)"
+    compute_profile = (
+        "CPU (no GPU dependency); trains a small network from scratch per case — "
+        "600 gradient steps over randomly sampled windows — making these the "
+        "heaviest CPU methods in the benchmark. Keep rolling-origin counts modest "
+        "when including them."
+    )
+    limitations = (
+        "Univariate — ignores exogenous inputs (the covariate story lives in the "
+        "windowed-ML +exo columns instead). Each window is instance-normalised "
+        "(RevIN-style) before the model and de-normalised after, which is what makes "
+        "the same architecture usable across very different series scales."
+    )
+    code_snippet = (
+        "net = <NHiTSNet or PatchTSTNet>(lookback, horizon)\n"
+        "opt = torch.optim.Adam(net.parameters(), lr=1e-3)\n"
+        "for step in range(600):\n"
+        "    xb, yb = sample_batch(windows, batch_size=256)\n"
+        "    mu, sd = xb.mean(1), xb.std(1)          # per-window instance norm\n"
+        "    pred = net((xb - mu) / sd) * sd + mu\n"
+        "    loss = mse_loss(pred, yb)\n"
+        "    loss.backward(); opt.step()"
+    )
 
     def _net(self, mods, L, H):
         raise NotImplementedError
@@ -137,12 +176,12 @@ class _TorchDLBase(Forecaster):
         self._H = _horizon_to_steps(case.horizon_primary, case.freq)
         self._L = lookback_for(case.freq, self._H)
 
-        y = pd.to_numeric(train["y"], errors="coerce").to_numpy(dtype=np.float32)
-        if len(y) > _MAX_TRAIN:
-            y = y[-_MAX_TRAIN:]
-        self._last_window = y[-self._L :].copy()
+        # Per-segment windows (unique_id), never across a gap; single-segment local
+        # frames behave exactly as before.
+        segs, _tail = segment_arrays(train)
+        segs = [s.astype(np.float32) for s in segs]
 
-        X, Y = _build_windows(y, self._L, self._H)
+        X, Y = _build_windows(segs, self._L, self._H)
         if X is None:
             self._model = None
             return
@@ -175,9 +214,13 @@ class _TorchDLBase(Forecaster):
             last = float(pd.to_numeric(history["y"], errors="coerce").ffill().iloc[-1])
             return pd.DataFrame({"ds": future, "y_hat": np.full(horizon, last)})
         torch = self._mods[0]
+        # Inference-only: the lookback window is the tail segment of the history handed in
+        # at this origin, never state captured at fit — so one fit serves every origin.
+        segs, tail = segment_arrays(history)
+        last_window = segs[tail][-self._L :].astype(np.float32)
         self._model.eval()
         with torch.no_grad():
-            x = torch.from_numpy(self._last_window.astype(np.float32)).unsqueeze(0)
+            x = torch.from_numpy(last_window).unsqueeze(0)
             mu = x.mean(1, keepdim=True)
             sd = x.std(1, keepdim=True) + 1e-5
             y_hat = (self._model((x - mu) / sd) * sd + mu).squeeze(0).numpy()

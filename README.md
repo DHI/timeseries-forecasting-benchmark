@@ -30,9 +30,17 @@ and laptop demos work without any data at all.
 ### Optional extras
 
 ```bash
-uv sync --extra fm     # Chronos-Bolt zero-shot foundation model   (run_pilot --with-fm)
-uv sync --extra dl     # torch N-HiTS / PatchTST                    (run_pilot --with-dl)
+uv sync --extra fm   # all zero-shot foundation models  (run_pilot --with-fm)
+uv sync --extra dl   # torch N-HiTS / PatchTST           (run_pilot --with-dl)
 ```
+
+`uv sync --extra fm` installs every zero-shot foundation model in one shot — Chronos-Bolt,
+Chronos-2, TimesFM 2.5 and Moirai-2.0 — and `run_pilot --with-fm` scores them all (each is
+still skipped at runtime if its library is missing). Chronos-2, TimesFM 2.5 and Moirai-2.0
+also have `+exo` variants that consume declared covariates when available; Chronos-Bolt is
+univariate-only. Moirai's `uni2ts` hard-pins an older scipy / numpy / torch with no
+Python-3.13 wheels, so the whole project is capped at **Python 3.11–3.12** (see
+`requires-python`) to keep every model installable in a single environment.
 
 The torch DL models are portable (Windows/Linux/CI). The broader **neuralforecast zoo**
 (TFT, iTransformer, TimesNet; `--extra nf` / `run_pilot --with-nf`) needs `ray`, which has

@@ -18,6 +18,10 @@ flowchart LR
 
 ![EDA](../figures/cases/surge_cuxhaven_eda.png)
 
+*EDA panel: hourly non-tidal residual (m) at Cuxhaven, with ERA5 mean sea-level
+pressure overlaid (`u10`/`v10` wind are also exogenous but not shown in this panel).
+The zoom window is centred on the month with the largest surge event.*
+
 ## The forecasting problem
 
 Forecast the **non-tidal residual** at one tide gauge, **hourly**, **48 hours** ahead. The horizon matches operational coastal-flood-warning lead times (DMI, Met Office, NOAA).

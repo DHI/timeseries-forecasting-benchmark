@@ -28,10 +28,12 @@ flowchart LR
 ![EDA](../figures/cases/sewerlevel_bellinge_eda.png)
 
 *EDA panel: water level (m) at `G71F05R_LevelInlet`, 15-min resample, with rainfall (SVK
-gauge 5425). **To regenerate (Rocco, PR #2):** add an explicit caption, label the y-axis
-"water level (m)", and confirm the cleaned `2_cleaned_data` series is plotted (not raw —
-residual spikes suggest a re-check). The rain↔level alignment was the symptom of a
-wrong-rain-gauge bug, since fixed by switching to SVK 5425 (commit `b05481f`).*
+gauge 5425) overlaid. The rain↔level misalignment Rocco flagged in PR #2 was a
+wrong-rain-gauge bug, fixed by switching to SVK 5425 (commit `b05481f`). **Known issue,
+not yet fixed:** the two isolated ~2 m plateaus visible around 2013 and mid-2014 are a
+stuck-sensor/logger fault (the same value holds for ~67 hours, recurring across
+unrelated dates) — not real dynamics, and not removed by the current gap-fill/curation
+pipeline. Despiking this is logged as follow-up work.*
 
 ## The forecasting problem
 

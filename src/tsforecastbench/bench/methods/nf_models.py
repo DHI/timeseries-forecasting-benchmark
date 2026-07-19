@@ -34,9 +34,32 @@ class _NFBase(Forecaster):
     """Shared neuralforecast wrapper; subclasses name the model class + extra kwargs."""
 
     name = "NF"
-    family = "deep_learning"
+    family = "dl"
+    is_global = True
+    pools_segments = True
     model_name = "NHITS"  # neuralforecast.models class name
     extra_kwargs: ClassVar[dict] = {}
+    library = "neuralforecast + pytorch_lightning"
+    compute_profile = (
+        "Uses a GPU automatically if one is available (accelerator='auto'), "
+        "otherwise falls back to CPU; a heavier training loop (up to 500 steps, "
+        "full pytorch_lightning trainer overhead) than the custom torch models in "
+        "torchdl.py. Only available on Linux with Python <3.13 (the `nf` extra), "
+        "since neuralforecast depends on `ray`."
+    )
+    limitations = (
+        "Univariate — ignores exogenous inputs. Trains a fresh model per case with "
+        "no hyperparameter tuning, using the same architecture defaults regardless "
+        "of the series' scale or frequency."
+    )
+    code_snippet = (
+        "import neuralforecast.models as nfm\n"
+        "from neuralforecast import NeuralForecast\n\n"
+        "model = getattr(nfm, model_name)(h=horizon, input_size=lookback, max_steps=500)\n"
+        "nf = NeuralForecast(models=[model], freq=case.freq)\n"
+        "nf.fit(train_df)                     # train_df: unique_id, ds, y\n"
+        "y_hat = nf.predict()[model_name]"
+    )
 
     def fit(self, case: Case, train: pd.DataFrame) -> None:
         import neuralforecast.models as nfm
@@ -48,8 +71,11 @@ class _NFBase(Forecaster):
         pl.seed_everything(0)
         self._h = h = _horizon_to_steps(case.horizon_primary, case.freq)
         df = train[["unique_id", "ds", "y"]].copy()
-        if len(df) > _MAX_TRAIN:
-            df = df.iloc[-_MAX_TRAIN:]
+        # The extended-history frame carries one unique_id per contiguous segment;
+        # neuralforecast fits them as a panel, so no window spans a gap. The tail segment
+        # (latest ds, always the last row) is the series we forecast at predict.
+        self._target_uid = df["unique_id"].iloc[-1]
+        df = df.groupby("unique_id", sort=False).tail(_MAX_TRAIN)
         df["ds"] = _naive_ds(df["ds"]).to_numpy()
         df["y"] = pd.to_numeric(df["y"], errors="coerce")
 
@@ -73,7 +99,17 @@ class _NFBase(Forecaster):
         horizon: int,
         future_exog: pd.DataFrame | None = None,
     ) -> pd.DataFrame:
-        preds = self._nf.predict()
+        # Inference-only: condition the trained network on the tail segment's history as
+        # handed in at this origin (neuralforecast's `df=`), never the frame captured at
+        # fit — so one fit serves every rolling origin.
+        sub = history[history["unique_id"] == self._target_uid]
+        new_df = sub[["unique_id", "ds", "y"]].copy()
+        new_df["ds"] = _naive_ds(new_df["ds"]).to_numpy()
+        new_df["y"] = pd.to_numeric(new_df["y"], errors="coerce")
+        preds = self._nf.predict(df=new_df)
+        if "unique_id" not in preds.columns:
+            preds = preds.reset_index()  # some nf versions return unique_id as the index
+        preds = preds[preds["unique_id"] == self._target_uid]
         y_hat = preds[self._col].to_numpy().astype(np.float64)
         if len(y_hat) < horizon:
             y_hat = np.concatenate([y_hat, np.full(horizon - len(y_hat), y_hat[-1])])
@@ -89,8 +125,15 @@ class TFTForecaster(_NFBase):
 class ITransformerForecaster(_NFBase):
     name = "iTransformer"
     model_name = "iTransformer"
-    # iTransformer needs the number of series (n_series=1 here, univariate)
+    # iTransformer is multivariate and fixed to n_series=1 here, so it cannot absorb the
+    # extra segments of an extended-history fit -- keep it on the local span only.
+    pools_segments = False
     extra_kwargs: ClassVar[dict] = {"n_series": 1}
+    limitations = (
+        _NFBase.limitations
+        + " Architecturally multivariate but fixed to a single series here (n_series=1), "
+        "so unlike its siblings it can't pool the extra segments of an extended-history fit."
+    )
 
 
 class TimesNetForecaster(_NFBase):
