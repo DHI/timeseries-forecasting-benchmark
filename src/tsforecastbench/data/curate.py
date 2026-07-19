@@ -229,6 +229,10 @@ def extend_frame(
     holds out for testing.
     """
     df = df.sort_values("ds").reset_index(drop=True)
+    # Match `curate_frame`: derive the per-case fill cap from the full raw record so the
+    # extended-history view uses the same small-gap policy.
+    cap = gap_cap(pd.to_numeric(df["y"], errors="coerce"), freq, threshold)
+
     ds_cmp = pd.to_datetime(df["ds"])
     if ds_cmp.dt.tz is not None:
         ds_cmp = ds_cmp.dt.tz_convert("UTC").dt.tz_localize(None)
@@ -242,8 +246,6 @@ def extend_frame(
     first_obs = int(np.flatnonzero(observed)[0])
     df = df.iloc[first_obs:].copy().reset_index(drop=True)
     observed = observed[first_obs:]
-
-    cap = gap_cap(pd.to_numeric(df["y"], errors="coerce"), freq, threshold)
 
     fill_cols = ["y", *[c for c in (exog or []) if c in df.columns]]
     n_filled = 0
