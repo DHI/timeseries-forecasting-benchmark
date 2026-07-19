@@ -180,7 +180,10 @@ def _kde_curve(values: pd.Series, x_grid: np.ndarray) -> np.ndarray | None:
     values = values.to_numpy(dtype=float)
     if len(values) < 2 or np.ptp(values) == 0:
         return None
-    return gaussian_kde(values)(x_grid)
+    try:
+        return gaussian_kde(values)(x_grid)
+    except (np.linalg.LinAlgError, ValueError):
+        return None
 
 
 def render_split_distribution(case_id: str, extended: bool = False) -> go.Figure:
