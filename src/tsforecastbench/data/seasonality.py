@@ -124,7 +124,7 @@ def dominant_period(seasonalities: list[int], y: np.ndarray) -> int:
 # years so positions stay in 0..364.
 def _dayofyear_365(idx: pd.DatetimeIndex) -> np.ndarray:
     doy0 = idx.dayofyear.to_numpy(dtype=int) - 1
-    leap = idx.is_leap_year.to_numpy(dtype=bool)
+    leap = np.asarray(idx.is_leap_year, dtype=bool)
     after_feb28 = doy0 >= 59
     return doy0 - (leap & after_feb28).astype(int)
 
