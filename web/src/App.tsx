@@ -274,7 +274,7 @@ function MainLayout({
           {state.sidebarCollapsed ? '▶' : '◀'}
         </button>
       </div>
-      <main style={{ flex: 1, padding: 16, minWidth: 0 }}>
+      <main style={{ flex: 1, padding: 16, minWidth: 0, overflowX: 'auto' }}>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
           <h1>Timeseries Forecasting Benchmark</h1>
           <p style={{ color: '#444', maxWidth: 1000 }}>

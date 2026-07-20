@@ -8,6 +8,16 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-20 — Fixed heatmap bleeding over the sidebar when the case panel is dragged wide
+
+Dragging the right-hand case detail panel to its maximum width could make the heatmap paint over
+the left control sidebar instead of shrinking to fit. The heatmap has a fixed pixel width based on
+the number of methods shown, and the center column that holds it had no `overflow` set, so once
+that column got squeezed narrower than the heatmap, the excess width spilled left and covered the
+sidebar (later elements in the page paint over earlier ones by default). Added `overflow-x: auto`
+to the center column so the heatmap now scrolls within its own column instead of bleeding over
+neighboring panels.
+
 ## 2026-07-20 — Sidebar closed by default, added a hint for first-time visitors
 
 The control sidebar used to open on load and its collapse/expand button was only half
