@@ -44,12 +44,12 @@ describe('MethodInfoCard', () => {
     );
 
     expect(screen.getByText('A test method.')).toBeInTheDocument();
-    expect(screen.getByTitle('Drag to resize')).toBeInTheDocument();
+    expect(screen.getByTitle('Collapse (drag to resize)')).toBeInTheDocument();
 
-    await user.click(screen.getByTitle('Collapse'));
+    await user.click(screen.getByTitle('Collapse (drag to resize)'));
 
     expect(screen.queryByText('A test method.')).not.toBeInTheDocument();
-    expect(screen.queryByTitle('Drag to resize')).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Collapse (drag to resize)')).not.toBeInTheDocument();
     expect(screen.getByText('LightGBM')).toBeInTheDocument();
 
     await user.click(screen.getByTitle('Expand'));

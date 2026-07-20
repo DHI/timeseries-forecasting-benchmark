@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
 import { clearJsonDataCache } from './data/loadData';
@@ -93,6 +94,7 @@ describe('App', () => {
   });
 
   it('renders the sidebar and matrix once data loads', async () => {
+    const user = userEvent.setup();
     vi.stubGlobal(
       'fetch',
       mockFetchByPath({
@@ -104,6 +106,10 @@ describe('App', () => {
     render(<App />);
     await waitFor(() => expect(screen.getByTestId('plot-stub')).toBeInTheDocument());
     expect(screen.getByText('Timeseries Forecasting Benchmark')).toBeInTheDocument();
+
+    // The control panel starts collapsed; open it to reach the sidebar controls.
+    await user.click(screen.getByTitle('Collapse/expand controls'));
+
     expect(screen.getByRole('option', { name: 'MASE' })).toBeInTheDocument();
     expect(screen.getByLabelText('WaD')).toBeInTheDocument();
     expect(screen.getByLabelText('Baseline')).toBeInTheDocument();
