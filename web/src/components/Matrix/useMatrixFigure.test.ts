@@ -124,15 +124,15 @@ describe('useMatrixFigure — training-time overlay', () => {
     expect(heatmap.z).toEqual([[Math.log10(1.5), Math.log10(5.32)]]);
   });
 
-  it('formats cell text as whole seconds and skips fastest-method bolding', () => {
+  it('formats cell text as a plain whole number and skips fastest-method bolding', () => {
     const { result } = renderHook(() =>
       useMatrixFigure(rows, 'MAE', EMPTY_SELECTION, false, false, true),
     );
     const texts = result.current!.layout.annotations!.map((a) => String(a.text));
-    expect(texts).toContain('4s');
-    expect(texts).toContain('1s');
-    const cellTexts = texts.filter((t) => t.endsWith('s'));
-    expect(cellTexts.every((t) => !t.includes('<b>'))).toBe(true);
+    expect(texts).toContain('4');
+    expect(texts).toContain('1');
+    expect(texts).not.toContain('<b>4</b>');
+    expect(texts).not.toContain('<b>1</b>');
   });
 
   it('shows a short training-time colorbar title', () => {

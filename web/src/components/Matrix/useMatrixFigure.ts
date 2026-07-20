@@ -124,9 +124,8 @@ export function useMatrixFigure(
       }
     }
 
-    const text = values.map((rowValues) =>
-      rowValues.map((v) => (Number.isNaN(v) ? '—' : `${fmt(v)}${showTrainingTime ? 's' : ''}`)),
-    );
+    // No "s" suffix on training-time cells: the colorbar title already labels the unit.
+    const text = values.map((rowValues) => rowValues.map((v) => (Number.isNaN(v) ? '—' : fmt(v))));
     // The overlay is a quick glance at timing, not a ranking — skip the fastest-method
     // bolding that normally highlights the best-scoring method per row.
     const bestOfRow = showTrainingTime
