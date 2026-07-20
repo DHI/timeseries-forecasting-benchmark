@@ -48932,10 +48932,7 @@
       "rain_radar_nowcast"
     ],
     "exo_tier": "necessary",
-    "domain_metrics": [
-      "NSE",
-      "KGE"
-    ],
+    "domain_metrics": [],
     "train_tail": {
       "ds": [
         "2020-04-29 22:15:00+00:00",
@@ -166351,10 +166348,7 @@
     "exogenous_known_future": [],
     "necessary_exogenous": [],
     "exo_tier": "none",
-    "domain_metrics": [
-      "NSE",
-      "KGE"
-    ],
+    "domain_metrics": [],
     "train_tail": {
       "ds": [
         "2024-03-24 02:00:00+00:00",
