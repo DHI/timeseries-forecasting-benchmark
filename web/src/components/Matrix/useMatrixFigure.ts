@@ -27,7 +27,8 @@ export type MatrixFigure = {
 /** Round-number seconds ticks (0, 1, 10, 100, ...) up to the first one at or past
  * `maxSeconds`, positioned in the same log10(seconds + 1) space the training-time
  * overlay colors cells in — so the colorbar reads in real seconds despite the
- * underlying color mapping being log-scaled to cope with training time's heavy tail. */
+ * underlying color mapping being log-scaled to cope with training time's heavy tail.
+ * Unitless (no "s"): the colorbar's "Seconds" title already carries the unit. */
 function trainingTimeColorTicks(maxSeconds: number): { tickvals: number[]; ticktext: string[] } {
   const candidates = [0, 1, 10, 100, 1000, 10000, 100000];
   const ticks: number[] = [];
@@ -35,7 +36,7 @@ function trainingTimeColorTicks(maxSeconds: number): { tickvals: number[]; tickt
     ticks.push(t);
     if (t > maxSeconds) break;
   }
-  return { tickvals: ticks.map((t) => Math.log10(t + 1)), ticktext: ticks.map((t) => `${t}s`) };
+  return { tickvals: ticks.map((t) => Math.log10(t + 1)), ticktext: ticks.map((t) => `${t}`) };
 }
 
 /** Builds the case x method heatmap figure for one metric. `rows` must be filtered only by

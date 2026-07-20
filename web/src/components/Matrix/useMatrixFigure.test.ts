@@ -157,7 +157,7 @@ describe('useMatrixFigure — training-time overlay', () => {
       colorbar: { tickmode: string; tickvals: number[]; ticktext: string[] };
     };
     expect(heatmap.colorbar.tickmode).toBe('array');
-    expect(heatmap.colorbar.ticktext).toEqual(['0s', '1s', '10s', '100s', '1000s']);
+    expect(heatmap.colorbar.ticktext).toEqual(['0', '1', '10', '100', '1000']);
     expect(heatmap.colorbar.tickvals).toEqual([
       Math.log10(1),
       Math.log10(2),
