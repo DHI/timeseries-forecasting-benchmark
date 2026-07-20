@@ -163,7 +163,8 @@ function MainLayout({
         style={{
           width: state.sidebarCollapsed ? 0 : 260,
           flex: `0 0 ${state.sidebarCollapsed ? 0 : 260}px`,
-          borderRight: state.sidebarCollapsed ? 'none' : '1px solid var(--border)',
+          background: 'var(--panel-bg)',
+          borderRight: state.sidebarCollapsed ? 'none' : '2px solid var(--border)',
           overflow: 'hidden',
           boxSizing: 'border-box',
           position: 'sticky',
@@ -240,8 +241,8 @@ function MainLayout({
               onChange={(active) => dispatch({ type: 'SET_TRAINING_TIME_OVERLAY', active })}
             />
             <p style={{ color: '#666', fontSize: '0.8em', marginTop: 4 }}>
-              Press and hold to show each cell's measured training time instead of its
-              score. You can still hover around matrix cells while holding the button.
+              Press and hold to show each cell's measured training time instead of its score. You
+              can still hover around matrix cells while holding the button.
             </p>
           </div>
         )}
@@ -297,8 +298,8 @@ function MainLayout({
             position: 'sticky',
             top: 0,
             maxHeight: '100vh',
-            borderLeft: '1px solid var(--border)',
-            background: '#ffffff',
+            borderLeft: '2px solid var(--border)',
+            background: 'var(--bg)',
           }}
         >
           {/* The drag handle lives outside the scrollable div below so it stays anchored to

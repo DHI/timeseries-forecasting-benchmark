@@ -1,7 +1,8 @@
 :root {
   --text: #1f2328;
   --bg: #ffffff;
-  --border: #d8dee4;
+  --panel-bg: #ffffff;
+  --border: #000000;
   font:
     15px/1.45 system-ui,
     'Segoe UI',
@@ -16,6 +17,7 @@
   :root {
     --text: #e6edf3;
     --bg: #0d1117;
+    --panel-bg: #16233a;
     --border: #30363d;
   }
 }

@@ -68,7 +68,7 @@ export function MethodInfoCard({ method, index, caseMeta, methodMeta }: Props) {
         display: 'flex',
         flexDirection: 'column',
         background: 'var(--bg)',
-        border: '1px solid var(--border)',
+        border: '2px solid var(--border)',
         borderBottom: 'none',
         boxSizing: 'border-box',
       }}
