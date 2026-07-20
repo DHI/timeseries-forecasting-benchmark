@@ -231,8 +231,8 @@ function MainLayout({
               onChange={(active) => dispatch({ type: 'SET_TRAINING_TIME_OVERLAY', active })}
             />
             <p style={{ color: '#666', fontSize: '0.8em', marginTop: 4 }}>
-              Press and hold to temporarily show each cell's measured training time instead of its
-              score.
+              Press and hold to show each cell's measured training time instead of its
+              score. You can still hover around matrix cells while holding the button.
             </p>
           </>
         )}
