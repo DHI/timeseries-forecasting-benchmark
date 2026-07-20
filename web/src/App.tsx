@@ -223,7 +223,15 @@ function MainLayout({
         type="button"
         title="Collapse/expand controls"
         onClick={() => dispatch({ type: 'TOGGLE_SIDEBAR' })}
-        style={{ flex: '0 0 auto', alignSelf: 'flex-start', marginTop: 16, cursor: 'pointer' }}
+        style={{
+          flex: '0 0 auto',
+          alignSelf: 'flex-start',
+          position: 'sticky',
+          top: 16,
+          marginTop: 16,
+          background: 'var(--bg)',
+          cursor: 'pointer',
+        }}
       >
         {state.sidebarCollapsed ? '▶' : '◀'}
       </button>
