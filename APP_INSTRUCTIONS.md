@@ -69,7 +69,7 @@ its row (it was fit on more data than the others). The same swap also affects th
 details panel (training history plot and split counts) and the snapshot panel (forecasts
 are drawn from the full-history fit and labeled accordingly).
 
-## "Use exogenous inputs where available" checkbox
+### "Use exogenous inputs where available" checkbox
 
 Exogenous inputs are external variables — like rainfall or a weather forecast — fed to a
 model alongside the target series' own history, on top of what it would use otherwise.
@@ -85,7 +85,7 @@ marker, so the two never collide on the same cell. If you have method cards or t
 panel open, toggling this checkbox also swaps what they show — the same method now displays
 the exogenous variant's description and forecasts instead of the base version.
 
-## "Show training time" button
+### "Show training time" button
 
 Press and hold this button to see each cell's measured training time instead of its score.
 The whole matrix — including any cells already swapped by the two checkboxes above —
