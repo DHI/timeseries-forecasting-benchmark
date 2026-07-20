@@ -42,12 +42,16 @@ function rect(l: number, t: number, w: number, h: number): Rect {
 }
 
 /** `x`/`y` are the hovered cell's category values (column/row names) off the Plotly hover
- * event's `points[0]`. Returns null when the graph div's layout isn't ready yet (it always
- * is by the time a real hover event fires — Plotly only emits one after rendering — this
- * is just a defensive type-narrowing guard, not a real runtime path). */
+ * event's `points[0]`. `nCols`/`nRows` are the heatmap's category counts (`colOrder.length`/
+ * `rowOrder.length`), needed to find the true edge of the plotted cells (see below).
+ * Returns null when the graph div's layout isn't ready yet (it always is by the time a real
+ * hover event fires — Plotly only emits one after rendering — this is just a defensive
+ * type-narrowing guard, not a real runtime path). */
 export function computeHoverOverlay(
   x: string,
   y: string,
+  nCols: number,
+  nRows: number,
   wrapperEl: HTMLElement,
   gd: PlotlyGraphDiv,
 ): HoverOverlay | null {
@@ -63,8 +67,6 @@ export function computeHoverOverlay(
   const dy = gr.top - wr.top;
   const gridLeft = dx + xa._offset;
   const gridTop = dy + ya._offset;
-  const gridRight = gridLeft + xa._length;
-  const gridBottom = gridTop + ya._length;
 
   const colCenter = gridLeft + d2pix(xa, x);
   const rowCenter = gridTop + d2pix(ya, y);
@@ -75,14 +77,29 @@ export function computeHoverOverlay(
   const rowTop = rowCenter - halfH;
   const rowBottom = rowCenter + halfH;
 
+  // `_offset`/`_length` describe the axis's full *padded* autorange box, not where the
+  // cells themselves start and end: `scaleanchor`/`constrain: 'domain'` (locking the heatmap
+  // to a 1:1 aspect ratio) pads the range asymmetrically whenever the container's aspect
+  // ratio doesn't exactly match nCols:nRows, shifting the true cell edges inward from
+  // `_offset`/`_offset + _length`. The true edges sit at category index ±0.5 from the first/
+  // last row or column, which `c2p` maps correctly (unlike `_offset` alone) — using
+  // `_offset`/`_length` here (as the crosshair math above does) would let the dim rects
+  // bleed past the grid into the row/column-group label margins.
+  const dimLeft = gridLeft + xa.c2p(-0.5);
+  const dimRight = gridLeft + xa.c2p(nCols - 0.5);
+  const yEdgeA = gridTop + ya.c2p(-0.5);
+  const yEdgeB = gridTop + ya.c2p(nRows - 0.5);
+  const dimTop = Math.min(yEdgeA, yEdgeB);
+  const dimBottom = Math.max(yEdgeA, yEdgeB);
+
   return {
     rowLabel: y,
     colLabel: x,
     row: { left: gridLeft, top: rowCenter },
     col: { left: colCenter, top: gridTop },
-    dimTL: rect(gridLeft, gridTop, colLeft - gridLeft, rowTop - gridTop),
-    dimTR: rect(colRight, gridTop, gridRight - colRight, rowTop - gridTop),
-    dimBL: rect(gridLeft, rowBottom, colLeft - gridLeft, gridBottom - rowBottom),
-    dimBR: rect(colRight, rowBottom, gridRight - colRight, gridBottom - rowBottom),
+    dimTL: rect(dimLeft, dimTop, colLeft - dimLeft, rowTop - dimTop),
+    dimTR: rect(colRight, dimTop, dimRight - colRight, rowTop - dimTop),
+    dimBL: rect(dimLeft, rowBottom, colLeft - dimLeft, dimBottom - rowBottom),
+    dimBR: rect(colRight, rowBottom, dimRight - colRight, dimBottom - rowBottom),
   };
 }

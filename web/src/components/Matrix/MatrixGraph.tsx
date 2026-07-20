@@ -53,13 +53,25 @@ export function MatrixGraph({
   const graphRef = useRef<HTMLDivElement | null>(null);
   const [overlay, setOverlay] = useState<HoverOverlay | null>(null);
 
-  const handleHover = useCallback((event: PlotMouseEvent) => {
-    const pt = event.points?.[0];
-    const wrapper = wrapperRef.current;
-    const gd = graphRef.current as PlotlyGraphDiv | null;
-    if (!pt || !wrapper || !gd) return;
-    setOverlay(computeHoverOverlay(String(pt.x), String(pt.y), wrapper, gd));
-  }, []);
+  const handleHover = useCallback(
+    (event: PlotMouseEvent) => {
+      const pt = event.points?.[0];
+      const wrapper = wrapperRef.current;
+      const gd = graphRef.current as PlotlyGraphDiv | null;
+      if (!pt || !wrapper || !gd || !figure) return;
+      setOverlay(
+        computeHoverOverlay(
+          String(pt.x),
+          String(pt.y),
+          figure.colOrder.length,
+          figure.rowOrder.length,
+          wrapper,
+          gd,
+        ),
+      );
+    },
+    [figure],
+  );
 
   const handleUnhover = useCallback(() => setOverlay(null), []);
 

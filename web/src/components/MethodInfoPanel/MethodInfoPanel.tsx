@@ -5,6 +5,7 @@ import type { CaseMeta, MethodRegistry, ScoreRow } from '../../types/data';
 const PANEL_STYLE = {
   position: 'sticky' as const,
   bottom: 0,
+  zIndex: 20,
   display: 'flex',
   alignItems: 'flex-end' as const,
   gap: 12,
