@@ -18,6 +18,14 @@ mouse is released. The right panel keeps its unrelated sample-count line but dro
 per-method time text. Fastest-method bolding is skipped during the overlay since it's meant as a
 quick glance, not a ranking.
 
+Cell values show as whole seconds rather than two decimals. The overlay's colorbar title was
+also shrinking the heatmap's plot area relative to the normal metric view — Plotly lets a wide
+colorbar title grow past a fixed margin by default, so a short title plus an explicit
+`margin.autoexpand: false` now guarantee the grid occupies identical pixels either way. Training
+time is heavy-tailed (most methods are fast, a few much slower), so cell color now maps to
+`log10(seconds + 1)` instead of raw seconds — a linear scale left almost every cell looking the
+same shade; the colorbar ticks and cell text still label real seconds.
+
 ## 2026-07-19 — Fixed leap-year bug in the 365-day position-in-cycle path
 
 `_dayofyear_365` (used by `position_in_cycle` for the annual cycle, which backs Climatology,
