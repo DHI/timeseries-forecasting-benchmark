@@ -274,22 +274,24 @@ function MainLayout({
         </button>
       </div>
       <main style={{ flex: 1, padding: 16, minWidth: 0 }}>
-        <h1>Timeseries Forecasting Benchmark</h1>
-        <p style={{ color: '#444', maxWidth: 1000 }}>
-          The following matrix compiles the forecasting results of multiple methods across a variety
-          of timeseries in different water domains. Each cell represents one case x method run,
-          coloured by the metric chosen in the sidebar.
-        </p>
-        <MatrixGraph
-          rows={filteredRows}
-          metric={state.metric}
-          selection={state.selection}
-          showGlobal={state.showGlobal}
-          showExogenous={state.showExogenous}
-          showTrainingTime={state.trainingTimeOverlay}
-          onCellClick={handleCellClick}
-        />
-        <BenchmarkDesign />
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <h1>Timeseries Forecasting Benchmark</h1>
+          <p style={{ color: '#444', maxWidth: 1000 }}>
+            The following matrix compiles the forecasting results of multiple methods across a
+            variety of timeseries in different water domains. Each cell represents one case x
+            method run, coloured by the metric chosen in the sidebar.
+          </p>
+          <MatrixGraph
+            rows={filteredRows}
+            metric={state.metric}
+            selection={state.selection}
+            showGlobal={state.showGlobal}
+            showExogenous={state.showExogenous}
+            showTrainingTime={state.trainingTimeOverlay}
+            onCellClick={handleCellClick}
+          />
+          <BenchmarkDesign />
+        </div>
         <div style={{ height: TITLE_BAR_HEIGHT }} />
       </main>
       <MethodInfoPanel
