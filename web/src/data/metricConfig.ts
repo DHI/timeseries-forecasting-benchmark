@@ -98,7 +98,7 @@ export const TRAINING_TIME_CONFIG: MetricConfig = {
   cmap: 'Reds',
   center: null,
   label: 'Training time (fit + predict, pooled across rolling origins)',
-  format: '.2f',
+  format: '.0f',
   lowerIsBetter: true,
 };
 

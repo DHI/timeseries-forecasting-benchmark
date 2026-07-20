@@ -1,6 +1,6 @@
 import { format as d3format } from 'd3-format';
 import { useMemo } from 'react';
-import type { Annotations, Data, Layout, PlotData, Shape } from 'plotly.js';
+import type { Annotations, Data, Layout, Margin, PlotData, Shape } from 'plotly.js';
 import { CELL, DOMAIN_KEY_DICT, MATRIX_MARGIN } from '../../data/constants';
 import { colorscaleFor } from '../../data/colorscale';
 import { metricConfig, TRAINING_TIME_CONFIG } from '../../data/metricConfig';
@@ -23,6 +23,20 @@ export type MatrixFigure = {
   rowOrder: string[];
   colOrder: string[];
 };
+
+/** Round-number seconds ticks (0, 1, 10, 100, ...) up to the first one at or past
+ * `maxSeconds`, positioned in the same log10(seconds + 1) space the training-time
+ * overlay colors cells in — so the colorbar reads in real seconds despite the
+ * underlying color mapping being log-scaled to cope with training time's heavy tail. */
+function trainingTimeColorTicks(maxSeconds: number): { tickvals: number[]; ticktext: string[] } {
+  const candidates = [0, 1, 10, 100, 1000, 10000, 100000];
+  const ticks: number[] = [];
+  for (const t of candidates) {
+    ticks.push(t);
+    if (t > maxSeconds) break;
+  }
+  return { tickvals: ticks.map((t) => Math.log10(t + 1)), ticktext: ticks.map((t) => `${t}s`) };
+}
 
 /** Builds the case x method heatmap figure for one metric. `rows` must be filtered only by
  * metric/case-eligibility/family (matching app/app.py's `df_metric`) — NOT by
@@ -189,11 +203,19 @@ export function useMatrixFigure(
       });
     }
 
+    // Training time is heavy-tailed (most methods are fast, a few much slower), so cell
+    // color pivots on log10(seconds + 1) rather than the raw seconds `values` used for
+    // cell text/ranking above — a linear scale would leave almost every cell looking
+    // identical. The colorbar ticks below relabel this log space back to real seconds.
+    const colorZ = showTrainingTime
+      ? values.map((row) => row.map((v) => (Number.isNaN(v) ? NaN : Math.log10(v + 1))))
+      : values;
+
     // @types/plotly.js is missing `zmid` (a real, documented plotly.js heatmap option —
     // just absent from this package's typings), hence the inline extension below.
     const heatmap: Partial<PlotData> & { zmid?: number } = {
       type: 'heatmap',
-      z: values,
+      z: colorZ,
       x: colOrder,
       y: rowOrder,
       colorscale: colorscaleFor(cfg),
@@ -201,11 +223,22 @@ export function useMatrixFigure(
       // overlay instead (see HoverTooltips), matching app/app.py's clientside callback.
       hoverinfo: 'none',
       colorbar: {
-        title: { text: showTrainingTime ? 'Training\ntime (s)' : metric.replace(/_/g, '\n') },
+        // Kept short ("Seconds", not "Training time (s)") so it can never need more
+        // horizontal space than the fixed margin below already budgets for — see the
+        // margin.autoexpand note further down for why that matters.
+        title: { text: showTrainingTime ? 'Seconds' : metric.replace(/_/g, '\n') },
         len: 0.6,
         thickness: 16,
         x: 1.0,
         xanchor: 'left',
+        ...(showTrainingTime
+          ? {
+              tickmode: 'array' as const,
+              ...trainingTimeColorTicks(
+                values.flat().reduce((m, v) => (Number.isFinite(v) ? Math.max(m, v) : m), 0),
+              ),
+            }
+          : {}),
       },
     };
     if (cfg.center !== null) {
@@ -217,12 +250,26 @@ export function useMatrixFigure(
       heatmap.zmid = cfg.center;
     }
 
+    // @types/plotly.js is missing `margin.autoexpand` (a real, documented plotly.js
+    // option — just absent from this package's typings, like `zmid` above). Without it,
+    // Plotly lets a wide colorbar title grow past this fixed margin, silently shrinking
+    // the plot area within the figure's fixed width/height — which is what made the
+    // training-time overlay's grid look narrower than the normal metric view. Disabling
+    // it guarantees the heatmap cells occupy exactly the same pixels either way.
+    const margin: Partial<Margin> & { autoexpand?: boolean } = {
+      l: 90,
+      t: 40,
+      r: 80,
+      b: 80,
+      autoexpand: false,
+    };
+
     const layout: Partial<Layout> = {
       annotations,
       shapes,
       height: CELL * nRows + MATRIX_MARGIN,
       width: CELL * nCols + 170,
-      margin: { l: 90, t: 40, r: 80, b: 80 },
+      margin,
       paper_bgcolor: 'white',
       plot_bgcolor: 'white',
       dragmode: false,

@@ -115,37 +115,59 @@ describe('useMatrixFigure — training-time overlay', () => {
     row({ case_id: 'case_a', method: 'CatBoost', value: 2.0, seconds: 0.5 }),
   ];
 
-  it('pivots on seconds instead of value when the overlay is active', () => {
+  it('colors cells by log10(seconds + 1), not the raw seconds', () => {
     const { result } = renderHook(() =>
       useMatrixFigure(rows, 'MAE', EMPTY_SELECTION, false, false, true),
     );
     const heatmap = result.current!.data[0] as { z: number[][] };
     // colOrder sorts alphabetically within a family: CatBoost before LightGBM.
-    expect(heatmap.z).toEqual([[0.5, 4.32]]);
+    expect(heatmap.z).toEqual([[Math.log10(1.5), Math.log10(5.32)]]);
   });
 
-  it('formats cell text with a trailing "s" and skips fastest-method bolding', () => {
+  it('formats cell text as whole seconds and skips fastest-method bolding', () => {
     const { result } = renderHook(() =>
       useMatrixFigure(rows, 'MAE', EMPTY_SELECTION, false, false, true),
     );
     const texts = result.current!.layout.annotations!.map((a) => String(a.text));
-    expect(texts).toContain('4.32s');
-    expect(texts).toContain('0.50s');
+    expect(texts).toContain('4s');
+    expect(texts).toContain('1s');
     const cellTexts = texts.filter((t) => t.endsWith('s'));
     expect(cellTexts.every((t) => !t.includes('<b>'))).toBe(true);
   });
 
-  it('shows a training-time colorbar title', () => {
+  it('shows a short training-time colorbar title', () => {
     const { result } = renderHook(() =>
       useMatrixFigure(rows, 'MAE', EMPTY_SELECTION, false, false, true),
     );
     const heatmap = result.current!.data[0] as {
       colorbar: { title: { text: string } };
     };
-    expect(heatmap.colorbar.title.text).toBe('Training\ntime (s)');
+    expect(heatmap.colorbar.title.text).toBe('Seconds');
   });
 
-  it('pivots the showGlobal swap-in cell on seconds too', () => {
+  it('labels the colorbar with round-number seconds ticks in log space', () => {
+    const heavyTail = [
+      row({ case_id: 'case_a', method: 'LightGBM', seconds: 1 }),
+      row({ case_id: 'case_a', method: 'CatBoost', seconds: 900 }),
+    ];
+    const { result } = renderHook(() =>
+      useMatrixFigure(heavyTail, 'MAE', EMPTY_SELECTION, false, false, true),
+    );
+    const heatmap = result.current!.data[0] as {
+      colorbar: { tickmode: string; tickvals: number[]; ticktext: string[] };
+    };
+    expect(heatmap.colorbar.tickmode).toBe('array');
+    expect(heatmap.colorbar.ticktext).toEqual(['0s', '1s', '10s', '100s', '1000s']);
+    expect(heatmap.colorbar.tickvals).toEqual([
+      Math.log10(1),
+      Math.log10(2),
+      Math.log10(11),
+      Math.log10(101),
+      Math.log10(1001),
+    ]);
+  });
+
+  it('pivots the showGlobal swap-in cell on seconds too, still log-colored', () => {
     const globalRows = [
       row({
         case_id: 'case_a',
@@ -168,6 +190,18 @@ describe('useMatrixFigure — training-time overlay', () => {
       useMatrixFigure(globalRows, 'MAE', EMPTY_SELECTION, true, false, true),
     );
     const heatmap = result.current!.data[0] as { z: number[][] };
-    expect(heatmap.z).toEqual([[8.64]]);
+    expect(heatmap.z).toEqual([[Math.log10(9.64)]]);
+  });
+
+  it('keeps the plot area pixel-identical to the normal metric view', () => {
+    const metricResult = renderHook(() =>
+      useMatrixFigure(rows, 'MAE', EMPTY_SELECTION, false, false, false),
+    ).result;
+    const overlayResult = renderHook(() =>
+      useMatrixFigure(rows, 'MAE', EMPTY_SELECTION, false, false, true),
+    ).result;
+    expect(overlayResult.current!.layout.width).toBe(metricResult.current!.layout.width);
+    expect(overlayResult.current!.layout.height).toBe(metricResult.current!.layout.height);
+    expect(overlayResult.current!.layout.margin).toEqual(metricResult.current!.layout.margin);
   });
 });
