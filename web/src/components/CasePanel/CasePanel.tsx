@@ -17,7 +17,6 @@ type Props = {
   caseMeta: CaseMeta;
   scores: ScoreRow[];
   showGlobal: boolean;
-  methods: string[];
 };
 
 /** Right-hand detail panel: training/test snapshots, a train-vs-test distribution, a
@@ -25,7 +24,7 @@ type Props = {
  * `showGlobal` reveals extended history for this case, the training snapshot,
  * distribution, proportions bar, and sample counts all swap in the extended-history
  * train split. Port of app/app.py's `render_case_panel`. */
-export function CasePanel({ caseId, caseMeta, scores, showGlobal, methods }: Props) {
+export function CasePanel({ caseId, caseMeta, scores, showGlobal }: Props) {
   const extended = showGlobal && caseHasExtendedHistory(scores, caseId);
   const trainTail = extended ? caseMeta.train_tail_extended : caseMeta.train_tail;
   const splitCounts = extended ? caseMeta.split_counts_extended : caseMeta.split_counts;
@@ -39,7 +38,7 @@ export function CasePanel({ caseId, caseMeta, scores, showGlobal, methods }: Pro
       <div style={{ fontWeight: 'bold', fontSize: '1.1em', margin: '0 0 4px 0' }}>
         {caseId.replace(/_/g, ' ').toUpperCase()}
       </div>
-      <details key={`${caseId}:${methods.join(',')}`}>
+      <details key={caseId}>
         <summary style={SUMMARY_STYLE}>Case summary</summary>
         <div style={{ marginTop: 4 }}>
           <CaseSummary caseMeta={caseMeta} />
