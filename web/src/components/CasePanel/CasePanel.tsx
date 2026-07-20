@@ -39,7 +39,7 @@ export function CasePanel({ caseId, caseMeta, scores, showGlobal }: Props) {
         {caseId.replace(/_/g, ' ').toUpperCase()}
       </div>
       <details key={caseId}>
-        <summary style={SUMMARY_STYLE}>Case summary</summary>
+        <summary style={SUMMARY_STYLE}>Case details</summary>
         <div style={{ marginTop: 4 }}>
           <CaseSummary caseMeta={caseMeta} />
         </div>
