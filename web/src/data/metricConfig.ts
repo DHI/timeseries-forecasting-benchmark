@@ -91,6 +91,17 @@ export const METRIC_CONFIG: Record<string, MetricConfig> = {
   },
 };
 
+/** Display config for the training-time heatmap overlay — Reds/no-center/lower-is-better,
+ * mirroring MAE/RMSE. Kept separate from METRIC_CONFIG since training time isn't a
+ * selectable metric and must not appear in metricOptions(). */
+export const TRAINING_TIME_CONFIG: MetricConfig = {
+  cmap: 'Reds',
+  center: null,
+  label: 'Training time (fit + predict, pooled across rolling origins)',
+  format: '.0f',
+  lowerIsBetter: true,
+};
+
 const FALLBACK_CONFIG: MetricConfig = {
   cmap: 'Reds',
   center: null,

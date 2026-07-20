@@ -1,10 +1,11 @@
+import Markdown from 'react-markdown';
 import { caseHasExtendedHistory } from '../../data/selectors';
 import { TRAINING_TAIL_N } from '../../data/constants';
+import { caseTrainingStats } from '../../data/caseText';
 import { CaseSummary } from './CaseSummary';
 import { DistributionPlot } from './DistributionPlot';
 import { ProportionsBar } from './ProportionsBar';
 import { TestSplitPlot } from './TestSplitPlot';
-import { TrainingStats } from './TrainingStats';
 import { TrainingTailPlot } from './TrainingTailPlot';
 import type { CaseMeta, ScoreRow } from '../../types/data';
 
@@ -15,7 +16,6 @@ type Props = {
   caseId: string;
   caseMeta: CaseMeta;
   scores: ScoreRow[];
-  methods: string[];
   showGlobal: boolean;
 };
 
@@ -24,7 +24,7 @@ type Props = {
  * `showGlobal` reveals extended history for this case, the training snapshot,
  * distribution, proportions bar, and sample counts all swap in the extended-history
  * train split. Port of app/app.py's `render_case_panel`. */
-export function CasePanel({ caseId, caseMeta, scores, methods, showGlobal }: Props) {
+export function CasePanel({ caseId, caseMeta, scores, showGlobal }: Props) {
   const extended = showGlobal && caseHasExtendedHistory(scores, caseId);
   const trainTail = extended ? caseMeta.train_tail_extended : caseMeta.train_tail;
   const splitCounts = extended ? caseMeta.split_counts_extended : caseMeta.split_counts;
@@ -38,8 +38,14 @@ export function CasePanel({ caseId, caseMeta, scores, methods, showGlobal }: Pro
       <div style={{ fontWeight: 'bold', fontSize: '1.1em', margin: '0 0 4px 0' }}>
         {caseId.replace(/_/g, ' ').toUpperCase()}
       </div>
+      <details key={caseId}>
+        <summary style={SUMMARY_STYLE}>Case details</summary>
+        <div style={{ marginTop: 4 }}>
+          <CaseSummary caseMeta={caseMeta} />
+        </div>
+      </details>
       <details open>
-        <summary style={SUMMARY_STYLE}>Training & test data</summary>
+        <summary style={SUMMARY_STYLE}>Data overview</summary>
         <p style={{ ...CAPTION_STYLE, margin: '0 0 4px 0' }}>{caption}</p>
         <TrainingTailPlot series={trainTail} caseId={caseId} />
         <p style={CAPTION_STYLE}>Test data (full test split)</p>
@@ -48,20 +54,7 @@ export function CasePanel({ caseId, caseMeta, scores, methods, showGlobal }: Pro
         <DistributionPlot distribution={distribution} caseId={caseId} />
         <p style={CAPTION_STYLE}>Train / val / test split</p>
         <ProportionsBar counts={splitCounts} caseId={caseId} />
-        <TrainingStats
-          scores={scores}
-          caseMeta={caseMeta}
-          caseId={caseId}
-          methods={methods}
-          extended={extended}
-        />
-      </details>
-      <hr />
-      <details open>
-        <summary style={SUMMARY_STYLE}>Case summary</summary>
-        <div style={{ marginTop: 4 }}>
-          <CaseSummary caseMeta={caseMeta} />
-        </div>
+        <Markdown>{caseTrainingStats(caseMeta, extended)}</Markdown>
       </details>
     </div>
   );

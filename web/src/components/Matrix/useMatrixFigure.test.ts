@@ -37,14 +37,16 @@ describe('useMatrixFigure — extended-history swap', () => {
 
   it('uses the local value by default, regardless of row order', () => {
     const { result } = renderHook(() =>
-      useMatrixFigure(rows, 'MAE', EMPTY_SELECTION, false, false),
+      useMatrixFigure(rows, 'MAE', EMPTY_SELECTION, false, false, false),
     );
     const heatmap = result.current!.data[0] as { z: number[][] };
     expect(heatmap.z).toEqual([[1.0]]);
   });
 
   it('swaps in the extended value and marks it when showGlobal is on', () => {
-    const { result } = renderHook(() => useMatrixFigure(rows, 'MAE', EMPTY_SELECTION, true, false));
+    const { result } = renderHook(() =>
+      useMatrixFigure(rows, 'MAE', EMPTY_SELECTION, true, false, false),
+    );
     const heatmap = result.current!.data[0] as { z: number[][] };
     expect(heatmap.z).toEqual([[9.0]]);
     // One boundary-less single-cell grid: any shape present is the global overlay triangle.
@@ -57,7 +59,7 @@ describe('useMatrixFigure — extended-history swap', () => {
       row({ value: 9.0, used_extended_history: true, is_global: false }),
     ];
     const { result } = renderHook(() =>
-      useMatrixFigure(localOnly, 'MAE', EMPTY_SELECTION, true, false),
+      useMatrixFigure(localOnly, 'MAE', EMPTY_SELECTION, true, false, false),
     );
     const heatmap = result.current!.data[0] as { z: number[][] };
     expect(heatmap.z).toEqual([[1.0]]);
@@ -72,14 +74,16 @@ describe('useMatrixFigure — exogenous swap', () => {
 
   it('uses the base method’s value by default', () => {
     const { result } = renderHook(() =>
-      useMatrixFigure(rows, 'MAE', EMPTY_SELECTION, false, false),
+      useMatrixFigure(rows, 'MAE', EMPTY_SELECTION, false, false, false),
     );
     const heatmap = result.current!.data[0] as { z: number[][] };
     expect(heatmap.z).toEqual([[1.0]]);
   });
 
   it('swaps in the +exo sibling’s value and marks it when showExo is on', () => {
-    const { result } = renderHook(() => useMatrixFigure(rows, 'MAE', EMPTY_SELECTION, false, true));
+    const { result } = renderHook(() =>
+      useMatrixFigure(rows, 'MAE', EMPTY_SELECTION, false, true, false),
+    );
     const heatmap = result.current!.data[0] as { z: number[][] };
     expect(heatmap.z).toEqual([[0.5]]);
     expect(result.current!.layout.shapes?.some((s) => s.fillcolor === '#0B7285')).toBe(true);
@@ -91,7 +95,7 @@ describe('useMatrixFigure — exogenous swap', () => {
       row({ method: 'LightGBM+exo', value: 0.5, case_exo_tier: 'none' }),
     ];
     const { result } = renderHook(() =>
-      useMatrixFigure(noExo, 'MAE', EMPTY_SELECTION, false, true),
+      useMatrixFigure(noExo, 'MAE', EMPTY_SELECTION, false, true, false),
     );
     const heatmap = result.current!.data[0] as { z: number[][] };
     expect(heatmap.z).toEqual([[1.0]]);
@@ -99,8 +103,105 @@ describe('useMatrixFigure — exogenous swap', () => {
 
   it('never shows the +exo variant as its own column', () => {
     const { result } = renderHook(() =>
-      useMatrixFigure(rows, 'MAE', EMPTY_SELECTION, false, false),
+      useMatrixFigure(rows, 'MAE', EMPTY_SELECTION, false, false, false),
     );
     expect(result.current!.colOrder).toEqual(['LightGBM']);
+  });
+});
+
+describe('useMatrixFigure — training-time overlay', () => {
+  const rows = [
+    row({ case_id: 'case_a', method: 'LightGBM', value: 1.0, seconds: 4.32 }),
+    row({ case_id: 'case_a', method: 'CatBoost', value: 2.0, seconds: 0.5 }),
+  ];
+
+  it('colors cells by log10(seconds + 1), not the raw seconds', () => {
+    const { result } = renderHook(() =>
+      useMatrixFigure(rows, 'MAE', EMPTY_SELECTION, false, false, true),
+    );
+    const heatmap = result.current!.data[0] as { z: number[][] };
+    // colOrder sorts alphabetically within a family: CatBoost before LightGBM.
+    expect(heatmap.z).toEqual([[Math.log10(1.5), Math.log10(5.32)]]);
+  });
+
+  it('formats cell text as a plain whole number and skips fastest-method bolding', () => {
+    const { result } = renderHook(() =>
+      useMatrixFigure(rows, 'MAE', EMPTY_SELECTION, false, false, true),
+    );
+    const texts = result.current!.layout.annotations!.map((a) => String(a.text));
+    expect(texts).toContain('4');
+    expect(texts).toContain('1');
+    expect(texts).not.toContain('<b>4</b>');
+    expect(texts).not.toContain('<b>1</b>');
+  });
+
+  it('shows a short training-time colorbar title', () => {
+    const { result } = renderHook(() =>
+      useMatrixFigure(rows, 'MAE', EMPTY_SELECTION, false, false, true),
+    );
+    const heatmap = result.current!.data[0] as {
+      colorbar: { title: { text: string } };
+    };
+    expect(heatmap.colorbar.title.text).toBe('Seconds');
+  });
+
+  it('labels the colorbar with round-number seconds ticks in log space', () => {
+    const heavyTail = [
+      row({ case_id: 'case_a', method: 'LightGBM', seconds: 1 }),
+      row({ case_id: 'case_a', method: 'CatBoost', seconds: 900 }),
+    ];
+    const { result } = renderHook(() =>
+      useMatrixFigure(heavyTail, 'MAE', EMPTY_SELECTION, false, false, true),
+    );
+    const heatmap = result.current!.data[0] as {
+      colorbar: { tickmode: string; tickvals: number[]; ticktext: string[] };
+    };
+    expect(heatmap.colorbar.tickmode).toBe('array');
+    expect(heatmap.colorbar.ticktext).toEqual(['0', '1', '10', '100', '1000']);
+    expect(heatmap.colorbar.tickvals).toEqual([
+      Math.log10(1),
+      Math.log10(2),
+      Math.log10(11),
+      Math.log10(101),
+      Math.log10(1001),
+    ]);
+  });
+
+  it('pivots the showGlobal swap-in cell on seconds too, still log-colored', () => {
+    const globalRows = [
+      row({
+        case_id: 'case_a',
+        method: 'LightGBM',
+        used_extended_history: false,
+        is_global: true,
+        value: 1.0,
+        seconds: 4.32,
+      }),
+      row({
+        case_id: 'case_a',
+        method: 'LightGBM',
+        used_extended_history: true,
+        is_global: true,
+        value: 9.0,
+        seconds: 8.64,
+      }),
+    ];
+    const { result } = renderHook(() =>
+      useMatrixFigure(globalRows, 'MAE', EMPTY_SELECTION, true, false, true),
+    );
+    const heatmap = result.current!.data[0] as { z: number[][] };
+    expect(heatmap.z).toEqual([[Math.log10(9.64)]]);
+  });
+
+  it('keeps the plot area pixel-identical to the normal metric view', () => {
+    const metricResult = renderHook(() =>
+      useMatrixFigure(rows, 'MAE', EMPTY_SELECTION, false, false, false),
+    ).result;
+    const overlayResult = renderHook(() =>
+      useMatrixFigure(rows, 'MAE', EMPTY_SELECTION, false, false, true),
+    ).result;
+    expect(overlayResult.current!.layout.width).toBe(metricResult.current!.layout.width);
+    expect(overlayResult.current!.layout.height).toBe(metricResult.current!.layout.height);
+    expect(overlayResult.current!.layout.margin).toEqual(metricResult.current!.layout.margin);
   });
 });

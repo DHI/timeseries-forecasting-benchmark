@@ -169,6 +169,12 @@ describe('pivotValues', () => {
       [NaN, 2.5],
     ]);
   });
+
+  it('pivots on a custom field when a value accessor is given', () => {
+    const rows = [row({ case_id: 'c1', method: 'm1', value: 1.5, seconds: 4.32 })];
+    const grid = pivotValues(rows, ['c1'], ['m1'], (r) => r.seconds);
+    expect(grid).toEqual([[4.32]]);
+  });
 });
 
 describe('groupBoundaries', () => {

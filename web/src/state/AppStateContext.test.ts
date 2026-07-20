@@ -39,6 +39,16 @@ describe('appReducer', () => {
     expect(state.showExogenous).toBe(true);
   });
 
+  it('sets the training-time overlay', () => {
+    const state = appReducer(initialAppState(), {
+      type: 'SET_TRAINING_TIME_OVERLAY',
+      active: true,
+    });
+    expect(state.trainingTimeOverlay).toBe(true);
+    const cleared = appReducer(state, { type: 'SET_TRAINING_TIME_OVERLAY', active: false });
+    expect(cleared.trainingTimeOverlay).toBe(false);
+  });
+
   it('sets the case panel width, clamped to the allowed range', () => {
     const state = appReducer(initialAppState(), { type: 'SET_CASE_PANEL_WIDTH', width: 600 });
     expect(state.casePanelWidth).toBe(600);

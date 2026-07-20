@@ -1,4 +1,4 @@
-import type { CaseMeta, ScoreRow } from '../types/data';
+import type { CaseMeta } from '../types/data';
 
 const NUMBER_FORMAT = new Intl.NumberFormat('en-US');
 
@@ -24,48 +24,16 @@ export function caseSummary(caseMeta: CaseMeta): string {
   return lines.join('\n\n');
 }
 
-/** The persisted `seconds` timing (fit + predict, pooled across rolling origins) for this
- * case x method run. Falls back to the local (non-extended) fit's timing when `extended`
- * is requested but this method never produced an extended-history variant. Port of
- * app/data.py's `method_training_seconds`. */
-export function methodTrainingSeconds(
-  scores: ScoreRow[],
-  caseId: string,
-  method: string,
-  extended = false,
-): number | null {
-  const forMethod = scores.filter((r) => r.case_id === caseId && r.method === method);
-  let rows = forMethod.filter((r) => r.used_extended_history === extended);
-  if (rows.length === 0 && extended) {
-    rows = forMethod.filter((r) => !r.used_extended_history);
-  }
-  return rows.length > 0 ? (rows[0]!.seconds ?? null) : null;
-}
-
-/** Markdown lines for the case-summary panel, below the split-proportions bar: the
- * actual observed sample counts behind that bar's percentages, and the measured
- * training time for each currently-selected method. Port of app/data.py's
- * `case_training_stats`. */
-export function caseTrainingStats(
-  scores: ScoreRow[],
-  caseMeta: CaseMeta,
-  caseId: string,
-  methods: string[],
-  extended = false,
-): string {
+/** Markdown line for the case-summary panel, below the split-proportions bar: the
+ * actual observed sample counts behind that bar's percentages. Port of app/data.py's
+ * `case_training_stats` (minus its training-time line, now shown as a heatmap overlay
+ * instead — see the "Training time" control in the sidebar). */
+export function caseTrainingStats(caseMeta: CaseMeta, extended = false): string {
   const counts = extended ? caseMeta.split_counts_extended : caseMeta.split_counts;
   const total = counts.train + counts.val + counts.test;
-  const samplesLine =
+  return (
     `**Samples used**: train ${NUMBER_FORMAT.format(counts.train)} · ` +
     `val ${NUMBER_FORMAT.format(counts.val)} · test ${NUMBER_FORMAT.format(counts.test)} ` +
-    `(total ${NUMBER_FORMAT.format(total)})`;
-  if (methods.length === 0) return samplesLine;
-
-  const times = methods.map((method) => {
-    const seconds = methodTrainingSeconds(scores, caseId, method, extended);
-    return seconds !== null ? `${method} ${seconds.toFixed(2)}s` : `${method} —`;
-  });
-  const timeLine =
-    '**Training time** (fit + predict, pooled across rolling origins): ' + times.join(' · ');
-  return `${samplesLine}\n\n${timeLine}`;
+    `(total ${NUMBER_FORMAT.format(total)})`
+  );
 }

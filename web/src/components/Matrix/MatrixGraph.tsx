@@ -37,6 +37,7 @@ type Props = {
   selection: SelectionState;
   showGlobal: boolean;
   showExogenous: boolean;
+  showTrainingTime: boolean;
   onCellClick: (caseId: string, method: string) => void;
 };
 
@@ -46,9 +47,17 @@ export function MatrixGraph({
   selection,
   showGlobal,
   showExogenous,
+  showTrainingTime,
   onCellClick,
 }: Props) {
-  const figure = useMatrixFigure(rows, metric, selection, showGlobal, showExogenous);
+  const figure = useMatrixFigure(
+    rows,
+    metric,
+    selection,
+    showGlobal,
+    showExogenous,
+    showTrainingTime,
+  );
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const graphRef = useRef<HTMLDivElement | null>(null);
   const [overlay, setOverlay] = useState<HoverOverlay | null>(null);
