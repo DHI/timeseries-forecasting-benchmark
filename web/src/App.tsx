@@ -264,8 +264,8 @@ function MainLayout({
           style={{
             position: 'absolute',
             top: 16,
-            left: '100%',
-            transform: 'translateX(-50%)',
+            left: state.sidebarCollapsed ? 4 : sidebarWidth,
+            transform: state.sidebarCollapsed ? 'none' : 'translateX(-50%)',
             background: 'var(--bg)',
             cursor: 'pointer',
           }}

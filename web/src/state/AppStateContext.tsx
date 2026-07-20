@@ -66,7 +66,7 @@ export function initialAppState(overrides: Partial<AppState> = {}): AppState {
     metric: '',
     domains: [],
     families: [],
-    sidebarCollapsed: false,
+    sidebarCollapsed: true,
     showGlobal: false,
     showExogenous: false,
     trainingTimeOverlay: false,
