@@ -107,8 +107,15 @@ export function formatSnakeCaseLabel(label: string, separator = ' '): string {
   return label.replace(/_/g, separator).replace(/^./, (c) => c.toUpperCase());
 }
 
-/** case_id/method -> value, for one metric, restricted to the given row/column order. */
-export function pivotValues(rows: ScoreRow[], rowOrder: string[], colOrder: string[]): number[][] {
+/** case_id/method -> value, for one metric, restricted to the given row/column order.
+ * `valueOf` picks which field to pivot — defaults to the score (`row.value`), but the
+ * training-time overlay passes `(r) => r.seconds` to pivot on timing instead. */
+export function pivotValues(
+  rows: ScoreRow[],
+  rowOrder: string[],
+  colOrder: string[],
+  valueOf: (row: ScoreRow) => number | null = (r) => r.value,
+): number[][] {
   const rowIndex = new Map(rowOrder.map((id, i) => [id, i]));
   const colIndex = new Map(colOrder.map((id, i) => [id, i]));
   const grid: number[][] = rowOrder.map(() => colOrder.map(() => NaN));
@@ -116,7 +123,8 @@ export function pivotValues(rows: ScoreRow[], rowOrder: string[], colOrder: stri
     const r = rowIndex.get(row.case_id);
     const c = colIndex.get(row.method);
     if (r === undefined || c === undefined) continue;
-    if (row.value !== null) grid[r]![c] = row.value;
+    const v = valueOf(row);
+    if (v !== null) grid[r]![c] = v;
   }
   return grid;
 }
