@@ -8,6 +8,17 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-20 — Sidebar closed by default, added a hint for first-time visitors
+
+The control sidebar used to open on load and its collapse/expand button was only half
+visible once collapsed — it was anchored to the sidebar's own width, which shrinks to
+zero when collapsed, so the button's centering offset pushed half of it past the left
+edge of the page. The sidebar now starts collapsed, and the button's position is
+computed directly from the sidebar's open/closed state instead of relying on that width.
+Also added a floating "Click a cell to inspect a case" prompt with an arrow pointing at
+the heatmap, shown in the empty space to its right until a cell is selected, since that
+space was otherwise blank with no cue that clicking does anything.
+
 ## 2026-07-20 — Moved training time from the right panel to a press-and-hold heatmap overlay
 
 Training time used to show as one text line per selected method in the right-side case panel,
