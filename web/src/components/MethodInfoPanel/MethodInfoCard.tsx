@@ -10,6 +10,11 @@ const DEFAULT_CONTENT_HEIGHT = 220;
 const MIN_CONTENT_HEIGHT = 120;
 const MAX_CONTENT_HEIGHT = 520;
 
+/** A collapsed card is exactly the title bar. Exported so the page can reserve enough space
+ * below its scrollable content that a collapsed card (the shortest the fixed-overlay card row
+ * ever gets) never overlaps the last line of text above it. */
+export const TITLE_BAR_HEIGHT = 34;
+
 type Props = {
   method: string;
   index: number;
@@ -43,6 +48,8 @@ export function MethodInfoCard({ method, index, caseMeta, methodMeta }: Props) {
       title={collapsed ? 'Expand' : 'Collapse (drag to resize)'}
       style={{
         flex: '0 0 auto',
+        height: TITLE_BAR_HEIGHT,
+        boxSizing: 'border-box',
         display: 'flex',
         alignItems: 'center',
         gap: 6,

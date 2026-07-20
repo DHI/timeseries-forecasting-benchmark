@@ -10,6 +10,7 @@ import { MatrixGraph } from './components/Matrix/MatrixGraph';
 import { BenchmarkDesign } from './components/BenchmarkDesign/BenchmarkDesign';
 import { CasePanel } from './components/CasePanel/CasePanel';
 import { MethodInfoPanel } from './components/MethodInfoPanel/MethodInfoPanel';
+import { TITLE_BAR_HEIGHT } from './components/MethodInfoPanel/MethodInfoCard';
 import { SnapshotPanel } from './components/SnapshotPanel/SnapshotPanel';
 import { useEdgeResize } from './hooks/useEdgeResize';
 import { DOMAIN_RESTRICTED_METRICS } from './data/metricConfig';
@@ -289,6 +290,7 @@ function MainLayout({
           onCellClick={handleCellClick}
         />
         <BenchmarkDesign />
+        <div style={{ height: TITLE_BAR_HEIGHT }} />
       </main>
       <MethodInfoPanel
         caseId={state.selection.case_id}
