@@ -276,12 +276,12 @@ function MainLayout({
             position: 'sticky',
             top: 0,
             maxHeight: '100vh',
-            padding: 16,
             borderLeft: '1px solid var(--border)',
-            overflowY: 'auto',
             background: '#ffffff',
           }}
         >
+          {/* The drag handle lives outside the scrollable div below so it stays anchored to
+              the panel's full visible height instead of scrolling away with its content. */}
           <div
             onMouseDown={casePanelResize.onMouseDown}
             title="Drag to resize"
@@ -294,25 +294,34 @@ function MainLayout({
               cursor: 'col-resize',
             }}
           />
-          <CasePanel
-            caseId={state.selection.case_id}
-            caseMeta={cases[state.selection.case_id]!}
-            scores={scores}
-            methods={state.selection.methods}
-            showGlobal={state.showGlobal}
-          />
-          <hr />
-          <SnapshotPanel
-            caseId={state.selection.case_id}
-            caseMeta={cases[state.selection.case_id]!}
-            scores={scores}
-            methods={state.selection.methods}
-            metric={state.metric}
-            showGlobal={state.showGlobal}
-            showExogenous={state.showExogenous}
-            onRemoveMethod={handleRemoveMethod}
-            onClear={handleClear}
-          />
+          <div
+            style={{
+              boxSizing: 'border-box',
+              maxHeight: '100vh',
+              padding: 16,
+              overflowY: 'auto',
+            }}
+          >
+            <CasePanel
+              caseId={state.selection.case_id}
+              caseMeta={cases[state.selection.case_id]!}
+              scores={scores}
+              methods={state.selection.methods}
+              showGlobal={state.showGlobal}
+            />
+            <hr />
+            <SnapshotPanel
+              caseId={state.selection.case_id}
+              caseMeta={cases[state.selection.case_id]!}
+              scores={scores}
+              methods={state.selection.methods}
+              metric={state.metric}
+              showGlobal={state.showGlobal}
+              showExogenous={state.showExogenous}
+              onRemoveMethod={handleRemoveMethod}
+              onClear={handleClear}
+            />
+          </div>
         </div>
       )}
     </div>
