@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo } from 'react';
 import { DomainChecklist } from './components/Sidebar/DomainChecklist';
 import { FamilyMultiSelect } from './components/Sidebar/FamilyMultiSelect';
+import { HoldTrainingTimeButton } from './components/Sidebar/HoldTrainingTimeButton';
 import { MarkerSwatch } from './components/Sidebar/MarkerSwatch';
 import { MetricDropdown } from './components/Sidebar/MetricDropdown';
 import { ToggleExogenous } from './components/Sidebar/ToggleExogenous';
@@ -223,6 +224,16 @@ function MainLayout({
                 exogenous option are unaffected.
               </p>
             </div>
+            <label style={{ fontWeight: 'bold', display: 'block', marginTop: 16 }}>
+              Training time
+            </label>
+            <HoldTrainingTimeButton
+              onChange={(active) => dispatch({ type: 'SET_TRAINING_TIME_OVERLAY', active })}
+            />
+            <p style={{ color: '#666', fontSize: '0.8em', marginTop: 4 }}>
+              Press and hold to temporarily show each cell's measured training time instead of its
+              score.
+            </p>
           </>
         )}
       </aside>
@@ -255,6 +266,7 @@ function MainLayout({
           selection={state.selection}
           showGlobal={state.showGlobal}
           showExogenous={state.showExogenous}
+          showTrainingTime={state.trainingTimeOverlay}
           onCellClick={handleCellClick}
         />
         <BenchmarkDesign />

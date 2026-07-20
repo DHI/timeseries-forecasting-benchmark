@@ -3,7 +3,7 @@ import { useMemo } from 'react';
 import type { Annotations, Data, Layout, PlotData, Shape } from 'plotly.js';
 import { CELL, DOMAIN_KEY_DICT, MATRIX_MARGIN } from '../../data/constants';
 import { colorscaleFor } from '../../data/colorscale';
-import { metricConfig } from '../../data/metricConfig';
+import { metricConfig, TRAINING_TIME_CONFIG } from '../../data/metricConfig';
 import {
   formatSnakeCaseLabel,
   groupBoundaries,
@@ -34,17 +34,23 @@ export function useMatrixFigure(
   selection: SelectionState,
   showGlobal: boolean,
   showExo: boolean,
+  showTrainingTime: boolean,
 ): MatrixFigure | null {
   return useMemo(() => {
     if (!metric || rows.length === 0) return null;
+
+    // When the training-time overlay is held, every cell pivots on `seconds` instead of
+    // `value` — including the showGlobal/showExo swap-in cells below — so the whole
+    // matrix temporarily shows timing instead of the selected metric's score.
+    const valueOf = showTrainingTime ? (r: ScoreRow) => r.seconds : (r: ScoreRow) => r.value;
 
     const dfLocal = rows.filter((r) => !r.used_extended_history);
     const rowOrder = orderedCases(dfLocal);
     const colOrder = orderedMethods(dfLocal);
     if (rowOrder.length === 0 || colOrder.length === 0) return null;
 
-    const values = pivotValues(dfLocal, rowOrder, colOrder);
-    const cfg = metricConfig(metric);
+    const values = pivotValues(dfLocal, rowOrder, colOrder, valueOf);
+    const cfg = showTrainingTime ? TRAINING_TIME_CONFIG : metricConfig(metric);
     const fmt = d3format(cfg.format);
 
     const domainOf = new Map<string, string>();
@@ -67,8 +73,9 @@ export function useMatrixFigure(
         if (!row.used_extended_history || !row.is_global) continue;
         const r = rowOrder.indexOf(row.case_id);
         const c = colOrder.indexOf(row.method);
-        if (r === -1 || c === -1 || row.value === null) continue;
-        values[r]![c] = row.value;
+        const v = valueOf(row);
+        if (r === -1 || c === -1 || v === null) continue;
+        values[r]![c] = v;
         globalOverlayCells.push([row.case_id, row.method]);
       }
     }
@@ -94,16 +101,23 @@ export function useMatrixFigure(
           const base = row.method.slice(0, -'+exo'.length);
           const r = rowOrder.indexOf(row.case_id);
           const c = colOrder.indexOf(base);
-          if (r === -1 || c === -1 || row.value === null) continue;
+          const v = valueOf(row);
+          if (r === -1 || c === -1 || v === null) continue;
           if ((tierOf.get(row.case_id) ?? 'none') === 'none') continue;
-          values[r]![c] = row.value;
+          values[r]![c] = v;
           exoOverlayCells.push([row.case_id, base]);
         }
       }
     }
 
-    const text = values.map((rowValues) => rowValues.map((v) => (Number.isNaN(v) ? '—' : fmt(v))));
-    const bestOfRow = rowBestMethods(rowOrder, colOrder, values, cfg.lowerIsBetter);
+    const text = values.map((rowValues) =>
+      rowValues.map((v) => (Number.isNaN(v) ? '—' : `${fmt(v)}${showTrainingTime ? 's' : ''}`)),
+    );
+    // The overlay is a quick glance at timing, not a ranking — skip the fastest-method
+    // bolding that normally highlights the best-scoring method per row.
+    const bestOfRow = showTrainingTime
+      ? new Map<string, string>()
+      : rowBestMethods(rowOrder, colOrder, values, cfg.lowerIsBetter);
 
     const annotations: Partial<Annotations>[] = [];
     rowOrder.forEach((caseId, r) => {
@@ -187,7 +201,7 @@ export function useMatrixFigure(
       // overlay instead (see HoverTooltips), matching app/app.py's clientside callback.
       hoverinfo: 'none',
       colorbar: {
-        title: { text: metric.replace(/_/g, '\n') },
+        title: { text: showTrainingTime ? 'Training\ntime (s)' : metric.replace(/_/g, '\n') },
         len: 0.6,
         thickness: 16,
         x: 1.0,
@@ -233,5 +247,5 @@ export function useMatrixFigure(
     };
 
     return { data: [heatmap as Data], layout, rowOrder, colOrder };
-  }, [rows, metric, selection, showGlobal, showExo]);
+  }, [rows, metric, selection, showGlobal, showExo, showTrainingTime]);
 }
