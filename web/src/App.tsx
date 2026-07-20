@@ -157,112 +157,121 @@ function MainLayout({
     );
   }, [scores, state.metric, state.domains, state.families, domainMetrics]);
 
+  const sidebarWidth = state.sidebarCollapsed ? 0 : 260;
+  const selectedCase = state.selection.case_id ? cases[state.selection.case_id] : undefined;
+  const casePanelWidth = selectedCase ? state.casePanelWidth : 0;
+
   return (
     <div style={{ display: 'flex' }}>
-      <aside
+      <div
         style={{
-          width: state.sidebarCollapsed ? 0 : 260,
-          flex: `0 0 ${state.sidebarCollapsed ? 0 : 260}px`,
-          background: 'var(--panel-bg)',
-          borderRight: state.sidebarCollapsed ? 'none' : '2px solid var(--border)',
-          overflow: 'hidden',
-          boxSizing: 'border-box',
+          flex: `0 0 ${sidebarWidth}px`,
           position: 'sticky',
           top: 0,
           maxHeight: '100vh',
         }}
       >
-        {!state.sidebarCollapsed && (
-          <div
-            style={{
-              boxSizing: 'border-box',
-              maxHeight: '100vh',
-              padding: 16,
-              overflowY: 'auto',
-            }}
-          >
-            <h3>Controls</h3>
-            <label style={{ fontWeight: 'bold', display: 'block', marginTop: 16 }}>Metric</label>
-            <MetricDropdown
-              options={metricOpts}
-              value={state.metric}
-              onChange={(metric) => dispatch({ type: 'SET_METRIC', metric })}
-            />
-            <p style={{ color: '#666', fontSize: '0.8em', marginTop: 4 }}>
-              NSE and KGE only apply to cases whose case.toml declares them (flow/level domains) —
-              the matrix rows narrow to just those cases when one is selected.
-            </p>
-            <label style={{ fontWeight: 'bold', display: 'block', marginTop: 16 }}>Domains</label>
-            <DomainChecklist
-              options={domainOpts}
-              value={state.domains}
-              onChange={(domains) => dispatch({ type: 'SET_DOMAINS', domains })}
-            />
-            <label style={{ fontWeight: 'bold', display: 'block', marginTop: 16 }}>
-              Method families
-            </label>
-            <FamilyMultiSelect
-              options={familyOpts}
-              value={state.families}
-              onChange={(families) => dispatch({ type: 'SET_FAMILIES', families })}
-            />
-            <label style={{ fontWeight: 'bold', display: 'block', marginTop: 16 }}>
-              Global methods
-            </label>
-            <ToggleGlobal
-              checked={state.showGlobal}
-              onChange={() => dispatch({ type: 'TOGGLE_GLOBAL' })}
-            />
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginTop: 4 }}>
-              <MarkerSwatch corner="top-right" color="#FF1493" />
-              <p style={{ color: '#666', fontSize: '0.8em', margin: 0 }}>
-                Some global models have been trained with longer history.
+        <aside
+          style={{
+            width: sidebarWidth,
+            height: '100%',
+            background: 'var(--panel-bg)',
+            borderRight: state.sidebarCollapsed ? 'none' : '2px solid var(--border)',
+            overflow: 'hidden',
+            boxSizing: 'border-box',
+          }}
+        >
+          {!state.sidebarCollapsed && (
+            <div
+              style={{
+                boxSizing: 'border-box',
+                maxHeight: '100vh',
+                padding: 16,
+                overflowY: 'auto',
+              }}
+            >
+              <h3>Controls</h3>
+              <label style={{ fontWeight: 'bold', display: 'block', marginTop: 16 }}>Metric</label>
+              <MetricDropdown
+                options={metricOpts}
+                value={state.metric}
+                onChange={(metric) => dispatch({ type: 'SET_METRIC', metric })}
+              />
+              <p style={{ color: '#666', fontSize: '0.8em', marginTop: 4 }}>
+                NSE and KGE only apply to cases whose case.toml declares them (flow/level domains) —
+                the matrix rows narrow to just those cases when one is selected.
+              </p>
+              <label style={{ fontWeight: 'bold', display: 'block', marginTop: 16 }}>Domains</label>
+              <DomainChecklist
+                options={domainOpts}
+                value={state.domains}
+                onChange={(domains) => dispatch({ type: 'SET_DOMAINS', domains })}
+              />
+              <label style={{ fontWeight: 'bold', display: 'block', marginTop: 16 }}>
+                Method families
+              </label>
+              <FamilyMultiSelect
+                options={familyOpts}
+                value={state.families}
+                onChange={(families) => dispatch({ type: 'SET_FAMILIES', families })}
+              />
+              <label style={{ fontWeight: 'bold', display: 'block', marginTop: 16 }}>
+                Global methods
+              </label>
+              <ToggleGlobal
+                checked={state.showGlobal}
+                onChange={() => dispatch({ type: 'TOGGLE_GLOBAL' })}
+              />
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginTop: 4 }}>
+                <MarkerSwatch corner="top-right" color="#FF1493" />
+                <p style={{ color: '#666', fontSize: '0.8em', margin: 0 }}>
+                  Some global models have been trained with longer history.
+                </p>
+              </div>
+              <label style={{ fontWeight: 'bold', display: 'block', marginTop: 16 }}>
+                Exogenous inputs
+              </label>
+              <ToggleExogenous
+                checked={state.showExogenous}
+                onChange={() => dispatch({ type: 'TOGGLE_EXOGENOUS' })}
+              />
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginTop: 4 }}>
+                <MarkerSwatch corner="bottom-left" color="#0B7285" />
+                <p style={{ color: '#666', fontSize: '0.8em', margin: 0 }}>
+                  Where a method has an exogenous-aware variant and the case provides exogenous
+                  data, this swaps in that variant's score for the cell. Cases or methods without an
+                  exogenous option are unaffected.
+                </p>
+              </div>
+              <label style={{ fontWeight: 'bold', display: 'block', marginTop: 16 }}>
+                Training time
+              </label>
+              <HoldTrainingTimeButton
+                onChange={(active) => dispatch({ type: 'SET_TRAINING_TIME_OVERLAY', active })}
+              />
+              <p style={{ color: '#666', fontSize: '0.8em', marginTop: 4 }}>
+                Press and hold to show each cell's measured training time instead of its score. You
+                can still hover around matrix cells while holding the button.
               </p>
             </div>
-            <label style={{ fontWeight: 'bold', display: 'block', marginTop: 16 }}>
-              Exogenous inputs
-            </label>
-            <ToggleExogenous
-              checked={state.showExogenous}
-              onChange={() => dispatch({ type: 'TOGGLE_EXOGENOUS' })}
-            />
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginTop: 4 }}>
-              <MarkerSwatch corner="bottom-left" color="#0B7285" />
-              <p style={{ color: '#666', fontSize: '0.8em', margin: 0 }}>
-                Where a method has an exogenous-aware variant and the case provides exogenous data,
-                this swaps in that variant's score for the cell. Cases or methods without an
-                exogenous option are unaffected.
-              </p>
-            </div>
-            <label style={{ fontWeight: 'bold', display: 'block', marginTop: 16 }}>
-              Training time
-            </label>
-            <HoldTrainingTimeButton
-              onChange={(active) => dispatch({ type: 'SET_TRAINING_TIME_OVERLAY', active })}
-            />
-            <p style={{ color: '#666', fontSize: '0.8em', marginTop: 4 }}>
-              Press and hold to show each cell's measured training time instead of its score. You
-              can still hover around matrix cells while holding the button.
-            </p>
-          </div>
-        )}
-      </aside>
-      <button
-        type="button"
-        title="Collapse/expand controls"
-        onClick={() => dispatch({ type: 'TOGGLE_SIDEBAR' })}
-        style={{
-          flex: '0 0 auto',
-          alignSelf: 'flex-start',
-          position: 'sticky',
-          top: 16,
-          marginTop: 16,
-          background: 'var(--bg)',
-          cursor: 'pointer',
-        }}
-      >
-        {state.sidebarCollapsed ? '▶' : '◀'}
-      </button>
+          )}
+        </aside>
+        <button
+          type="button"
+          title="Collapse/expand controls"
+          onClick={() => dispatch({ type: 'TOGGLE_SIDEBAR' })}
+          style={{
+            position: 'absolute',
+            top: 16,
+            left: '100%',
+            transform: 'translateX(-50%)',
+            background: 'var(--bg)',
+            cursor: 'pointer',
+          }}
+        >
+          {state.sidebarCollapsed ? '▶' : '◀'}
+        </button>
+      </div>
       <main style={{ flex: 1, padding: 16, minWidth: 0 }}>
         <h1>Timeseries Forecasting Benchmark</h1>
         <p style={{ color: '#444', maxWidth: 1000 }}>
@@ -280,16 +289,18 @@ function MainLayout({
           onCellClick={handleCellClick}
         />
         <BenchmarkDesign />
-        <MethodInfoPanel
-          caseId={state.selection.case_id}
-          caseMeta={state.selection.case_id ? cases[state.selection.case_id] : undefined}
-          methodsRegistry={methods}
-          scores={scores}
-          methods={state.selection.methods}
-          showExogenous={state.showExogenous}
-        />
       </main>
-      {state.selection.case_id && cases[state.selection.case_id] && (
+      <MethodInfoPanel
+        caseId={state.selection.case_id}
+        caseMeta={selectedCase}
+        methodsRegistry={methods}
+        scores={scores}
+        methods={state.selection.methods}
+        showExogenous={state.showExogenous}
+        leftInset={sidebarWidth}
+        rightInset={casePanelWidth}
+      />
+      {selectedCase && (
         <div
           style={{
             flex: `0 0 ${state.casePanelWidth}px`,
@@ -325,14 +336,14 @@ function MainLayout({
             }}
           >
             <CasePanel
-              caseId={state.selection.case_id}
-              caseMeta={cases[state.selection.case_id]!}
+              caseId={state.selection.case_id!}
+              caseMeta={selectedCase}
               scores={scores}
               showGlobal={state.showGlobal}
             />
             <SnapshotPanel
-              caseId={state.selection.case_id}
-              caseMeta={cases[state.selection.case_id]!}
+              caseId={state.selection.case_id!}
+              caseMeta={selectedCase}
               scores={scores}
               methods={state.selection.methods}
               metric={state.metric}
