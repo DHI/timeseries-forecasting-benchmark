@@ -7,6 +7,7 @@ import { MetricDropdown } from './components/Sidebar/MetricDropdown';
 import { ToggleExogenous } from './components/Sidebar/ToggleExogenous';
 import { ToggleGlobal } from './components/Sidebar/ToggleGlobal';
 import { MatrixGraph } from './components/Matrix/MatrixGraph';
+import { SelectionHint } from './components/Matrix/SelectionHint';
 import { BenchmarkDesign } from './components/BenchmarkDesign/BenchmarkDesign';
 import { CasePanel } from './components/CasePanel/CasePanel';
 import { MethodInfoPanel } from './components/MethodInfoPanel/MethodInfoPanel';
@@ -278,18 +279,21 @@ function MainLayout({
           <h1>Timeseries Forecasting Benchmark</h1>
           <p style={{ color: '#444', maxWidth: 1000 }}>
             The following matrix compiles the forecasting results of multiple methods across a
-            variety of timeseries in different water domains. Each cell represents one case x
-            method run, coloured by the metric chosen in the sidebar.
+            variety of timeseries in different water domains. Each cell represents one case x method
+            run, coloured by the metric chosen in the sidebar.
           </p>
-          <MatrixGraph
-            rows={filteredRows}
-            metric={state.metric}
-            selection={state.selection}
-            showGlobal={state.showGlobal}
-            showExogenous={state.showExogenous}
-            showTrainingTime={state.trainingTimeOverlay}
-            onCellClick={handleCellClick}
-          />
+          <div style={{ position: 'relative' }}>
+            <MatrixGraph
+              rows={filteredRows}
+              metric={state.metric}
+              selection={state.selection}
+              showGlobal={state.showGlobal}
+              showExogenous={state.showExogenous}
+              showTrainingTime={state.trainingTimeOverlay}
+              onCellClick={handleCellClick}
+            />
+            {!selectedCase && <SelectionHint />}
+          </div>
           <BenchmarkDesign />
         </div>
         <div style={{ height: TITLE_BAR_HEIGHT }} />
