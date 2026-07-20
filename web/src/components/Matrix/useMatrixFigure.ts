@@ -5,7 +5,7 @@ import { CELL, DOMAIN_KEY_DICT, MATRIX_MARGIN } from '../../data/constants';
 import { colorscaleFor } from '../../data/colorscale';
 import { metricConfig } from '../../data/metricConfig';
 import {
-  formatFamilyLabel,
+  formatSnakeCaseLabel,
   groupBoundaries,
   groupLabels,
   orderedCases,
@@ -155,7 +155,7 @@ export function useMatrixFigure(
         yref: 'y',
         yanchor: 'bottom',
         yshift: 6,
-        text: `<b>${formatFamilyLabel(label, '<br>')}</b>`,
+        text: `<b>${formatSnakeCaseLabel(label, '<br>')}</b>`,
         showarrow: false,
         font: { size: 13 },
       });

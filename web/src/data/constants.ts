@@ -17,6 +17,18 @@ export const DOMAIN_KEY_DICT: Record<string, string> = {
   water_quality: 'WaQ',
 };
 
+/** Full name for each method family, shown as a hover tooltip next to the "Ml"/"Dl"/"Fm"
+ * abbreviations FAMILY_ORDER's own keys produce (see formatSnakeCaseLabel) — those keys don't
+ * spell out what "ml"/"dl"/"fm" stand for the way DOMAIN_KEY_DICT's keys do. */
+export const FAMILY_FULL_NAMES: Record<string, string> = {
+  baseline: 'Baseline',
+  ensemble: 'Ensemble',
+  classical: 'Classical',
+  ml: 'Machine learning',
+  dl: 'Deep learning',
+  fm: 'Foundation models',
+};
+
 /** Colour-blind-safe palette (Wong 2011, dropping its low-contrast yellow), used to
  * colour-match a selected method's chip/outline/forecast line. Port of
  * app/snapshot.py's METHOD_COLORS. */

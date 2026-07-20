@@ -1,4 +1,5 @@
 import { DOMAIN_KEY_DICT } from '../../data/constants';
+import { formatSnakeCaseLabel } from '../../data/selectors';
 
 type Props = {
   options: string[];
@@ -17,9 +18,9 @@ export function DomainChecklist({ options, value, onChange }: Props) {
   }
 
   return (
-    <div>
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
       {options.map((domain) => (
-        <label key={domain} style={{ display: 'block' }}>
+        <label key={domain} title={formatSnakeCaseLabel(domain)}>
           <input type="checkbox" checked={selected.has(domain)} onChange={() => toggle(domain)} />{' '}
           {DOMAIN_KEY_DICT[domain] ?? domain}
         </label>

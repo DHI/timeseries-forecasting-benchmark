@@ -1,4 +1,5 @@
-import { formatFamilyLabel } from '../../data/selectors';
+import { FAMILY_FULL_NAMES } from '../../data/constants';
+import { formatSnakeCaseLabel } from '../../data/selectors';
 
 type Props = {
   options: string[];
@@ -17,11 +18,11 @@ export function FamilyMultiSelect({ options, value, onChange }: Props) {
   }
 
   return (
-    <div>
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
       {options.map((family) => (
-        <label key={family} style={{ display: 'block' }}>
+        <label key={family} title={FAMILY_FULL_NAMES[family] ?? family}>
           <input type="checkbox" checked={selected.has(family)} onChange={() => toggle(family)} />{' '}
-          {formatFamilyLabel(family)}
+          {formatSnakeCaseLabel(family)}
         </label>
       ))}
     </div>

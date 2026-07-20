@@ -105,8 +105,8 @@ describe('App', () => {
     await waitFor(() => expect(screen.getByTestId('plot-stub')).toBeInTheDocument());
     expect(screen.getByText('Timeseries Forecasting Benchmark')).toBeInTheDocument();
     expect(screen.getByRole('option', { name: 'MASE' })).toBeInTheDocument();
-    expect(screen.getByLabelText('water distribution')).toBeInTheDocument();
-    expect(screen.getByLabelText('baseline')).toBeInTheDocument();
+    expect(screen.getByLabelText('WaD')).toBeInTheDocument();
+    expect(screen.getByLabelText('Baseline')).toBeInTheDocument();
   });
 });
 

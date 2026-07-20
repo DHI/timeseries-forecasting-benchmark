@@ -98,12 +98,12 @@ export function familyOptions(rows: ScoreRow[]): string[] {
   return [...ordered, ...leftover];
 }
 
-/** Display form of a method family label: only the first character capitalized (not every
- * word — matches the matrix's own family-group headers, including abbreviations like "ml"
- * rendering as "Ml" rather than "ML"), with underscores turned into `separator`. Shared by
- * the matrix's family-group annotations and the sidebar's FamilyMultiSelect so the two
- * can't drift apart. */
-export function formatFamilyLabel(label: string, separator = ' '): string {
+/** Display form of a snake_case key: only the first character capitalized (not every word —
+ * matches the matrix's own family-group headers, including abbreviations like "ml" rendering
+ * as "Ml" rather than "ML"), with underscores turned into `separator`. Shared by the matrix's
+ * family-group annotations, the sidebar's FamilyMultiSelect, and DomainChecklist's tooltips
+ * so they can't drift apart. */
+export function formatSnakeCaseLabel(label: string, separator = ' '): string {
   return label.replace(/_/g, separator).replace(/^./, (c) => c.toUpperCase());
 }
 
