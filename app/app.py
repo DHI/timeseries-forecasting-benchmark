@@ -891,7 +891,7 @@ app.layout = html.Div(
                                     open=True,
                                     children=[
                                         html.Summary(
-                                            "Training & test data",
+                                            "Data overview",
                                             style=_SUBSECTION_SUMMARY_STYLE,
                                         ),
                                         html.P(

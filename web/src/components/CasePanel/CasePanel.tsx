@@ -17,6 +17,7 @@ type Props = {
   caseMeta: CaseMeta;
   scores: ScoreRow[];
   showGlobal: boolean;
+  methods: string[];
 };
 
 /** Right-hand detail panel: training/test snapshots, a train-vs-test distribution, a
@@ -24,7 +25,7 @@ type Props = {
  * `showGlobal` reveals extended history for this case, the training snapshot,
  * distribution, proportions bar, and sample counts all swap in the extended-history
  * train split. Port of app/app.py's `render_case_panel`. */
-export function CasePanel({ caseId, caseMeta, scores, showGlobal }: Props) {
+export function CasePanel({ caseId, caseMeta, scores, showGlobal, methods }: Props) {
   const extended = showGlobal && caseHasExtendedHistory(scores, caseId);
   const trainTail = extended ? caseMeta.train_tail_extended : caseMeta.train_tail;
   const splitCounts = extended ? caseMeta.split_counts_extended : caseMeta.split_counts;
@@ -38,8 +39,14 @@ export function CasePanel({ caseId, caseMeta, scores, showGlobal }: Props) {
       <div style={{ fontWeight: 'bold', fontSize: '1.1em', margin: '0 0 4px 0' }}>
         {caseId.replace(/_/g, ' ').toUpperCase()}
       </div>
+      <details key={`${caseId}:${methods.join(',')}`}>
+        <summary style={SUMMARY_STYLE}>Case summary</summary>
+        <div style={{ marginTop: 4 }}>
+          <CaseSummary caseMeta={caseMeta} />
+        </div>
+      </details>
       <details open>
-        <summary style={SUMMARY_STYLE}>Training & test data</summary>
+        <summary style={SUMMARY_STYLE}>Data overview</summary>
         <p style={{ ...CAPTION_STYLE, margin: '0 0 4px 0' }}>{caption}</p>
         <TrainingTailPlot series={trainTail} caseId={caseId} />
         <p style={CAPTION_STYLE}>Test data (full test split)</p>
@@ -49,13 +56,6 @@ export function CasePanel({ caseId, caseMeta, scores, showGlobal }: Props) {
         <p style={CAPTION_STYLE}>Train / val / test split</p>
         <ProportionsBar counts={splitCounts} caseId={caseId} />
         <Markdown>{caseTrainingStats(caseMeta, extended)}</Markdown>
-      </details>
-      <hr />
-      <details open>
-        <summary style={SUMMARY_STYLE}>Case summary</summary>
-        <div style={{ marginTop: 4 }}>
-          <CaseSummary caseMeta={caseMeta} />
-        </div>
       </details>
     </div>
   );

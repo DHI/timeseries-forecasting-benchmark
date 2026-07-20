@@ -319,8 +319,8 @@ function MainLayout({
               caseMeta={cases[state.selection.case_id]!}
               scores={scores}
               showGlobal={state.showGlobal}
+              methods={state.selection.methods}
             />
-            <hr />
             <SnapshotPanel
               caseId={state.selection.case_id}
               caseMeta={cases[state.selection.case_id]!}
