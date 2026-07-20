@@ -152,6 +152,7 @@ export function SnapshotGrid({
 
     const layout: Partial<Layout> = {
       ...(axisLayout as Partial<Layout>),
+      autosize: true,
       height: 220 * curated.length + 30,
       margin: { l: 50, t: 30, r: 20, b: 40 },
       paper_bgcolor: 'white',

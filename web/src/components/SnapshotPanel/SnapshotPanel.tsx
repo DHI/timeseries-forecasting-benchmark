@@ -58,7 +58,7 @@ export function SnapshotPanel({
   return (
     <div>
       <details open>
-        <summary style={SUMMARY_STYLE}>[Test] Prediction Snapshots</summary>
+        <summary style={SUMMARY_STYLE}>[Test] Prediction snapshots</summary>
         <p style={CAPTION_STYLE}>
           Origins curated by {effectiveMethods[0]}&apos;s {metric} (best / median / worst).
         </p>

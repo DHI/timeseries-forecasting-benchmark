@@ -1371,7 +1371,7 @@ def render_panel(sel, n_reload, show_global, show_exogenous, metric):
     show_exo = "on" in (show_exogenous or [])
     df = load_metrics(n_reload or 0)
     effective_methods = [_effective_method(df, case_id, m, show_exo) for m in methods]
-    title = "[Test] Prediction Snapshots"
+    title = "[Test] Prediction snapshots"
     caption = f"Origins curated by {effective_methods[0]}'s {metric} (best / median / worst)."
     return (
         title,

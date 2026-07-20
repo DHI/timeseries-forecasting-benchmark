@@ -51,6 +51,7 @@ export function DistributionPlot({
       });
     }
     const layout: Partial<Layout> = {
+      autosize: true,
       height: CASE_PLOT_HEIGHT,
       margin: { l: 0, t: 10, r: 10, b: 30 },
       paper_bgcolor: 'white',

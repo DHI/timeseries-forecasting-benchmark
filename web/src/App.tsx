@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { DomainChecklist } from './components/Sidebar/DomainChecklist';
 import { FamilyMultiSelect } from './components/Sidebar/FamilyMultiSelect';
 import { MarkerSwatch } from './components/Sidebar/MarkerSwatch';
@@ -130,6 +130,13 @@ function MainLayout({
     [dispatch],
   );
   const casePanelResize = useEdgeResize('x', state.casePanelWidth, handleCasePanelResize);
+
+  // Plotly's `useResizeHandler` only re-measures a plot's width on a native `window`
+  // "resize" event; dragging the case panel's edge only changes React state, so nudge
+  // Plotly's existing listener manually to keep the panel's plots in sync with its width.
+  useEffect(() => {
+    window.dispatchEvent(new Event('resize'));
+  }, [state.casePanelWidth]);
 
   const filteredRows = useMemo(() => {
     if (!state.metric) return [];
