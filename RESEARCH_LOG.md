@@ -27,7 +27,11 @@ edge of the page. The sidebar now starts collapsed, and the button's position is
 computed directly from the sidebar's open/closed state instead of relying on that width.
 Also added a floating "Click a cell to inspect a case" prompt with an arrow pointing at
 the heatmap, shown in the empty space to its right until a cell is selected, since that
-space was otherwise blank with no cue that clicking does anything.
+space was otherwise blank with no cue that clicking does anything. For the same reason,
+added a second prompt, "Reveal controls panel," pointing at the collapse/expand button
+itself, since a collapsed sidebar with no explanation looked like missing UI rather than
+a closed panel. Both prompts disappear once their target state changes (a case gets
+selected, or the sidebar opens).
 
 ## 2026-07-20 — Moved training time from the right panel to a press-and-hold heatmap overlay
 

@@ -4,6 +4,7 @@ import { FamilyMultiSelect } from './components/Sidebar/FamilyMultiSelect';
 import { HoldTrainingTimeButton } from './components/Sidebar/HoldTrainingTimeButton';
 import { MarkerSwatch } from './components/Sidebar/MarkerSwatch';
 import { MetricDropdown } from './components/Sidebar/MetricDropdown';
+import { SidebarToggleHint } from './components/Sidebar/SidebarToggleHint';
 import { ToggleExogenous } from './components/Sidebar/ToggleExogenous';
 import { ToggleGlobal } from './components/Sidebar/ToggleGlobal';
 import { MatrixGraph } from './components/Matrix/MatrixGraph';
@@ -273,6 +274,7 @@ function MainLayout({
         >
           {state.sidebarCollapsed ? '▶' : '◀'}
         </button>
+        {state.sidebarCollapsed && <SidebarToggleHint />}
       </div>
       <main style={{ flex: 1, padding: 16, minWidth: 0, overflowX: 'auto' }}>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
