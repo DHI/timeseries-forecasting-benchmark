@@ -161,59 +161,63 @@ function MainLayout({
           boxSizing: 'border-box',
         }}
       >
-        <h3>Controls</h3>
-        <label style={{ fontWeight: 'bold', display: 'block', marginTop: 16 }}>Metric</label>
-        <MetricDropdown
-          options={metricOpts}
-          value={state.metric}
-          onChange={(metric) => dispatch({ type: 'SET_METRIC', metric })}
-        />
-        <p style={{ color: '#666', fontSize: '0.8em', marginTop: 4 }}>
-          NSE and KGE only apply to cases whose case.toml declares them (flow/level domains) — the
-          matrix rows narrow to just those cases when one is selected.
-        </p>
-        <label style={{ fontWeight: 'bold', display: 'block', marginTop: 16 }}>Domains</label>
-        <DomainChecklist
-          options={domainOpts}
-          value={state.domains}
-          onChange={(domains) => dispatch({ type: 'SET_DOMAINS', domains })}
-        />
-        <label style={{ fontWeight: 'bold', display: 'block', marginTop: 16 }}>
-          Method families
-        </label>
-        <FamilyMultiSelect
-          options={familyOpts}
-          value={state.families}
-          onChange={(families) => dispatch({ type: 'SET_FAMILIES', families })}
-        />
-        <label style={{ fontWeight: 'bold', display: 'block', marginTop: 16 }}>
-          Global methods
-        </label>
-        <ToggleGlobal
-          checked={state.showGlobal}
-          onChange={() => dispatch({ type: 'TOGGLE_GLOBAL' })}
-        />
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginTop: 4 }}>
-          <MarkerSwatch corner="top-right" color="#FF1493" />
-          <p style={{ color: '#666', fontSize: '0.8em', margin: 0 }}>
-            Some global models have been trained with longer history.
-          </p>
-        </div>
-        <label style={{ fontWeight: 'bold', display: 'block', marginTop: 16 }}>
-          Exogenous inputs
-        </label>
-        <ToggleExogenous
-          checked={state.showExogenous}
-          onChange={() => dispatch({ type: 'TOGGLE_EXOGENOUS' })}
-        />
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginTop: 4 }}>
-          <MarkerSwatch corner="bottom-left" color="#0B7285" />
-          <p style={{ color: '#666', fontSize: '0.8em', margin: 0 }}>
-            Where a method has an exogenous-aware variant and the case provides exogenous data, this
-            swaps in that variant's score for the cell. Cases or methods without an exogenous option
-            are unaffected.
-          </p>
-        </div>
+        {!state.sidebarCollapsed && (
+          <>
+            <h3>Controls</h3>
+            <label style={{ fontWeight: 'bold', display: 'block', marginTop: 16 }}>Metric</label>
+            <MetricDropdown
+              options={metricOpts}
+              value={state.metric}
+              onChange={(metric) => dispatch({ type: 'SET_METRIC', metric })}
+            />
+            <p style={{ color: '#666', fontSize: '0.8em', marginTop: 4 }}>
+              NSE and KGE only apply to cases whose case.toml declares them (flow/level domains) —
+              the matrix rows narrow to just those cases when one is selected.
+            </p>
+            <label style={{ fontWeight: 'bold', display: 'block', marginTop: 16 }}>Domains</label>
+            <DomainChecklist
+              options={domainOpts}
+              value={state.domains}
+              onChange={(domains) => dispatch({ type: 'SET_DOMAINS', domains })}
+            />
+            <label style={{ fontWeight: 'bold', display: 'block', marginTop: 16 }}>
+              Method families
+            </label>
+            <FamilyMultiSelect
+              options={familyOpts}
+              value={state.families}
+              onChange={(families) => dispatch({ type: 'SET_FAMILIES', families })}
+            />
+            <label style={{ fontWeight: 'bold', display: 'block', marginTop: 16 }}>
+              Global methods
+            </label>
+            <ToggleGlobal
+              checked={state.showGlobal}
+              onChange={() => dispatch({ type: 'TOGGLE_GLOBAL' })}
+            />
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginTop: 4 }}>
+              <MarkerSwatch corner="top-right" color="#FF1493" />
+              <p style={{ color: '#666', fontSize: '0.8em', margin: 0 }}>
+                Some global models have been trained with longer history.
+              </p>
+            </div>
+            <label style={{ fontWeight: 'bold', display: 'block', marginTop: 16 }}>
+              Exogenous inputs
+            </label>
+            <ToggleExogenous
+              checked={state.showExogenous}
+              onChange={() => dispatch({ type: 'TOGGLE_EXOGENOUS' })}
+            />
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginTop: 4 }}>
+              <MarkerSwatch corner="bottom-left" color="#0B7285" />
+              <p style={{ color: '#666', fontSize: '0.8em', margin: 0 }}>
+                Where a method has an exogenous-aware variant and the case provides exogenous data,
+                this swaps in that variant's score for the cell. Cases or methods without an
+                exogenous option are unaffected.
+              </p>
+            </div>
+          </>
+        )}
       </aside>
       <button
         type="button"
