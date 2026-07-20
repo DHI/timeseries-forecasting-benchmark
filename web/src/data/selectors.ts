@@ -98,6 +98,15 @@ export function familyOptions(rows: ScoreRow[]): string[] {
   return [...ordered, ...leftover];
 }
 
+/** Display form of a method family label: only the first character capitalized (not every
+ * word — matches the matrix's own family-group headers, including abbreviations like "ml"
+ * rendering as "Ml" rather than "ML"), with underscores turned into `separator`. Shared by
+ * the matrix's family-group annotations and the sidebar's FamilyMultiSelect so the two
+ * can't drift apart. */
+export function formatFamilyLabel(label: string, separator = ' '): string {
+  return label.replace(/_/g, separator).replace(/^./, (c) => c.toUpperCase());
+}
+
 /** case_id/method -> value, for one metric, restricted to the given row/column order. */
 export function pivotValues(rows: ScoreRow[], rowOrder: string[], colOrder: string[]): number[][] {
   const rowIndex = new Map(rowOrder.map((id, i) => [id, i]));

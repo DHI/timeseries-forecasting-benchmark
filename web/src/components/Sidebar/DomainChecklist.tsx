@@ -1,3 +1,5 @@
+import { DOMAIN_KEY_DICT } from '../../data/constants';
+
 type Props = {
   options: string[];
   value: string[];
@@ -19,7 +21,7 @@ export function DomainChecklist({ options, value, onChange }: Props) {
       {options.map((domain) => (
         <label key={domain} style={{ display: 'block' }}>
           <input type="checkbox" checked={selected.has(domain)} onChange={() => toggle(domain)} />{' '}
-          {domain.replace(/_/g, ' ')}
+          {DOMAIN_KEY_DICT[domain] ?? domain}
         </label>
       ))}
     </div>

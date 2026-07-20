@@ -5,6 +5,7 @@ import { CELL, DOMAIN_KEY_DICT, MATRIX_MARGIN } from '../../data/constants';
 import { colorscaleFor } from '../../data/colorscale';
 import { metricConfig } from '../../data/metricConfig';
 import {
+  formatFamilyLabel,
   groupBoundaries,
   groupLabels,
   orderedCases,
@@ -154,7 +155,7 @@ export function useMatrixFigure(
         yref: 'y',
         yanchor: 'bottom',
         yshift: 6,
-        text: `<b>${label.replace(/_/g, '<br>').replace(/^./, (c) => c.toUpperCase())}</b>`,
+        text: `<b>${formatFamilyLabel(label, '<br>')}</b>`,
         showarrow: false,
         font: { size: 13 },
       });

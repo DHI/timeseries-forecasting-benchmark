@@ -1,3 +1,5 @@
+import { formatFamilyLabel } from '../../data/selectors';
+
 type Props = {
   options: string[];
   value: string[];
@@ -19,7 +21,7 @@ export function FamilyMultiSelect({ options, value, onChange }: Props) {
       {options.map((family) => (
         <label key={family} style={{ display: 'block' }}>
           <input type="checkbox" checked={selected.has(family)} onChange={() => toggle(family)} />{' '}
-          {family}
+          {formatFamilyLabel(family)}
         </label>
       ))}
     </div>
