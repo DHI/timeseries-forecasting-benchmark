@@ -163,14 +163,23 @@ function MainLayout({
         style={{
           width: state.sidebarCollapsed ? 0 : 260,
           flex: `0 0 ${state.sidebarCollapsed ? 0 : 260}px`,
-          padding: state.sidebarCollapsed ? 0 : 16,
           borderRight: state.sidebarCollapsed ? 'none' : '1px solid var(--border)',
           overflow: 'hidden',
           boxSizing: 'border-box',
+          position: 'sticky',
+          top: 0,
+          maxHeight: '100vh',
         }}
       >
         {!state.sidebarCollapsed && (
-          <>
+          <div
+            style={{
+              boxSizing: 'border-box',
+              maxHeight: '100vh',
+              padding: 16,
+              overflowY: 'auto',
+            }}
+          >
             <h3>Controls</h3>
             <label style={{ fontWeight: 'bold', display: 'block', marginTop: 16 }}>Metric</label>
             <MetricDropdown
@@ -234,7 +243,7 @@ function MainLayout({
               Press and hold to show each cell's measured training time instead of its
               score. You can still hover around matrix cells while holding the button.
             </p>
-          </>
+          </div>
         )}
       </aside>
       <button
