@@ -306,7 +306,6 @@ function MainLayout({
               caseId={state.selection.case_id}
               caseMeta={cases[state.selection.case_id]!}
               scores={scores}
-              methods={state.selection.methods}
               showGlobal={state.showGlobal}
             />
             <hr />
