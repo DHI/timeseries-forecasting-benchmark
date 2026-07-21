@@ -15,6 +15,7 @@
     --cat-bug-fix:      #e87ba4;
     --cat-project-data: #eda100;
     --edge-ink: #898781;
+    --accent:           #0969da;
   }
   @media (prefers-color-scheme: dark) {
     :root:where(:not([data-theme="light"])) .viz-root {
@@ -32,6 +33,7 @@
       --cat-bug-fix:      #d55181;
       --cat-project-data: #c98500;
       --edge-ink: #898781;
+      --accent:           #4493f8;
     }
   }
   :root[data-theme="dark"] .viz-root {
@@ -49,6 +51,7 @@
     --cat-bug-fix:      #d55181;
     --cat-project-data: #c98500;
     --edge-ink: #898781;
+    --accent:           #4493f8;
   }
 
   html, body { margin: 0; padding: 0; height: 100%; }
@@ -86,8 +89,63 @@
     color: var(--text-muted);
   }
 
-  #graph-svg { display: block; width: 100%; height: 100%; cursor: grab; }
-  #graph-svg:active { cursor: grabbing; }
+  .view-toggle { display: flex; gap: 6px; pointer-events: auto; }
+  .view-btn {
+    font: inherit;
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--surface-1);
+    color: var(--text-secondary);
+    cursor: pointer;
+  }
+  .view-btn:hover { color: var(--text-primary); }
+  .view-btn.active { background: var(--surface-2); color: var(--text-primary); border-color: var(--text-muted); }
+
+  .view { position: absolute; inset: 0; }
+  .view.view-hidden { display: none; }
+
+  #graph-svg, #cluster-svg { display: block; width: 100%; height: 100%; cursor: grab; }
+  #graph-svg:active, #cluster-svg:active { cursor: grabbing; }
+
+  .list-view {
+    display: flex;
+    flex-direction: row;
+    padding-top: 60px;
+    box-sizing: border-box;
+  }
+  .list-col {
+    flex: 0 0 44%;
+    max-width: 620px;
+    overflow-y: auto;
+    padding: 8px 28px 40px 26px;
+    border-right: 1px solid var(--border);
+    box-sizing: border-box;
+  }
+  .cluster-col { flex: 1; position: relative; overflow: hidden; }
+  .cluster-placeholder {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 0 40px;
+    color: var(--text-muted);
+    font-size: 13px;
+  }
+  .cluster-list { list-style: disc; margin: 0; padding-left: 22px; }
+  .cluster-item {
+    margin-bottom: 16px;
+    line-height: 1.42;
+    cursor: pointer;
+    color: var(--text-primary);
+    transition: color 0.12s ease, opacity 0.15s ease;
+  }
+  .cluster-item:hover { color: var(--accent); }
+  .cluster-item.active { color: var(--accent); font-weight: 600; }
+  .cluster-item.dimmed { opacity: 0.32; }
 
   .legend {
     position: absolute;
@@ -250,12 +308,27 @@
 <div class="viz-root">
   <header class="hud">
     <h1>Research Log — Decision Graph</h1>
-    <span class="hint">scroll/pinch to zoom · drag canvas to pan · drag a node or a cluster label to pin it, double-click to release · hover for a summary · click for detail</span>
+    <div class="view-toggle" id="view-toggle">
+      <button class="view-btn active" data-view="graph" type="button">Graph view</button>
+      <button class="view-btn" data-view="list" type="button">List view</button>
+    </div>
+    <span class="hint" id="hint-graph">scroll/pinch to zoom · drag canvas to pan · drag a node or a cluster label to pin it, double-click to release · hover for a summary · click for detail</span>
+    <span class="hint" id="hint-list" hidden>font size tracks how much work went into a thread · hover a sentence to see it's clickable · click to reveal its graph · hover a node for a summary · click a node for detail</span>
   </header>
 
-  <svg id="graph-svg"></svg>
+  <div class="view" id="view-graph">
+    <svg id="graph-svg"></svg>
+    <div class="legend" id="legend"></div>
+  </div>
 
-  <div class="legend" id="legend"></div>
+  <div class="view list-view view-hidden" id="view-list">
+    <div class="list-col" id="list-col"></div>
+    <div class="cluster-col" id="cluster-col">
+      <div class="cluster-placeholder" id="cluster-placeholder">Click a sentence on the left to see the decisions behind it.</div>
+      <svg id="cluster-svg"></svg>
+    </div>
+  </div>
+
   <div class="tooltip" id="tooltip"></div>
 
   <aside class="panel" id="panel">
@@ -1787,41 +1860,71 @@
     .text((d) => (d.title.length > 46 ? d.title.slice(0, 44) + "…" : d.title));
 
   let selectedId = null;
+  // Set to the list view's currently-rendered cluster node selection, if any,
+  // so openPanel/closePanel can keep its "selected" ring in sync too.
+  let clusterNodeSel = null;
 
-  node.on("mouseenter", function (event, d) {
-    tooltip
-      .html(
-        `<div class="t-title">${escapeHtml(d.title)}</div>` +
-          `<div class="t-meta"><span class="t-dot" style="background:${categoryColor(
-            d.category
-          )}"></span>${d.date} · ${CATEGORY_META[d.category].label}</div>` +
-          `<div class="t-summary">${escapeHtml(d.summary)}</div>`
-      )
-      .classed("visible", true);
-  });
-  node.on("mousemove", function (event) {
-    const pad = 16;
-    let left = event.clientX + pad;
-    let top = event.clientY + pad;
-    const tw = tooltip.node().offsetWidth;
-    const th = tooltip.node().offsetHeight;
-    if (left + tw > window.innerWidth - 8) left = event.clientX - tw - pad;
-    if (top + th > window.innerHeight - 8) top = event.clientY - th - pad;
-    tooltip.style("left", left + "px").style("top", top + "px");
-  });
-  node.on("mouseleave", function () {
-    tooltip.classed("visible", false);
-  });
+  // Hover-tooltip, click-to-open-panel, and drag-to-pin wiring shared by the
+  // main graph's node selection and the list view's per-cluster mini graphs.
+  function attachNodeInteractions(nodeSel, sim) {
+    nodeSel.on("mouseenter", function (event, d) {
+      tooltip
+        .html(
+          `<div class="t-title">${escapeHtml(d.title)}</div>` +
+            `<div class="t-meta"><span class="t-dot" style="background:${categoryColor(
+              d.category
+            )}"></span>${d.date} · ${CATEGORY_META[d.category].label}</div>` +
+            `<div class="t-summary">${escapeHtml(d.summary)}</div>`
+        )
+        .classed("visible", true);
+    });
+    nodeSel.on("mousemove", function (event) {
+      const pad = 16;
+      let left = event.clientX + pad;
+      let top = event.clientY + pad;
+      const tw = tooltip.node().offsetWidth;
+      const th = tooltip.node().offsetHeight;
+      if (left + tw > window.innerWidth - 8) left = event.clientX - tw - pad;
+      if (top + th > window.innerHeight - 8) top = event.clientY - th - pad;
+      tooltip.style("left", left + "px").style("top", top + "px");
+    });
+    nodeSel.on("mouseleave", function () {
+      tooltip.classed("visible", false);
+    });
 
-  node.on("click", function (event, d) {
-    event.stopPropagation();
-    openPanel(d.id);
-  });
+    nodeSel.on("click", function (event, d) {
+      event.stopPropagation();
+      openPanel(d.id);
+    });
+
+    function dragstarted(event, d) {
+      if (!event.active) sim.alphaTarget(0.25).restart();
+      d.fx = d.x;
+      d.fy = d.y;
+    }
+    function dragged(event, d) {
+      d.fx = event.x;
+      d.fy = event.y;
+    }
+    function dragended(event) {
+      if (!event.active) sim.alphaTarget(0);
+    }
+    nodeSel.call(d3.drag().on("start", dragstarted).on("drag", dragged).on("end", dragended));
+
+    nodeSel.on("dblclick", function (event, d) {
+      event.stopPropagation();
+      d.fx = null;
+      d.fy = null;
+      sim.alphaTarget(0.25).restart();
+      setTimeout(() => sim.alphaTarget(0), 200);
+    });
+  }
 
   function openPanel(id) {
     const d = nodeById.get(id);
     selectedId = id;
     node.select("circle").classed("selected", (n) => n.id === id);
+    if (clusterNodeSel) clusterNodeSel.select("circle").classed("selected", (n) => n.id === id);
 
     const conns = connectionsByNode.get(id);
     const connHtml = conns.length
@@ -1856,39 +1959,17 @@
     panel.classList.add("open");
   }
 
-  panelClose.addEventListener("click", () => {
+  function closePanel() {
     panel.classList.remove("open");
     selectedId = null;
     node.select("circle").classed("selected", false);
-  });
-  svg.on("click", () => {
-    panel.classList.remove("open");
-    selectedId = null;
-    node.select("circle").classed("selected", false);
-  });
+    if (clusterNodeSel) clusterNodeSel.select("circle").classed("selected", false);
+  }
+  panelClose.addEventListener("click", closePanel);
+  svg.on("click", closePanel);
 
-  // --- drag: pin on drag, keep pinned after release, double-click to unpin ---
-  function dragstarted(event, d) {
-    if (!event.active) simulation.alphaTarget(0.25).restart();
-    d.fx = d.x;
-    d.fy = d.y;
-  }
-  function dragged(event, d) {
-    d.fx = event.x;
-    d.fy = event.y;
-  }
-  function dragended(event) {
-    if (!event.active) simulation.alphaTarget(0);
-  }
-  node.call(d3.drag().on("start", dragstarted).on("drag", dragged).on("end", dragended));
-
-  node.on("dblclick", function (event, d) {
-    event.stopPropagation();
-    d.fx = null;
-    d.fy = null;
-    simulation.alphaTarget(0.25).restart();
-    setTimeout(() => simulation.alphaTarget(0), 200);
-  });
+  // --- hover/click/drag wiring for the main graph's own node selection ---
+  attachNodeInteractions(node, simulation);
 
   // --- cluster label drag: carry every member node together, temporarily
   // pinning only whichever ones were already free so the drag moves them as
@@ -1991,6 +2072,170 @@
     .join("");
   legend.innerHTML = catRows + `<div class="edge-key">${edgeRows}</div>`;
 
+  // ============================================================
+  // List view: one bullet per decision thread (a hand-written
+  // cluster, or a standalone node treated as its own singleton
+  // thread), sized by node count as a proxy for how much work
+  // went into it, with a click-through mini graph reusing the
+  // main graph's hover/click/drag/zoom behavior.
+  // ============================================================
+
+  const clusteredIds = new Set();
+  clusters.forEach((c) => c.nodes.forEach((id) => clusteredIds.add(id)));
+  const singletonNodes = nodes.filter((n) => !clusteredIds.has(n.id));
+
+  const listThreads = clusters
+    .map((c) => ({ nodeIds: c.nodes, sentence: c.label }))
+    .concat(singletonNodes.map((n) => ({ nodeIds: [n.id], sentence: n.summary })));
+
+  listThreads.forEach((t) => {
+    const members = t.nodeIds.map((id) => nodeById.get(id));
+    t.size = t.nodeIds.length;
+    t.maxDate = members.reduce((m, n) => (n.date > m ? n.date : m), "0000-00-00");
+  });
+  listThreads.sort((a, b) => (a.maxDate < b.maxDate ? 1 : a.maxDate > b.maxDate ? -1 : 0));
+
+  const maxThreadSize = d3.max(listThreads, (t) => t.size);
+  function fontSizeForThread(size) {
+    const t = maxThreadSize > 1 ? Math.sqrt((size - 1) / (maxThreadSize - 1)) : 0;
+    return 14 + 14 * t; // 14px for a lone entry, up to 28px for the biggest thread
+  }
+
+  const listCol = document.getElementById("list-col");
+  listCol.innerHTML =
+    `<ul class="cluster-list">` +
+    listThreads
+      .map(
+        (t, i) =>
+          `<li class="cluster-item" data-i="${i}" style="font-size:${fontSizeForThread(t.size).toFixed(1)}px">${escapeHtml(t.sentence)}</li>`
+      )
+      .join("") +
+    `</ul>`;
+
+  const listItems = Array.from(listCol.querySelectorAll(".cluster-item"));
+  const clusterPlaceholder = document.getElementById("cluster-placeholder");
+  const clusterSvg = d3.select("#cluster-svg");
+  let clusterSim = null;
+  let activeThreadIdx = null;
+
+  function renderClusterGraph(nodeIds) {
+    if (clusterSim) clusterSim.stop();
+    clusterSvg.selectAll("*").remove();
+    clusterNodeSel = null;
+
+    const idSet = new Set(nodeIds);
+    const subNodes = nodeIds.map((id) => ({ ...nodeById.get(id) }));
+    const subNodeById = new Map(subNodes.map((n) => [n.id, n]));
+    const subLinks = DATA.edges
+      .filter((e) => idSet.has(e.source) && idSet.has(e.target))
+      .map((e) => ({ ...e }));
+
+    const rect = clusterSvg.node().getBoundingClientRect();
+    const w = Math.max(200, rect.width);
+    const h = Math.max(200, rect.height);
+    clusterSvg.attr("viewBox", [0, 0, w, h]);
+
+    const zl = clusterSvg.append("g").attr("class", "zoom-layer");
+    const lg = zl.append("g").attr("class", "links");
+    const ng = zl.append("g").attr("class", "nodes");
+
+    const subDegree = new Map(subNodes.map((n) => [n.id, 0]));
+    subLinks.forEach((e) => {
+      subDegree.set(e.source, (subDegree.get(e.source) || 0) + 1);
+      subDegree.set(e.target, (subDegree.get(e.target) || 0) + 1);
+    });
+    function subRadiusFor(d) {
+      return 8 + Math.min(subDegree.get(d.id) || 0, 6) * 1.6;
+    }
+
+    const subDateExtent = d3.extent(subNodes, (d) => new Date(d.date));
+    const subX = d3.scaleTime().domain(subDateExtent).range([60, Math.max(140, w - 60)]);
+
+    clusterSim = d3
+      .forceSimulation(subNodes)
+      .force(
+        "link",
+        d3.forceLink(subLinks).id((d) => d.id).distance(70).strength(0.5)
+      )
+      .force("charge", d3.forceManyBody().strength(-180))
+      .force("collide", d3.forceCollide().radius((d) => subRadiusFor(d) + 10))
+      .force("x", d3.forceX((d) => subX(new Date(d.date))).strength(0.15))
+      .force("y", d3.forceY(h / 2).strength(0.06));
+
+    const subLink = lg
+      .selectAll("path")
+      .data(subLinks)
+      .join("path")
+      .attr("class", "link")
+      .attr("stroke-width", 1.4)
+      .attr("stroke-dasharray", (d) => EDGE_META[d.type].dash)
+      .attr("marker-end", (d) => (EDGE_META[d.type].arrow ? "url(#arrow)" : null));
+
+    const subNode = ng.selectAll("g.node").data(subNodes, (d) => d.id).join("g").attr("class", "node");
+    subNode.append("circle").attr("r", subRadiusFor).attr("fill", (d) => categoryColor(d.category));
+    subNode
+      .append("text")
+      .attr("x", (d) => subRadiusFor(d) + 4)
+      .attr("y", 3)
+      .text((d) => (d.title.length > 46 ? d.title.slice(0, 44) + "…" : d.title));
+
+    if (selectedId) subNode.select("circle").classed("selected", (n) => n.id === selectedId);
+    attachNodeInteractions(subNode, clusterSim);
+    clusterNodeSel = subNode;
+
+    const subZoom = d3
+      .zoom()
+      .scaleExtent([0.4, 4])
+      .on("zoom", (event) => zl.attr("transform", event.transform));
+    clusterSvg.call(subZoom);
+
+    clusterSim.on("tick", () => {
+      subLink.attr("d", linkPath);
+      subNode.attr("transform", (d) => `translate(${d.x},${d.y})`);
+    });
+  }
+
+  clusterSvg.on("click", closePanel);
+
+  function selectThread(i) {
+    if (activeThreadIdx === i) {
+      // clicking the active sentence again deselects it
+      activeThreadIdx = null;
+      listItems.forEach((el) => el.classList.remove("active", "dimmed"));
+      if (clusterSim) clusterSim.stop();
+      clusterSvg.selectAll("*").remove();
+      clusterNodeSel = null;
+      clusterPlaceholder.style.display = "flex";
+      return;
+    }
+    activeThreadIdx = i;
+    listItems.forEach((el) => {
+      const idx = +el.dataset.i;
+      el.classList.toggle("active", idx === i);
+      el.classList.toggle("dimmed", idx !== i);
+    });
+    clusterPlaceholder.style.display = "none";
+    renderClusterGraph(listThreads[i].nodeIds);
+  }
+  listItems.forEach((el) => el.addEventListener("click", () => selectThread(+el.dataset.i)));
+
+  // --- view toggle ---
+  const viewGraph = document.getElementById("view-graph");
+  const viewList = document.getElementById("view-list");
+  const hintGraph = document.getElementById("hint-graph");
+  const hintList = document.getElementById("hint-list");
+  document.querySelectorAll(".view-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const which = btn.dataset.view;
+      document.querySelectorAll(".view-btn").forEach((b) => b.classList.toggle("active", b === btn));
+      viewGraph.classList.toggle("view-hidden", which !== "graph");
+      viewList.classList.toggle("view-hidden", which !== "list");
+      hintGraph.hidden = which !== "graph";
+      hintList.hidden = which !== "list";
+      if (which === "list" && activeThreadIdx != null) renderClusterGraph(listThreads[activeThreadIdx].nodeIds);
+    });
+  });
+
   // --- resize handling ---
   window.addEventListener("resize", () => {
     width = window.innerWidth;
@@ -1999,6 +2244,7 @@
     xForce.range([90, Math.max(180, width - 90)]);
     simulation.force("y", d3.forceY(() => height / 2).strength(0.03));
     simulation.alpha(0.3).restart();
+    if (activeThreadIdx != null) renderClusterGraph(listThreads[activeThreadIdx].nodeIds);
   });
 })();
 </script>
