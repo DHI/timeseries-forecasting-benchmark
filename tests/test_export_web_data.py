@@ -1,8 +1,8 @@
 """Consistency checks for scripts/export_web_data.py's JSON output.
 
 Runs against the real committed docs/results/scores.parquet (small, always present — see
-app/data.py's module docstring) rather than a synthetic fixture, so these checks catch a
-real mismatch between the exported JSON and the data it's derived from.
+tsforecastbench.webdata's module docstring) rather than a synthetic fixture, so these
+checks catch a real mismatch between the exported JSON and the data it's derived from.
 """
 
 from __future__ import annotations
@@ -15,7 +15,6 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
-sys.path.insert(0, str(REPO_ROOT / "app"))
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
 from export_web_data import (  # noqa: E402
@@ -107,7 +106,7 @@ def test_train_tail_is_bounded(tmp_path):
 
 def test_split_counts_extended_only_differs_in_train(tmp_path):
     """`split_counts`/`split_counts_extended` should only ever differ in the train count
-    — extended history never reaches into val/test (see data.load_case_split_counts)."""
+    — extended history never reaches into val/test (see webdata.load_case_split_counts)."""
     _scores, _methods, cases = _export(tmp_path)
     for case_id, meta in cases.items():
         assert meta["split_counts"]["val"] == meta["split_counts_extended"]["val"], case_id

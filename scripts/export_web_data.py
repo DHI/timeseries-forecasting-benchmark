@@ -1,12 +1,10 @@
-"""Export the results-matrix app's data as static JSON for the React/GitHub Pages app.
+"""Export the results-matrix data as static JSON for the React/GitHub Pages app.
 
 `web/` has no backend — it reads plain JSON fetched from `web/public/data/`. This script
-produces that JSON by importing `app/data.py` directly (the same module `app/app.py`
-uses), so the two apps share one source of truth for what the numbers mean; nothing here
+produces that JSON by importing `tsforecastbench.webdata` directly, so nothing here
 recomputes statistics.
 
 Usage (after a pilot run refreshes docs/results/scores.parquet):
-    uv sync --extra app
     uv run python scripts/export_web_data.py --out web/public/data
 
 Regenerate `scores.json` whenever the pilot re-runs. `methods.json` only changes when a
@@ -27,29 +25,22 @@ import pandas as pd
 REPO_ROOT = Path(__file__).resolve().parents[1]
 # Allow running from a clone without installing.
 sys.path.insert(0, str(REPO_ROOT / "src"))
-# app/data.py isn't a package — it's imported the same way app/app.py imports it, by
-# putting app/ on sys.path (inserted ahead of the repo root so this never resolves to
-# the unrelated top-level data/ directory instead).
-sys.path.insert(0, str(REPO_ROOT / "app"))
 
-from snapshot import (  # noqa: E402
+from tsforecastbench.bench.viz import METRIC_CONFIG  # noqa: E402
+from tsforecastbench.data.registry import discover_cases, get_case  # noqa: E402
+from tsforecastbench.webdata import (  # noqa: E402
     TRAINING_TAIL_N,
     _actual_series,
     _horizon_steps,
     _kde_curve,
-    curate_origins,
-)
-
-from data import (  # noqa: E402
     _method_registry,
+    curate_origins,
     load_case_split,
     load_case_split_counts,
     load_case_split_values,
     load_case_training_tail,
     load_metrics,
 )
-from tsforecastbench.bench.viz import METRIC_CONFIG  # noqa: E402
-from tsforecastbench.data.registry import discover_cases, get_case  # noqa: E402
 
 SNAPSHOTS_PATH = REPO_ROOT / "results" / "pilot_snapshots.parquet"
 
@@ -85,10 +76,10 @@ def _series_to_json(df: pd.DataFrame) -> dict:
 
 
 def _distribution(case_id: str, extended: bool) -> dict:
-    """(x_grid, train KDE, test KDE) for the train-vs-test distribution plot — matches
-    app/snapshot.py's `render_split_distribution`, which recomputes x_grid from whichever
-    train variant (local/extended) is in play, so the extended-history distribution isn't
-    just a re-slice of the local one when the case's value range actually differs."""
+    """(x_grid, train KDE, test KDE) for the train-vs-test distribution plot. x_grid is
+    recomputed from whichever train variant (local/extended) is in play, so the
+    extended-history distribution isn't just a re-slice of the local one when the case's
+    value range actually differs."""
     train = load_case_split_values(case_id, "train", extended=extended)
     test = load_case_split_values(case_id, "test")
     combined = pd.concat([train, test])
