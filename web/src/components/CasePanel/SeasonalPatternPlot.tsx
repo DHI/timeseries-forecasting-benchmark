@@ -3,7 +3,7 @@ import type { Annotations, Layout, PlotData } from 'plotly.js';
 import Plot from '../../plotly';
 import type { SeasonalPattern } from '../../types/data';
 
-const ROW_HEIGHT = 190;
+const ROW_HEIGHT = 210;
 const N_COLS = 2;
 const H_GAP = 0.08;
 const V_GAP = 0.22;
@@ -85,7 +85,11 @@ export function SeasonalPatternPlot({ patterns }: { patterns: SeasonalPattern[] 
         hoverinfo: 'skip',
       });
 
-      layout[`xaxis${suffix}` as 'xaxis'] = { ...AXIS_STYLE, domain: xDomain };
+      layout[`xaxis${suffix}` as 'xaxis'] = {
+        ...AXIS_STYLE,
+        domain: xDomain,
+        title: { text: '# of steps', font: { size: 10, color: '#666666' } },
+      };
       layout[`yaxis${suffix}` as 'yaxis'] = {
         ...AXIS_STYLE,
         domain: yDomain,
