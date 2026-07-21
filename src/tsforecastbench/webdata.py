@@ -28,7 +28,7 @@ from tsforecastbench.bench.eval.metrics import rmse as _rmse_score
 from tsforecastbench.bench.eval.metrics import skill_score as _skill_score
 from tsforecastbench.bench.eval.metrics import smape as _smape
 from tsforecastbench.data.registry import get_case
-from tsforecastbench.data.seasonality import mase_season_for
+from tsforecastbench.data.seasonality import fill_and_detrend, mase_season_for
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 METRICS_PATH = REPO_ROOT / "docs" / "results" / "scores.parquet"
@@ -185,6 +185,27 @@ def load_case_training_tail(case_id: str, n: int = 1000, extended: bool = False)
     """Last `n` points of the case's training split."""
     train = load_case_split(case_id, "train", extended=extended)
     return train.tail(n)[["ds", "y"]].reset_index(drop=True)
+
+
+@cache
+def _detrended_observed_tail(
+    case_id: str, extended: bool = False
+) -> tuple[pd.DatetimeIndex, np.ndarray] | None:
+    """Observed (ds, y) pairs from the training tail with the mean and linear trend
+    removed -- shared across every declared period's seasonal-pattern subplot, since
+    detrending doesn't depend on which period is being viewed. Two cycles with the same
+    shape but offset by drift land on the same baseline this way. Reuses the same
+    `fill_and_detrend` convention `dominant_period` uses to pick a case's dominant season.
+    None if there isn't enough data to detrend (fewer than 3 finite training points).
+    """
+    tail = load_case_training_tail(case_id, TRAINING_TAIL_N, extended=extended)
+    raw_y = tail["y"].to_numpy(dtype=float)
+    observed = np.isfinite(raw_y)
+    try:
+        detrended = fill_and_detrend(raw_y)
+    except ValueError:
+        return None
+    return pd.DatetimeIndex(tail.loc[observed, "ds"]), detrended[observed]
 
 
 @cache

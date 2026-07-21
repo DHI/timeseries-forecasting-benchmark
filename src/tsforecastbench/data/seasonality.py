@@ -158,7 +158,7 @@ def dominant_period(seasonalities: list[int], y: np.ndarray) -> int:
     if len(seasonalities) == 1:
         return int(seasonalities[0])
     try:
-        yd = _fill_and_detrend(y)
+        yd = fill_and_detrend(y)
     except ValueError:
         return int(seasonalities[0])
     scores = [_variance_explained(yd, p) for p in seasonalities]
@@ -223,13 +223,16 @@ class CandidateEvidence(TypedDict):
     accepted: bool
 
 
-def _fill_and_detrend(y: np.ndarray) -> np.ndarray:
+def fill_and_detrend(y: np.ndarray) -> np.ndarray:
     """Interpolate interior NaNs and remove mean + linear trend (trend leakage would
-    otherwise pile power into the lowest frequencies and skew neighborhood medians)."""
+    otherwise pile power into the lowest frequencies and skew neighborhood medians). The
+    shared detrending convention for this module's own detection logic, and for anything
+    outside it that needs the seasonal shape isolated from a case's long-run drift (e.g.
+    the case panel's seasonal-pattern plot)."""
     y = np.asarray(y, dtype=float)
     finite = np.isfinite(y)
     if finite.sum() < 3:
-        raise ValueError("need at least 3 finite values for seasonality detection")
+        raise ValueError("need at least 3 finite values to detrend")
     idx = np.arange(len(y))
     y = np.interp(idx, idx[finite], y[finite])
     slope, intercept = np.polyfit(idx, y, 1)
@@ -345,7 +348,7 @@ def detect_candidates(
     from scipy.signal import periodogram
 
     candidates = sorted(set(CANDIDATE_MENU.get(normalize_freq(freq), ())) | set(extra_candidates))
-    yd = _fill_and_detrend(y)
+    yd = fill_and_detrend(y)
     freqs, power = periodogram(yd, fs=1.0)
 
     n_cycles_by_period = {p: len(yd) / p for p in candidates}
@@ -408,7 +411,7 @@ def suggest_peak_candidates(
     """
     from scipy.signal import periodogram
 
-    yd = _fill_and_detrend(y)
+    yd = fill_and_detrend(y)
     freqs, power = periodogram(yd, fs=1.0)
     skip = set(CANDIDATE_MENU.get(normalize_freq(freq), ())) | set(exclude)
 
@@ -627,7 +630,7 @@ def robust_period_candidates(
     menu = sorted(CANDIDATE_MENU.get(normalize_freq(freq), ()))
     empty: RobustPeriodResult = {"candidates": [], "menu_periods_missing": list(menu)}
     try:
-        yd = _fill_and_detrend(y)
+        yd = fill_and_detrend(y)
     except ValueError:
         return empty
     yc = _huber_clean(yd)

@@ -32,6 +32,7 @@ from tsforecastbench.data.seasonality import position_in_cycle  # noqa: E402
 from tsforecastbench.webdata import (  # noqa: E402
     TRAINING_TAIL_N,
     _actual_series,
+    _detrended_observed_tail,
     _horizon_steps,
     _kde_curve,
     _loess_curve,
@@ -97,15 +98,12 @@ def _distribution(case_id: str, extended: bool) -> dict:
     }
 
 
-def _seasonal_pattern(case_id: str, case, period: int, extended: bool) -> dict:
+def _seasonal_pattern(case, period: int, ds: pd.DatetimeIndex, y: np.ndarray) -> dict:
     """(position-in-cycle, y) scatter plus a LOESS curve over one cycle, for one declared
-    seasonal period -- reuses the same `TRAINING_TAIL_N`-point training tail as the panel's
-    snapshot plot, so the scatter is the same sample the reader already saw."""
-    tail = load_case_training_tail(case_id, TRAINING_TAIL_N, extended=extended)
-    observed = tail["y"].notna()
-    x = position_in_cycle(case.freq, period, pd.DatetimeIndex(tail.loc[observed, "ds"]))
-    x = x.astype(float)
-    y = tail.loc[observed, "y"].to_numpy(dtype=float)
+    seasonal period. `ds`/`y` are the case's training tail, already detrended and reduced
+    to observed points by `_detrended_observed_tail` -- shared across every period, since
+    detrending doesn't depend on which one is being viewed."""
+    x = position_in_cycle(case.freq, period, ds).astype(float)
     curve = _loess_curve(x, y, period)
     curve_x, curve_y = curve if curve is not None else (np.array([]), np.array([]))
     return {
@@ -120,10 +118,13 @@ def _seasonal_pattern(case_id: str, case, period: int, extended: bool) -> dict:
 def _seasonal_patterns(case_id: str, case, extended: bool) -> list[dict]:
     """All of a case's declared seasonal patterns, ascending by period -- case.toml orders
     `seasonalities` most-prominent-first for curation purposes, but the panel reads more
-    naturally short-cycle-first."""
-    return [
-        _seasonal_pattern(case_id, case, period, extended) for period in sorted(case.seasonalities)
-    ]
+    naturally short-cycle-first. `[]` for a non-seasonal case, or one whose training tail
+    can't be detrended (fewer than 3 finite points)."""
+    detrended = _detrended_observed_tail(case_id, extended=extended)
+    if detrended is None:
+        return []
+    ds, y = detrended
+    return [_seasonal_pattern(case, period, ds, y) for period in sorted(case.seasonalities)]
 
 
 def export_cases(out_dir: Path) -> None:
