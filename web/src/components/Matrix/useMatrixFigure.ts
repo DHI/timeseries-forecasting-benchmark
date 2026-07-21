@@ -3,7 +3,7 @@ import { useMemo } from 'react';
 import type { Annotations, Data, Layout, Margin, PlotData, Shape } from 'plotly.js';
 import { CELL, DOMAIN_KEY_DICT, MATRIX_MARGIN } from '../../data/constants';
 import { colorscaleFor } from '../../data/colorscale';
-import { metricConfig, TRAINING_TIME_CONFIG } from '../../data/metricConfig';
+import { metricConfig, TRAINING_TIME_CONFIG, type MetricConfig } from '../../data/metricConfig';
 import {
   formatSnakeCaseLabel,
   groupBoundaries,
@@ -37,6 +37,39 @@ function trainingTimeColorTicks(maxSeconds: number): { tickvals: number[]; tickt
     if (t > maxSeconds) break;
   }
   return { tickvals: ticks.map((t) => Math.log10(t + 1)), ticktext: ticks.map((t) => `${t}`) };
+}
+
+/** 1-2-5 log-spaced ticks across [min, max], labeled via the metric's own formatter so they
+ * read consistently with cell text. Used for metrics whose color (not cell text) pivots on
+ * log10(value) — see `colorScale: 'log'` in metricConfig.ts. */
+function niceLogTicks(
+  min: number,
+  max: number,
+  formatTick: (v: number) => string,
+): { tickvals: number[]; ticktext: string[] } {
+  if (!(min > 0) || !(max > 0) || min >= max) return { tickvals: [], ticktext: [] };
+  const lo = Math.floor(Math.log10(min));
+  const hi = Math.ceil(Math.log10(max));
+  const tickvals: number[] = [];
+  const ticktext: string[] = [];
+  for (let e = lo; e <= hi; e++) {
+    for (const m of [1, 2, 5]) {
+      const v = m * 10 ** e;
+      if (v < min || v > max) continue;
+      tickvals.push(Math.log10(v));
+      ticktext.push(formatTick(v));
+    }
+  }
+  return { tickvals, ticktext };
+}
+
+/** Colorbar title: "Skill<br>vs X" for Skill_vs_X metrics (narrower than the full metric
+ * name), otherwise "MetricName<br>[unit]". Plotly text only breaks on `<br>`, not `\n`. */
+function colorbarTitle(metric: string, cfg: MetricConfig): string {
+  if (metric.startsWith('Skill_vs_')) {
+    return `Skill<br>vs ${metric.slice('Skill_vs_'.length)}`;
+  }
+  return `${metric}<br>[${cfg.unit}]`;
 }
 
 /** Builds the case x method heatmap figure for one metric. `rows` must be filtered only by
@@ -126,7 +159,12 @@ export function useMatrixFigure(
     }
 
     // No "s" suffix on training-time cells: the colorbar title already labels the unit.
-    const text = values.map((rowValues) => rowValues.map((v) => (Number.isNaN(v) ? '—' : fmt(v))));
+    // `scale` lets a metric's cell text be a plain number (e.g. MAPE's `12`) while the unit
+    // itself (e.g. "%") is stated once, on the colorbar, instead of repeated in every cell.
+    const scale = cfg.scale ?? 1;
+    const text = values.map((rowValues) =>
+      rowValues.map((v) => (Number.isNaN(v) ? '—' : fmt(v * scale))),
+    );
     // The overlay is a quick glance at timing, not a ranking — skip the fastest-method
     // bolding that normally highlights the best-scoring method per row.
     const bestOfRow = showTrainingTime
@@ -207,9 +245,20 @@ export function useMatrixFigure(
     // color pivots on log10(seconds + 1) rather than the raw seconds `values` used for
     // cell text/ranking above — a linear scale would leave almost every cell looking
     // identical. The colorbar ticks below relabel this log space back to real seconds.
+    // Several metrics (MAE/RMSE/MAPE/sMAPE) are heavy-tailed the same way — `colorScale:
+    // 'log'` in metricConfig.ts opts them into an analogous log10(value) color mapping
+    // (floored at the smallest positive value present, so an exact 0 doesn't map to -Infinity).
+    const isLogScale = !showTrainingTime && cfg.colorScale === 'log';
+    const positiveValues = values.flat().filter((v) => Number.isFinite(v) && v > 0);
+    const logFloor = positiveValues.length ? Math.min(...positiveValues) : Number.EPSILON;
+    const logMax = positiveValues.length ? Math.max(...positiveValues) : 1;
     const colorZ = showTrainingTime
       ? values.map((row) => row.map((v) => (Number.isNaN(v) ? NaN : Math.log10(v + 1))))
-      : values;
+      : isLogScale
+        ? values.map((row) =>
+            row.map((v) => (Number.isNaN(v) ? NaN : Math.log10(Math.max(v, logFloor)))),
+          )
+        : values;
 
     // @types/plotly.js is missing `zmid` (a real, documented plotly.js heatmap option —
     // just absent from this package's typings), hence the inline extension below.
@@ -226,7 +275,7 @@ export function useMatrixFigure(
         // Kept short ("Seconds", not "Training time (s)") so it can never need more
         // horizontal space than the fixed margin below already budgets for — see the
         // margin.autoexpand note further down for why that matters.
-        title: { text: showTrainingTime ? 'Seconds' : metric.replace(/_/g, '\n') },
+        title: { text: showTrainingTime ? 'Seconds' : colorbarTitle(metric, cfg) },
         len: 0.6,
         thickness: 16,
         x: 1.0,
@@ -238,7 +287,12 @@ export function useMatrixFigure(
                 values.flat().reduce((m, v) => (Number.isFinite(v) ? Math.max(m, v) : m), 0),
               ),
             }
-          : {}),
+          : isLogScale
+            ? {
+                tickmode: 'array' as const,
+                ...niceLogTicks(logFloor, logMax, (v) => fmt(v * scale)),
+              }
+            : {}),
       },
     };
     if (cfg.center !== null) {

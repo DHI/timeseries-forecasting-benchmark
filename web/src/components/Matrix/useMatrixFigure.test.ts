@@ -40,7 +40,8 @@ describe('useMatrixFigure — extended-history swap', () => {
       useMatrixFigure(rows, 'MAE', EMPTY_SELECTION, false, false, false),
     );
     const heatmap = result.current!.data[0] as { z: number[][] };
-    expect(heatmap.z).toEqual([[1.0]]);
+    // MAE colors on log10(value) (see metricConfig.ts's `colorScale: 'log'`).
+    expect(heatmap.z).toEqual([[Math.log10(1.0)]]);
   });
 
   it('swaps in the extended value and marks it when showGlobal is on', () => {
@@ -48,7 +49,7 @@ describe('useMatrixFigure — extended-history swap', () => {
       useMatrixFigure(rows, 'MAE', EMPTY_SELECTION, true, false, false),
     );
     const heatmap = result.current!.data[0] as { z: number[][] };
-    expect(heatmap.z).toEqual([[9.0]]);
+    expect(heatmap.z).toEqual([[Math.log10(9.0)]]);
     // One boundary-less single-cell grid: any shape present is the global overlay triangle.
     expect(result.current!.layout.shapes?.some((s) => s.fillcolor === '#FF1493')).toBe(true);
   });
@@ -62,7 +63,7 @@ describe('useMatrixFigure — extended-history swap', () => {
       useMatrixFigure(localOnly, 'MAE', EMPTY_SELECTION, true, false, false),
     );
     const heatmap = result.current!.data[0] as { z: number[][] };
-    expect(heatmap.z).toEqual([[1.0]]);
+    expect(heatmap.z).toEqual([[Math.log10(1.0)]]);
   });
 });
 
@@ -77,7 +78,7 @@ describe('useMatrixFigure — exogenous swap', () => {
       useMatrixFigure(rows, 'MAE', EMPTY_SELECTION, false, false, false),
     );
     const heatmap = result.current!.data[0] as { z: number[][] };
-    expect(heatmap.z).toEqual([[1.0]]);
+    expect(heatmap.z).toEqual([[Math.log10(1.0)]]);
   });
 
   it('swaps in the +exo sibling’s value and marks it when showExo is on', () => {
@@ -85,7 +86,7 @@ describe('useMatrixFigure — exogenous swap', () => {
       useMatrixFigure(rows, 'MAE', EMPTY_SELECTION, false, true, false),
     );
     const heatmap = result.current!.data[0] as { z: number[][] };
-    expect(heatmap.z).toEqual([[0.5]]);
+    expect(heatmap.z).toEqual([[Math.log10(0.5)]]);
     expect(result.current!.layout.shapes?.some((s) => s.fillcolor === '#0B7285')).toBe(true);
   });
 
@@ -98,7 +99,7 @@ describe('useMatrixFigure — exogenous swap', () => {
       useMatrixFigure(noExo, 'MAE', EMPTY_SELECTION, false, true, false),
     );
     const heatmap = result.current!.data[0] as { z: number[][] };
-    expect(heatmap.z).toEqual([[1.0]]);
+    expect(heatmap.z).toEqual([[Math.log10(1.0)]]);
   });
 
   it('never shows the +exo variant as its own column', () => {
