@@ -196,6 +196,13 @@ function MainLayout({
     [filteredRows],
   );
   const trainingTimeDisabled = matrixRowCount > 0 && matrixRowCount < TRAINING_TIME_MIN_ROWS;
+  // Plotly.js fails to repaint the heatmap when a react() call fires while the matrix is
+  // this short (see TRAINING_TIME_MIN_ROWS) — NSE/KGE always narrow the matrix into that
+  // zone, so leaving/re-entering it (or switching metrics within it) needs a full remount
+  // rather than relying on Plotly's in-place update. Keying on the metric only while short
+  // avoids remounting on every ordinary (>=4-row) metric switch, where react() already works.
+  const matrixKey =
+    matrixRowCount < TRAINING_TIME_MIN_ROWS ? `${state.metric}-short` : 'full';
   const handleTrainingTimeChange = useCallback(
     (active: boolean) => {
       // Only block turning the overlay *on* for a too-short matrix; always let an
@@ -350,6 +357,7 @@ function MainLayout({
           </p>
           <div style={{ position: 'relative' }}>
             <MatrixGraph
+              key={matrixKey}
               rows={filteredRows}
               metric={state.metric}
               selection={state.selection}

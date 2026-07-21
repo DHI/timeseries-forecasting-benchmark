@@ -8,6 +8,18 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-21 — Fixed the matrix heatmap going stale when leaving NSE/KGE for another metric
+
+Selecting NSE or KGE, then switching to a `Skill_vs_*` metric, left the heatmap showing the old
+NSE/KGE cells instead of updating. Same root cause as the training-time entry just below: Plotly.js
+fails to repaint a heatmap via `react()` once the matrix is down to 3 rows or fewer, and NSE/KGE
+always narrow the matrix to exactly that many rows (the flow/level cases that declare them).
+Rather than another disabled-control workaround, `MatrixGraph` now gets a `key` in `App.tsx` that
+changes whenever the matrix is in that danger zone — tied to the metric while short, a fixed value
+otherwise — forcing React to unmount and remount the component instead of asking Plotly to update
+in place. This only remounts on a metric change that enters, leaves, or moves within the short-row
+zone; switching between two ordinary (4+ row) metrics is untouched.
+
 ## 2026-07-21 — Training-time overlay disabled for short matrices (Plotly bug, no in-code fix found)
 
 Holding "show training time" doesn't repaint the matrix for a short enough matrix: the
