@@ -61,7 +61,11 @@ export function CasePanel({ caseId, caseMeta, scores, showGlobal }: Props) {
         <Markdown>{caseTrainingStats(caseMeta, extended)}</Markdown>
         {seasonalPatterns.length > 0 && (
           <>
-            <p style={CAPTION_STYLE}>Seasonal pattern (detrended)</p>
+            <p style={CAPTION_STYLE}>
+              Seasonal pattern (detrended). Grey dots are individual training points; the black line
+              is a smoothed curve showing the typical shape of the cycle. Zoom in (click and drag on
+              a subplot) to see the pattern more clearly.
+            </p>
             <SeasonalPatternPlot patterns={seasonalPatterns} />
           </>
         )}
