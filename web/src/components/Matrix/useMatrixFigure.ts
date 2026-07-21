@@ -39,25 +39,36 @@ function trainingTimeColorTicks(maxSeconds: number): { tickvals: number[]; tickt
   return { tickvals: ticks.map((t) => Math.log10(t + 1)), ticktext: ticks.map((t) => `${t}`) };
 }
 
-/** 1-2-5 log-spaced ticks across [min, max], labeled via the metric's own formatter so they
- * read consistently with cell text. Used for metrics whose color (not cell text) pivots on
- * log10(value) — see `colorScale: 'log'` in metricConfig.ts. */
+/** 1-2-5 log-spaced ticks across [min, max] (raw, unscaled values), displayed at `scale`
+ * (matching how cell text is scaled — see metricConfig.ts's `scale`). Unlike cell text's
+ * fixed decimal count, tick labels drop decimals entirely once the displayed value passes
+ * 1, so a heavy-tailed range doesn't force needless ticks like "1000.00"/"2000.00" — e.g.
+ * for MAE (scale 1) this yields ...0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, ..., 500, 1000. Used for
+ * metrics whose color (not cell text) pivots on log10(value) — see `colorScale: 'log'` in
+ * metricConfig.ts. */
 function niceLogTicks(
   min: number,
   max: number,
-  formatTick: (v: number) => string,
+  scale: number,
 ): { tickvals: number[]; ticktext: string[] } {
   if (!(min > 0) || !(max > 0) || min >= max) return { tickvals: [], ticktext: [] };
   const lo = Math.floor(Math.log10(min));
   const hi = Math.ceil(Math.log10(max));
+  const scaleExp = Math.round(Math.log10(scale));
   const tickvals: number[] = [];
   const ticktext: string[] = [];
+  // A tolerance guards the boundary check: `m * 10 ** e` and `min`/`max` are computed via
+  // different floating-point paths (exponentiation vs. a data min/max), so a candidate that
+  // is mathematically exactly `min` can come out a hair below it and get skipped.
+  const tolerance = 1e-9;
   for (let e = lo; e <= hi; e++) {
     for (const m of [1, 2, 5]) {
       const v = m * 10 ** e;
-      if (v < min || v > max) continue;
+      if (v < min * (1 - tolerance) || v > max * (1 + tolerance)) continue;
+      const displayExp = e + scaleExp;
+      const decimals = Math.max(0, -displayExp);
       tickvals.push(Math.log10(v));
-      ticktext.push(formatTick(v));
+      ticktext.push((m * 10 ** displayExp).toFixed(decimals));
     }
   }
   return { tickvals, ticktext };
@@ -272,9 +283,10 @@ export function useMatrixFigure(
       // overlay instead (see HoverTooltips), matching app/app.py's clientside callback.
       hoverinfo: 'none',
       colorbar: {
-        // Kept short ("Seconds", not "Training time (s)") so it can never need more
-        // horizontal space than the fixed margin below already budgets for — see the
-        // margin.autoexpand note further down for why that matters.
+        // Kept short ("Seconds", not "Training time (s)") — and colorbarTitle() caps every
+        // other title's second line to a short unit bracket like "[target unit]" — so it
+        // can never need more horizontal space than margin.r below budgets for (see the
+        // margin.autoexpand note further down for why that matters).
         title: { text: showTrainingTime ? 'Seconds' : colorbarTitle(metric, cfg) },
         len: 0.6,
         thickness: 16,
@@ -290,7 +302,7 @@ export function useMatrixFigure(
           : isLogScale
             ? {
                 tickmode: 'array' as const,
-                ...niceLogTicks(logFloor, logMax, (v) => fmt(v * scale)),
+                ...niceLogTicks(logFloor, logMax, scale),
               }
             : {}),
       },
@@ -309,11 +321,13 @@ export function useMatrixFigure(
     // Plotly lets a wide colorbar title grow past this fixed margin, silently shrinking
     // the plot area within the figure's fixed width/height — which is what made the
     // training-time overlay's grid look narrower than the normal metric view. Disabling
-    // it guarantees the heatmap cells occupy exactly the same pixels either way.
+    // it guarantees the heatmap cells occupy exactly the same pixels either way. `r` is
+    // sized to fit the colorbar title's widest possible second line ("[target unit]"),
+    // left-anchored at the colorbar's own x — a plain 80px clipped it mid-word.
     const margin: Partial<Margin> & { autoexpand?: boolean } = {
       l: 90,
       t: 40,
-      r: 80,
+      r: 120,
       b: 80,
       autoexpand: false,
     };
@@ -322,7 +336,9 @@ export function useMatrixFigure(
       annotations,
       shapes,
       height: CELL * nRows + MATRIX_MARGIN,
-      width: CELL * nCols + 170,
+      // Derived from margin.l/margin.r (not a separate constant) so the two can never drift
+      // out of sync — the heatmap's pixel area is exactly width - (margin.l + margin.r).
+      width: CELL * nCols + (margin.l ?? 0) + (margin.r ?? 0),
       margin,
       paper_bgcolor: 'white',
       plot_bgcolor: 'white',

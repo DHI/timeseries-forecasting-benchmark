@@ -115,12 +115,12 @@ describe('useMatrixFigure — colorbar title', () => {
     return result.data[0] as { colorbar: { title: { text: string } } };
   }
 
-  it('gives Skill_vs_* metrics a short two-line "Skill<br>vs X" title', () => {
+  it('gives Skill_vs_* metrics a short three-line "Skill<br>vs<br>X" title', () => {
     const rows = [row({ metric: 'Skill_vs_Persistence', value: 0.1 })];
     const { result } = renderHook(() =>
       useMatrixFigure(rows, 'Skill_vs_Persistence', EMPTY_SELECTION, false, false, false),
     );
-    expect(heatmapOf(result.current!).colorbar.title.text).toBe('Skill<br>vs Persistence');
+    expect(heatmapOf(result.current!).colorbar.title.text).toBe('Skill<br>vs<br>Persistence');
   });
 
   it('gives other metrics a "MetricName<br>[unit]" title', () => {
@@ -159,10 +159,10 @@ describe('useMatrixFigure — log color scale for heavy-tailed metrics', () => {
     expect(heatmap.z).toEqual([[Math.log10(0.5), Math.log10(500)]]);
   });
 
-  it('labels the colorbar with 1-2-5 log-spaced ticks formatted like cell text', () => {
+  it('labels the colorbar with 1-2-5 log-spaced ticks, dropping decimals above 1', () => {
     const rows = [
-      row({ case_id: 'case_a', method: 'CatBoost', value: 0.5 }),
-      row({ case_id: 'case_a', method: 'LightGBM', value: 500 }),
+      row({ case_id: 'case_a', method: 'CatBoost', value: 0.02 }),
+      row({ case_id: 'case_a', method: 'LightGBM', value: 1000 }),
     ];
     const { result } = renderHook(() =>
       useMatrixFigure(rows, 'MAE', EMPTY_SELECTION, false, false, false),
@@ -172,16 +172,50 @@ describe('useMatrixFigure — log color scale for heavy-tailed metrics', () => {
     };
     expect(heatmap.colorbar.tickmode).toBe('array');
     expect(heatmap.colorbar.ticktext).toEqual([
-      '0.50',
-      '1.00',
-      '2.00',
-      '5.00',
-      '10.00',
-      '20.00',
-      '50.00',
-      '100.00',
-      '200.00',
-      '500.00',
+      '0.02',
+      '0.05',
+      '0.1',
+      '0.2',
+      '0.5',
+      '1',
+      '2',
+      '5',
+      '10',
+      '20',
+      '50',
+      '100',
+      '200',
+      '500',
+      '1000',
+    ]);
+  });
+
+  it('shifts tick decimals by the metric scale, e.g. MAPE (scale 100)', () => {
+    const rows = [
+      row({ metric: 'MAPE', case_id: 'case_a', method: 'CatBoost', value: 0.0002 }),
+      row({ metric: 'MAPE', case_id: 'case_a', method: 'LightGBM', value: 5 }),
+    ];
+    const { result } = renderHook(() =>
+      useMatrixFigure(rows, 'MAPE', EMPTY_SELECTION, false, false, false),
+    );
+    const heatmap = result.current!.data[0] as {
+      colorbar: { ticktext: string[] };
+    };
+    expect(heatmap.colorbar.ticktext).toEqual([
+      '0.02',
+      '0.05',
+      '0.1',
+      '0.2',
+      '0.5',
+      '1',
+      '2',
+      '5',
+      '10',
+      '20',
+      '50',
+      '100',
+      '200',
+      '500',
     ]);
   });
 
