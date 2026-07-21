@@ -21,6 +21,8 @@ function caseMeta(overrides: Partial<CaseMeta> = {}): CaseMeta {
     split_counts_extended: { train: 0, val: 0, test: 0 },
     distribution: { x_grid: [], train_density: null, test_density: null },
     distribution_extended: { x_grid: [], train_density: null, test_density: null },
+    seasonal_patterns: [],
+    seasonal_patterns_extended: [],
     source: { name: 'Test', url: null },
     notes: '',
     ...overrides,

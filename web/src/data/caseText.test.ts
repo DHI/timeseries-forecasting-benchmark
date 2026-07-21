@@ -21,6 +21,8 @@ function caseMeta(overrides: Partial<CaseMeta> = {}): CaseMeta {
     split_counts_extended: { train: 12264, val: 2628, test: 2628 },
     distribution: { x_grid: [], train_density: null, test_density: null },
     distribution_extended: { x_grid: [], train_density: null, test_density: null },
+    seasonal_patterns: [],
+    seasonal_patterns_extended: [],
     source: { name: 'BattLeDIM L-Town', url: 'https://battledim.ucy.ac.cy/' },
     notes: '',
     ...overrides,
