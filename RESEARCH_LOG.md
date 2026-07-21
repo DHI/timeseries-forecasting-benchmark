@@ -8,6 +8,20 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-21 — Domain controls now follow the matrix's own NSE/KGE narrowing
+
+The matrix already narrowed its rows to only the cases eligible for NSE/KGE (flow/level domains
+that declare them in `case.toml`), but two other parts of the sidebar didn't follow suit: the
+domain checkboxes stayed checkable for domains with no eligible case, and an open case panel
+stayed open even after its case's row disappeared from the matrix. Both now track the same
+eligibility check — ineligible domain checkboxes grey out and uncheck (without erasing the user's
+underlying selection, so switching back to an unrestricted metric restores it), and the case panel
+closes if its case stops being eligible when the metric changes. While fixing this, also found
+that the web app's test setup was missing Testing Library's per-test cleanup (`globals: false` in
+`vitest.config.ts` means its auto-cleanup never registers), which only mattered once a second test
+in `App.test.tsx` needed a full successful render — added an explicit `afterEach(cleanup)` so this
+doesn't bite the next multi-render test either.
+
 ## 2026-07-21 — Added a seasonal-pattern figure to the case panel
 
 The case panel's Data overview section now shows one subplot per declared seasonal period,
