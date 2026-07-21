@@ -61,7 +61,7 @@ export function CasePanel({ caseId, caseMeta, scores, showGlobal }: Props) {
         <Markdown>{caseTrainingStats(caseMeta, extended)}</Markdown>
         {seasonalPatterns.length > 0 && (
           <>
-            <p style={CAPTION_STYLE}>Seasonal pattern</p>
+            <p style={CAPTION_STYLE}>Seasonal pattern (detrended)</p>
             <SeasonalPatternPlot patterns={seasonalPatterns} />
           </>
         )}
