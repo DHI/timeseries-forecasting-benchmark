@@ -58,8 +58,12 @@ export function useHoldButton(onChange: (active: boolean) => void): {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.code !== 'Space' || event.repeat || isTypingTarget(event.target)) return;
+      if (event.code !== 'Space' || isTypingTarget(event.target)) return;
+      // Don't bail out on event.repeat before this point: holding the key sends a repeat
+      // keydown per OS repeat tick, and each one needs preventDefault to stop page scroll,
+      // even though only the first (non-repeat) keydown should call activate().
       event.preventDefault();
+      if (event.repeat) return;
       activate();
     };
 

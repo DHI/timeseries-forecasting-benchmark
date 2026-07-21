@@ -67,15 +67,22 @@ describe('useHoldButton', () => {
     expect(onChange).toHaveBeenLastCalledWith(false);
   });
 
-  it('ignores repeated keydown events from the OS key-repeat', () => {
+  it('ignores repeated keydown events from the OS key-repeat, but still blocks page scroll on each one', () => {
     const onChange = vi.fn();
     renderHook(() => useHoldButton(onChange));
 
+    const repeatKeydown = new KeyboardEvent('keydown', {
+      code: 'Space',
+      repeat: true,
+      cancelable: true,
+    });
+
     act(() => {
       window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Space' }));
-      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Space', repeat: true }));
+      window.dispatchEvent(repeatKeydown);
     });
     expect(onChange).toHaveBeenCalledTimes(1);
+    expect(repeatKeydown.defaultPrevented).toBe(true);
   });
 
   it('ignores space presses while typing in a text input', () => {
