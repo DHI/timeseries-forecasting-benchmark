@@ -235,7 +235,8 @@
     font-size: 11px;
     font-style: italic;
     fill: var(--text-muted);
-    pointer-events: none;
+    pointer-events: auto;
+    cursor: grab;
     user-select: none;
     text-anchor: middle;
     paint-order: stroke;
@@ -243,12 +244,13 @@
     stroke-width: 4px;
     stroke-linejoin: round;
   }
+  .cluster-label:active { cursor: grabbing; }
 </style>
 
 <div class="viz-root">
   <header class="hud">
     <h1>Research Log — Decision Graph</h1>
-    <span class="hint">scroll/pinch to zoom · drag canvas to pan · drag a node to pin it, double-click to release · hover for a summary · click for detail</span>
+    <span class="hint">scroll/pinch to zoom · drag canvas to pan · drag a node or a cluster label to pin it, double-click to release · hover for a summary · click for detail</span>
   </header>
 
   <svg id="graph-svg"></svg>
@@ -1884,6 +1886,41 @@
     event.stopPropagation();
     d.fx = null;
     d.fy = null;
+    simulation.alphaTarget(0.25).restart();
+    setTimeout(() => simulation.alphaTarget(0), 200);
+  });
+
+  // --- cluster label drag: pin every member node and carry them together ---
+  function clusterMembers(d) {
+    return d.nodes.map((id) => simNodeById.get(id)).filter(Boolean);
+  }
+  function clusterDragStarted(event, d) {
+    if (!event.active) simulation.alphaTarget(0.25).restart();
+    clusterMembers(d).forEach((n) => {
+      if (n.fx == null) n.fx = n.x;
+      if (n.fy == null) n.fy = n.y;
+    });
+  }
+  function clusterDragged(event, d) {
+    clusterMembers(d).forEach((n) => {
+      n.fx += event.dx;
+      n.fy += event.dy;
+    });
+  }
+  function clusterDragEnded(event) {
+    if (!event.active) simulation.alphaTarget(0);
+  }
+  clusterLabel.call(
+    d3.drag().on("start", clusterDragStarted).on("drag", clusterDragged).on("end", clusterDragEnded)
+  );
+
+  clusterLabel.on("click", (event) => event.stopPropagation());
+  clusterLabel.on("dblclick", function (event, d) {
+    event.stopPropagation();
+    clusterMembers(d).forEach((n) => {
+      n.fx = null;
+      n.fy = null;
+    });
     simulation.alphaTarget(0.25).restart();
     setTimeout(() => simulation.alphaTarget(0), 200);
   });
