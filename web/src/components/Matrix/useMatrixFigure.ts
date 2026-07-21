@@ -170,6 +170,35 @@ export function useMatrixFigure(
       }
     }
 
+    // Training time is heavy-tailed (most methods are fast, a few much slower), so cell
+    // color pivots on log10(seconds + 1) rather than the raw seconds `values` used for
+    // cell text/ranking below — a linear scale would leave almost every cell looking
+    // identical. The colorbar ticks further down relabel this log space back to real
+    // seconds. Several metrics (MAE/RMSE/MAPE/sMAPE) are heavy-tailed the same way —
+    // `colorScale: 'log'` in metricConfig.ts opts them into an analogous log10(value) color
+    // mapping (floored at the smallest positive value present, so an exact 0 doesn't map to
+    // -Infinity).
+    const isLogScale = !showTrainingTime && cfg.colorScale === 'log';
+    const positiveValues = values.flat().filter((v) => Number.isFinite(v) && v > 0);
+    const logFloor = positiveValues.length ? Math.min(...positiveValues) : Number.EPSILON;
+    const logMax = positiveValues.length ? Math.max(...positiveValues) : 1;
+    const colorZ = showTrainingTime
+      ? values.map((row) => row.map((v) => (Number.isNaN(v) ? NaN : Math.log10(v + 1))))
+      : isLogScale
+        ? values.map((row) =>
+            row.map((v) => (Number.isNaN(v) ? NaN : Math.log10(Math.max(v, logFloor)))),
+          )
+        : values;
+
+    // Greys runs from white (t=0) to black (t=1), same as Plotly's own zmin/zmax mapping
+    // (cfg.center is null for every Greys-cmap config today, so Plotly auto-ranges to this
+    // same colorZ min/max) — once a cell's background crosses mid-grey, default dark
+    // annotation text stops being readable and needs to switch to a light color instead.
+    const isGreyscale = cfg.cmap === 'Greys';
+    const finiteColorZ = colorZ.flat().filter((v) => Number.isFinite(v));
+    const colorZMin = finiteColorZ.length ? Math.min(...finiteColorZ) : 0;
+    const colorZMax = finiteColorZ.length ? Math.max(...finiteColorZ) : 1;
+
     // No "s" suffix on training-time cells: the colorbar title already labels the unit.
     // `scale` lets a metric's cell text be a plain number (e.g. MAPE's `12`) while the unit
     // itself (e.g. "%") is stated once, on the colorbar, instead of repeated in every cell.
@@ -188,6 +217,11 @@ export function useMatrixFigure(
       const bestMethod = bestOfRow.get(caseId);
       colOrder.forEach((method, c) => {
         const isBest = method === bestMethod;
+        const t =
+          isGreyscale && colorZMax > colorZMin
+            ? (colorZ[r]![c]! - colorZMin) / (colorZMax - colorZMin)
+            : NaN;
+        const isDarkCell = Number.isFinite(t) && t > 0.5;
         annotations.push({
           x: method,
           y: caseId,
@@ -195,7 +229,7 @@ export function useMatrixFigure(
           yref: 'y',
           text: isBest ? `<b>${text[r]![c]}</b>` : text[r]![c],
           showarrow: false,
-          font: { size: isBest ? 13 : 10 },
+          font: { size: isBest ? 13 : 10, color: isDarkCell ? '#f5f5f5' : undefined },
         });
       });
     });
@@ -253,25 +287,6 @@ export function useMatrixFigure(
       });
     }
 
-    // Training time is heavy-tailed (most methods are fast, a few much slower), so cell
-    // color pivots on log10(seconds + 1) rather than the raw seconds `values` used for
-    // cell text/ranking above — a linear scale would leave almost every cell looking
-    // identical. The colorbar ticks below relabel this log space back to real seconds.
-    // Several metrics (MAE/RMSE/MAPE/sMAPE) are heavy-tailed the same way — `colorScale:
-    // 'log'` in metricConfig.ts opts them into an analogous log10(value) color mapping
-    // (floored at the smallest positive value present, so an exact 0 doesn't map to -Infinity).
-    const isLogScale = !showTrainingTime && cfg.colorScale === 'log';
-    const positiveValues = values.flat().filter((v) => Number.isFinite(v) && v > 0);
-    const logFloor = positiveValues.length ? Math.min(...positiveValues) : Number.EPSILON;
-    const logMax = positiveValues.length ? Math.max(...positiveValues) : 1;
-    const colorZ = showTrainingTime
-      ? values.map((row) => row.map((v) => (Number.isNaN(v) ? NaN : Math.log10(v + 1))))
-      : isLogScale
-        ? values.map((row) =>
-            row.map((v) => (Number.isNaN(v) ? NaN : Math.log10(Math.max(v, logFloor)))),
-          )
-        : values;
-
     // @types/plotly.js is missing `zmid` (a real, documented plotly.js heatmap option —
     // just absent from this package's typings), hence the inline extension below.
     const heatmap: Partial<PlotData> & { zmid?: number } = {
@@ -287,7 +302,9 @@ export function useMatrixFigure(
         // "Train<br>time<br>[seconds]" is no wider than colorbarTitle()'s longest line
         // ("[target unit]"), so it still fits within margin.r below (see the
         // margin.autoexpand note further down for why that matters).
-        title: { text: showTrainingTime ? 'Train<br>time<br>[seconds]' : colorbarTitle(metric, cfg) },
+        title: {
+          text: showTrainingTime ? 'Train<br>time<br>[seconds]' : colorbarTitle(metric, cfg),
+        },
         len: 0.6,
         thickness: 16,
         x: 1.0,

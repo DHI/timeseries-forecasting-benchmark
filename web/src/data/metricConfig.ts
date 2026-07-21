@@ -2,7 +2,7 @@
 // only the colour scale, not the printed value — a single catastrophic cell shouldn't
 // compress the whole colormap so every meaningful difference looks identical.
 export type MetricConfig = {
-  cmap: 'RdYlGn_r' | 'RdYlGn' | 'Reds';
+  cmap: 'RdYlGn_r' | 'RdYlGn' | 'Reds' | 'Greys';
   center: number | null;
   vlo?: number;
   vhi?: number;
@@ -116,12 +116,13 @@ export const METRIC_CONFIG: Record<string, MetricConfig> = {
   },
 };
 
-/** Display config for the training-time heatmap overlay — Reds/no-center/lower-is-better,
- * mirroring MAE/RMSE. Kept separate from METRIC_CONFIG since training time isn't a
- * selectable metric and must not appear in metricOptions(). `unit` is unused: the
- * training-time colorbar title is a hardcoded 'Seconds' string in useMatrixFigure.ts. */
+/** Display config for the training-time heatmap overlay — greyscale (to visually set it
+ * apart from the Reds/RdYlGn metric views) /no-center/lower-is-better. Kept separate from
+ * METRIC_CONFIG since training time isn't a selectable metric and must not appear in
+ * metricOptions(). `unit` is unused: the training-time colorbar title is a hardcoded
+ * 'Train<br>time<br>[seconds]' string in useMatrixFigure.ts. */
 export const TRAINING_TIME_CONFIG: MetricConfig = {
-  cmap: 'Reds',
+  cmap: 'Greys',
   center: null,
   label: 'Training time (fit + predict, pooled across rolling origins)',
   format: '.0f',

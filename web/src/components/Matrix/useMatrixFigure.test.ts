@@ -265,7 +265,7 @@ describe('useMatrixFigure — training-time overlay', () => {
     const heatmap = result.current!.data[0] as {
       colorbar: { title: { text: string } };
     };
-    expect(heatmap.colorbar.title.text).toBe('Train<br>time [seconds]');
+    expect(heatmap.colorbar.title.text).toBe('Train<br>time<br>[seconds]');
   });
 
   it('labels the colorbar with round-number seconds ticks in log space', () => {
@@ -326,5 +326,42 @@ describe('useMatrixFigure — training-time overlay', () => {
     expect(overlayResult.current!.layout.width).toBe(metricResult.current!.layout.width);
     expect(overlayResult.current!.layout.height).toBe(metricResult.current!.layout.height);
     expect(overlayResult.current!.layout.margin).toEqual(metricResult.current!.layout.margin);
+  });
+});
+
+describe('useMatrixFigure — training-time overlay cell text color', () => {
+  function annotationFontColor(
+    result: { layout: { annotations?: unknown[] } },
+    text: string,
+  ): string | undefined {
+    const match = result.layout.annotations!.find((a) => (a as { text: string }).text === text);
+    return (match as { font: { color?: string } }).font.color;
+  }
+
+  it('switches to light text on the darkest (slowest) cell but not the lightest (fastest) one', () => {
+    const rows = [
+      row({ case_id: 'case_a', method: 'CatBoost', value: 1.0, seconds: 0.01 }),
+      row({ case_id: 'case_a', method: 'LightGBM', value: 1.0, seconds: 10000 }),
+    ];
+    const { result } = renderHook(() =>
+      useMatrixFigure(rows, 'MAE', EMPTY_SELECTION, false, false, true),
+    );
+    expect(annotationFontColor(result.current!, '0')).toBeUndefined();
+    expect(annotationFontColor(result.current!, '10000')).toBe('#f5f5f5');
+  });
+
+  it('does not override text color for non-greyscale metric views', () => {
+    const rows = [
+      row({ case_id: 'case_a', method: 'CatBoost', value: 0.01 }),
+      row({ case_id: 'case_a', method: 'LightGBM', value: 10000 }),
+    ];
+    const { result } = renderHook(() =>
+      useMatrixFigure(rows, 'MAE', EMPTY_SELECTION, false, false, false),
+    );
+    // MAE's Reds colormap gets just as dark at high values, but only the training-time
+    // overlay's Greys config opts into the readability fix — CatBoost (0.01) is this row's
+    // best (lowest) value and so is bolded, LightGBM (10000) is the dark cell.
+    expect(annotationFontColor(result.current!, '<b>0.01</b>')).toBeUndefined();
+    expect(annotationFontColor(result.current!, '10000.00')).toBeUndefined();
   });
 });

@@ -1,4 +1,4 @@
-import { interpolateRdYlGn, interpolateReds } from 'd3-scale-chromatic';
+import { interpolateGreys, interpolateRdYlGn, interpolateReds } from 'd3-scale-chromatic';
 import type { ColorScale } from 'plotly.js';
 import type { MetricConfig } from './metricConfig';
 
@@ -9,6 +9,7 @@ const N_STOPS = 17;
 function interpolatorFor(cmap: MetricConfig['cmap']): (t: number) => string {
   if (cmap === 'RdYlGn') return interpolateRdYlGn;
   if (cmap === 'RdYlGn_r') return (t: number) => interpolateRdYlGn(1 - t);
+  if (cmap === 'Greys') return interpolateGreys;
   return interpolateReds;
 }
 
