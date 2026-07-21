@@ -28,11 +28,13 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from tsforecastbench.bench.viz import METRIC_CONFIG  # noqa: E402
 from tsforecastbench.data.registry import discover_cases, get_case  # noqa: E402
+from tsforecastbench.data.seasonality import position_in_cycle  # noqa: E402
 from tsforecastbench.webdata import (  # noqa: E402
     TRAINING_TAIL_N,
     _actual_series,
     _horizon_steps,
     _kde_curve,
+    _loess_curve,
     _method_registry,
     curate_origins,
     load_case_split,
@@ -95,16 +97,46 @@ def _distribution(case_id: str, extended: bool) -> dict:
     }
 
 
+def _seasonal_pattern(case_id: str, case, period: int, extended: bool) -> dict:
+    """(position-in-cycle, y) scatter plus a LOESS curve over one cycle, for one declared
+    seasonal period -- reuses the same `TRAINING_TAIL_N`-point training tail as the panel's
+    snapshot plot, so the scatter is the same sample the reader already saw."""
+    tail = load_case_training_tail(case_id, TRAINING_TAIL_N, extended=extended)
+    observed = tail["y"].notna()
+    x = position_in_cycle(case.freq, period, pd.DatetimeIndex(tail.loc[observed, "ds"]))
+    x = x.astype(float)
+    y = tail.loc[observed, "y"].to_numpy(dtype=float)
+    curve = _loess_curve(x, y, period)
+    curve_x, curve_y = curve if curve is not None else (np.array([]), np.array([]))
+    return {
+        "period": period,
+        "x": _finite_list(x),
+        "y": _finite_list(y),
+        "curve_x": curve_x.tolist(),
+        "curve_y": _finite_list(curve_y),
+    }
+
+
+def _seasonal_patterns(case_id: str, case, extended: bool) -> list[dict]:
+    """All of a case's declared seasonal patterns, ascending by period -- case.toml orders
+    `seasonalities` most-prominent-first for curation purposes, but the panel reads more
+    naturally short-cycle-first."""
+    return [
+        _seasonal_pattern(case_id, case, period, extended) for period in sorted(case.seasonalities)
+    ]
+
+
 def export_cases(out_dir: Path) -> None:
     """cases.json: static case.toml metadata needed by the sidebar/case panels — domain,
     target, exogenous inputs, source, notes, which domain-restricted metrics
     (`cases_eligible_for_metric`) this case declares — plus bounded derived series for the
     case detail panel's plots (never the case's raw, possibly-huge history): the last
     `TRAINING_TAIL_N` training points, the full test split, train/val/test observed-point
-    counts, and train-vs-test KDE distribution curves. Each of these has a plain and an
-    `_extended` variant (extended-history train split); for cases with no real extended
-    history, `data.load_case_split`'s own fallback makes the `_extended` variant identical
-    to the plain one, so this doesn't special-case that here — same as the Dash app."""
+    counts, train-vs-test KDE distribution curves, and a seasonal-pattern scatter+LOESS
+    curve per declared period. Each of these has a plain and an `_extended` variant
+    (extended-history train split); for cases with no real extended history,
+    `data.load_case_split`'s own fallback makes the `_extended` variant identical to the
+    plain one, so this doesn't special-case that here — same as the Dash app."""
     cases = {}
     for case_id, case in sorted(discover_cases().items()):
         test_split = load_case_split(case_id, "test")[["ds", "y"]]
@@ -128,6 +160,8 @@ def export_cases(out_dir: Path) -> None:
             "split_counts_extended": load_case_split_counts(case_id, extended=True),
             "distribution": _distribution(case_id, extended=False),
             "distribution_extended": _distribution(case_id, extended=True),
+            "seasonal_patterns": _seasonal_patterns(case_id, case, extended=False),
+            "seasonal_patterns_extended": _seasonal_patterns(case_id, case, extended=True),
             "source": {"name": case.source.name, "url": case.source.url},
             "notes": case.notes,
         }

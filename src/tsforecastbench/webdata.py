@@ -35,6 +35,14 @@ METRICS_PATH = REPO_ROOT / "docs" / "results" / "scores.parquet"
 
 TRAINING_TAIL_N = 1000
 
+# Seasonal-pattern plot tuning. PAD_FRAC: fraction of the cycle mirrored across each
+# boundary before the LOESS fit, so the curve is continuous where the cycle wraps (e.g.
+# Sunday night into Monday morning) instead of showing an edge artifact. LOESS_FRAC: the
+# lowess bandwidth: adjust if rendered curves look under/over-smoothed once reviewed.
+SEASONAL_PATTERN_PAD_FRAC = 0.1
+SEASONAL_PATTERN_LOESS_FRAC = 0.15
+SEASONAL_PATTERN_CURVE_POINTS = 200
+
 # EnsembleForecaster's `name` is set per-instance by these factories, not as a class
 # attribute, so it can't be read off the class the way every other method's can.
 _ENSEMBLE_FACTORIES = ("ensemble_baselines", "ensemble_baselines_theta")
@@ -231,6 +239,33 @@ def _kde_curve(values: pd.Series, x_grid: np.ndarray) -> np.ndarray | None:
         return gaussian_kde(values)(x_grid)
     except (np.linalg.LinAlgError, ValueError):
         return None
+
+
+def _loess_curve(x: np.ndarray, y: np.ndarray, period: int) -> tuple[np.ndarray, np.ndarray] | None:
+    """LOESS fit of `y` against its position-in-cycle `x` (`0..period-1`), evaluated on a
+    fine grid spanning one full cycle -- for the case panel's seasonal-pattern plot.
+
+    Before fitting, `x`/`y` are padded with points mirrored across each cycle boundary
+    (`SEASONAL_PATTERN_PAD_FRAC` of the period from each end), so the curve is continuous
+    where positions wrap around (e.g. `period - 1` back to `0`, Sunday night into Monday
+    morning) instead of tapering at the edges; the padding never appears in the returned
+    grid, which spans exactly `0..period-1`. None if there's nothing to fit.
+    """
+    from statsmodels.nonparametric.smoothers_lowess import lowess
+
+    if len(x) < 2:
+        return None
+    pad = period * SEASONAL_PATTERN_PAD_FRAC
+    wrap_from_end = (x >= period - pad) & (x < period)
+    wrap_from_start = (x >= 0) & (x <= pad)
+    x_padded = np.concatenate([x[wrap_from_end] - period, x, x[wrap_from_start] + period])
+    y_padded = np.concatenate([y[wrap_from_end], y, y[wrap_from_start]])
+    curve_x = np.linspace(0, period - 1, SEASONAL_PATTERN_CURVE_POINTS)
+    try:
+        curve_y = lowess(y_padded, x_padded, frac=SEASONAL_PATTERN_LOESS_FRAC, xvals=curve_x)
+    except ValueError:
+        return None
+    return curve_x, curve_y
 
 
 def _origin_metric(case_id: str, origin_preds: pd.DataFrame, metric: str) -> float:
