@@ -11,6 +11,7 @@ import { MatrixGraph } from './components/Matrix/MatrixGraph';
 import { SelectionHint } from './components/Matrix/SelectionHint';
 import { BenchmarkDesign } from './components/BenchmarkDesign/BenchmarkDesign';
 import { CasePanel } from './components/CasePanel/CasePanel';
+import { InstructionsModal } from './components/InstructionsModal/InstructionsModal';
 import { MethodInfoPanel } from './components/MethodInfoPanel/MethodInfoPanel';
 import { TITLE_BAR_HEIGHT } from './components/MethodInfoPanel/MethodInfoCard';
 import { SnapshotPanel } from './components/SnapshotPanel/SnapshotPanel';
@@ -278,7 +279,10 @@ function MainLayout({
       </div>
       <main style={{ flex: 1, padding: 16, minWidth: 0, overflowX: 'auto' }}>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-          <h1>Timeseries Forecasting Benchmark</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <h1 style={{ margin: 0 }}>Timeseries Forecasting Benchmark</h1>
+            <InstructionsModal />
+          </div>
           <p style={{ color: '#444', maxWidth: 1000 }}>
             The following matrix compiles the forecasting results of multiple methods across a
             variety of timeseries in different water domains. Each cell represents one case x method
