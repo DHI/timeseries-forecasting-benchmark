@@ -122,8 +122,7 @@ the covariate value the benchmark is built to quantify.
 
 **Interactive viewer**: the same case × method matrix, with filtering, hover detail, and
 forecast-snapshot drill-down, is also browsable without running anything — see `web/` (a static
-React app, deployed via GitHub Pages) or run `app/app.py` locally (`uv run --extra app python
-app/app.py`) for the live Dash version.
+React app, deployed via GitHub Pages).
 
 ## Design notes
 

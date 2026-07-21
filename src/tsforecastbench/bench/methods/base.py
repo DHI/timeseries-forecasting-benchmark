@@ -80,7 +80,7 @@ class Forecaster(ABC):
     # runs the second (extended) fit only for `is_global and pools_segments` methods.
     pools_segments: bool = False
     # The next four are documentation only, read by the results viewer's method-info
-    # panel (app/data.py) — they have no effect on fit/predict. Kept as class attributes
+    # panel (tsforecastbench.webdata) — they have no effect on fit/predict. Kept as class attributes
     # (not a separate metadata file) so a method's implementation and its description of
     # itself can't drift apart.
     library: str = ""  # concrete package(s) doing the work, e.g. "statsforecast (Nixtla)"
