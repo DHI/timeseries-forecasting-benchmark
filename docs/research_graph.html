@@ -1890,15 +1890,23 @@
     setTimeout(() => simulation.alphaTarget(0), 200);
   });
 
-  // --- cluster label drag: pin every member node and carry them together ---
+  // --- cluster label drag: carry every member node together, temporarily
+  // pinning only whichever ones were already free so the drag moves them as
+  // a rigid group, then releasing those back to the simulation on drag-end
+  // so the subgraph keeps its normal spring/inertia behavior afterward.
+  // Nodes that were already individually pinned (by a prior node drag) stay
+  // pinned, same as before.
   function clusterMembers(d) {
     return d.nodes.map((id) => simNodeById.get(id)).filter(Boolean);
   }
   function clusterDragStarted(event, d) {
     if (!event.active) simulation.alphaTarget(0.25).restart();
     clusterMembers(d).forEach((n) => {
-      if (n.fx == null) n.fx = n.x;
-      if (n.fy == null) n.fy = n.y;
+      n.__clusterDragWasFree = n.fx == null;
+      if (n.__clusterDragWasFree) {
+        n.fx = n.x;
+        n.fy = n.y;
+      }
     });
   }
   function clusterDragged(event, d) {
@@ -1907,8 +1915,15 @@
       n.fy += event.dy;
     });
   }
-  function clusterDragEnded(event) {
+  function clusterDragEnded(event, d) {
     if (!event.active) simulation.alphaTarget(0);
+    clusterMembers(d).forEach((n) => {
+      if (n.__clusterDragWasFree) {
+        n.fx = null;
+        n.fy = null;
+      }
+      delete n.__clusterDragWasFree;
+    });
   }
   clusterLabel.call(
     d3.drag().on("start", clusterDragStarted).on("drag", clusterDragged).on("end", clusterDragEnded)
