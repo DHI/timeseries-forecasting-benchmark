@@ -113,4 +113,22 @@ describe('useHoldButton', () => {
     });
     expect(onChange).toHaveBeenLastCalledWith(false);
   });
+
+  it('prevents the default action on both keydown and keyup, so a focused button does not fire its own click when space is released', () => {
+    const onChange = vi.fn();
+    renderHook(() => useHoldButton(onChange));
+
+    const keydown = new KeyboardEvent('keydown', { code: 'Space', cancelable: true });
+    const keyup = new KeyboardEvent('keyup', { code: 'Space', cancelable: true });
+
+    act(() => {
+      window.dispatchEvent(keydown);
+    });
+    expect(keydown.defaultPrevented).toBe(true);
+
+    act(() => {
+      window.dispatchEvent(keyup);
+    });
+    expect(keyup.defaultPrevented).toBe(true);
+  });
 });

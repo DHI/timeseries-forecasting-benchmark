@@ -35,7 +35,8 @@ export function useHoldButton(onChange: (active: boolean) => void): {
   }, []);
 
   const deactivate = useCallback(() => {
-    activeSourcesRef.current = Math.max(0, activeSourcesRef.current - 1);
+    if (activeSourcesRef.current === 0) return;
+    activeSourcesRef.current -= 1;
     if (activeSourcesRef.current === 0) onChangeRef.current(false);
   }, []);
 
@@ -64,6 +65,10 @@ export function useHoldButton(onChange: (active: boolean) => void): {
 
     const onKeyUp = (event: KeyboardEvent) => {
       if (event.code !== 'Space') return;
+      // Browsers fire a focused button's click as the *keyup* default action for space,
+      // separately from keydown — preventing only keydown (above) stops page scroll but
+      // doesn't stop a focused button (e.g. the sidebar's collapse toggle) from firing on release.
+      event.preventDefault();
       deactivate();
     };
 
