@@ -1,7 +1,7 @@
-# Benchmark app instructions
-
-Notes for explaining the app's functionality to users.
-
+/** Markdown shown in the instructions modal opened from the info icon next to the page title.
+ * Moved here from the repo root's `APP_INSTRUCTIONS.md` so it ships with the app instead of
+ * living in a file nobody browsing the site would find. */
+export const APP_INSTRUCTIONS = `
 ## Selecting methods in the matrix
 
 Click a cell to open a method card for it. You can have up to three method cards open
@@ -93,3 +93,4 @@ switches to timing for as long as you hold it down; release anywhere on the page
 to normal. You can still move your mouse around the matrix while holding the button, and
 the usual row/column hover tooltips keep working, so you can hold with one hand (so to
 speak) and hover to identify cells with the other.
+`.trim();
