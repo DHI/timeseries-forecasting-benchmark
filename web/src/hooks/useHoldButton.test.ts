@@ -51,4 +51,66 @@ describe('useHoldButton', () => {
 
     expect(seen).toEqual([true, false]);
   });
+
+  it('activates on holding space and deactivates on release', () => {
+    const onChange = vi.fn();
+    renderHook(() => useHoldButton(onChange));
+
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Space' }));
+    });
+    expect(onChange).toHaveBeenCalledWith(true);
+
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keyup', { code: 'Space' }));
+    });
+    expect(onChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it('ignores repeated keydown events from the OS key-repeat', () => {
+    const onChange = vi.fn();
+    renderHook(() => useHoldButton(onChange));
+
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Space' }));
+      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Space', repeat: true }));
+    });
+    expect(onChange).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores space presses while typing in a text input', () => {
+    const onChange = vi.fn();
+    renderHook(() => useHoldButton(onChange));
+
+    const input = document.createElement('input');
+    document.body.appendChild(input);
+
+    act(() => {
+      input.dispatchEvent(new KeyboardEvent('keydown', { code: 'Space', bubbles: true }));
+    });
+    expect(onChange).not.toHaveBeenCalled();
+
+    document.body.removeChild(input);
+  });
+
+  it('keeps holding via mouse when space is released first', () => {
+    const onChange = vi.fn();
+    const { result } = renderHook(() => useHoldButton(onChange));
+
+    act(() => {
+      result.current.onMouseDown({ preventDefault: () => {} } as React.MouseEvent);
+      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Space' }));
+    });
+    expect(onChange).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keyup', { code: 'Space' }));
+    });
+    expect(onChange).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      window.dispatchEvent(new MouseEvent('mouseup'));
+    });
+    expect(onChange).toHaveBeenLastCalledWith(false);
+  });
 });

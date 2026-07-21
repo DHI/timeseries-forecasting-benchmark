@@ -87,10 +87,10 @@ the exogenous variant's description and forecasts instead of the base version.
 
 ### "Show training time" button
 
-Press and hold this button to see each cell's measured training time instead of its score.
-The whole matrix — including any cells already swapped by the two checkboxes above —
-switches to timing for as long as you hold it down; release anywhere on the page to go back
-to normal. You can still move your mouse around the matrix while holding the button, and
-the usual row/column hover tooltips keep working, so you can hold with one hand (so to
-speak) and hover to identify cells with the other.
+Press and hold this button, or hold the space bar, to see each cell's measured training time
+instead of its score. The whole matrix — including any cells already swapped by the two
+checkboxes above — switches to timing for as long as you hold it down; release to go back to
+normal. You can still move your mouse around the matrix while holding, and the usual
+row/column hover tooltips keep working, so you can hold with one hand (so to speak) and hover
+to identify cells with the other.
 `.trim();
