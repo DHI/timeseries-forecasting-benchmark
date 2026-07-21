@@ -110,6 +110,94 @@ describe('useMatrixFigure — exogenous swap', () => {
   });
 });
 
+describe('useMatrixFigure — colorbar title', () => {
+  function heatmapOf(result: { data: unknown[] }) {
+    return result.data[0] as { colorbar: { title: { text: string } } };
+  }
+
+  it('gives Skill_vs_* metrics a short two-line "Skill<br>vs X" title', () => {
+    const rows = [row({ metric: 'Skill_vs_Persistence', value: 0.1 })];
+    const { result } = renderHook(() =>
+      useMatrixFigure(rows, 'Skill_vs_Persistence', EMPTY_SELECTION, false, false, false),
+    );
+    expect(heatmapOf(result.current!).colorbar.title.text).toBe('Skill<br>vs Persistence');
+  });
+
+  it('gives other metrics a "MetricName<br>[unit]" title', () => {
+    const rows = [row({ metric: 'MAE', value: 1.0 })];
+    const { result } = renderHook(() =>
+      useMatrixFigure(rows, 'MAE', EMPTY_SELECTION, false, false, false),
+    );
+    expect(heatmapOf(result.current!).colorbar.title.text).toBe('MAE<br>[target unit]');
+  });
+
+  it('states the % unit on the colorbar title instead of in MAPE/sMAPE cell text', () => {
+    const rows = [row({ metric: 'MAPE', value: 0.123 })];
+    const { result } = renderHook(() =>
+      useMatrixFigure(rows, 'MAPE', EMPTY_SELECTION, false, false, false),
+    );
+    const heatmap = result.current!.data[0] as {
+      colorbar: { title: { text: string } };
+    };
+    expect(heatmap.colorbar.title.text).toBe('MAPE<br>[%]');
+    const texts = result.current!.layout.annotations!.map((a) => String(a.text));
+    expect(texts).toContain('<b>12</b>');
+    expect(texts.some((t) => t.includes('%'))).toBe(false);
+  });
+});
+
+describe('useMatrixFigure — log color scale for heavy-tailed metrics', () => {
+  it('colors MAE cells by log10(value), floored at the smallest positive value', () => {
+    const rows = [
+      row({ case_id: 'case_a', method: 'CatBoost', value: 0.5 }),
+      row({ case_id: 'case_a', method: 'LightGBM', value: 500 }),
+    ];
+    const { result } = renderHook(() =>
+      useMatrixFigure(rows, 'MAE', EMPTY_SELECTION, false, false, false),
+    );
+    const heatmap = result.current!.data[0] as { z: number[][] };
+    expect(heatmap.z).toEqual([[Math.log10(0.5), Math.log10(500)]]);
+  });
+
+  it('labels the colorbar with 1-2-5 log-spaced ticks formatted like cell text', () => {
+    const rows = [
+      row({ case_id: 'case_a', method: 'CatBoost', value: 0.5 }),
+      row({ case_id: 'case_a', method: 'LightGBM', value: 500 }),
+    ];
+    const { result } = renderHook(() =>
+      useMatrixFigure(rows, 'MAE', EMPTY_SELECTION, false, false, false),
+    );
+    const heatmap = result.current!.data[0] as {
+      colorbar: { tickmode: string; tickvals: number[]; ticktext: string[] };
+    };
+    expect(heatmap.colorbar.tickmode).toBe('array');
+    expect(heatmap.colorbar.ticktext).toEqual([
+      '0.50',
+      '1.00',
+      '2.00',
+      '5.00',
+      '10.00',
+      '20.00',
+      '50.00',
+      '100.00',
+      '200.00',
+      '500.00',
+    ]);
+  });
+
+  it('does not apply a log color scale to non-log metrics like MASE', () => {
+    const rows = [
+      row({ metric: 'MASE', case_id: 'case_a', method: 'CatBoost', value: 0.5 }),
+      row({ metric: 'MASE', case_id: 'case_a', method: 'LightGBM', value: 5 }),
+    ];
+    const { result } = renderHook(() =>
+      useMatrixFigure(rows, 'MASE', EMPTY_SELECTION, false, false, false),
+    );
+    const heatmap = result.current!.data[0] as { z: number[][] };
+    expect(heatmap.z).toEqual([[0.5, 5]]);
+  });
+});
+
 describe('useMatrixFigure — training-time overlay', () => {
   const rows = [
     row({ case_id: 'case_a', method: 'LightGBM', value: 1.0, seconds: 4.32 }),
