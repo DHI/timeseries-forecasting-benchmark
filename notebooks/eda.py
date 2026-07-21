@@ -222,7 +222,7 @@ def _(case, df, go, mo, np, pd, splits_curated):
             mo.md(
                 "_Grey is the raw series over its full nominal span; the coloured "
                 "train/val/test lines on top are the curated (gap-filled, "
-                "longest-usable-span) series the benchmark actually trains and scores "
+                "tail contiguous span) series the benchmark actually trains and scores "
                 "on. Where grey shows but no colour does, that stretch was dropped by "
                 "the curation gap policy. Very long/high-frequency series are "
                 "downsampled for display using a shared min/max-per-bin grid across raw "

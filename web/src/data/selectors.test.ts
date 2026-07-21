@@ -3,6 +3,7 @@ import {
   caseHasExtendedHistory,
   casesEligibleForMetric,
   domainOptions,
+  domainsEligibleForMetric,
   effectiveMethod,
   familyOptions,
   groupBoundaries,
@@ -76,6 +77,30 @@ describe('casesEligibleForMetric', () => {
     expect(
       casesEligibleForMetric('NSE', ['flow_case', 'wave_case'], domainMetrics, restricted),
     ).toEqual(['flow_case']);
+  });
+});
+
+describe('domainsEligibleForMetric', () => {
+  const rows = [
+    row({ case_id: 'flow_case', domain: 'flow' }),
+    row({ case_id: 'wave_case', domain: 'waves' }),
+  ];
+  const domainMetrics = new Map([
+    ['flow_case', ['NSE', 'KGE']],
+    ['wave_case', []],
+  ]);
+  const restricted = new Set(['NSE', 'KGE']);
+
+  it('is a no-op for unrestricted metrics', () => {
+    expect(domainsEligibleForMetric('MASE', rows, domainMetrics, restricted)).toEqual(
+      new Set(['flow', 'waves']),
+    );
+  });
+
+  it('restricts to domains with at least one declaring case', () => {
+    expect(domainsEligibleForMetric('NSE', rows, domainMetrics, restricted)).toEqual(
+      new Set(['flow']),
+    );
   });
 });
 
@@ -168,6 +193,12 @@ describe('pivotValues', () => {
       [1.5, NaN],
       [NaN, 2.5],
     ]);
+  });
+
+  it('pivots on a custom field when a value accessor is given', () => {
+    const rows = [row({ case_id: 'c1', method: 'm1', value: 1.5, seconds: 4.32 })];
+    const grid = pivotValues(rows, ['c1'], ['m1'], (r) => r.seconds);
+    expect(grid).toEqual([[4.32]]);
   });
 });
 

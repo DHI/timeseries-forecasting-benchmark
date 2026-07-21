@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { caseSummary, caseTrainingStats, methodTrainingSeconds } from './caseText';
-import type { CaseMeta, ScoreRow } from '../types/data';
+import { caseSummary, caseTrainingStats } from './caseText';
+import type { CaseMeta } from '../types/data';
 
 function caseMeta(overrides: Partial<CaseMeta> = {}): CaseMeta {
   return {
@@ -21,29 +21,10 @@ function caseMeta(overrides: Partial<CaseMeta> = {}): CaseMeta {
     split_counts_extended: { train: 12264, val: 2628, test: 2628 },
     distribution: { x_grid: [], train_density: null, test_density: null },
     distribution_extended: { x_grid: [], train_density: null, test_density: null },
+    seasonal_patterns: [],
+    seasonal_patterns_extended: [],
     source: { name: 'BattLeDIM L-Town', url: 'https://battledim.ucy.ac.cy/' },
     notes: '',
-    ...overrides,
-  };
-}
-
-function row(overrides: Partial<ScoreRow>): ScoreRow {
-  return {
-    case_id: 'demand_ltown',
-    domain: 'water_distribution',
-    case_exo_tier: 'none',
-    method: 'LightGBM',
-    family: 'ml',
-    uses_exogenous: false,
-    is_global: false,
-    used_extended_history: false,
-    horizon: '24h',
-    metric: 'MAE',
-    value: 1.0,
-    seconds: 4.32,
-    frac_finite_test: 1.0,
-    status: 'ok',
-    n_origins: 40,
     ...overrides,
   };
 }
@@ -72,42 +53,10 @@ describe('caseSummary', () => {
   });
 });
 
-describe('methodTrainingSeconds', () => {
-  it('returns the matching local row', () => {
-    const scores = [row({ method: 'LightGBM', seconds: 4.32, used_extended_history: false })];
-    expect(methodTrainingSeconds(scores, 'demand_ltown', 'LightGBM')).toBe(4.32);
-  });
-
-  it('falls back to the local row when the extended variant is missing', () => {
-    const scores = [row({ method: 'LightGBM', seconds: 4.32, used_extended_history: false })];
-    expect(methodTrainingSeconds(scores, 'demand_ltown', 'LightGBM', true)).toBe(4.32);
-  });
-
-  it('prefers the extended row when it exists and extended is requested', () => {
-    const scores = [
-      row({ method: 'LightGBM', seconds: 4.32, used_extended_history: false }),
-      row({ method: 'LightGBM', seconds: 9.87, used_extended_history: true }),
-    ];
-    expect(methodTrainingSeconds(scores, 'demand_ltown', 'LightGBM', true)).toBe(9.87);
-  });
-
-  it('returns null for an unknown method', () => {
-    const scores = [row({ method: 'LightGBM' })];
-    expect(methodTrainingSeconds(scores, 'demand_ltown', 'CatBoost')).toBeNull();
-  });
-});
-
 describe('caseTrainingStats', () => {
-  it('shows only the samples line with no methods selected', () => {
-    const stats = caseTrainingStats([], caseMeta(), 'demand_ltown', []);
+  it('renders the samples line', () => {
+    const stats = caseTrainingStats(caseMeta());
     expect(stats).toContain('train 12,264');
     expect(stats).not.toContain('Training time');
-  });
-
-  it('adds a training-time line per selected method, with an em-dash when unavailable', () => {
-    const scores = [row({ method: 'LightGBM', seconds: 4.32 })];
-    const stats = caseTrainingStats(scores, caseMeta(), 'demand_ltown', ['LightGBM', 'CatBoost']);
-    expect(stats).toContain('LightGBM 4.32s');
-    expect(stats).toContain('CatBoost —');
   });
 });

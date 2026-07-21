@@ -236,14 +236,16 @@ def run_case_rolling(
                 ref_p = np.array(ref_p)
                 ref_m = np.array(ref_m)
                 mse = float(np.mean((a - p) ** 2))
+                mse_ref_p = float(np.mean((a - ref_p) ** 2))
+                mse_ref_m = float(np.mean((a - ref_m) ** 2))
                 metrics = {
                     "MAE": float(np.mean(np.abs(a - p))),
                     "RMSE": float(np.sqrt(mse)),
                     "MASE": float(np.mean(np.abs(a - p)) / naive_scale)
                     if naive_scale
                     else float("nan"),
-                    "Skill_vs_Persistence": 1.0 - mse / float(np.mean((a - ref_p) ** 2)),
-                    "Skill_vs_Mean": 1.0 - mse / float(np.mean((a - ref_m) ** 2)),
+                    "Skill_vs_Persistence": 1.0 - mse / mse_ref_p if mse_ref_p != 0.0 else float("nan"),
+                    "Skill_vs_Mean": 1.0 - mse / mse_ref_m if mse_ref_m != 0.0 else float("nan"),
                     "MAPE": mape(a, p),
                     "sMAPE": smape(a, p),
                     "NSE": nse(a, p),

@@ -41,6 +41,7 @@ def lookback_for(freq: str, h: int) -> int:
     horizons even at large h (freqs not listed default to 4*h).
     """
     f = freq.lower()
+    f = {"d": "1d", "h": "1h", "15t": "15min", "w": "1w"}.get(f, f)
     base = {"1d": 64, "1h": 168, "15min": 192, "1w": 52}.get(f, 4 * h)
     return max(base, 2 * h)
 
@@ -79,7 +80,7 @@ class Forecaster(ABC):
     # runs the second (extended) fit only for `is_global and pools_segments` methods.
     pools_segments: bool = False
     # The next four are documentation only, read by the results viewer's method-info
-    # panel (app/data.py) — they have no effect on fit/predict. Kept as class attributes
+    # panel (tsforecastbench.webdata) — they have no effect on fit/predict. Kept as class attributes
     # (not a separate metadata file) so a method's implementation and its description of
     # itself can't drift apart.
     library: str = ""  # concrete package(s) doing the work, e.g. "statsforecast (Nixtla)"

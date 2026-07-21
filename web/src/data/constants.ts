@@ -17,6 +17,18 @@ export const DOMAIN_KEY_DICT: Record<string, string> = {
   water_quality: 'WaQ',
 };
 
+/** Full name for each method family, shown as a hover tooltip next to the "Ml"/"Dl"/"Fm"
+ * abbreviations FAMILY_ORDER's own keys produce (see formatSnakeCaseLabel) — those keys don't
+ * spell out what "ml"/"dl"/"fm" stand for the way DOMAIN_KEY_DICT's keys do. */
+export const FAMILY_FULL_NAMES: Record<string, string> = {
+  baseline: 'Baseline',
+  ensemble: 'Ensemble',
+  classical: 'Classical',
+  ml: 'Machine learning',
+  dl: 'Deep learning',
+  fm: 'Foundation models',
+};
+
 /** Colour-blind-safe palette (Wong 2011, dropping its low-contrast yellow), used to
  * colour-match a selected method's chip/outline/forecast line. Port of
  * app/snapshot.py's METHOD_COLORS. */
@@ -33,3 +45,10 @@ export const METHOD_COLORS = [
 /** Default number of points in the training-tail quick-look plot. Port of
  * app/snapshot.py's TRAINING_TAIL_N. */
 export const TRAINING_TAIL_N = 1000;
+
+/** Matrices with fewer rows than this can't show the training-time overlay: Plotly.js
+ * fails to repaint the heatmap for a matrix this short when switching to the overlay's
+ * color scale (confirmed down to 3 rows; 4 rows renders correctly) — a Plotly bug, not
+ * something in this app's own data or logic (see RESEARCH_LOG.md, 2026-07-21). The "Show
+ * training time" control is disabled below this row count rather than left to fail silently. */
+export const TRAINING_TIME_MIN_ROWS = 4;

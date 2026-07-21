@@ -10,6 +10,11 @@ const DEFAULT_CONTENT_HEIGHT = 220;
 const MIN_CONTENT_HEIGHT = 120;
 const MAX_CONTENT_HEIGHT = 520;
 
+/** A collapsed card is exactly the title bar. Exported so the page can reserve enough space
+ * below its scrollable content that a collapsed card (the shortest the fixed-overlay card row
+ * ever gets) never overlaps the last line of text above it. */
+export const TITLE_BAR_HEIGHT = 34;
+
 type Props = {
   method: string;
   index: number;
@@ -20,9 +25,9 @@ type Props = {
 /** One card per selected method, docked to the bottom of the viewport next to its siblings and
  * sharing the row's width evenly with them, so together they span the full matrix column. The
  * title bar sits at the top when expanded and can be collapsed down to just that bar (which then
- * sits alone at the bottom edge); expanded, its content height is user-adjustable via a drag
- * handle below the title bar. Colour-matched to that method's chip/forecast line. Port of
- * app/app.py's `_method_info_cards`. */
+ * sits alone at the bottom edge); expanded, its content height is user-adjustable by dragging the
+ * title bar. Colour-matched to that method's chip/forecast line. Port of app/app.py's
+ * `_method_info_cards`. */
 export function MethodInfoCard({ method, index, caseMeta, methodMeta }: Props) {
   const [collapsed, setCollapsed] = useState(false);
   const [contentHeight, setContentHeight] = useState(DEFAULT_CONTENT_HEIGHT);
@@ -35,10 +40,16 @@ export function MethodInfoCard({ method, index, caseMeta, methodMeta }: Props) {
   const titleBar = (
     <button
       type="button"
-      onClick={() => setCollapsed((c) => !c)}
-      title={collapsed ? 'Expand' : 'Collapse'}
+      onMouseDown={resize.onMouseDown}
+      onClick={() => {
+        if (resize.moved.current) return;
+        setCollapsed((c) => !c);
+      }}
+      title={collapsed ? 'Expand' : 'Collapse (drag to resize)'}
       style={{
         flex: '0 0 auto',
+        height: TITLE_BAR_HEIGHT,
+        boxSizing: 'border-box',
         display: 'flex',
         alignItems: 'center',
         gap: 6,
@@ -68,60 +79,53 @@ export function MethodInfoCard({ method, index, caseMeta, methodMeta }: Props) {
         display: 'flex',
         flexDirection: 'column',
         background: 'var(--bg)',
-        border: '1px solid var(--border)',
+        border: '2px solid var(--border)',
         borderBottom: 'none',
         boxSizing: 'border-box',
       }}
     >
       {!collapsed && titleBar}
       {!collapsed && (
-        <>
-          <div
-            onMouseDown={resize.onMouseDown}
-            title="Drag to resize"
-            style={{ flex: '0 0 6px', cursor: 'row-resize' }}
-          />
-          <div
-            style={{
-              height: contentHeight,
-              overflowY: 'auto',
-              padding: '0 10px 8px',
-              boxSizing: 'border-box',
-            }}
-          >
-            <div style={{ fontSize: '0.85em' }}>
-              <Markdown>{methodInfo(caseMeta, methodMeta)}</Markdown>
-            </div>
-            <details style={{ marginTop: 6 }}>
-              <summary style={{ fontSize: '0.85em', cursor: 'pointer' }}>
-                Implementation detail
-              </summary>
-              <div style={{ fontSize: '0.85em', marginTop: 4 }}>
-                <Markdown
-                  components={{
-                    pre: ({ children }) => (
-                      <pre
-                        style={{
-                          overflowX: 'auto',
-                          maxWidth: '100%',
-                          background: '#161b22',
-                          color: '#e6edf3',
-                          padding: '8px 10px',
-                          borderRadius: 4,
-                          boxSizing: 'border-box',
-                        }}
-                      >
-                        {children}
-                      </pre>
-                    ),
-                  }}
-                >
-                  {methodInfoDetail(methodMeta)}
-                </Markdown>
-              </div>
-            </details>
+        <div
+          style={{
+            height: contentHeight,
+            overflowY: 'auto',
+            padding: '0 10px 8px',
+            boxSizing: 'border-box',
+          }}
+        >
+          <div style={{ fontSize: '0.85em' }}>
+            <Markdown>{methodInfo(caseMeta, methodMeta)}</Markdown>
           </div>
-        </>
+          <details style={{ marginTop: 6 }}>
+            <summary style={{ fontSize: '0.85em', cursor: 'pointer' }}>
+              Implementation detail
+            </summary>
+            <div style={{ fontSize: '0.85em', marginTop: 4 }}>
+              <Markdown
+                components={{
+                  pre: ({ children }) => (
+                    <pre
+                      style={{
+                        overflowX: 'auto',
+                        maxWidth: '100%',
+                        background: '#161b22',
+                        color: '#e6edf3',
+                        padding: '8px 10px',
+                        borderRadius: 4,
+                        boxSizing: 'border-box',
+                      }}
+                    >
+                      {children}
+                    </pre>
+                  ),
+                }}
+              >
+                {methodInfoDetail(methodMeta)}
+              </Markdown>
+            </div>
+          </details>
+        </div>
       )}
       {collapsed && titleBar}
     </div>

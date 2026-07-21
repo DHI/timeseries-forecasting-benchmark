@@ -22,6 +22,8 @@ const caseMeta: CaseMeta = {
   split_counts_extended: { train: 0, val: 0, test: 0 },
   distribution: { x_grid: [], train_density: null, test_density: null },
   distribution_extended: { x_grid: [], train_density: null, test_density: null },
+  seasonal_patterns: [],
+  seasonal_patterns_extended: [],
   source: { name: 'Test source', url: null },
   notes: '',
 };
@@ -44,12 +46,12 @@ describe('MethodInfoCard', () => {
     );
 
     expect(screen.getByText('A test method.')).toBeInTheDocument();
-    expect(screen.getByTitle('Drag to resize')).toBeInTheDocument();
+    expect(screen.getByTitle('Collapse (drag to resize)')).toBeInTheDocument();
 
-    await user.click(screen.getByTitle('Collapse'));
+    await user.click(screen.getByTitle('Collapse (drag to resize)'));
 
     expect(screen.queryByText('A test method.')).not.toBeInTheDocument();
-    expect(screen.queryByTitle('Drag to resize')).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Collapse (drag to resize)')).not.toBeInTheDocument();
     expect(screen.getByText('LightGBM')).toBeInTheDocument();
 
     await user.click(screen.getByTitle('Expand'));

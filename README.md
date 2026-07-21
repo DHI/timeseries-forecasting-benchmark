@@ -36,8 +36,9 @@ uv sync --extra dl   # torch N-HiTS / PatchTST           (run_pilot --with-dl)
 
 `uv sync --extra fm` installs every zero-shot foundation model in one shot — Chronos-Bolt,
 Chronos-2, TimesFM 2.5 and Moirai-2.0 — and `run_pilot --with-fm` scores them all (each is
-still skipped at runtime if its library is missing). All are univariate here (they ignore
-declared covariates). Moirai's `uni2ts` hard-pins an older scipy / numpy / torch with no
+still skipped at runtime if its library is missing). Chronos-2, TimesFM 2.5 and Moirai-2.0
+also have `+exo` variants that consume declared covariates when available; Chronos-Bolt is
+univariate-only. Moirai's `uni2ts` hard-pins an older scipy / numpy / torch with no
 Python-3.13 wheels, so the whole project is capped at **Python 3.11–3.12** (see
 `requires-python`) to keep every model installable in a single environment.
 
@@ -121,8 +122,7 @@ the covariate value the benchmark is built to quantify.
 
 **Interactive viewer**: the same case × method matrix, with filtering, hover detail, and
 forecast-snapshot drill-down, is also browsable without running anything — see `web/` (a static
-React app, deployed via GitHub Pages) or run `app/app.py` locally (`uv run --extra app python
-app/app.py`) for the live Dash version.
+React app, deployed via GitHub Pages).
 
 ## Design notes
 

@@ -1,22 +1,30 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { DomainChecklist } from './components/Sidebar/DomainChecklist';
 import { FamilyMultiSelect } from './components/Sidebar/FamilyMultiSelect';
+import { HoldTrainingTimeButton } from './components/Sidebar/HoldTrainingTimeButton';
 import { MarkerSwatch } from './components/Sidebar/MarkerSwatch';
 import { MetricDropdown } from './components/Sidebar/MetricDropdown';
+import { SidebarToggleHint } from './components/Sidebar/SidebarToggleHint';
 import { ToggleExogenous } from './components/Sidebar/ToggleExogenous';
 import { ToggleGlobal } from './components/Sidebar/ToggleGlobal';
 import { MatrixGraph } from './components/Matrix/MatrixGraph';
+import { SelectionHint } from './components/Matrix/SelectionHint';
 import { BenchmarkDesign } from './components/BenchmarkDesign/BenchmarkDesign';
 import { CasePanel } from './components/CasePanel/CasePanel';
+import { InstructionsModal } from './components/InstructionsModal/InstructionsModal';
 import { MethodInfoPanel } from './components/MethodInfoPanel/MethodInfoPanel';
+import { TITLE_BAR_HEIGHT } from './components/MethodInfoPanel/MethodInfoCard';
 import { SnapshotPanel } from './components/SnapshotPanel/SnapshotPanel';
 import { useEdgeResize } from './hooks/useEdgeResize';
 import { DOMAIN_RESTRICTED_METRICS } from './data/metricConfig';
+import { TRAINING_TIME_MIN_ROWS } from './data/constants';
 import {
   casesEligibleForMetric,
   domainOptions,
+  domainsEligibleForMetric,
   familyOptions,
   metricOptions,
+  orderedCases,
 } from './data/selectors';
 import { useJsonData } from './data/loadData';
 import {
@@ -131,6 +139,37 @@ function MainLayout({
   );
   const casePanelResize = useEdgeResize('x', state.casePanelWidth, handleCasePanelResize);
 
+  // Plotly's `useResizeHandler` only re-measures a plot's width on a native `window`
+  // "resize" event; dragging the case panel's edge only changes React state, so nudge
+  // Plotly's existing listener manually to keep the panel's plots in sync with its width.
+  useEffect(() => {
+    window.dispatchEvent(new Event('resize'));
+  }, [state.casePanelWidth]);
+
+  // The open case panel shows one specific case's row; if switching to a domain-restricted
+  // metric (NSE/KGE) makes that case ineligible, its row is about to vanish from the matrix,
+  // so close the panel along with it rather than leaving it pointing at a dropped row.
+  useEffect(() => {
+    const caseId = state.selection.case_id;
+    if (!caseId) return;
+    const stillEligible = casesEligibleForMetric(
+      state.metric,
+      [caseId],
+      domainMetrics,
+      DOMAIN_RESTRICTED_METRICS,
+    ).includes(caseId);
+    if (!stillEligible) dispatch({ type: 'CLEAR_SELECTION' });
+  }, [state.metric, state.selection.case_id, domainMetrics, dispatch]);
+
+  const eligibleDomains = useMemo(
+    () => domainsEligibleForMetric(state.metric, scores, domainMetrics, DOMAIN_RESTRICTED_METRICS),
+    [scores, state.metric, domainMetrics],
+  );
+  const disabledDomains = useMemo(
+    () => new Set(domainOpts.filter((d) => !eligibleDomains.has(d))),
+    [domainOpts, eligibleDomains],
+  );
+
   const filteredRows = useMemo(() => {
     if (!state.metric) return [];
     const domainSet = new Set(state.domains);
@@ -149,106 +188,193 @@ function MainLayout({
     );
   }, [scores, state.metric, state.domains, state.families, domainMetrics]);
 
+  // Mirrors how useMatrixFigure derives the matrix's own row count (case IDs, excluding
+  // extended-history duplicate rows) — needed here to gate the training-time button before
+  // the matrix ever tries to render it. See TRAINING_TIME_MIN_ROWS for why.
+  const matrixRowCount = useMemo(
+    () => orderedCases(filteredRows.filter((r) => !r.used_extended_history)).length,
+    [filteredRows],
+  );
+  const trainingTimeDisabled = matrixRowCount > 0 && matrixRowCount < TRAINING_TIME_MIN_ROWS;
+  const handleTrainingTimeChange = useCallback(
+    (active: boolean) => {
+      // Only block turning the overlay *on* for a too-short matrix; always let an
+      // already-active hold end normally so it can't get stuck on mid-release.
+      if (active && trainingTimeDisabled) return;
+      dispatch({ type: 'SET_TRAINING_TIME_OVERLAY', active });
+    },
+    [trainingTimeDisabled, dispatch],
+  );
+
+  const sidebarWidth = state.sidebarCollapsed ? 0 : 260;
+  const selectedCase = state.selection.case_id ? cases[state.selection.case_id] : undefined;
+  const casePanelWidth = selectedCase ? state.casePanelWidth : 0;
+
   return (
     <div style={{ display: 'flex' }}>
-      <aside
+      <div
         style={{
-          width: state.sidebarCollapsed ? 0 : 260,
-          flex: `0 0 ${state.sidebarCollapsed ? 0 : 260}px`,
-          padding: state.sidebarCollapsed ? 0 : 16,
-          borderRight: state.sidebarCollapsed ? 'none' : '1px solid var(--border)',
-          overflow: 'hidden',
-          boxSizing: 'border-box',
+          flex: `0 0 ${sidebarWidth}px`,
+          position: 'sticky',
+          top: 0,
+          maxHeight: '100vh',
         }}
       >
-        <h3>Controls</h3>
-        <label style={{ fontWeight: 'bold', display: 'block', marginTop: 16 }}>Metric</label>
-        <MetricDropdown
-          options={metricOpts}
-          value={state.metric}
-          onChange={(metric) => dispatch({ type: 'SET_METRIC', metric })}
-        />
-        <p style={{ color: '#666', fontSize: '0.8em', marginTop: 4 }}>
-          NSE and KGE only apply to cases whose case.toml declares them (flow/level domains) — the
-          matrix rows narrow to just those cases when one is selected.
-        </p>
-        <label style={{ fontWeight: 'bold', display: 'block', marginTop: 16 }}>Domains</label>
-        <DomainChecklist
-          options={domainOpts}
-          value={state.domains}
-          onChange={(domains) => dispatch({ type: 'SET_DOMAINS', domains })}
-        />
-        <label style={{ fontWeight: 'bold', display: 'block', marginTop: 16 }}>
-          Method families
-        </label>
-        <FamilyMultiSelect
-          options={familyOpts}
-          value={state.families}
-          onChange={(families) => dispatch({ type: 'SET_FAMILIES', families })}
-        />
-        <label style={{ fontWeight: 'bold', display: 'block', marginTop: 16 }}>
-          Global methods
-        </label>
-        <ToggleGlobal
-          checked={state.showGlobal}
-          onChange={() => dispatch({ type: 'TOGGLE_GLOBAL' })}
-        />
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginTop: 4 }}>
-          <MarkerSwatch corner="top-right" color="#FF1493" />
-          <p style={{ color: '#666', fontSize: '0.8em', margin: 0 }}>
-            Some global models have been trained with longer history.
+        <aside
+          style={{
+            width: sidebarWidth,
+            height: '100%',
+            background: 'var(--panel-bg)',
+            borderRight: state.sidebarCollapsed ? 'none' : '2px solid var(--border)',
+            overflow: 'hidden',
+            boxSizing: 'border-box',
+          }}
+        >
+          {!state.sidebarCollapsed && (
+            <div
+              style={{
+                boxSizing: 'border-box',
+                maxHeight: '100vh',
+                padding: 16,
+                overflowY: 'auto',
+              }}
+            >
+              <h3>Controls</h3>
+              <label style={{ fontWeight: 'bold', display: 'block', marginTop: 16 }}>Metric</label>
+              <MetricDropdown
+                options={metricOpts}
+                value={state.metric}
+                onChange={(metric) => dispatch({ type: 'SET_METRIC', metric })}
+              />
+              <p style={{ color: '#666', fontSize: '0.8em', marginTop: 4 }}>
+                NSE and KGE only apply to cases whose case.toml declares them (flow/level domains) —
+                the matrix rows narrow to just those cases when one is selected.
+              </p>
+              <label style={{ fontWeight: 'bold', display: 'block', marginTop: 16 }}>Domains</label>
+              <DomainChecklist
+                options={domainOpts}
+                value={state.domains}
+                onChange={(domains) => dispatch({ type: 'SET_DOMAINS', domains })}
+                disabledOptions={disabledDomains}
+              />
+              <label style={{ fontWeight: 'bold', display: 'block', marginTop: 16 }}>
+                Method families
+              </label>
+              <FamilyMultiSelect
+                options={familyOpts}
+                value={state.families}
+                onChange={(families) => dispatch({ type: 'SET_FAMILIES', families })}
+              />
+              <label style={{ fontWeight: 'bold', display: 'block', marginTop: 16 }}>
+                Global methods
+              </label>
+              <ToggleGlobal
+                checked={state.showGlobal}
+                onChange={() => dispatch({ type: 'TOGGLE_GLOBAL' })}
+              />
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginTop: 4 }}>
+                <MarkerSwatch corner="top-right" color="#FF1493" />
+                <p style={{ color: '#666', fontSize: '0.8em', margin: 0 }}>
+                  Some global models have been trained with longer history.
+                </p>
+              </div>
+              <label style={{ fontWeight: 'bold', display: 'block', marginTop: 16 }}>
+                Exogenous inputs
+              </label>
+              <ToggleExogenous
+                checked={state.showExogenous}
+                onChange={() => dispatch({ type: 'TOGGLE_EXOGENOUS' })}
+              />
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginTop: 4 }}>
+                <MarkerSwatch corner="bottom-left" color="#0B7285" />
+                <p style={{ color: '#666', fontSize: '0.8em', margin: 0 }}>
+                  Where a method has an exogenous-aware variant and the case provides exogenous
+                  data, this swaps in that variant's score for the cell. Cases or methods without an
+                  exogenous option are unaffected.
+                </p>
+              </div>
+              <label style={{ fontWeight: 'bold', display: 'block', marginTop: 16 }}>
+                Training time
+              </label>
+              <HoldTrainingTimeButton
+                onChange={handleTrainingTimeChange}
+                disabled={trainingTimeDisabled}
+                title={
+                  trainingTimeDisabled
+                    ? "Disabled for this short a matrix — see the note below"
+                    : undefined
+                }
+              />
+              <p style={{ color: '#666', fontSize: '0.8em', marginTop: 4 }}>
+                Press and hold to show each cell's measured training time instead of its score. You
+                can still hover around matrix cells while holding the button. You can also hold the
+                space bar to do the same thing without clicking.
+              </p>
+              {trainingTimeDisabled && (
+                <p style={{ color: '#b45309', fontSize: '0.8em', marginTop: 4 }}>
+                  Training time can't be shown for a matrix this short — a Plotly rendering bug
+                  leaves the cells blank instead of updating. Select more domains or a
+                  less-restrictive metric to check training time.
+                </p>
+              )}
+            </div>
+          )}
+        </aside>
+        <button
+          type="button"
+          title="Collapse/expand controls"
+          onClick={() => dispatch({ type: 'TOGGLE_SIDEBAR' })}
+          style={{
+            position: 'absolute',
+            top: 16,
+            left: state.sidebarCollapsed ? 4 : sidebarWidth,
+            transform: state.sidebarCollapsed ? 'none' : 'translateX(-50%)',
+            background: 'var(--bg)',
+            cursor: 'pointer',
+          }}
+        >
+          {state.sidebarCollapsed ? '▶' : '◀'}
+        </button>
+        {state.sidebarCollapsed && <SidebarToggleHint />}
+      </div>
+      <main style={{ flex: 1, padding: 16, minWidth: 0, overflowX: 'auto' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <h1 style={{ margin: 0 }}>Timeseries Forecasting Benchmark</h1>
+            <InstructionsModal />
+          </div>
+          <p style={{ color: '#444', maxWidth: 1000 }}>
+            The following matrix compiles the forecasting results of multiple methods across a
+            variety of timeseries in different water domains. Each cell represents one case x method
+            run, coloured by the metric chosen in the sidebar.
           </p>
+          <div style={{ position: 'relative' }}>
+            <MatrixGraph
+              rows={filteredRows}
+              metric={state.metric}
+              selection={state.selection}
+              showGlobal={state.showGlobal}
+              showExogenous={state.showExogenous}
+              showTrainingTime={state.trainingTimeOverlay}
+              onCellClick={handleCellClick}
+            />
+            {!selectedCase && <SelectionHint />}
+          </div>
+          <BenchmarkDesign />
         </div>
-        <label style={{ fontWeight: 'bold', display: 'block', marginTop: 16 }}>
-          Exogenous inputs
-        </label>
-        <ToggleExogenous
-          checked={state.showExogenous}
-          onChange={() => dispatch({ type: 'TOGGLE_EXOGENOUS' })}
-        />
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginTop: 4 }}>
-          <MarkerSwatch corner="bottom-left" color="#0B7285" />
-          <p style={{ color: '#666', fontSize: '0.8em', margin: 0 }}>
-            Where a method has an exogenous-aware variant and the case provides exogenous data, this
-            swaps in that variant's score for the cell. Cases or methods without an exogenous option
-            are unaffected.
-          </p>
-        </div>
-      </aside>
-      <button
-        type="button"
-        title="Collapse/expand controls"
-        onClick={() => dispatch({ type: 'TOGGLE_SIDEBAR' })}
-        style={{ flex: '0 0 auto', alignSelf: 'flex-start', marginTop: 16, cursor: 'pointer' }}
-      >
-        {state.sidebarCollapsed ? '▶' : '◀'}
-      </button>
-      <main style={{ flex: 1, padding: 16, minWidth: 0 }}>
-        <h1>Timeseries Forecasting Benchmark</h1>
-        <p style={{ color: '#444', maxWidth: 1000 }}>
-          The following matrix compiles the forecasting results of multiple methods across a variety
-          of timeseries in different water domains. Each cell represents one case x method run,
-          coloured by the metric chosen in the sidebar.
-        </p>
-        <MatrixGraph
-          rows={filteredRows}
-          metric={state.metric}
-          selection={state.selection}
-          showGlobal={state.showGlobal}
-          showExogenous={state.showExogenous}
-          onCellClick={handleCellClick}
-        />
-        <BenchmarkDesign />
-        <MethodInfoPanel
-          caseId={state.selection.case_id}
-          caseMeta={state.selection.case_id ? cases[state.selection.case_id] : undefined}
-          methodsRegistry={methods}
-          scores={scores}
-          methods={state.selection.methods}
-          showExogenous={state.showExogenous}
-        />
+        <div style={{ height: TITLE_BAR_HEIGHT }} />
       </main>
-      {state.selection.case_id && cases[state.selection.case_id] && (
+      <MethodInfoPanel
+        caseId={state.selection.case_id}
+        caseMeta={selectedCase}
+        methodsRegistry={methods}
+        scores={scores}
+        methods={state.selection.methods}
+        showExogenous={state.showExogenous}
+        leftInset={sidebarWidth}
+        rightInset={casePanelWidth}
+      />
+      {selectedCase && (
         <div
           style={{
             flex: `0 0 ${state.casePanelWidth}px`,
@@ -257,12 +383,12 @@ function MainLayout({
             position: 'sticky',
             top: 0,
             maxHeight: '100vh',
-            padding: 16,
-            borderLeft: '1px solid var(--border)',
-            overflowY: 'auto',
-            background: '#ffffff',
+            borderLeft: '2px solid var(--border)',
+            background: 'var(--bg)',
           }}
         >
+          {/* The drag handle lives outside the scrollable div below so it stays anchored to
+              the panel's full visible height instead of scrolling away with its content. */}
           <div
             onMouseDown={casePanelResize.onMouseDown}
             title="Drag to resize"
@@ -275,25 +401,32 @@ function MainLayout({
               cursor: 'col-resize',
             }}
           />
-          <CasePanel
-            caseId={state.selection.case_id}
-            caseMeta={cases[state.selection.case_id]!}
-            scores={scores}
-            methods={state.selection.methods}
-            showGlobal={state.showGlobal}
-          />
-          <hr />
-          <SnapshotPanel
-            caseId={state.selection.case_id}
-            caseMeta={cases[state.selection.case_id]!}
-            scores={scores}
-            methods={state.selection.methods}
-            metric={state.metric}
-            showGlobal={state.showGlobal}
-            showExogenous={state.showExogenous}
-            onRemoveMethod={handleRemoveMethod}
-            onClear={handleClear}
-          />
+          <div
+            style={{
+              boxSizing: 'border-box',
+              maxHeight: '100vh',
+              padding: 16,
+              overflowY: 'auto',
+            }}
+          >
+            <CasePanel
+              caseId={state.selection.case_id!}
+              caseMeta={selectedCase}
+              scores={scores}
+              showGlobal={state.showGlobal}
+            />
+            <SnapshotPanel
+              caseId={state.selection.case_id!}
+              caseMeta={selectedCase}
+              scores={scores}
+              methods={state.selection.methods}
+              metric={state.metric}
+              showGlobal={state.showGlobal}
+              showExogenous={state.showExogenous}
+              onRemoveMethod={handleRemoveMethod}
+              onClear={handleClear}
+            />
+          </div>
         </div>
       )}
     </div>

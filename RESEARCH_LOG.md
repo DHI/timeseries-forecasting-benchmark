@@ -8,6 +8,130 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-21 — Training-time overlay disabled for short matrices (Plotly bug, no in-code fix found)
+
+Holding "show training time" doesn't repaint the matrix for a short enough matrix: the
+colorbar switches to the training-time scale, but the cell colors and numbers stay on the
+score view. Traced this to a genuine Plotly.js rendering bug, not an app bug or an NSE/KGE
+issue specifically — it reproduces with any metric once the matrix narrows to 3 rows
+(confirmed via domain-checkbox narrowing alone, and with NSE's real values relabeled as a
+non-restricted metric), and 4 rows renders fine, so row count is the real trigger, not
+metric identity or the domain-restriction code path. Every attempted fix — `redraw()`, a
+full remount, a second `react()` call, a from-scratch `Plotly.newPlot()`, a two-Plot-instance
+architecture with lazy mounting — either did nothing or turned the failure from
+stale-but-visible into a blank render, which is worse. Rather than keep chasing an in-code
+fix, `TRAINING_TIME_MIN_ROWS` (`web/src/data/constants.ts`) now gates the control itself:
+below 4 matrix rows, "Show training time" is disabled with an explanatory message pointing
+users toward a broader domain/metric selection. Worth revisiting if the pinned
+`plotly.js-cartesian-dist-min` version ever changes.
+
+## 2026-07-21 — Domain controls now follow the matrix's own NSE/KGE narrowing
+
+The matrix already narrowed its rows to only the cases eligible for NSE/KGE (flow/level domains
+that declare them in `case.toml`), but two other parts of the sidebar didn't follow suit: the
+domain checkboxes stayed checkable for domains with no eligible case, and an open case panel
+stayed open even after its case's row disappeared from the matrix. Both now track the same
+eligibility check — ineligible domain checkboxes grey out and uncheck (without erasing the user's
+underlying selection, so switching back to an unrestricted metric restores it), and the case panel
+closes if its case stops being eligible when the metric changes. While fixing this, also found
+that the web app's test setup was missing Testing Library's per-test cleanup (`globals: false` in
+`vitest.config.ts` means its auto-cleanup never registers), which only mattered once a second test
+in `App.test.tsx` needed a full successful render — added an explicit `afterEach(cleanup)` so this
+doesn't bite the next multi-render test either.
+
+## 2026-07-21 — Added a seasonal-pattern figure to the case panel
+
+The case panel's Data overview section now shows one subplot per declared seasonal period,
+scattering the training tail against its position in the cycle with a smooth curve over the
+pattern. The curve is a LOESS fit rather than a single-harmonic sinusoid, so it can show
+non-sinusoidal shapes a plain sine wave would flatten out, like a demand series with separate
+morning and evening peaks in one day. Since a cycle wraps around (the last position is adjacent
+to the first), points are mirrored across each boundary before fitting so the curve doesn't taper
+or jump at the seam. The training tail is also detrended (mean + linear trend removed) before
+plotting, reusing the same `fill_and_detrend` convention `dominant_period` already uses for
+detection — without it, two cycles with the same shape but sitting at different points along a
+case's long-run drift would smear into a misleadingly noisy scatter; the y-axis now reads as
+deviation from trend rather than the raw target value, so the caption calls this out explicitly.
+Everything is computed once in Python and shipped as plain arrays in `cases.json`, matching how
+the rest of the panel's plots already work — the LOESS bandwidth and padding fraction are new
+tunable constants in `webdata.py` (`SEASONAL_PATTERN_LOESS_FRAC`, `SEASONAL_PATTERN_PAD_FRAC`)
+worth adjusting if the rendered curves look under- or over-smoothed once reviewed.
+
+## 2026-07-21 — Moved app instructions from a root markdown file into the app itself
+
+`APP_INSTRUCTIONS.md` used to sit at the repo root, disconnected from the live site — nobody
+browsing the app would think to look for it there. Its content now lives in
+`web/src/data/appInstructions.ts` and shows up behind a grey info icon next to the page title,
+in a scrollable modal styled like the app's other panels. The root file is gone; anyone updating
+the instructions should edit the new module instead.
+
+## 2026-07-21 — Removed the legacy Dash app now that `web/` covers everything it did
+
+Deleted `app/` (the original Dash results-matrix viewer), now that `web/` has replicated all of
+its functionality. `scripts/export_web_data.py`, which generates `web/`'s static JSON, had been
+importing its data-loading and forecast-curation code straight out of `app/data.py` and
+`app/snapshot.py`; that code moved to a new `src/tsforecastbench/webdata.py` module so the export
+script keeps one shared source of truth without depending on deleted files. The Plotly/Dash
+rendering code in the old app had no other callers and was dropped along with it. The `dash`
+dependency (and the now-unused `app` extra in `pyproject.toml`) is gone; `plotly` stays, since
+`notebooks` still needs it. Tagged the last commit with `app/` intact as `legacy-dash-app` in case
+anyone wants to run the old version.
+
+## 2026-07-20 — Fixed heatmap bleeding over the sidebar when the case panel is dragged wide
+
+Dragging the right-hand case detail panel to its maximum width could make the heatmap paint over
+the left control sidebar instead of shrinking to fit. The heatmap has a fixed pixel width based on
+the number of methods shown, and the center column that holds it had no `overflow` set, so once
+that column got squeezed narrower than the heatmap, the excess width spilled left and covered the
+sidebar (later elements in the page paint over earlier ones by default). Added `overflow-x: auto`
+to the center column so the heatmap now scrolls within its own column instead of bleeding over
+neighboring panels.
+
+## 2026-07-20 — Sidebar closed by default, added a hint for first-time visitors
+
+The control sidebar used to open on load and its collapse/expand button was only half
+visible once collapsed — it was anchored to the sidebar's own width, which shrinks to
+zero when collapsed, so the button's centering offset pushed half of it past the left
+edge of the page. The sidebar now starts collapsed, and the button's position is
+computed directly from the sidebar's open/closed state instead of relying on that width.
+Also added a floating "Click a cell to inspect a case" prompt with an arrow pointing at
+the heatmap, shown in the empty space to its right until a cell is selected, since that
+space was otherwise blank with no cue that clicking does anything. For the same reason,
+added a second prompt, "Reveal controls panel," pointing at the collapse/expand button
+itself, since a collapsed sidebar with no explanation looked like missing UI rather than
+a closed panel. Both prompts disappear once their target state changes (a case gets
+selected, or the sidebar opens).
+
+## 2026-07-20 — Moved training time from the right panel to a press-and-hold heatmap overlay
+
+Training time used to show as one text line per selected method in the right-side case panel,
+so comparing training cost across the benchmark meant clicking into each case one at a time.
+Added a "Training time" button to the sidebar that, while held down, swaps every heatmap cell
+from its metric score to that case/method's measured training time, then reverts the instant the
+mouse is released. The right panel keeps its unrelated sample-count line but drops the old
+per-method time text. Fastest-method bolding is skipped during the overlay since it's meant as a
+quick glance, not a ranking.
+
+Cell values show as whole seconds rather than two decimals. The overlay's colorbar title was
+also shrinking the heatmap's plot area relative to the normal metric view — Plotly lets a wide
+colorbar title grow past a fixed margin by default, so a short title plus an explicit
+`margin.autoexpand: false` now guarantee the grid occupies identical pixels either way. Training
+time is heavy-tailed (most methods are fast, a few much slower), so cell color now maps to
+`log10(seconds + 1)` instead of raw seconds — a linear scale left almost every cell looking the
+same shade; the colorbar ticks and cell text still label real seconds.
+
+## 2026-07-19 — Fixed leap-year bug in the 365-day position-in-cycle path
+
+`_dayofyear_365` (used by `position_in_cycle` for the annual cycle, which backs Climatology,
+SeasonalNaive-via-ensemble, and any ML feature keyed on a 365-day period) called
+`idx.is_leap_year.to_numpy(...)`, but `DatetimeIndex.is_leap_year` already returns a plain numpy
+array rather than a pandas object, so the `.to_numpy()` call raised `AttributeError` on every
+call. This broke all baseline/ensemble tests on cases with a declared 365-day seasonality plus
+the dedicated leap-year boundary test.
+
+**Decision.** Wrap the result in `np.asarray(...)` instead of calling `.to_numpy()`. No behavior
+change beyond fixing the crash — full suite passes again.
+
 ## 2026-07-19 — Interactive decision graph for the research log
 
 This log had grown to enough entries that cross-references only existing as prose made related

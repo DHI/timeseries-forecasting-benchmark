@@ -45,6 +45,14 @@ export type Distribution = {
   test_density: (number | null)[] | null;
 };
 
+export type SeasonalPattern = {
+  period: number;
+  x: (number | null)[];
+  y: (number | null)[];
+  curve_x: number[];
+  curve_y: (number | null)[];
+};
+
 export type CaseMeta = {
   domain: string;
   target: string;
@@ -63,6 +71,8 @@ export type CaseMeta = {
   split_counts_extended: SplitCounts;
   distribution: Distribution;
   distribution_extended: Distribution;
+  seasonal_patterns: SeasonalPattern[];
+  seasonal_patterns_extended: SeasonalPattern[];
   source: { name: string; url: string | null };
   notes: string;
 };

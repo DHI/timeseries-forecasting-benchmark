@@ -25,15 +25,13 @@ def _():
     from tsforecastbench.data.seasonality import (
         CANDIDATE_MENU,
         detect_candidates,
+        fill_and_detrend,
         normalize_freq,
         proposed_seasonalities,
         robust_period_candidates,
     )
     from tsforecastbench.data.seasonality import (
         _acf_at as acf_at,
-    )
-    from tsforecastbench.data.seasonality import (
-        _fill_and_detrend as fill_and_detrend,
     )
     from tsforecastbench.data.seasonality import (
         _mstl_decompose as mstl_decompose,
@@ -144,7 +142,12 @@ def _(case, mo, pd, robust_period_candidates, extra_input, train):
     robust_result = robust_period_candidates(train["y"].to_numpy(), case.freq)
     _candidates = robust_result["candidates"]
     if not _candidates:
-        _discovery = mo.md("No periodic structure discovered (train split too short or flat).")
+        _discovery = mo.vstack(
+            [
+                mo.md("No periodic structure discovered (train split too short or flat)."),
+                extra_input,
+            ]
+        )
     else:
         _df = pd.DataFrame(_candidates)[
             [

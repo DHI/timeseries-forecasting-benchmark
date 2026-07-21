@@ -58,9 +58,9 @@ export function SnapshotPanel({
   return (
     <div>
       <details open>
-        <summary style={SUMMARY_STYLE}>[Test] Prediction Snapshots</summary>
+        <summary style={SUMMARY_STYLE}>Prediction snapshots</summary>
         <p style={CAPTION_STYLE}>
-          Origins curated by {effectiveMethods[0]}&apos;s {metric} (best / median / worst).
+          The following snapshots belong to the test split and were selected for exhibiting the best/median/worst <b>{effectiveMethods[0]}&apos;s {metric}</b>. The black line represents the actual target values.
         </p>
         <div
           style={{

@@ -75,6 +75,23 @@ export function casesEligibleForMetric(
   return caseIds.filter((c) => (domainMetrics.get(c) ?? []).includes(metric));
 }
 
+/** Domains with at least one case eligible for `metric` — a no-op (all domains) for every
+ * metric outside the domain-restricted set. Used to grey out domain checkboxes that would
+ * contribute nothing under the current metric. */
+export function domainsEligibleForMetric(
+  metric: string,
+  rows: ScoreRow[],
+  domainMetrics: Map<string, string[]>,
+  domainRestrictedMetrics: ReadonlySet<string>,
+): Set<string> {
+  if (!domainRestrictedMetrics.has(metric)) return new Set(rows.map((r) => r.domain));
+  const domains = new Set<string>();
+  for (const row of rows) {
+    if ((domainMetrics.get(row.case_id) ?? []).includes(metric)) domains.add(row.domain);
+  }
+  return domains;
+}
+
 /** Metrics selectable in the dropdown: METRIC_CONFIG's own order, restricted to metrics
  * actually present in the data. Port of app/app.py's `_metric_options`. */
 export function metricOptions(rows: ScoreRow[]): string[] {
@@ -98,8 +115,24 @@ export function familyOptions(rows: ScoreRow[]): string[] {
   return [...ordered, ...leftover];
 }
 
-/** case_id/method -> value, for one metric, restricted to the given row/column order. */
-export function pivotValues(rows: ScoreRow[], rowOrder: string[], colOrder: string[]): number[][] {
+/** Display form of a snake_case key: only the first character capitalized (not every word —
+ * matches the matrix's own family-group headers, including abbreviations like "ml" rendering
+ * as "Ml" rather than "ML"), with underscores turned into `separator`. Shared by the matrix's
+ * family-group annotations, the sidebar's FamilyMultiSelect, and DomainChecklist's tooltips
+ * so they can't drift apart. */
+export function formatSnakeCaseLabel(label: string, separator = ' '): string {
+  return label.replace(/_/g, separator).replace(/^./, (c) => c.toUpperCase());
+}
+
+/** case_id/method -> value, for one metric, restricted to the given row/column order.
+ * `valueOf` picks which field to pivot — defaults to the score (`row.value`), but the
+ * training-time overlay passes `(r) => r.seconds` to pivot on timing instead. */
+export function pivotValues(
+  rows: ScoreRow[],
+  rowOrder: string[],
+  colOrder: string[],
+  valueOf: (row: ScoreRow) => number | null = (r) => r.value,
+): number[][] {
   const rowIndex = new Map(rowOrder.map((id, i) => [id, i]));
   const colIndex = new Map(colOrder.map((id, i) => [id, i]));
   const grid: number[][] = rowOrder.map(() => colOrder.map(() => NaN));
@@ -107,7 +140,8 @@ export function pivotValues(rows: ScoreRow[], rowOrder: string[], colOrder: stri
     const r = rowIndex.get(row.case_id);
     const c = colIndex.get(row.method);
     if (r === undefined || c === undefined) continue;
-    if (row.value !== null) grid[r]![c] = row.value;
+    const v = valueOf(row);
+    if (v !== null) grid[r]![c] = v;
   }
   return grid;
 }

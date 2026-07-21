@@ -1,12 +1,10 @@
-"""Export the results-matrix app's data as static JSON for the React/GitHub Pages app.
+"""Export the results-matrix data as static JSON for the React/GitHub Pages app.
 
 `web/` has no backend — it reads plain JSON fetched from `web/public/data/`. This script
-produces that JSON by importing `app/data.py` directly (the same module `app/app.py`
-uses), so the two apps share one source of truth for what the numbers mean; nothing here
+produces that JSON by importing `tsforecastbench.webdata` directly, so nothing here
 recomputes statistics.
 
 Usage (after a pilot run refreshes docs/results/scores.parquet):
-    uv sync --extra app
     uv run python scripts/export_web_data.py --out web/public/data
 
 Regenerate `scores.json` whenever the pilot re-runs. `methods.json` only changes when a
@@ -27,29 +25,25 @@ import pandas as pd
 REPO_ROOT = Path(__file__).resolve().parents[1]
 # Allow running from a clone without installing.
 sys.path.insert(0, str(REPO_ROOT / "src"))
-# app/data.py isn't a package — it's imported the same way app/app.py imports it, by
-# putting app/ on sys.path (inserted ahead of the repo root so this never resolves to
-# the unrelated top-level data/ directory instead).
-sys.path.insert(0, str(REPO_ROOT / "app"))
 
-from snapshot import (  # noqa: E402
+from tsforecastbench.bench.viz import METRIC_CONFIG  # noqa: E402
+from tsforecastbench.data.registry import discover_cases, get_case  # noqa: E402
+from tsforecastbench.data.seasonality import position_in_cycle  # noqa: E402
+from tsforecastbench.webdata import (  # noqa: E402
     TRAINING_TAIL_N,
     _actual_series,
+    _detrended_observed_tail,
     _horizon_steps,
     _kde_curve,
-    curate_origins,
-)
-
-from data import (  # noqa: E402
+    _loess_curve,
     _method_registry,
+    curate_origins,
     load_case_split,
     load_case_split_counts,
     load_case_split_values,
     load_case_training_tail,
     load_metrics,
 )
-from tsforecastbench.bench.viz import METRIC_CONFIG  # noqa: E402
-from tsforecastbench.data.registry import discover_cases, get_case  # noqa: E402
 
 SNAPSHOTS_PATH = REPO_ROOT / "results" / "pilot_snapshots.parquet"
 
@@ -85,10 +79,10 @@ def _series_to_json(df: pd.DataFrame) -> dict:
 
 
 def _distribution(case_id: str, extended: bool) -> dict:
-    """(x_grid, train KDE, test KDE) for the train-vs-test distribution plot — matches
-    app/snapshot.py's `render_split_distribution`, which recomputes x_grid from whichever
-    train variant (local/extended) is in play, so the extended-history distribution isn't
-    just a re-slice of the local one when the case's value range actually differs."""
+    """(x_grid, train KDE, test KDE) for the train-vs-test distribution plot. x_grid is
+    recomputed from whichever train variant (local/extended) is in play, so the
+    extended-history distribution isn't just a re-slice of the local one when the case's
+    value range actually differs."""
     train = load_case_split_values(case_id, "train", extended=extended)
     test = load_case_split_values(case_id, "test")
     combined = pd.concat([train, test])
@@ -104,16 +98,46 @@ def _distribution(case_id: str, extended: bool) -> dict:
     }
 
 
+def _seasonal_pattern(case, period: int, ds: pd.DatetimeIndex, y: np.ndarray) -> dict:
+    """(position-in-cycle, y) scatter plus a LOESS curve over one cycle, for one declared
+    seasonal period. `ds`/`y` are the case's training tail, already detrended and reduced
+    to observed points by `_detrended_observed_tail` -- shared across every period, since
+    detrending doesn't depend on which one is being viewed."""
+    x = position_in_cycle(case.freq, period, ds).astype(float)
+    curve = _loess_curve(x, y, period)
+    curve_x, curve_y = curve if curve is not None else (np.array([]), np.array([]))
+    return {
+        "period": period,
+        "x": _finite_list(x),
+        "y": _finite_list(y),
+        "curve_x": curve_x.tolist(),
+        "curve_y": _finite_list(curve_y),
+    }
+
+
+def _seasonal_patterns(case_id: str, case, extended: bool) -> list[dict]:
+    """All of a case's declared seasonal patterns, ascending by period -- case.toml orders
+    `seasonalities` most-prominent-first for curation purposes, but the panel reads more
+    naturally short-cycle-first. `[]` for a non-seasonal case, or one whose training tail
+    can't be detrended (fewer than 3 finite points)."""
+    detrended = _detrended_observed_tail(case_id, extended=extended)
+    if detrended is None:
+        return []
+    ds, y = detrended
+    return [_seasonal_pattern(case, period, ds, y) for period in sorted(case.seasonalities)]
+
+
 def export_cases(out_dir: Path) -> None:
     """cases.json: static case.toml metadata needed by the sidebar/case panels — domain,
     target, exogenous inputs, source, notes, which domain-restricted metrics
     (`cases_eligible_for_metric`) this case declares — plus bounded derived series for the
     case detail panel's plots (never the case's raw, possibly-huge history): the last
     `TRAINING_TAIL_N` training points, the full test split, train/val/test observed-point
-    counts, and train-vs-test KDE distribution curves. Each of these has a plain and an
-    `_extended` variant (extended-history train split); for cases with no real extended
-    history, `data.load_case_split`'s own fallback makes the `_extended` variant identical
-    to the plain one, so this doesn't special-case that here — same as the Dash app."""
+    counts, train-vs-test KDE distribution curves, and a seasonal-pattern scatter+LOESS
+    curve per declared period. Each of these has a plain and an `_extended` variant
+    (extended-history train split); for cases with no real extended history,
+    `data.load_case_split`'s own fallback makes the `_extended` variant identical to the
+    plain one, so this doesn't special-case that here — same as the Dash app."""
     cases = {}
     for case_id, case in sorted(discover_cases().items()):
         test_split = load_case_split(case_id, "test")[["ds", "y"]]
@@ -137,6 +161,8 @@ def export_cases(out_dir: Path) -> None:
             "split_counts_extended": load_case_split_counts(case_id, extended=True),
             "distribution": _distribution(case_id, extended=False),
             "distribution_extended": _distribution(case_id, extended=True),
+            "seasonal_patterns": _seasonal_patterns(case_id, case, extended=False),
+            "seasonal_patterns_extended": _seasonal_patterns(case_id, case, extended=True),
             "source": {"name": case.source.name, "url": case.source.url},
             "notes": case.notes,
         }

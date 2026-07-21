@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
 import { clearJsonDataCache } from './data/loadData';
@@ -93,6 +94,7 @@ describe('App', () => {
   });
 
   it('renders the sidebar and matrix once data loads', async () => {
+    const user = userEvent.setup();
     vi.stubGlobal(
       'fetch',
       mockFetchByPath({
@@ -104,9 +106,101 @@ describe('App', () => {
     render(<App />);
     await waitFor(() => expect(screen.getByTestId('plot-stub')).toBeInTheDocument());
     expect(screen.getByText('Timeseries Forecasting Benchmark')).toBeInTheDocument();
+
+    // The control panel starts collapsed; open it to reach the sidebar controls.
+    await user.click(screen.getByTitle('Collapse/expand controls'));
+
     expect(screen.getByRole('option', { name: 'MASE' })).toBeInTheDocument();
-    expect(screen.getByLabelText('water distribution')).toBeInTheDocument();
-    expect(screen.getByLabelText('baseline')).toBeInTheDocument();
+    expect(screen.getByLabelText('WaD')).toBeInTheDocument();
+    expect(screen.getByLabelText('Baseline')).toBeInTheDocument();
+  });
+
+  it('greys out domain checkboxes ineligible for a domain-restricted metric', async () => {
+    const user = userEvent.setup();
+    const scores = [
+      ...SCORES,
+      {
+        ...SCORES[0],
+        case_id: 'flow_case',
+        domain: 'hydrology',
+        metric: 'NSE',
+        value: 0.8,
+      },
+    ];
+    const cases = {
+      ...CASES,
+      flow_case: { ...CASES.demand_ltown, domain: 'hydrology', domain_metrics: ['NSE', 'KGE'] },
+    };
+    vi.stubGlobal(
+      'fetch',
+      mockFetchByPath({
+        'data/scores.json': scores,
+        'data/methods.json': METHODS,
+        'data/cases.json': cases,
+      }),
+    );
+    render(<App />);
+    await waitFor(() => expect(screen.getByTestId('plot-stub')).toBeInTheDocument());
+    await user.click(screen.getByTitle('Collapse/expand controls'));
+
+    const waterDistributionCheckbox = screen.getByLabelText('WaD') as HTMLInputElement;
+    const hydrologyCheckbox = screen.getByLabelText('Hyd') as HTMLInputElement;
+    expect(waterDistributionCheckbox.disabled).toBe(false);
+    expect(hydrologyCheckbox.disabled).toBe(false);
+
+    await user.selectOptions(screen.getByRole('combobox'), 'NSE');
+
+    expect(waterDistributionCheckbox.disabled).toBe(true);
+    expect(waterDistributionCheckbox.checked).toBe(false);
+    expect(hydrologyCheckbox.disabled).toBe(false);
+    expect(hydrologyCheckbox.checked).toBe(true);
+  });
+
+  function scoresForCases(caseIds: string[]) {
+    return caseIds.map((caseId) => ({ ...SCORES[0], case_id: caseId }));
+  }
+  function casesRegistryFor(caseIds: string[]) {
+    return Object.fromEntries(caseIds.map((caseId) => [caseId, { ...CASES.demand_ltown }]));
+  }
+
+  it('disables training time (with an explanatory message) for a matrix shorter than TRAINING_TIME_MIN_ROWS', async () => {
+    const user = userEvent.setup();
+    const caseIds = ['case_a', 'case_b', 'case_c']; // 3 rows, below the 4-row minimum
+    vi.stubGlobal(
+      'fetch',
+      mockFetchByPath({
+        'data/scores.json': scoresForCases(caseIds),
+        'data/methods.json': METHODS,
+        'data/cases.json': casesRegistryFor(caseIds),
+      }),
+    );
+    render(<App />);
+    await waitFor(() => expect(screen.getByTestId('plot-stub')).toBeInTheDocument());
+    await user.click(screen.getByTitle('Collapse/expand controls'));
+
+    const button = screen.getByRole('button', { name: 'Show training time' }) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    expect(screen.getByText(/Training time can't be shown for a matrix this short/)).toBeInTheDocument();
+  });
+
+  it('keeps training time enabled once the matrix reaches TRAINING_TIME_MIN_ROWS', async () => {
+    const user = userEvent.setup();
+    const caseIds = ['case_a', 'case_b', 'case_c', 'case_d']; // 4 rows, at the minimum
+    vi.stubGlobal(
+      'fetch',
+      mockFetchByPath({
+        'data/scores.json': scoresForCases(caseIds),
+        'data/methods.json': METHODS,
+        'data/cases.json': casesRegistryFor(caseIds),
+      }),
+    );
+    render(<App />);
+    await waitFor(() => expect(screen.getByTestId('plot-stub')).toBeInTheDocument());
+    await user.click(screen.getByTitle('Collapse/expand controls'));
+
+    const button = screen.getByRole('button', { name: 'Show training time' }) as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
+    expect(screen.queryByText(/Training time can't be shown/)).not.toBeInTheDocument();
   });
 });
 

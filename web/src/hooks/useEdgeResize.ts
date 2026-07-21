@@ -19,8 +19,13 @@ export function useEdgeResize(
   axis: Axis,
   size: number,
   onResize: (size: number) => void,
-): { onMouseDown: (event: ReactMouseEvent) => void } {
+): { onMouseDown: (event: ReactMouseEvent) => void; moved: { current: boolean } } {
   const dragStart = useRef<{ pos: number; size: number } | null>(null);
+  // Set on the first mousemove of a drag, so callers (e.g. a title bar that both toggles on
+  // click and resizes on drag) can tell a drag apart from a plain click in their onClick handler
+  // — mousedown/mouseup/click all fire synchronously for one gesture, so this ref is settled by
+  // the time onClick runs.
+  const moved = useRef(false);
   // Read via a ref rather than closing over `onResize` directly: if the caller passes an
   // inline callback (a new function identity every render), closing over it would change
   // handleMouseMove's identity mid-drag, which tears down the drag's own event listeners
@@ -31,6 +36,7 @@ export function useEdgeResize(
   const handleMouseMove = useCallback(
     (event: MouseEvent) => {
       if (!dragStart.current) return;
+      moved.current = true;
       onResizeRef.current(
         dragStart.current.size - (clientPos(event, axis) - dragStart.current.pos),
       );
@@ -49,6 +55,7 @@ export function useEdgeResize(
   const onMouseDown = useCallback(
     (event: ReactMouseEvent) => {
       event.preventDefault();
+      moved.current = false;
       dragStart.current = { pos: clientPos(event, axis), size };
       document.body.style.cursor = CURSOR[axis];
       document.body.style.userSelect = 'none';
@@ -60,5 +67,5 @@ export function useEdgeResize(
 
   useEffect(() => stopDragging, [stopDragging]);
 
-  return { onMouseDown };
+  return { onMouseDown, moved };
 }

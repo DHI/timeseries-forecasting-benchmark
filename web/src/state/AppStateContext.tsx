@@ -18,6 +18,7 @@ export type AppState = {
   sidebarCollapsed: boolean;
   showGlobal: boolean;
   showExogenous: boolean;
+  trainingTimeOverlay: boolean;
   casePanelWidth: number;
   selection: SelectionState;
 };
@@ -29,6 +30,7 @@ export type AppAction =
   | { type: 'TOGGLE_SIDEBAR' }
   | { type: 'TOGGLE_GLOBAL' }
   | { type: 'TOGGLE_EXOGENOUS' }
+  | { type: 'SET_TRAINING_TIME_OVERLAY'; active: boolean }
   | { type: 'SET_CASE_PANEL_WIDTH'; width: number }
   | SelectionAction;
 
@@ -46,6 +48,8 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, showGlobal: !state.showGlobal };
     case 'TOGGLE_EXOGENOUS':
       return { ...state, showExogenous: !state.showExogenous };
+    case 'SET_TRAINING_TIME_OVERLAY':
+      return { ...state, trainingTimeOverlay: action.active };
     case 'SET_CASE_PANEL_WIDTH':
       return { ...state, casePanelWidth: clampCasePanelWidth(action.width) };
     case 'CELL_CLICK':
@@ -62,9 +66,10 @@ export function initialAppState(overrides: Partial<AppState> = {}): AppState {
     metric: '',
     domains: [],
     families: [],
-    sidebarCollapsed: false,
+    sidebarCollapsed: true,
     showGlobal: false,
     showExogenous: false,
+    trainingTimeOverlay: false,
     casePanelWidth: CASE_PANEL_DEFAULT_WIDTH,
     selection: EMPTY_SELECTION,
     ...overrides,
