@@ -7,8 +7,18 @@ export type MetricConfig = {
   vlo?: number;
   vhi?: number;
   label: string;
-  /** d3-format spec (not the Python "{:.2f}"-style spec the source config uses). */
+  /** d3-format spec (not the Python "{:.2f}"-style spec the source config uses), applied to
+   * (value * (scale ?? 1)). */
   format: string;
+  /** Multiply the value by this before formatting — e.g. 100 for a percent metric whose cell
+   * text is a plain number (unit shown once, on the colorbar) rather than d3-format's `%` type.
+   * Default 1. */
+  scale?: number;
+  /** 'log' pivots cell *color* (not cell text) on log10(value) — for heavy-tailed metrics
+   * where a linear scale would leave almost every cell looking identical. Default 'linear'. */
+  colorScale?: 'linear' | 'log';
+  /** Colorbar title's bracketed unit, e.g. 'unitless', '%', 'target unit'. */
+  unit: string;
   lowerIsBetter: boolean;
 };
 
@@ -20,6 +30,7 @@ export const METRIC_CONFIG: Record<string, MetricConfig> = {
     vhi: 2.0,
     label: 'MASE (lower=better; 1 = seasonal naive; colour clamped to [0, 2])',
     format: '.2f',
+    unit: 'unitless',
     lowerIsBetter: true,
   },
   Skill_vs_Persistence: {
@@ -29,6 +40,7 @@ export const METRIC_CONFIG: Record<string, MetricConfig> = {
     vhi: 1.0,
     label: 'Skill vs persistence (higher=better; 0 = no better; colour clamped to [-1, 1])',
     format: '+.2f',
+    unit: 'unitless',
     lowerIsBetter: false,
   },
   Skill_vs_Mean: {
@@ -38,34 +50,45 @@ export const METRIC_CONFIG: Record<string, MetricConfig> = {
     vhi: 1.0,
     label: 'Skill vs mean (higher=better; 0 = no better; colour clamped to [-1, 1])',
     format: '+.2f',
+    unit: 'unitless',
     lowerIsBetter: false,
   },
   MAE: {
     cmap: 'Reds',
     center: null,
     label: 'MAE (lower is better)',
-    format: '.3~g',
+    format: '.2f',
+    colorScale: 'log',
+    unit: 'target unit',
     lowerIsBetter: true,
   },
   RMSE: {
     cmap: 'Reds',
     center: null,
     label: 'RMSE (lower is better)',
-    format: '.3~g',
+    format: '.2f',
+    colorScale: 'log',
+    unit: 'target unit',
     lowerIsBetter: true,
   },
   MAPE: {
     cmap: 'Reds',
     center: null,
     label: 'MAPE (lower is better)',
-    format: '.1%',
+    format: '.0f',
+    scale: 100,
+    colorScale: 'log',
+    unit: '%',
     lowerIsBetter: true,
   },
   sMAPE: {
     cmap: 'Reds',
     center: null,
     label: 'sMAPE (lower is better)',
-    format: '.1%',
+    format: '.0f',
+    scale: 100,
+    colorScale: 'log',
+    unit: '%',
     lowerIsBetter: true,
   },
   // NSE/KGE are domain-restricted (Case.domain_metrics): listed here so they're
@@ -78,6 +101,7 @@ export const METRIC_CONFIG: Record<string, MetricConfig> = {
     vhi: 1.0,
     label: 'NSE (higher=better; 1=perfect; 0=no better than the mean; colour clamped to [-1, 1])',
     format: '.2f',
+    unit: 'unitless',
     lowerIsBetter: false,
   },
   KGE: {
@@ -87,18 +111,21 @@ export const METRIC_CONFIG: Record<string, MetricConfig> = {
     vhi: 1.0,
     label: 'KGE (higher=better; 1=perfect; colour clamped to [-1, 1])',
     format: '.2f',
+    unit: 'unitless',
     lowerIsBetter: false,
   },
 };
 
 /** Display config for the training-time heatmap overlay — Reds/no-center/lower-is-better,
  * mirroring MAE/RMSE. Kept separate from METRIC_CONFIG since training time isn't a
- * selectable metric and must not appear in metricOptions(). */
+ * selectable metric and must not appear in metricOptions(). `unit` is unused: the
+ * training-time colorbar title is a hardcoded 'Seconds' string in useMatrixFigure.ts. */
 export const TRAINING_TIME_CONFIG: MetricConfig = {
   cmap: 'Reds',
   center: null,
   label: 'Training time (fit + predict, pooled across rolling origins)',
   format: '.0f',
+  unit: 's',
   lowerIsBetter: true,
 };
 
@@ -107,6 +134,7 @@ const FALLBACK_CONFIG: MetricConfig = {
   center: null,
   label: '',
   format: '.3~g',
+  unit: 'target unit',
   lowerIsBetter: true,
 };
 
