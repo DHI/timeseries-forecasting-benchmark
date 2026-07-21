@@ -45,3 +45,10 @@ export const METHOD_COLORS = [
 /** Default number of points in the training-tail quick-look plot. Port of
  * app/snapshot.py's TRAINING_TAIL_N. */
 export const TRAINING_TAIL_N = 1000;
+
+/** Matrices with fewer rows than this can't show the training-time overlay: Plotly.js
+ * fails to repaint the heatmap for a matrix this short when switching to the overlay's
+ * color scale (confirmed down to 3 rows; 4 rows renders correctly) — a Plotly bug, not
+ * something in this app's own data or logic (see RESEARCH_LOG.md, 2026-07-21). The "Show
+ * training time" control is disabled below this row count rather than left to fail silently. */
+export const TRAINING_TIME_MIN_ROWS = 4;

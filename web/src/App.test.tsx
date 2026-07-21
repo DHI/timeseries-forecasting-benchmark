@@ -155,6 +155,53 @@ describe('App', () => {
     expect(hydrologyCheckbox.disabled).toBe(false);
     expect(hydrologyCheckbox.checked).toBe(true);
   });
+
+  function scoresForCases(caseIds: string[]) {
+    return caseIds.map((caseId) => ({ ...SCORES[0], case_id: caseId }));
+  }
+  function casesRegistryFor(caseIds: string[]) {
+    return Object.fromEntries(caseIds.map((caseId) => [caseId, { ...CASES.demand_ltown }]));
+  }
+
+  it('disables training time (with an explanatory message) for a matrix shorter than TRAINING_TIME_MIN_ROWS', async () => {
+    const user = userEvent.setup();
+    const caseIds = ['case_a', 'case_b', 'case_c']; // 3 rows, below the 4-row minimum
+    vi.stubGlobal(
+      'fetch',
+      mockFetchByPath({
+        'data/scores.json': scoresForCases(caseIds),
+        'data/methods.json': METHODS,
+        'data/cases.json': casesRegistryFor(caseIds),
+      }),
+    );
+    render(<App />);
+    await waitFor(() => expect(screen.getByTestId('plot-stub')).toBeInTheDocument());
+    await user.click(screen.getByTitle('Collapse/expand controls'));
+
+    const button = screen.getByRole('button', { name: 'Show training time' }) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    expect(screen.getByText(/Training time can't be shown for a matrix this short/)).toBeInTheDocument();
+  });
+
+  it('keeps training time enabled once the matrix reaches TRAINING_TIME_MIN_ROWS', async () => {
+    const user = userEvent.setup();
+    const caseIds = ['case_a', 'case_b', 'case_c', 'case_d']; // 4 rows, at the minimum
+    vi.stubGlobal(
+      'fetch',
+      mockFetchByPath({
+        'data/scores.json': scoresForCases(caseIds),
+        'data/methods.json': METHODS,
+        'data/cases.json': casesRegistryFor(caseIds),
+      }),
+    );
+    render(<App />);
+    await waitFor(() => expect(screen.getByTestId('plot-stub')).toBeInTheDocument());
+    await user.click(screen.getByTitle('Collapse/expand controls'));
+
+    const button = screen.getByRole('button', { name: 'Show training time' }) as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
+    expect(screen.queryByText(/Training time can't be shown/)).not.toBeInTheDocument();
+  });
 });
 
 describe('mockFetchByPath', () => {

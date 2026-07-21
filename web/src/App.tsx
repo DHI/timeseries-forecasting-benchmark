@@ -17,12 +17,14 @@ import { TITLE_BAR_HEIGHT } from './components/MethodInfoPanel/MethodInfoCard';
 import { SnapshotPanel } from './components/SnapshotPanel/SnapshotPanel';
 import { useEdgeResize } from './hooks/useEdgeResize';
 import { DOMAIN_RESTRICTED_METRICS } from './data/metricConfig';
+import { TRAINING_TIME_MIN_ROWS } from './data/constants';
 import {
   casesEligibleForMetric,
   domainOptions,
   domainsEligibleForMetric,
   familyOptions,
   metricOptions,
+  orderedCases,
 } from './data/selectors';
 import { useJsonData } from './data/loadData';
 import {
@@ -186,6 +188,24 @@ function MainLayout({
     );
   }, [scores, state.metric, state.domains, state.families, domainMetrics]);
 
+  // Mirrors how useMatrixFigure derives the matrix's own row count (case IDs, excluding
+  // extended-history duplicate rows) — needed here to gate the training-time button before
+  // the matrix ever tries to render it. See TRAINING_TIME_MIN_ROWS for why.
+  const matrixRowCount = useMemo(
+    () => orderedCases(filteredRows.filter((r) => !r.used_extended_history)).length,
+    [filteredRows],
+  );
+  const trainingTimeDisabled = matrixRowCount > 0 && matrixRowCount < TRAINING_TIME_MIN_ROWS;
+  const handleTrainingTimeChange = useCallback(
+    (active: boolean) => {
+      // Only block turning the overlay *on* for a too-short matrix; always let an
+      // already-active hold end normally so it can't get stuck on mid-release.
+      if (active && trainingTimeDisabled) return;
+      dispatch({ type: 'SET_TRAINING_TIME_OVERLAY', active });
+    },
+    [trainingTimeDisabled, dispatch],
+  );
+
   const sidebarWidth = state.sidebarCollapsed ? 0 : 260;
   const selectedCase = state.selection.case_id ? cases[state.selection.case_id] : undefined;
   const casePanelWidth = selectedCase ? state.casePanelWidth : 0;
@@ -277,13 +297,26 @@ function MainLayout({
                 Training time
               </label>
               <HoldTrainingTimeButton
-                onChange={(active) => dispatch({ type: 'SET_TRAINING_TIME_OVERLAY', active })}
+                onChange={handleTrainingTimeChange}
+                disabled={trainingTimeDisabled}
+                title={
+                  trainingTimeDisabled
+                    ? "Disabled for this short a matrix — see the note below"
+                    : undefined
+                }
               />
               <p style={{ color: '#666', fontSize: '0.8em', marginTop: 4 }}>
                 Press and hold to show each cell's measured training time instead of its score. You
                 can still hover around matrix cells while holding the button. You can also hold the
                 space bar to do the same thing without clicking.
               </p>
+              {trainingTimeDisabled && (
+                <p style={{ color: '#b45309', fontSize: '0.8em', marginTop: 4 }}>
+                  Training time can't be shown for a matrix this short — a Plotly rendering bug
+                  leaves the cells blank instead of updating. Select more domains or a
+                  less-restrictive metric to check training time.
+                </p>
+              )}
             </div>
           )}
         </aside>
