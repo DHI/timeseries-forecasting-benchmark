@@ -20,6 +20,7 @@ import { DOMAIN_RESTRICTED_METRICS } from './data/metricConfig';
 import {
   casesEligibleForMetric,
   domainOptions,
+  domainsEligibleForMetric,
   familyOptions,
   metricOptions,
 } from './data/selectors';
@@ -143,6 +144,30 @@ function MainLayout({
     window.dispatchEvent(new Event('resize'));
   }, [state.casePanelWidth]);
 
+  // The open case panel shows one specific case's row; if switching to a domain-restricted
+  // metric (NSE/KGE) makes that case ineligible, its row is about to vanish from the matrix,
+  // so close the panel along with it rather than leaving it pointing at a dropped row.
+  useEffect(() => {
+    const caseId = state.selection.case_id;
+    if (!caseId) return;
+    const stillEligible = casesEligibleForMetric(
+      state.metric,
+      [caseId],
+      domainMetrics,
+      DOMAIN_RESTRICTED_METRICS,
+    ).includes(caseId);
+    if (!stillEligible) dispatch({ type: 'CLEAR_SELECTION' });
+  }, [state.metric, state.selection.case_id, domainMetrics, dispatch]);
+
+  const eligibleDomains = useMemo(
+    () => domainsEligibleForMetric(state.metric, scores, domainMetrics, DOMAIN_RESTRICTED_METRICS),
+    [scores, state.metric, domainMetrics],
+  );
+  const disabledDomains = useMemo(
+    () => new Set(domainOpts.filter((d) => !eligibleDomains.has(d))),
+    [domainOpts, eligibleDomains],
+  );
+
   const filteredRows = useMemo(() => {
     if (!state.metric) return [];
     const domainSet = new Set(state.domains);
@@ -210,6 +235,7 @@ function MainLayout({
                 options={domainOpts}
                 value={state.domains}
                 onChange={(domains) => dispatch({ type: 'SET_DOMAINS', domains })}
+                disabledOptions={disabledDomains}
               />
               <label style={{ fontWeight: 'bold', display: 'block', marginTop: 16 }}>
                 Method families

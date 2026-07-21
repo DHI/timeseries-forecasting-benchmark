@@ -114,6 +114,47 @@ describe('App', () => {
     expect(screen.getByLabelText('WaD')).toBeInTheDocument();
     expect(screen.getByLabelText('Baseline')).toBeInTheDocument();
   });
+
+  it('greys out domain checkboxes ineligible for a domain-restricted metric', async () => {
+    const user = userEvent.setup();
+    const scores = [
+      ...SCORES,
+      {
+        ...SCORES[0],
+        case_id: 'flow_case',
+        domain: 'hydrology',
+        metric: 'NSE',
+        value: 0.8,
+      },
+    ];
+    const cases = {
+      ...CASES,
+      flow_case: { ...CASES.demand_ltown, domain: 'hydrology', domain_metrics: ['NSE', 'KGE'] },
+    };
+    vi.stubGlobal(
+      'fetch',
+      mockFetchByPath({
+        'data/scores.json': scores,
+        'data/methods.json': METHODS,
+        'data/cases.json': cases,
+      }),
+    );
+    render(<App />);
+    await waitFor(() => expect(screen.getByTestId('plot-stub')).toBeInTheDocument());
+    await user.click(screen.getByTitle('Collapse/expand controls'));
+
+    const waterDistributionCheckbox = screen.getByLabelText('WaD') as HTMLInputElement;
+    const hydrologyCheckbox = screen.getByLabelText('Hyd') as HTMLInputElement;
+    expect(waterDistributionCheckbox.disabled).toBe(false);
+    expect(hydrologyCheckbox.disabled).toBe(false);
+
+    await user.selectOptions(screen.getByRole('combobox'), 'NSE');
+
+    expect(waterDistributionCheckbox.disabled).toBe(true);
+    expect(waterDistributionCheckbox.checked).toBe(false);
+    expect(hydrologyCheckbox.disabled).toBe(false);
+    expect(hydrologyCheckbox.checked).toBe(true);
+  });
 });
 
 describe('mockFetchByPath', () => {
