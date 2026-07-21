@@ -8,6 +8,14 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-21 — Moved app instructions from a root markdown file into the app itself
+
+`APP_INSTRUCTIONS.md` used to sit at the repo root, disconnected from the live site — nobody
+browsing the app would think to look for it there. Its content now lives in
+`web/src/data/appInstructions.ts` and shows up behind a grey info icon next to the page title,
+in a scrollable modal styled like the app's other panels. The root file is gone; anyone updating
+the instructions should edit the new module instead.
+
 ## 2026-07-21 — Removed the legacy Dash app now that `web/` covers everything it did
 
 Deleted `app/` (the original Dash results-matrix viewer), now that `web/` has replicated all of
