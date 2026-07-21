@@ -265,7 +265,7 @@ describe('useMatrixFigure — training-time overlay', () => {
     const heatmap = result.current!.data[0] as {
       colorbar: { title: { text: string } };
     };
-    expect(heatmap.colorbar.title.text).toBe('Seconds');
+    expect(heatmap.colorbar.title.text).toBe('Train<br>time [seconds]');
   });
 
   it('labels the colorbar with round-number seconds ticks in log space', () => {

@@ -28,7 +28,8 @@ export type MatrixFigure = {
  * `maxSeconds`, positioned in the same log10(seconds + 1) space the training-time
  * overlay colors cells in — so the colorbar reads in real seconds despite the
  * underlying color mapping being log-scaled to cope with training time's heavy tail.
- * Unitless (no "s"): the colorbar's "Seconds" title already carries the unit. */
+ * Unitless (no "s" suffix): the colorbar's "Train<br>time [seconds]" title already carries
+ * the unit. */
 function trainingTimeColorTicks(maxSeconds: number): { tickvals: number[]; ticktext: string[] } {
   const candidates = [0, 1, 10, 100, 1000, 10000, 100000];
   const ticks: number[] = [];
@@ -283,11 +284,10 @@ export function useMatrixFigure(
       // overlay instead (see HoverTooltips), matching app/app.py's clientside callback.
       hoverinfo: 'none',
       colorbar: {
-        // Kept short ("Seconds", not "Training time (s)") — and colorbarTitle() caps every
-        // other title's second line to a short unit bracket like "[target unit]" — so it
-        // can never need more horizontal space than margin.r below budgets for (see the
+        // "Train<br>time [seconds]" is no wider than colorbarTitle()'s longest line
+        // ("[target unit]"), so it still fits within margin.r below (see the
         // margin.autoexpand note further down for why that matters).
-        title: { text: showTrainingTime ? 'Seconds' : colorbarTitle(metric, cfg) },
+        title: { text: showTrainingTime ? 'Train<br>time [seconds]' : colorbarTitle(metric, cfg) },
         len: 0.6,
         thickness: 16,
         x: 1.0,
