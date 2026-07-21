@@ -5,6 +5,7 @@ import { caseTrainingStats } from '../../data/caseText';
 import { CaseSummary } from './CaseSummary';
 import { DistributionPlot } from './DistributionPlot';
 import { ProportionsBar } from './ProportionsBar';
+import { SeasonalPatternPlot } from './SeasonalPatternPlot';
 import { TestSplitPlot } from './TestSplitPlot';
 import { TrainingTailPlot } from './TrainingTailPlot';
 import type { CaseMeta, ScoreRow } from '../../types/data';
@@ -20,15 +21,18 @@ type Props = {
 };
 
 /** Right-hand detail panel: training/test snapshots, a train-vs-test distribution, a
- * train/val/test proportions bar, and case metadata for the selected case. When
- * `showGlobal` reveals extended history for this case, the training snapshot,
- * distribution, proportions bar, and sample counts all swap in the extended-history
- * train split. Port of app/app.py's `render_case_panel`. */
+ * train/val/test proportions bar, a seasonal-pattern figure, and case metadata for the
+ * selected case. When `showGlobal` reveals extended history for this case, the training
+ * snapshot, distribution, proportions bar, seasonal patterns, and sample counts all swap
+ * in the extended-history train split. Port of app/app.py's `render_case_panel`. */
 export function CasePanel({ caseId, caseMeta, scores, showGlobal }: Props) {
   const extended = showGlobal && caseHasExtendedHistory(scores, caseId);
   const trainTail = extended ? caseMeta.train_tail_extended : caseMeta.train_tail;
   const splitCounts = extended ? caseMeta.split_counts_extended : caseMeta.split_counts;
   const distribution = extended ? caseMeta.distribution_extended : caseMeta.distribution;
+  const seasonalPatterns = extended
+    ? caseMeta.seasonal_patterns_extended
+    : caseMeta.seasonal_patterns;
   const caption =
     `Training data (last ${TRAINING_TAIL_N.toLocaleString('en-US')} points` +
     (extended ? ', including extended history)' : ')');
@@ -55,6 +59,12 @@ export function CasePanel({ caseId, caseMeta, scores, showGlobal }: Props) {
         <p style={CAPTION_STYLE}>Train / val / test split</p>
         <ProportionsBar counts={splitCounts} caseId={caseId} />
         <Markdown>{caseTrainingStats(caseMeta, extended)}</Markdown>
+        {seasonalPatterns.length > 0 && (
+          <>
+            <p style={CAPTION_STYLE}>Seasonal pattern</p>
+            <SeasonalPatternPlot patterns={seasonalPatterns} />
+          </>
+        )}
       </details>
     </div>
   );
