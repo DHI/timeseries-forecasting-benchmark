@@ -8,6 +8,26 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-21 — Training-time overlay is a known dead end for NSE/KGE's narrow case set (Plotly bug)
+
+Holding "show training time" while NSE or KGE is selected doesn't repaint the matrix: the
+colorbar switches to the training-time scale, but the cell colors and numbers stay on the
+score view. Traced this to a genuine Plotly.js rendering bug, not an app bug — the metric
+doesn't matter (reproduces identically with NSE's real values relabeled as RMSE, and with
+KGE, which narrows to the same cases), and it isn't about the domain-restriction code path
+either (reproduces the same way narrowed via a plain domain checkbox). The trigger is the
+training-time value pattern for this exact small case/method set: any attempt to make Plotly
+genuinely repaint it — `redraw()`, a full remount, a second `react()` call, even a from-scratch
+`Plotly.newPlot()` — fails outright (blank) rather than updating; only the default in-place
+`react()` update manages to leave the old (wrong) content visible instead of failing loudly.
+Tried a two-Plot-instance architecture (score view / training-time view rendered separately,
+each lazily mounted) to sidestep the transition entirely — it fixes the general case but hits
+the identical blank-render failure for this specific case set, which is worse than the current
+stale-but-visible behavior. Reverted to the original single-plot behavior. Documenting this as
+a known Plotly.js limitation rather than shipping a fix that trades a misleading bug for a
+broken-looking one; worth revisiting if the pinned `plotly.js-cartesian-dist-min` version ever
+changes.
+
 ## 2026-07-21 — Domain controls now follow the matrix's own NSE/KGE narrowing
 
 The matrix already narrowed its rows to only the cases eligible for NSE/KGE (flow/level domains
