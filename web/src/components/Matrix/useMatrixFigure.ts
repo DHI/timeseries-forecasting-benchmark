@@ -63,11 +63,11 @@ function niceLogTicks(
   return { tickvals, ticktext };
 }
 
-/** Colorbar title: "Skill<br>vs X" for Skill_vs_X metrics (narrower than the full metric
+/** Colorbar title: "Skill<br>vs<br>X" for Skill_vs_X metrics (narrower than the full metric
  * name), otherwise "MetricName<br>[unit]". Plotly text only breaks on `<br>`, not `\n`. */
 function colorbarTitle(metric: string, cfg: MetricConfig): string {
   if (metric.startsWith('Skill_vs_')) {
-    return `Skill<br>vs ${metric.slice('Skill_vs_'.length)}`;
+    return `Skill<br>vs<br>${metric.slice('Skill_vs_'.length)}`;
   }
   return `${metric}<br>[${cfg.unit}]`;
 }
