@@ -16,11 +16,15 @@ pattern. The curve is a LOESS fit rather than a single-harmonic sinusoid, so it 
 non-sinusoidal shapes a plain sine wave would flatten out, like a demand series with separate
 morning and evening peaks in one day. Since a cycle wraps around (the last position is adjacent
 to the first), points are mirrored across each boundary before fitting so the curve doesn't taper
-or jump at the seam. Everything is computed once in Python and shipped as plain arrays in
-`cases.json`, matching how the rest of the panel's plots already work — the LOESS bandwidth and
-padding fraction are new tunable constants in `webdata.py` (`SEASONAL_PATTERN_LOESS_FRAC`,
-`SEASONAL_PATTERN_PAD_FRAC`) worth adjusting if the rendered curves look under- or over-smoothed
-once reviewed.
+or jump at the seam. The training tail is also detrended (mean + linear trend removed) before
+plotting, reusing the same `fill_and_detrend` convention `dominant_period` already uses for
+detection — without it, two cycles with the same shape but sitting at different points along a
+case's long-run drift would smear into a misleadingly noisy scatter; the y-axis now reads as
+deviation from trend rather than the raw target value, so the caption calls this out explicitly.
+Everything is computed once in Python and shipped as plain arrays in `cases.json`, matching how
+the rest of the panel's plots already work — the LOESS bandwidth and padding fraction are new
+tunable constants in `webdata.py` (`SEASONAL_PATTERN_LOESS_FRAC`, `SEASONAL_PATTERN_PAD_FRAC`)
+worth adjusting if the rendered curves look under- or over-smoothed once reviewed.
 
 ## 2026-07-21 — Moved app instructions from a root markdown file into the app itself
 
