@@ -3,6 +3,7 @@ import {
   caseHasExtendedHistory,
   casesEligibleForMetric,
   domainOptions,
+  domainsEligibleForMetric,
   effectiveMethod,
   familyOptions,
   groupBoundaries,
@@ -76,6 +77,30 @@ describe('casesEligibleForMetric', () => {
     expect(
       casesEligibleForMetric('NSE', ['flow_case', 'wave_case'], domainMetrics, restricted),
     ).toEqual(['flow_case']);
+  });
+});
+
+describe('domainsEligibleForMetric', () => {
+  const rows = [
+    row({ case_id: 'flow_case', domain: 'flow' }),
+    row({ case_id: 'wave_case', domain: 'waves' }),
+  ];
+  const domainMetrics = new Map([
+    ['flow_case', ['NSE', 'KGE']],
+    ['wave_case', []],
+  ]);
+  const restricted = new Set(['NSE', 'KGE']);
+
+  it('is a no-op for unrestricted metrics', () => {
+    expect(domainsEligibleForMetric('MASE', rows, domainMetrics, restricted)).toEqual(
+      new Set(['flow', 'waves']),
+    );
+  });
+
+  it('restricts to domains with at least one declaring case', () => {
+    expect(domainsEligibleForMetric('NSE', rows, domainMetrics, restricted)).toEqual(
+      new Set(['flow']),
+    );
   });
 });
 

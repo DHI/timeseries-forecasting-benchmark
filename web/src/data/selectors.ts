@@ -75,6 +75,23 @@ export function casesEligibleForMetric(
   return caseIds.filter((c) => (domainMetrics.get(c) ?? []).includes(metric));
 }
 
+/** Domains with at least one case eligible for `metric` — a no-op (all domains) for every
+ * metric outside the domain-restricted set. Used to grey out domain checkboxes that would
+ * contribute nothing under the current metric. */
+export function domainsEligibleForMetric(
+  metric: string,
+  rows: ScoreRow[],
+  domainMetrics: Map<string, string[]>,
+  domainRestrictedMetrics: ReadonlySet<string>,
+): Set<string> {
+  if (!domainRestrictedMetrics.has(metric)) return new Set(rows.map((r) => r.domain));
+  const domains = new Set<string>();
+  for (const row of rows) {
+    if ((domainMetrics.get(row.case_id) ?? []).includes(metric)) domains.add(row.domain);
+  }
+  return domains;
+}
+
 /** Metrics selectable in the dropdown: METRIC_CONFIG's own order, restricted to metrics
  * actually present in the data. Port of app/app.py's `_metric_options`. */
 export function metricOptions(rows: ScoreRow[]): string[] {
