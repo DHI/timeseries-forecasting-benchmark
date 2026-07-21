@@ -144,6 +144,19 @@ the dedicated leap-year boundary test.
 **Decision.** Wrap the result in `np.asarray(...)` instead of calling `.to_numpy()`. No behavior
 change beyond fixing the crash — full suite passes again.
 
+## 2026-07-19 — Interactive decision graph for the research log
+
+This log had grown to enough entries that cross-references only existing as prose made related
+decisions hard to trace without reading the whole file. Added `docs/research_graph.html`, a
+self-contained D3 force-directed graph — one node per log entry, hover for a summary, click for
+full detail plus a list of connections, drag to pin nodes, pan/zoom. Node and edge data (relation
+types: supersedes/fixes-bug-in/depends-on/relates-to) were hand-extracted from the log's own
+cross-reference prose in one pass and embedded directly in the file, so it opens with no server
+or fetch; CLAUDE.md's research-log section now asks for a matching node whenever a new entry is
+added. Categories are capped at four (methodology, app & tooling, bug fix, project & data) rather
+than a finer split, since a force layout can place any two categories next to each other and the
+project's palette validator fails a 6-color categorical set under that all-pairs condition.
+
 ## 2026-07-19 — Combined the EDA and React Pages workflows into one
 
 GitHub Pages only lets one workflow deploy per repo, so the existing EDA-only
