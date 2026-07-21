@@ -8,6 +8,18 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-21 — Removed the legacy Dash app now that `web/` covers everything it did
+
+Deleted `app/` (the original Dash results-matrix viewer), now that `web/` has replicated all of
+its functionality. `scripts/export_web_data.py`, which generates `web/`'s static JSON, had been
+importing its data-loading and forecast-curation code straight out of `app/data.py` and
+`app/snapshot.py`; that code moved to a new `src/tsforecastbench/webdata.py` module so the export
+script keeps one shared source of truth without depending on deleted files. The Plotly/Dash
+rendering code in the old app had no other callers and was dropped along with it. The `dash`
+dependency (and the now-unused `app` extra in `pyproject.toml`) is gone; `plotly` stays, since
+`notebooks` still needs it. Tagged the last commit with `app/` intact as `legacy-dash-app` in case
+anyone wants to run the old version.
+
 ## 2026-07-20 — Fixed heatmap bleeding over the sidebar when the case panel is dragged wide
 
 Dragging the right-hand case detail panel to its maximum width could make the heatmap paint over
