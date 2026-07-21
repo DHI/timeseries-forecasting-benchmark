@@ -2,10 +2,10 @@ import { useState } from 'react';
 import Markdown from 'react-markdown';
 import { APP_INSTRUCTIONS } from '../../data/appInstructions';
 
-/** Grey info icon next to the page title; clicking it opens a centered, scrollable modal with
- * the app's usage instructions (moved here from the repo root's `APP_INSTRUCTIONS.md`). Styled
- * like the app's other panels (white background / black border via the `--bg` / `--border`
- * tokens from index.css) rather than as a one-off. */
+/** Thin grey info icon next to the page title; clicking it opens a centered, scrollable modal
+ * with the app's usage instructions (moved here from the repo root's `APP_INSTRUCTIONS.md`).
+ * Styled like the app's other panels (white background / black border via the `--bg` /
+ * `--border` tokens from index.css) rather than as a one-off. */
 export function InstructionsModal() {
   const [open, setOpen] = useState(false);
 
@@ -20,9 +20,9 @@ export function InstructionsModal() {
           width: 22,
           height: 22,
           borderRadius: '50%',
-          border: 'none',
-          background: '#888',
-          color: '#fff',
+          border: '1.5px solid #888',
+          background: '#fff',
+          color: '#888',
           fontSize: '0.8em',
           fontWeight: 'bold',
           lineHeight: 1,
@@ -60,26 +60,35 @@ export function InstructionsModal() {
               padding: '16px 20px',
             }}
           >
-            <button
-              type="button"
-              title="Close"
-              aria-label="Close instructions"
-              onClick={() => setOpen(false)}
+            <div
               style={{
                 position: 'sticky',
                 top: 0,
-                left: 0,
-                background: 'none',
-                border: 'none',
-                font: 'inherit',
-                fontSize: '1.2em',
-                fontWeight: 'bold',
-                cursor: 'pointer',
-                padding: 0,
+                background: 'var(--bg)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
               }}
             >
-              ✕
-            </button>
+              <button
+                type="button"
+                title="Close"
+                aria-label="Close instructions"
+                onClick={() => setOpen(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  font: 'inherit',
+                  fontSize: '1.2em',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  padding: 0,
+                }}
+              >
+                ✕
+              </button>
+              <h2 style={{ margin: 0 }}>App instructions</h2>
+            </div>
             <Markdown>{APP_INSTRUCTIONS}</Markdown>
           </div>
         </div>
