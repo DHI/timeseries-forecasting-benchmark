@@ -8,6 +8,20 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-21 — Added a seasonal-pattern figure to the case panel
+
+The case panel's Data overview section now shows one subplot per declared seasonal period,
+scattering the training tail against its position in the cycle with a smooth curve over the
+pattern. The curve is a LOESS fit rather than a single-harmonic sinusoid, so it can show
+non-sinusoidal shapes a plain sine wave would flatten out, like a demand series with separate
+morning and evening peaks in one day. Since a cycle wraps around (the last position is adjacent
+to the first), points are mirrored across each boundary before fitting so the curve doesn't taper
+or jump at the seam. Everything is computed once in Python and shipped as plain arrays in
+`cases.json`, matching how the rest of the panel's plots already work — the LOESS bandwidth and
+padding fraction are new tunable constants in `webdata.py` (`SEASONAL_PATTERN_LOESS_FRAC`,
+`SEASONAL_PATTERN_PAD_FRAC`) worth adjusting if the rendered curves look under- or over-smoothed
+once reviewed.
+
 ## 2026-07-21 — Moved app instructions from a root markdown file into the app itself
 
 `APP_INSTRUCTIONS.md` used to sit at the repo root, disconnected from the live site — nobody
