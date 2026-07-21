@@ -92,7 +92,7 @@ export function SnapshotGrid({
         x: timestamps,
         y: actualValues,
         name: 'Actual',
-        line: { color: 'black', width: 2 },
+        line: { color: 'black', width: 1 },
         xaxis: axes.xaxisRef,
         yaxis: axes.yaxisRef,
       } as Data);
