@@ -3,7 +3,7 @@ import type { Annotations, Layout, PlotData } from 'plotly.js';
 import Plot from '../../plotly';
 import type { SeasonalPattern } from '../../types/data';
 
-const ROW_HEIGHT = 170;
+const ROW_HEIGHT = 190;
 const N_COLS = 2;
 const H_GAP = 0.08;
 const V_GAP = 0.22;
@@ -15,6 +15,7 @@ const AXIS_STYLE = {
   showline: true,
   linecolor: 'black',
   ticks: 'outside' as const,
+  automargin: true,
 };
 
 /** One subplot's domain (as fractions of the whole figure) for a grid position, leaving a
@@ -50,7 +51,7 @@ export function SeasonalPatternPlot({ patterns }: { patterns: SeasonalPattern[] 
     const layout: Partial<Layout> = {
       autosize: true,
       height: ROW_HEIGHT * nRows,
-      margin: { l: 0, t: 10, r: 10, b: 20 },
+      margin: { l: 0, t: 10, r: 10, b: 30 },
       paper_bgcolor: 'white',
       plot_bgcolor: 'white',
       font: { family: 'system-ui, sans-serif' },
@@ -89,7 +90,6 @@ export function SeasonalPatternPlot({ patterns }: { patterns: SeasonalPattern[] 
         ...AXIS_STYLE,
         domain: yDomain,
         showticklabels: col === 0,
-        automargin: true,
         ...(i > 0 ? { matches: 'y' } : {}),
       };
 
