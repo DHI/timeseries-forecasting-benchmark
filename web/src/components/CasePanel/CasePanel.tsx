@@ -50,7 +50,7 @@ export function CasePanel({ caseId, caseMeta, scores, showGlobal }: Props) {
         </div>
       </details>
       <details open>
-        <summary style={SUMMARY_STYLE}>Data overview</summary>
+        <summary style={SUMMARY_STYLE}>Target data overview</summary>
         <p style={{ ...CAPTION_STYLE, margin: '0 0 4px 0' }}>{caption}</p>
         <TrainingTailPlot series={trainTail} caseId={caseId} />
         <p style={CAPTION_STYLE}>Test data (full test split)</p>
