@@ -227,8 +227,22 @@
     stroke: var(--surface-1);
     stroke-width: 3px;
     stroke-linejoin: round;
+    opacity: 0;
   }
   .link { fill: none; stroke: var(--edge-ink); stroke-opacity: 0.55; }
+
+  .cluster-label {
+    font-size: 11px;
+    font-style: italic;
+    fill: var(--text-muted);
+    pointer-events: none;
+    user-select: none;
+    text-anchor: middle;
+    paint-order: stroke;
+    stroke: var(--surface-1);
+    stroke-width: 4px;
+    stroke-linejoin: round;
+  }
 </style>
 
 <div class="viz-root">
@@ -1074,6 +1088,117 @@
         "plotly",
         "app-tooling"
       ]
+    },
+    {
+      "id": "2026-07-20-heatmap-bleed-sidebar-fix",
+      "date": "2026-07-20",
+      "title": "Fixed heatmap bleeding over the sidebar when the case panel is dragged wide",
+      "category": "bug-fix",
+      "summary": "Dragging the case detail panel to its maximum width let the heatmap's fixed pixel width spill left over the sidebar instead of shrinking, since the center column had no overflow set.",
+      "detail": "Dragging the right-hand case detail panel to its maximum width could make the heatmap paint over the left control sidebar instead of shrinking to fit. The heatmap has a fixed pixel width based on the number of methods shown, and the center column that holds it had no `overflow` set, so once that column got squeezed narrower than the heatmap, the excess width spilled left and covered the sidebar (later elements in the page paint over earlier ones by default).\n\nAdded `overflow-x: auto` to the center column so the heatmap now scrolls within its own column instead of bleeding over neighboring panels.",
+      "tags": [
+        "react",
+        "ui",
+        "case-panel",
+        "layout"
+      ]
+    },
+    {
+      "id": "2026-07-20-sidebar-collapsed-default",
+      "date": "2026-07-20",
+      "title": "Sidebar closed by default, added a hint for first-time visitors",
+      "category": "app-tooling",
+      "summary": "The sidebar now starts collapsed with its toggle button position computed directly from open/closed state, plus two floating prompts pointing first-time visitors at the heatmap and the hidden controls panel.",
+      "detail": "The control sidebar used to open on load and its collapse/expand button was only half visible once collapsed — it was anchored to the sidebar's own width, which shrinks to zero when collapsed, so the button's centering offset pushed half of it past the left edge of the page. The sidebar now starts collapsed, and the button's position is computed directly from the sidebar's open/closed state instead of relying on that width.\n\nAlso added a floating \"Click a cell to inspect a case\" prompt with an arrow pointing at the heatmap, shown in the empty space to its right until a cell is selected, since that space was otherwise blank with no cue that clicking does anything. For the same reason, added a second prompt, \"Reveal controls panel,\" pointing at the collapse/expand button itself, since a collapsed sidebar with no explanation looked like missing UI rather than a closed panel. Both prompts disappear once their target state changes.",
+      "tags": [
+        "react",
+        "ui",
+        "sidebar",
+        "onboarding"
+      ]
+    },
+    {
+      "id": "2026-07-20-training-time-heatmap-overlay",
+      "date": "2026-07-20",
+      "title": "Moved training time from the right panel to a press-and-hold heatmap overlay",
+      "category": "app-tooling",
+      "summary": "Training time moved from a per-method text line in the case panel to a sidebar button that, while held, swaps every heatmap cell to that case/method's training time on a log-scaled color axis.",
+      "detail": "Training time used to show as one text line per selected method in the right-side case panel, so comparing training cost across the benchmark meant clicking into each case one at a time. Added a \"Training time\" button to the sidebar that, while held down, swaps every heatmap cell from its metric score to that case/method's measured training time, then reverts the instant the mouse is released. The right panel keeps its unrelated sample-count line but drops the old per-method time text. Fastest-method bolding is skipped during the overlay since it's meant as a quick glance, not a ranking.\n\nCell values show as whole seconds rather than two decimals. The overlay's colorbar title was also shrinking the heatmap's plot area relative to the normal metric view — Plotly lets a wide colorbar title grow past a fixed margin by default, so a short title plus an explicit `margin.autoexpand: false` now guarantee the grid occupies identical pixels either way. Training time is heavy-tailed, so cell color now maps to `log10(seconds + 1)` instead of raw seconds — a linear scale left almost every cell looking the same shade; the colorbar ticks and cell text still label real seconds.",
+      "tags": [
+        "react",
+        "ui",
+        "training-time",
+        "heatmap"
+      ]
+    },
+    {
+      "id": "2026-07-21-training-time-overlay-disabled-short-matrices",
+      "date": "2026-07-21",
+      "title": "Training-time overlay disabled for short matrices (Plotly bug, no in-code fix found)",
+      "category": "bug-fix",
+      "summary": "Holding \"show training time\" doesn't repaint a matrix narrower than 4 rows — a genuine Plotly.js rendering bug that survived every attempted fix — so the control now disables itself below that row count instead.",
+      "detail": "Holding \"show training time\" doesn't repaint the matrix for a short enough matrix: the colorbar switches to the training-time scale, but the cell colors and numbers stay on the score view. Traced this to a genuine Plotly.js rendering bug, not an app bug or an NSE/KGE issue specifically — it reproduces with any metric once the matrix narrows to 3 rows, and 4 rows renders fine, so row count is the real trigger, not metric identity or the domain-restriction code path.\n\nEvery attempted fix — `redraw()`, a full remount, a second `react()` call, a from-scratch `Plotly.newPlot()`, a two-Plot-instance architecture with lazy mounting — either did nothing or turned the failure from stale-but-visible into a blank render, which is worse. Rather than keep chasing an in-code fix, `TRAINING_TIME_MIN_ROWS` (`web/src/data/constants.ts`) now gates the control itself: below 4 matrix rows, \"Show training time\" is disabled with an explanatory message pointing users toward a broader domain/metric selection. Worth revisiting if the pinned `plotly.js-cartesian-dist-min` version ever changes.",
+      "tags": [
+        "react",
+        "plotly",
+        "bug",
+        "training-time"
+      ]
+    },
+    {
+      "id": "2026-07-21-domain-controls-follow-narrowing",
+      "date": "2026-07-21",
+      "title": "Domain controls now follow the matrix's own NSE/KGE narrowing",
+      "category": "bug-fix",
+      "summary": "Domain checkboxes and an open case panel now track the same NSE/KGE eligibility check the matrix already used to narrow its rows, instead of drifting out of sync with it.",
+      "detail": "The matrix already narrowed its rows to only the cases eligible for NSE/KGE (flow/level domains that declare them in `case.toml`), but two other parts of the sidebar didn't follow suit: the domain checkboxes stayed checkable for domains with no eligible case, and an open case panel stayed open even after its case's row disappeared from the matrix. Both now track the same eligibility check — ineligible domain checkboxes grey out and uncheck (without erasing the user's underlying selection, so switching back to an unrestricted metric restores it), and the case panel closes if its case stops being eligible when the metric changes.\n\nWhile fixing this, also found that the web app's test setup was missing Testing Library's per-test cleanup (`globals: false` in `vitest.config.ts` means its auto-cleanup never registers), which only mattered once a second test in `App.test.tsx` needed a full successful render — added an explicit `afterEach(cleanup)` so this doesn't bite the next multi-render test either.",
+      "tags": [
+        "react",
+        "ui",
+        "nse-kge",
+        "testing"
+      ]
+    },
+    {
+      "id": "2026-07-21-seasonal-pattern-figure",
+      "date": "2026-07-21",
+      "title": "Added a seasonal-pattern figure to the case panel",
+      "category": "app-tooling",
+      "summary": "The case panel now shows one subplot per declared seasonal period, scattering the detrended training tail against its position in the cycle with a mirrored LOESS curve over the pattern.",
+      "detail": "The case panel's Data overview section now shows one subplot per declared seasonal period, scattering the training tail against its position in the cycle with a smooth curve over the pattern. The curve is a LOESS fit rather than a single-harmonic sinusoid, so it can show non-sinusoidal shapes a plain sine wave would flatten out, like a demand series with separate morning and evening peaks in one day. Since a cycle wraps around, points are mirrored across each boundary before fitting so the curve doesn't taper or jump at the seam.\n\nThe training tail is also detrended (mean + linear trend removed) before plotting, reusing the same `fill_and_detrend` convention `dominant_period` already uses for detection — without it, two cycles with the same shape but sitting at different points along a case's long-run drift would smear into a misleadingly noisy scatter; the y-axis now reads as deviation from trend rather than the raw target value. Everything is computed once in Python and shipped as plain arrays in `cases.json`, matching how the rest of the panel's plots already work — the LOESS bandwidth and padding fraction are new tunable constants in `webdata.py` worth adjusting if the rendered curves look under- or over-smoothed once reviewed.",
+      "tags": [
+        "react",
+        "case-panel",
+        "seasonality",
+        "loess"
+      ]
+    },
+    {
+      "id": "2026-07-21-app-instructions-moved-into-app",
+      "date": "2026-07-21",
+      "title": "Moved app instructions from a root markdown file into the app itself",
+      "category": "app-tooling",
+      "summary": "APP_INSTRUCTIONS.md, disconnected from the live site, is now a data module shown behind an info icon next to the page title.",
+      "detail": "`APP_INSTRUCTIONS.md` used to sit at the repo root, disconnected from the live site — nobody browsing the app would think to look for it there. Its content now lives in `web/src/data/appInstructions.ts` and shows up behind a grey info icon next to the page title, in a scrollable modal styled like the app's other panels. The root file is gone; anyone updating the instructions should edit the new module instead.",
+      "tags": [
+        "react",
+        "docs",
+        "ui"
+      ]
+    },
+    {
+      "id": "2026-07-21-legacy-dash-app-removed",
+      "date": "2026-07-21",
+      "title": "Removed the legacy Dash app now that web/ covers everything it did",
+      "category": "app-tooling",
+      "summary": "Deleted app/ now that web/ has replicated all its functionality, moving its shared data-loading/curation code into a new tsforecastbench.webdata module and dropping the dash dependency.",
+      "detail": "Deleted `app/` (the original Dash results-matrix viewer), now that `web/` has replicated all of its functionality. `scripts/export_web_data.py`, which generates `web/`'s static JSON, had been importing its data-loading and forecast-curation code straight out of `app/data.py` and `app/snapshot.py`; that code moved to a new `src/tsforecastbench/webdata.py` module so the export script keeps one shared source of truth without depending on deleted files. The Plotly/Dash rendering code in the old app had no other callers and was dropped along with it.\n\nThe `dash` dependency (and the now-unused `app` extra in `pyproject.toml`) is gone; `plotly` stays, since `notebooks` still needs it. Tagged the last commit with `app/` intact as `legacy-dash-app` in case anyone wants to run the old version.",
+      "tags": [
+        "dash",
+        "react",
+        "migration",
+        "cleanup"
+      ]
     }
   ],
   "edges": [
@@ -1301,6 +1426,159 @@
       "source": "2026-07-10-move-snapshot-vertical-column",
       "target": "2026-07-10-merge-case-snapshot-panels",
       "type": "depends-on"
+    },
+    {
+      "source": "2026-07-20-heatmap-bleed-sidebar-fix",
+      "target": "2026-07-16-case-panel-resizable",
+      "type": "fixes-bug-in"
+    },
+    {
+      "source": "2026-07-20-sidebar-collapsed-default",
+      "target": "2026-07-15-react-port-started",
+      "type": "depends-on"
+    },
+    {
+      "source": "2026-07-20-training-time-heatmap-overlay",
+      "target": "2026-07-15-react-port-started",
+      "type": "supersedes"
+    },
+    {
+      "source": "2026-07-21-training-time-overlay-disabled-short-matrices",
+      "target": "2026-07-20-training-time-heatmap-overlay",
+      "type": "fixes-bug-in"
+    },
+    {
+      "source": "2026-07-21-domain-controls-follow-narrowing",
+      "target": "2026-07-13-metrics-mape-nse-kge",
+      "type": "depends-on"
+    },
+    {
+      "source": "2026-07-21-seasonal-pattern-figure",
+      "target": "2026-07-08-dominant-period-fit-time",
+      "type": "depends-on"
+    },
+    {
+      "source": "2026-07-21-seasonal-pattern-figure",
+      "target": "2026-07-03-curated-seasonalities",
+      "type": "relates-to"
+    },
+    {
+      "source": "2026-07-21-app-instructions-moved-into-app",
+      "target": "2026-07-15-react-port-started",
+      "type": "relates-to"
+    },
+    {
+      "source": "2026-07-21-legacy-dash-app-removed",
+      "target": "2026-07-15-react-port-started",
+      "type": "supersedes"
+    },
+    {
+      "source": "2026-07-21-legacy-dash-app-removed",
+      "target": "2026-07-09-streamlit-to-dash",
+      "type": "relates-to"
+    }
+  ],
+  "clusters": [
+    {
+      "nodes": [
+        "2026-07-08-interactive-app",
+        "2026-07-09-persist-real-forecasts",
+        "2026-07-09-streamlit-to-dash",
+        "2026-07-09-two-app-bugs",
+        "2026-07-09-multi-snapshot-panel",
+        "2026-07-09-case-context-panel",
+        "2026-07-10-merge-case-snapshot-panels",
+        "2026-07-10-move-snapshot-vertical-column",
+        "2026-07-15-react-training-test-axis-fix",
+        "2026-07-15-react-dash-parity-gaps",
+        "2026-07-15-react-port-started",
+        "2026-07-19-eda-react-pages-workflow",
+        "2026-07-20-sidebar-collapsed-default",
+        "2026-07-20-training-time-heatmap-overlay",
+        "2026-07-21-training-time-overlay-disabled-short-matrices",
+        "2026-07-21-app-instructions-moved-into-app",
+        "2026-07-21-legacy-dash-app-removed"
+      ],
+      "label": "The results-viewer's long migration: Streamlit → Dash → a standalone React app, ending with Dash retired"
+    },
+    {
+      "nodes": [
+        "2026-07-03-periodogram-peak-suggestions",
+        "2026-07-03-curated-seasonalities",
+        "2026-07-07-climatology-seasonal-key",
+        "2026-07-07-pacf-panel",
+        "2026-07-07-interactive-periodogram",
+        "2026-07-08-robustperiod-audit",
+        "2026-07-08-robustperiod-intro",
+        "2026-07-08-nonseasonal-mstl-test",
+        "2026-07-08-dominant-period-fit-time",
+        "2026-07-21-seasonal-pattern-figure"
+      ],
+      "label": "Finding each case's real seasonal structure — from periodogram peaks to RobustPeriod to a fit-time dominant period"
+    },
+    {
+      "nodes": [
+        "2026-07-02-seasonal-classical-baselines",
+        "2026-07-02-method-suite-audit",
+        "2026-07-03-gap-handling-policy",
+        "2026-07-03-ensemble-baselines",
+        "2026-07-08-mstl-statsmodels-swap",
+        "2026-07-10-mlp-scaling-fix",
+        "2026-07-10-dedupe-method-helpers"
+      ],
+      "label": "Auditing the method suite, then working through what it found: seasonal baselines, gap handling, ensembles, cleanup"
+    },
+    {
+      "nodes": [
+        "2026-05-27-initial-scoping-plan",
+        "2026-05-29-data-quality-bugs",
+        "2026-06-12-scoping-review-rocco",
+        "2026-06-25-discharge-saugeen-case",
+        "2026-07-02-discharge-saugeen-docs",
+        "2026-07-02-log-backfill"
+      ],
+      "label": "Early scoping, first data-quality scares, and a domain-expert review that reframed the project's purpose"
+    },
+    {
+      "nodes": [
+        "2026-07-02-drop-optional-exogenous",
+        "2026-07-02-exo-necessity-schema",
+        "2026-07-02-exo-necessity-notes",
+        "2026-07-14-customdata-crash-fix",
+        "2026-07-14-exo-toggle-folded"
+      ],
+      "label": "Judging which cases truly need exogenous inputs, then folding that judgment into a single app toggle"
+    },
+    {
+      "nodes": [
+        "2026-07-16-card-resize-drag-fix",
+        "2026-07-16-method-info-cards-split",
+        "2026-07-16-case-panel-resizable",
+        "2026-07-19-method-card-title-top",
+        "2026-07-20-heatmap-bleed-sidebar-fix"
+      ],
+      "label": "Making the case and method-info panels resizable, and chasing the layout bugs that resizing introduced"
+    },
+    {
+      "nodes": [
+        "2026-07-10-extended-history-viewer-toggle",
+        "2026-07-10-extended-history-per-segment",
+        "2026-07-10-is-global-flag-inert",
+        "2026-07-13-fit-once-not-refit"
+      ],
+      "label": "Letting global methods train on more history than the shared curated span, from an inert flag to a real gain"
+    },
+    {
+      "nodes": ["2026-07-14-three-fms-added", "2026-07-15-fm-exo-variants"],
+      "label": "Adding zero-shot foundation models, then giving the covariate-capable ones exogenous variants"
+    },
+    {
+      "nodes": ["2026-07-13-metrics-mape-nse-kge", "2026-07-21-domain-controls-follow-narrowing"],
+      "label": "Adding hydrology-specific metrics, then keeping the sidebar controls honest about which cases qualify"
+    },
+    {
+      "nodes": ["2026-07-10-bottom-method-info-panel", "2026-07-13-method-info-library-cost"],
+      "label": "Growing the method-info panel from a placeholder blurb into real implementation detail"
     }
   ]
 }
@@ -1351,6 +1629,8 @@
   const nodeById = new Map(DATA.nodes.map((n) => [n.id, n]));
   const nodes = DATA.nodes.map((n) => ({ ...n, dateObj: new Date(n.date) }));
   const links = DATA.edges.map((e) => ({ ...e }));
+  const clusters = DATA.clusters || [];
+  const simNodeById = new Map(nodes.map((n) => [n.id, n]));
 
   const degree = new Map(nodes.map((n) => [n.id, 0]));
   links.forEach((e) => {
@@ -1393,6 +1673,65 @@
 
   const linkGroup = zoomLayer.append("g").attr("class", "links");
   const nodeGroup = zoomLayer.append("g").attr("class", "nodes");
+  const clusterLabelGroup = zoomLayer.append("g").attr("class", "cluster-labels");
+
+  const clusterLabel = clusterLabelGroup
+    .selectAll("text")
+    .data(clusters)
+    .join("text")
+    .attr("class", "cluster-label")
+    .text((d) => d.label);
+
+  // Centroid + PCA principal axis of a cluster's current node positions, offset
+  // perpendicular to that axis just past the node cloud so the label floats
+  // beside the subgraph oriented along its main direction, rather than sitting
+  // fixed and horizontal regardless of the shape it's describing.
+  function clusterTransform(ids) {
+    const pts = ids.map((id) => simNodeById.get(id)).filter(Boolean);
+    if (!pts.length) return null;
+    let cx = 0,
+      cy = 0;
+    pts.forEach((p) => {
+      cx += p.x;
+      cy += p.y;
+    });
+    cx /= pts.length;
+    cy /= pts.length;
+    if (pts.length === 1) return { x: cx, y: cy - 26, angle: 0 };
+
+    let sxx = 0,
+      sxy = 0,
+      syy = 0;
+    pts.forEach((p) => {
+      const dx = p.x - cx,
+        dy = p.y - cy;
+      sxx += dx * dx;
+      sxy += dx * dy;
+      syy += dy * dy;
+    });
+    sxx /= pts.length;
+    sxy /= pts.length;
+    syy /= pts.length;
+
+    let angleDeg = (0.5 * Math.atan2(2 * sxy, sxx - syy) * 180) / Math.PI;
+    angleDeg = (((angleDeg + 90) % 180) + 180) % 180 - 90; // keep text upright, never upside-down
+
+    const rad = (angleDeg * Math.PI) / 180;
+    let nx = -Math.sin(rad),
+      ny = Math.cos(rad); // normal to the principal axis
+    if (ny > 0) {
+      nx = -nx;
+      ny = -ny;
+    } // prefer floating toward the top of the screen
+
+    let reach = 0;
+    pts.forEach((p) => {
+      const proj = (p.x - cx) * nx + (p.y - cy) * ny;
+      if (proj > reach) reach = proj;
+    });
+    const offset = reach + 22;
+    return { x: cx + nx * offset, y: cy + ny * offset, angle: angleDeg };
+  }
 
   const dateExtent = d3.extent(nodes, (d) => d.dateObj);
   const xForce = d3
@@ -1553,6 +1892,13 @@
   const zoom = d3
     .zoom()
     .scaleExtent([0.3, 4])
+    .wheelDelta((event) => {
+      // Softer than d3's default (0.002 per pixel of deltaY) so a single wheel
+      // notch or trackpad tick steps the scale by a smaller factor, making it
+      // easier to land on a zoom level that fits the graph to the screen.
+      const factor = event.deltaMode === 1 ? 0.02 : event.deltaMode ? 0.2 : 0.0006;
+      return -event.deltaY * factor * (event.ctrlKey ? 10 : 1);
+    })
     .on("zoom", (event) => {
       zoomLayer.attr("transform", event.transform);
     });
@@ -1565,6 +1911,10 @@
   simulation.on("tick", () => {
     link.attr("d", linkPath);
     node.attr("transform", (d) => `translate(${d.x},${d.y})`);
+    clusterLabel.attr("transform", (d) => {
+      const t = clusterTransform(d.nodes);
+      return t ? `translate(${t.x},${t.y}) rotate(${t.angle})` : null;
+    });
   });
 
   // --- legend (static color key + edge-type key) ---
