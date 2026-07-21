@@ -10,7 +10,8 @@ import { TestSplitPlot } from './TestSplitPlot';
 import { TrainingTailPlot } from './TrainingTailPlot';
 import type { CaseMeta, ScoreRow } from '../../types/data';
 
-const CAPTION_STYLE = { color: '#666', fontSize: '0.85em', margin: '12px 0 4px 0' };
+const CAPTION_STYLE = { color: '#666', fontSize: '0.9em', margin: '12px 0 4px 0' };
+const SUBCAPTION_STYLE = { color: '#666', fontSize: '0.85em', margin: '10px 0 2px 0' };
 const SUMMARY_STYLE = { cursor: 'pointer', fontWeight: 'bold' as const, fontSize: '1em' };
 
 type Props = {
@@ -58,11 +59,14 @@ export function CasePanel({ caseId, caseMeta, scores, showGlobal }: Props) {
         <DistributionPlot distribution={distribution} caseId={caseId} />
         <p style={CAPTION_STYLE}>Train / val / test split</p>
         <ProportionsBar counts={splitCounts} caseId={caseId} />
-        <Markdown>{caseTrainingStats(caseMeta, extended)}</Markdown>
+        <Markdown>{caseTrainingStats(caseMeta, extended)}</Markdown>  
         {seasonalPatterns.length > 0 && (
           <>
             <p style={CAPTION_STYLE}>
-              Seasonal pattern (detrended). Grey dots are individual training points; the black line
+              Seasonal pattern (detrended)
+            </p>
+            <p style={SUBCAPTION_STYLE}>
+              Grey dots are individual training points; the black line
               is a smoothed curve showing the typical shape of the cycle. Zoom in (click and drag on
               a subplot) to see the pattern more clearly.
             </p>

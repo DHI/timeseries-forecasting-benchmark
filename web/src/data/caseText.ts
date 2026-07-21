@@ -30,10 +30,8 @@ export function caseSummary(caseMeta: CaseMeta): string {
  * instead — see the "Training time" control in the sidebar). */
 export function caseTrainingStats(caseMeta: CaseMeta, extended = false): string {
   const counts = extended ? caseMeta.split_counts_extended : caseMeta.split_counts;
-  const total = counts.train + counts.val + counts.test;
   return (
-    `**Samples used**: train ${NUMBER_FORMAT.format(counts.train)} · ` +
-    `val ${NUMBER_FORMAT.format(counts.val)} · test ${NUMBER_FORMAT.format(counts.test)} ` +
-    `(total ${NUMBER_FORMAT.format(total)})`
+    `Number of samples: train ${NUMBER_FORMAT.format(counts.train)} · ` +
+    `val ${NUMBER_FORMAT.format(counts.val)} · test ${NUMBER_FORMAT.format(counts.test)} `
   );
 }
