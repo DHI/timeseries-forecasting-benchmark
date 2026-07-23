@@ -362,6 +362,7 @@ export function useMatrixFigure(
       margin,
       paper_bgcolor: pt.paperBg,
       plot_bgcolor: pt.plotBg,
+      font: { color: pt.labelText },
       dragmode: false,
       xaxis: {
         side: 'bottom',

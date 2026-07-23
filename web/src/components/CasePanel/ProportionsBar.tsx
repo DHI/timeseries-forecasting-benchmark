@@ -48,7 +48,7 @@ export function ProportionsBar({ counts, caseId }: { counts: SplitCounts; caseId
       paper_bgcolor: pt.paperBg,
       plot_bgcolor: pt.plotBg,
       showlegend: false,
-      font: { family: 'system-ui, sans-serif' },
+      font: { family: 'system-ui, sans-serif', color: pt.labelText },
       xaxis: { visible: false, range: [0, 1] },
       yaxis: { visible: false },
     };

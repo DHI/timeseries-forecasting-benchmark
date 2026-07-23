@@ -59,7 +59,7 @@ export function DistributionPlot({
       margin: { l: 0, t: 10, r: 10, b: 30 },
       paper_bgcolor: pt.paperBg,
       plot_bgcolor: pt.plotBg,
-      font: { family: 'system-ui, sans-serif' },
+      font: { family: 'system-ui, sans-serif', color: pt.labelText },
       xaxis: { ...AXIS_STYLE, linecolor: pt.axisLineColor },
       yaxis: { ...AXIS_STYLE, linecolor: pt.axisLineColor, showticklabels: false },
       legend: {

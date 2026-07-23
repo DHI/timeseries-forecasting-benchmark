@@ -162,7 +162,7 @@ export function SnapshotGrid({
       margin: { l: 50, t: 30, r: 20, b: 40 },
       paper_bgcolor: pt.paperBg,
       plot_bgcolor: pt.plotBg,
-      font: { family: 'system-ui, sans-serif' },
+      font: { family: 'system-ui, sans-serif', color: pt.labelText },
       annotations,
       shapes,
       showlegend: false,

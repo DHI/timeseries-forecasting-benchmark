@@ -57,7 +57,7 @@ export function SeasonalPatternPlot({ patterns }: { patterns: SeasonalPattern[] 
       margin: { l: 0, t: 10, r: 10, b: 30 },
       paper_bgcolor: pt.paperBg,
       plot_bgcolor: pt.plotBg,
-      font: { family: 'system-ui, sans-serif' },
+      font: { family: 'system-ui, sans-serif', color: pt.labelText },
       showlegend: false,
       annotations: [],
     };
