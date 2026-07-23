@@ -25,19 +25,19 @@ export function SelectionHint() {
             refY="4"
             orient="auto"
           >
-            <path d="M0,0 L8,4 L0,8 Z" fill="#666" />
+            <path d="M0,0 L8,4 L0,8 Z" fill="var(--text-muted)" />
           </marker>
         </defs>
         <path
           d="M90,50 Q40,50 10,12"
           fill="none"
-          stroke="#666"
+          stroke="var(--text-muted)"
           strokeWidth={2}
           strokeLinecap="round"
           markerEnd="url(#selection-hint-arrowhead)"
         />
       </svg>
-      <p style={{ color: '#666', margin: 0 }}>Click a cell to inspect a case</p>
+      <p style={{ color: 'var(--text-muted)', margin: 0 }}>Click a cell to inspect a case</p>
     </div>
   );
 }

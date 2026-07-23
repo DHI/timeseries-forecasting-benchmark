@@ -33,7 +33,7 @@ const colTriangleStyle: CSSProperties = {
 
 const dimRectBaseStyle: CSSProperties = {
   position: 'absolute',
-  background: 'rgba(255, 255, 255, 0.6)',
+  background: 'var(--hover-dim-overlay)',
   pointerEvents: 'none',
   zIndex: 5,
 };
