@@ -22,7 +22,7 @@ export function MethodChips({ methods, onRemove }: Props) {
               border: `1px solid ${color}`,
               borderRadius: 14,
               padding: '2px 10px',
-              background: 'white',
+              background: 'var(--panel-bg)',
               cursor: 'pointer',
               fontSize: '0.85em',
               display: 'inline-flex',

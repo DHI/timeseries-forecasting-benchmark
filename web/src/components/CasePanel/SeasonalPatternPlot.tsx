@@ -1,6 +1,8 @@
 import { useMemo } from 'react';
 import type { Annotations, Layout, PlotData } from 'plotly.js';
 import Plot from '../../plotly';
+import { useTheme } from '../../theme/ThemeContext';
+import { getPlotTheme } from '../../theme/plotTheme';
 import type { SeasonalPattern } from '../../types/data';
 
 const ROW_HEIGHT = 210;
@@ -13,7 +15,6 @@ const AXIS_STYLE = {
   showgrid: false,
   zeroline: false,
   showline: true,
-  linecolor: 'black',
   ticks: 'outside' as const,
   automargin: true,
 };
@@ -42,8 +43,10 @@ function subplotDomain(index: number, nCols: number, nRows: number) {
  * comparable across periods. Data (scatter + curve) is precomputed server-side; see
  * `export_web_data.py`'s `_seasonal_patterns`. */
 export function SeasonalPatternPlot({ patterns }: { patterns: SeasonalPattern[] }) {
+  const { theme } = useTheme();
   const figure = useMemo(() => {
     if (patterns.length === 0) return null;
+    const pt = getPlotTheme(theme === 'dark');
     const nCols = Math.min(N_COLS, patterns.length);
     const nRows = Math.ceil(patterns.length / nCols);
 
@@ -52,9 +55,9 @@ export function SeasonalPatternPlot({ patterns }: { patterns: SeasonalPattern[] 
       autosize: true,
       height: ROW_HEIGHT * nRows,
       margin: { l: 0, t: 10, r: 10, b: 30 },
-      paper_bgcolor: 'white',
-      plot_bgcolor: 'white',
-      font: { family: 'system-ui, sans-serif' },
+      paper_bgcolor: pt.paperBg,
+      plot_bgcolor: pt.plotBg,
+      font: { family: 'system-ui, sans-serif', color: pt.labelText },
       showlegend: false,
       annotations: [],
     };
@@ -69,7 +72,7 @@ export function SeasonalPatternPlot({ patterns }: { patterns: SeasonalPattern[] 
         x: pattern.x,
         y: pattern.y,
         mode: 'markers',
-        marker: { color: 'rgba(0,0,0,0.15)', size: 4 },
+        marker: { color: pt.scatterDotColor, size: 4 },
         xaxis: `x${suffix}`,
         yaxis: `y${suffix}`,
         hoverinfo: 'skip',
@@ -79,7 +82,7 @@ export function SeasonalPatternPlot({ patterns }: { patterns: SeasonalPattern[] 
         x: pattern.curve_x,
         y: pattern.curve_y,
         mode: 'lines',
-        line: { color: 'black', width: 2 },
+        line: { color: pt.actualLineColor, width: 2 },
         xaxis: `x${suffix}`,
         yaxis: `y${suffix}`,
         hoverinfo: 'skip',
@@ -87,11 +90,13 @@ export function SeasonalPatternPlot({ patterns }: { patterns: SeasonalPattern[] 
 
       layout[`xaxis${suffix}` as 'xaxis'] = {
         ...AXIS_STYLE,
+        linecolor: pt.axisLineColor,
         domain: xDomain,
-        title: { text: '# of steps', font: { size: 10, color: '#666666' } },
+        title: { text: '# of steps', font: { size: 10, color: pt.mutedLineColor } },
       };
       layout[`yaxis${suffix}` as 'yaxis'] = {
         ...AXIS_STYLE,
+        linecolor: pt.axisLineColor,
         domain: yDomain,
         showticklabels: col === 0,
         ...(i > 0 ? { matches: 'y' } : {}),
@@ -106,13 +111,13 @@ export function SeasonalPatternPlot({ patterns }: { patterns: SeasonalPattern[] 
         xanchor: 'center',
         yanchor: 'top',
         showarrow: false,
-        font: { size: 11, color: '#444444' },
+        font: { size: 11, color: pt.labelText },
       });
     });
 
     layout.annotations = annotations;
     return { data, layout };
-  }, [patterns]);
+  }, [patterns, theme]);
 
   if (!figure) return null;
   return (

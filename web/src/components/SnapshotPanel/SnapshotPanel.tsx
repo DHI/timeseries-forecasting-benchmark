@@ -6,7 +6,7 @@ import { SnapshotGrid } from './SnapshotGrid';
 import type { CaseMeta, ScoreRow, SnapshotBundle } from '../../types/data';
 
 const SUMMARY_STYLE = { cursor: 'pointer', fontWeight: 'bold' as const, fontSize: '1em' };
-const CAPTION_STYLE = { color: '#666', fontSize: '0.85em', margin: '0 0 8px 0' };
+const CAPTION_STYLE = { color: 'var(--text-muted)', fontSize: '0.85em', margin: '0 0 8px 0' };
 
 type Props = {
   caseId: string;
@@ -41,7 +41,7 @@ function SnapshotPanelComponent({
 
   if (methods.length === 0) {
     return (
-      <p style={{ color: '#666' }}>
+      <p style={{ color: 'var(--text-muted)' }}>
         Click a matrix cell to see real forecast snapshots: the best, median, and worst performing
         origins, by the metric selected above, for that method. Click more cells in the same row to
         overlay other methods on those same origins.

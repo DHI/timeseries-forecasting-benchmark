@@ -5,6 +5,7 @@ import { computeHoverOverlay } from './hoverGeometry';
 import type { HoverOverlay, PlotlyGraphDiv } from './hoverGeometry';
 import { HoverTooltips } from './HoverTooltips';
 import { useMatrixFigure } from './useMatrixFigure';
+import { useTheme } from '../../theme/ThemeContext';
 import type { SelectionState } from '../../state/selectionReducer';
 import type { ScoreRow } from '../../types/data';
 
@@ -50,6 +51,7 @@ function MatrixGraphComponent({
   showTrainingTime,
   onCellClick,
 }: Props) {
+  const { theme } = useTheme();
   const figure = useMatrixFigure(
     rows,
     metric,
@@ -57,6 +59,7 @@ function MatrixGraphComponent({
     showGlobal,
     showExogenous,
     showTrainingTime,
+    theme === 'dark',
   );
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const graphRef = useRef<HTMLDivElement | null>(null);

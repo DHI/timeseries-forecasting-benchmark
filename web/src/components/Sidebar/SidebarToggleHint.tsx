@@ -22,19 +22,19 @@ export function SidebarToggleHint() {
             refY="4"
             orient="auto"
           >
-            <path d="M0,0 L8,4 L0,8 Z" fill="#666" />
+            <path d="M0,0 L8,4 L0,8 Z" fill="var(--text-muted)" />
           </marker>
         </defs>
         <path
           d="M75,50 Q30,45 12,10"
           fill="none"
-          stroke="#666"
+          stroke="var(--text-muted)"
           strokeWidth={2}
           strokeLinecap="round"
           markerEnd="url(#sidebar-toggle-hint-arrowhead)"
         />
       </svg>
-      <p style={{ color: '#666', margin: 0 }}>Reveal controls panel</p>
+      <p style={{ color: 'var(--text-muted)', margin: 0 }}>Reveal controls panel</p>
     </div>
   );
 }

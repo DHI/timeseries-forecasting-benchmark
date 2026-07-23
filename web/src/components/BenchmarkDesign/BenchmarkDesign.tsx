@@ -1,4 +1,4 @@
-const TEXT_STYLE = { color: '#444', maxWidth: 1000 };
+const TEXT_STYLE = { color: 'var(--text-secondary)', maxWidth: 1000 };
 
 /** Static methodology writeup below the matrix: splits, curation, model parameters, case
  * description, and exogenous-input handling. Port of app/app.py's "Benchmark Design" section. */
