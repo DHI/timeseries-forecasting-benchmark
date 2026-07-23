@@ -8,7 +8,7 @@ import type { CaseMeta, MethodMeta } from '../../types/data';
 const CARD_MIN_WIDTH = 220;
 const DEFAULT_CONTENT_HEIGHT = 220;
 const MIN_CONTENT_HEIGHT = 120;
-const MAX_CONTENT_HEIGHT = 520;
+const MAX_CONTENT_HEIGHT = 800;
 
 type Props = {
   method: string;
