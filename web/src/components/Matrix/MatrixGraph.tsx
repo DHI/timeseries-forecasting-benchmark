@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { memo, useCallback, useRef, useState } from 'react';
 import type { Config } from 'plotly.js';
 import Plot from '../../plotly';
 import { computeHoverOverlay } from './hoverGeometry';
@@ -41,7 +41,7 @@ type Props = {
   onCellClick: (caseId: string, method: string) => void;
 };
 
-export function MatrixGraph({
+function MatrixGraphComponent({
   rows,
   metric,
   selection,
@@ -117,3 +117,5 @@ export function MatrixGraph({
     </div>
   );
 }
+
+export const MatrixGraph = memo(MatrixGraphComponent);

@@ -1,3 +1,4 @@
+import { memo, useMemo } from 'react';
 import { effectiveMethod } from '../../data/selectors';
 import { MethodInfoCard } from './MethodInfoCard';
 import type { CaseMeta, MethodRegistry, ScoreRow } from '../../types/data';
@@ -19,7 +20,7 @@ type Props = {
  * the case detail panel. Fixed (not sticky) so the cards never affect the matrix column's own
  * scroll height — they float on top of its content instead. Port of app/app.py's
  * `method-info-panel` / `render_method_info_panel`. */
-export function MethodInfoPanel({
+function MethodInfoPanelComponent({
   caseId,
   caseMeta,
   methodsRegistry,
@@ -29,9 +30,12 @@ export function MethodInfoPanel({
   leftInset,
   rightInset,
 }: Props) {
-  if (!caseId || !caseMeta || methods.length === 0) return null;
+  const effectiveMethods = useMemo(
+    () => (caseId ? methods.map((m) => effectiveMethod(scores, caseId, m, showExogenous)) : []),
+    [scores, caseId, methods, showExogenous],
+  );
 
-  const effectiveMethods = methods.map((m) => effectiveMethod(scores, caseId, m, showExogenous));
+  if (!caseId || !caseMeta || methods.length === 0) return null;
 
   return (
     <div
@@ -61,3 +65,5 @@ export function MethodInfoPanel({
     </div>
   );
 }
+
+export const MethodInfoPanel = memo(MethodInfoPanelComponent);

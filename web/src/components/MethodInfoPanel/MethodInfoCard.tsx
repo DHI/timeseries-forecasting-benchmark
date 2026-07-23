@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import Markdown from 'react-markdown';
-import { METHOD_COLORS } from '../../data/constants';
+import { METHOD_COLORS, TITLE_BAR_HEIGHT } from '../../data/constants';
 import { useEdgeResize } from '../../hooks/useEdgeResize';
 import { methodInfo, methodInfoDetail } from '../../data/methodText';
 import type { CaseMeta, MethodMeta } from '../../types/data';
@@ -8,12 +8,7 @@ import type { CaseMeta, MethodMeta } from '../../types/data';
 const CARD_MIN_WIDTH = 220;
 const DEFAULT_CONTENT_HEIGHT = 220;
 const MIN_CONTENT_HEIGHT = 120;
-const MAX_CONTENT_HEIGHT = 520;
-
-/** A collapsed card is exactly the title bar. Exported so the page can reserve enough space
- * below its scrollable content that a collapsed card (the shortest the fixed-overlay card row
- * ever gets) never overlaps the last line of text above it. */
-export const TITLE_BAR_HEIGHT = 34;
+const MAX_CONTENT_HEIGHT = 800;
 
 type Props = {
   method: string;
@@ -28,7 +23,7 @@ type Props = {
  * sits alone at the bottom edge); expanded, its content height is user-adjustable by dragging the
  * title bar. Colour-matched to that method's chip/forecast line. Port of app/app.py's
  * `_method_info_cards`. */
-export function MethodInfoCard({ method, index, caseMeta, methodMeta }: Props) {
+function MethodInfoCardComponent({ method, index, caseMeta, methodMeta }: Props) {
   const [collapsed, setCollapsed] = useState(false);
   const [contentHeight, setContentHeight] = useState(DEFAULT_CONTENT_HEIGHT);
   const color = METHOD_COLORS[index % METHOD_COLORS.length];
@@ -131,3 +126,5 @@ export function MethodInfoCard({ method, index, caseMeta, methodMeta }: Props) {
     </div>
   );
 }
+
+export const MethodInfoCard = memo(MethodInfoCardComponent);

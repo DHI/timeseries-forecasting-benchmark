@@ -1,3 +1,4 @@
+import { memo, useMemo } from 'react';
 import { useJsonData } from '../../data/loadData';
 import { effectiveMethod } from '../../data/selectors';
 import { MethodChips } from './MethodChips';
@@ -21,7 +22,7 @@ type Props = {
 
 /** Below the case panel: the curated forecast-snapshot grid for the selected case and up
  * to 3 selected methods. Port of app/app.py's `render_panel`. */
-export function SnapshotPanel({
+function SnapshotPanelComponent({
   caseId,
   caseMeta,
   scores,
@@ -33,6 +34,10 @@ export function SnapshotPanel({
   onClear,
 }: Props) {
   const bundleState = useJsonData<SnapshotBundle>(`data/snapshots/${caseId}.json`);
+  const effectiveMethods = useMemo(
+    () => methods.map((m) => effectiveMethod(scores, caseId, m, showExogenous)),
+    [scores, caseId, methods, showExogenous],
+  );
 
   if (methods.length === 0) {
     return (
@@ -53,14 +58,17 @@ export function SnapshotPanel({
     );
   }
 
-  const effectiveMethods = methods.map((m) => effectiveMethod(scores, caseId, m, showExogenous));
-
   return (
     <div>
       <details open>
         <summary style={SUMMARY_STYLE}>Prediction snapshots</summary>
         <p style={CAPTION_STYLE}>
-          The following snapshots belong to the test split and were selected for exhibiting the best/median/worst <b>{effectiveMethods[0]}&apos;s {metric}</b>. The black line represents the actual target values.
+          The following snapshots belong to the test split and were selected for exhibiting the
+          best/median/worst{' '}
+          <b>
+            {effectiveMethods[0]}&apos;s {metric}
+          </b>
+          . The black line represents the actual target values.
         </p>
         <div
           style={{
@@ -88,3 +96,5 @@ export function SnapshotPanel({
     </div>
   );
 }
+
+export const SnapshotPanel = memo(SnapshotPanelComponent);
