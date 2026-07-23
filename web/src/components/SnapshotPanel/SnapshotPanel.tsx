@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
 import { useJsonData } from '../../data/loadData';
 import { effectiveMethod } from '../../data/selectors';
 import { MethodChips } from './MethodChips';
@@ -34,6 +34,10 @@ function SnapshotPanelComponent({
   onClear,
 }: Props) {
   const bundleState = useJsonData<SnapshotBundle>(`data/snapshots/${caseId}.json`);
+  const effectiveMethods = useMemo(
+    () => methods.map((m) => effectiveMethod(scores, caseId, m, showExogenous)),
+    [scores, caseId, methods, showExogenous],
+  );
 
   if (methods.length === 0) {
     return (
@@ -53,8 +57,6 @@ function SnapshotPanelComponent({
       </p>
     );
   }
-
-  const effectiveMethods = methods.map((m) => effectiveMethod(scores, caseId, m, showExogenous));
 
   return (
     <div>

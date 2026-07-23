@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
 import { effectiveMethod } from '../../data/selectors';
 import { MethodInfoCard } from './MethodInfoCard';
 import type { CaseMeta, MethodRegistry, ScoreRow } from '../../types/data';
@@ -30,9 +30,12 @@ function MethodInfoPanelComponent({
   leftInset,
   rightInset,
 }: Props) {
-  if (!caseId || !caseMeta || methods.length === 0) return null;
+  const effectiveMethods = useMemo(
+    () => (caseId ? methods.map((m) => effectiveMethod(scores, caseId, m, showExogenous)) : []),
+    [scores, caseId, methods, showExogenous],
+  );
 
-  const effectiveMethods = methods.map((m) => effectiveMethod(scores, caseId, m, showExogenous));
+  if (!caseId || !caseMeta || methods.length === 0) return null;
 
   return (
     <div
