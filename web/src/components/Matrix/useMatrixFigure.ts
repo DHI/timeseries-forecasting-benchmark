@@ -232,7 +232,9 @@ export function useMatrixFigure(
           yref: 'y',
           text: isBest ? `<b>${text[r]![c]}</b>` : text[r]![c],
           showarrow: false,
-          font: { size: isBest ? 13 : 10, color: isDarkCell ? '#f5f5f5' : undefined },
+          // Explicit black/light split (not `undefined`) so this stays keyed only to the
+          // cell's own color, independent of layout.font.color (the page-theme label color).
+          font: { size: isBest ? 13 : 10, color: isDarkCell ? '#f5f5f5' : '#000000' },
         });
       });
     });
