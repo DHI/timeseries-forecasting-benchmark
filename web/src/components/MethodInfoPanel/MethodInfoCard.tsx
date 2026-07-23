@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import Markdown from 'react-markdown';
 import { METHOD_COLORS } from '../../data/constants';
 import { useEdgeResize } from '../../hooks/useEdgeResize';
@@ -28,7 +28,7 @@ type Props = {
  * sits alone at the bottom edge); expanded, its content height is user-adjustable by dragging the
  * title bar. Colour-matched to that method's chip/forecast line. Port of app/app.py's
  * `_method_info_cards`. */
-export function MethodInfoCard({ method, index, caseMeta, methodMeta }: Props) {
+function MethodInfoCardComponent({ method, index, caseMeta, methodMeta }: Props) {
   const [collapsed, setCollapsed] = useState(false);
   const [contentHeight, setContentHeight] = useState(DEFAULT_CONTENT_HEIGHT);
   const color = METHOD_COLORS[index % METHOD_COLORS.length];
@@ -131,3 +131,5 @@ export function MethodInfoCard({ method, index, caseMeta, methodMeta }: Props) {
     </div>
   );
 }
+
+export const MethodInfoCard = memo(MethodInfoCardComponent);
