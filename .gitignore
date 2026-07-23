@@ -42,3 +42,5 @@ _site/
 
 web/node_modules/
 web/dist/
+
+.agents/
