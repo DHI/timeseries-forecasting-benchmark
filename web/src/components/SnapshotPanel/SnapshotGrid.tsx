@@ -4,6 +4,8 @@ import type { Annotations, AxisName, Data, Layout, LayoutAxis, Shape } from 'plo
 import Plot from '../../plotly';
 import { METHOD_COLORS } from '../../data/constants';
 import { freqToMs } from '../../data/freq';
+import { useTheme } from '../../theme/ThemeContext';
+import { getPlotTheme } from '../../theme/plotTheme';
 import { snapshotPanelLayout } from './snapshotLayout';
 import type { CaseMeta, PredictionVariant, SnapshotBundle } from '../../types/data';
 
@@ -11,7 +13,6 @@ const AXIS_STYLE = {
   showgrid: false,
   zeroline: false,
   showline: true,
-  linecolor: 'black',
   ticks: 'outside' as const,
 };
 
@@ -53,6 +54,7 @@ export function SnapshotGrid({
   metric,
   showGlobal,
 }: Props) {
+  const { theme } = useTheme();
   const figure = useMemo(() => {
     if (effectiveMethods.length === 0) return null;
     const anchor = effectiveMethods[0]!;
@@ -62,6 +64,7 @@ export function SnapshotGrid({
       return { empty: `No observed actuals to score any stored origin for ${caseId}.` };
     }
 
+    const pt = getPlotTheme(theme === 'dark');
     const step = freqToMs(caseMeta.freq);
     const originById = new Map(bundle.origins.map((o) => [o.origin_id, o]));
     const panels = snapshotPanelLayout(curated.length, 1);
@@ -92,7 +95,7 @@ export function SnapshotGrid({
         x: timestamps,
         y: actualValues,
         name: 'Actual',
-        line: { color: 'black', width: 1 },
+        line: { color: pt.actualLineColor, width: 1 },
         xaxis: axes.xaxisRef,
         yaxis: axes.yaxisRef,
       } as Data);
@@ -123,7 +126,7 @@ export function SnapshotGrid({
         x1: originIso,
         y0: 0,
         y1: 1,
-        line: { color: '#888888', dash: 'dash', width: 1 },
+        line: { color: pt.mutedLineColor, dash: 'dash', width: 1 },
       });
 
       annotations.push({
@@ -135,18 +138,20 @@ export function SnapshotGrid({
         yshift: 4,
         text: `${entry.label} · (${metric} ${fmt(entry.value)})`,
         showarrow: false,
-        font: { size: 12 },
+        font: { size: 12, color: pt.labelText },
       });
 
       axisLayout[axes.xaxisKey] = {
         domain: axes.xDomain,
         anchor: axes.yaxisRef as AxisName,
         ...X_AXIS_STYLE,
+        linecolor: pt.axisLineColor,
       };
       axisLayout[axes.yaxisKey] = {
         domain: axes.yDomain,
         anchor: axes.xaxisRef as AxisName,
         ...AXIS_STYLE,
+        linecolor: pt.axisLineColor,
       };
     });
 
@@ -155,8 +160,8 @@ export function SnapshotGrid({
       autosize: true,
       height: 220 * curated.length + 30,
       margin: { l: 50, t: 30, r: 20, b: 40 },
-      paper_bgcolor: 'white',
-      plot_bgcolor: 'white',
+      paper_bgcolor: pt.paperBg,
+      plot_bgcolor: pt.plotBg,
       font: { family: 'system-ui, sans-serif' },
       annotations,
       shapes,
@@ -164,10 +169,10 @@ export function SnapshotGrid({
     };
 
     return { data, layout };
-  }, [bundle, effectiveMethods, metric, showGlobal, caseId, caseMeta.freq]);
+  }, [bundle, effectiveMethods, metric, showGlobal, caseId, caseMeta.freq, theme]);
 
   if (!figure) return null;
-  if ('empty' in figure) return <p style={{ color: '#666' }}>{figure.empty}</p>;
+  if ('empty' in figure) return <p style={{ color: 'var(--text-muted)' }}>{figure.empty}</p>;
   return (
     <Plot
       data={figure.data}
