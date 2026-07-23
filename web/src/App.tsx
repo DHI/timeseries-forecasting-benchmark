@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo } from 'react';
 import { DomainChecklist } from './components/Sidebar/DomainChecklist';
 import { FamilyMultiSelect } from './components/Sidebar/FamilyMultiSelect';
 import { HoldTrainingTimeButton } from './components/Sidebar/HoldTrainingTimeButton';
@@ -10,14 +10,10 @@ import { ToggleGlobal } from './components/Sidebar/ToggleGlobal';
 import { MatrixGraph } from './components/Matrix/MatrixGraph';
 import { SelectionHint } from './components/Matrix/SelectionHint';
 import { BenchmarkDesign } from './components/BenchmarkDesign/BenchmarkDesign';
-import { CasePanel } from './components/CasePanel/CasePanel';
 import { InstructionsModal } from './components/InstructionsModal/InstructionsModal';
-import { MethodInfoPanel } from './components/MethodInfoPanel/MethodInfoPanel';
-import { TITLE_BAR_HEIGHT } from './components/MethodInfoPanel/MethodInfoCard';
-import { SnapshotPanel } from './components/SnapshotPanel/SnapshotPanel';
 import { useEdgeResize } from './hooks/useEdgeResize';
 import { DOMAIN_RESTRICTED_METRICS } from './data/metricConfig';
-import { TRAINING_TIME_MIN_ROWS } from './data/constants';
+import { TITLE_BAR_HEIGHT, TRAINING_TIME_MIN_ROWS } from './data/constants';
 import {
   casesEligibleForMetric,
   domainOptions,
@@ -34,6 +30,21 @@ import {
   useAppState,
 } from './state/AppStateContext';
 import type { CaseRegistry, MethodRegistry, ScoreRow } from './types/data';
+
+// Only rendered once a matrix cell is selected, and each pulls in its own Plotly traces
+// and/or react-markdown — split into their own chunks so the always-visible matrix view
+// doesn't pay for them upfront.
+const CasePanel = lazy(() =>
+  import('./components/CasePanel/CasePanel').then((m) => ({ default: m.CasePanel })),
+);
+const SnapshotPanel = lazy(() =>
+  import('./components/SnapshotPanel/SnapshotPanel').then((m) => ({ default: m.SnapshotPanel })),
+);
+const MethodInfoPanel = lazy(() =>
+  import('./components/MethodInfoPanel/MethodInfoPanel').then((m) => ({
+    default: m.MethodInfoPanel,
+  })),
+);
 
 function App() {
   const scores = useJsonData<ScoreRow[]>('data/scores.json');
@@ -201,8 +212,7 @@ function MainLayout({
   // zone, so leaving/re-entering it (or switching metrics within it) needs a full remount
   // rather than relying on Plotly's in-place update. Keying on the metric only while short
   // avoids remounting on every ordinary (>=4-row) metric switch, where react() already works.
-  const matrixKey =
-    matrixRowCount < TRAINING_TIME_MIN_ROWS ? `${state.metric}-short` : 'full';
+  const matrixKey = matrixRowCount < TRAINING_TIME_MIN_ROWS ? `${state.metric}-short` : 'full';
   const handleTrainingTimeChange = useCallback(
     (active: boolean) => {
       // Only block turning the overlay *on* for a too-short matrix; always let an
@@ -308,7 +318,7 @@ function MainLayout({
                 disabled={trainingTimeDisabled}
                 title={
                   trainingTimeDisabled
-                    ? "Disabled for this short a matrix — see the note below"
+                    ? 'Disabled for this short a matrix — see the note below'
                     : undefined
                 }
               />
@@ -372,16 +382,18 @@ function MainLayout({
         </div>
         <div style={{ height: TITLE_BAR_HEIGHT }} />
       </main>
-      <MethodInfoPanel
-        caseId={state.selection.case_id}
-        caseMeta={selectedCase}
-        methodsRegistry={methods}
-        scores={scores}
-        methods={state.selection.methods}
-        showExogenous={state.showExogenous}
-        leftInset={sidebarWidth}
-        rightInset={casePanelWidth}
-      />
+      <Suspense fallback={null}>
+        <MethodInfoPanel
+          caseId={state.selection.case_id}
+          caseMeta={selectedCase}
+          methodsRegistry={methods}
+          scores={scores}
+          methods={state.selection.methods}
+          showExogenous={state.showExogenous}
+          leftInset={sidebarWidth}
+          rightInset={casePanelWidth}
+        />
+      </Suspense>
       {selectedCase && (
         <div
           style={{
@@ -417,23 +429,25 @@ function MainLayout({
               overflowY: 'auto',
             }}
           >
-            <CasePanel
-              caseId={state.selection.case_id!}
-              caseMeta={selectedCase}
-              scores={scores}
-              showGlobal={state.showGlobal}
-            />
-            <SnapshotPanel
-              caseId={state.selection.case_id!}
-              caseMeta={selectedCase}
-              scores={scores}
-              methods={state.selection.methods}
-              metric={state.metric}
-              showGlobal={state.showGlobal}
-              showExogenous={state.showExogenous}
-              onRemoveMethod={handleRemoveMethod}
-              onClear={handleClear}
-            />
+            <Suspense fallback={<p>Loading case details…</p>}>
+              <CasePanel
+                caseId={state.selection.case_id!}
+                caseMeta={selectedCase}
+                scores={scores}
+                showGlobal={state.showGlobal}
+              />
+              <SnapshotPanel
+                caseId={state.selection.case_id!}
+                caseMeta={selectedCase}
+                scores={scores}
+                methods={state.selection.methods}
+                metric={state.metric}
+                showGlobal={state.showGlobal}
+                showExogenous={state.showExogenous}
+                onRemoveMethod={handleRemoveMethod}
+                onClear={handleClear}
+              />
+            </Suspense>
           </div>
         </div>
       )}

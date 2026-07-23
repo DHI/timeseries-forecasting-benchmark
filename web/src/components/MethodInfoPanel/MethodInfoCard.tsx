@@ -1,6 +1,6 @@
 import { memo, useState } from 'react';
 import Markdown from 'react-markdown';
-import { METHOD_COLORS } from '../../data/constants';
+import { METHOD_COLORS, TITLE_BAR_HEIGHT } from '../../data/constants';
 import { useEdgeResize } from '../../hooks/useEdgeResize';
 import { methodInfo, methodInfoDetail } from '../../data/methodText';
 import type { CaseMeta, MethodMeta } from '../../types/data';
@@ -9,11 +9,6 @@ const CARD_MIN_WIDTH = 220;
 const DEFAULT_CONTENT_HEIGHT = 220;
 const MIN_CONTENT_HEIGHT = 120;
 const MAX_CONTENT_HEIGHT = 520;
-
-/** A collapsed card is exactly the title bar. Exported so the page can reserve enough space
- * below its scrollable content that a collapsed card (the shortest the fixed-overlay card row
- * ever gets) never overlaps the last line of text above it. */
-export const TITLE_BAR_HEIGHT = 34;
 
 type Props = {
   method: string;
