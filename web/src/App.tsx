@@ -252,7 +252,7 @@ function MainLayout({
           style={{
             width: sidebarWidth,
             height: '100%',
-            background: 'var(--panel-bg)',
+            background: 'var(--bg)',
             borderRight: state.sidebarCollapsed ? 'none' : '2px solid var(--border)',
             overflow: 'hidden',
             boxSizing: 'border-box',
