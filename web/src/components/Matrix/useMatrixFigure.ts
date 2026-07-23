@@ -14,6 +14,7 @@ import {
   rowBestMethods,
 } from '../../data/selectors';
 import { exogenousOverlayShapes, globalOverlayShapes, selectionShapes } from './overlayShapes';
+import { getPlotTheme } from '../../theme/plotTheme';
 import type { SelectionState } from '../../state/selectionReducer';
 import type { ScoreRow } from '../../types/data';
 
@@ -95,9 +96,11 @@ export function useMatrixFigure(
   showGlobal: boolean,
   showExo: boolean,
   showTrainingTime: boolean,
+  isDark: boolean = false,
 ): MatrixFigure | null {
   return useMemo(() => {
     if (!metric || rows.length === 0) return null;
+    const pt = getPlotTheme(isDark);
 
     // When the training-time overlay is held, every cell pivots on `seconds` instead of
     // `value` — including the showGlobal/showExo swap-in cells below — so the whole
@@ -229,14 +232,16 @@ export function useMatrixFigure(
           yref: 'y',
           text: isBest ? `<b>${text[r]![c]}</b>` : text[r]![c],
           showarrow: false,
-          font: { size: isBest ? 13 : 10, color: isDarkCell ? '#f5f5f5' : undefined },
+          // Explicit black/light split (not `undefined`) so this stays keyed only to the
+          // cell's own color, independent of layout.font.color (the page-theme label color).
+          font: { size: isBest ? 13 : 10, color: isDarkCell ? '#f5f5f5' : '#000000' },
         });
       });
     });
 
     const nRows = rowOrder.length;
     const nCols = colOrder.length;
-    const boundaryLine = { color: 'white', width: 4 };
+    const boundaryLine = { color: pt.boundaryLineColor, width: 4 };
     const shapes: Partial<Shape>[] = [
       ...groupBoundaries(rowOrder, domainOf).map((y): Partial<Shape> => ({
         type: 'line',
@@ -269,7 +274,7 @@ export function useMatrixFigure(
         yshift: 6,
         text: `<b>${formatSnakeCaseLabel(label, '<br>')}</b>`,
         showarrow: false,
-        font: { size: 13 },
+        font: { size: 13, color: pt.labelText },
       });
     }
     for (const [pos, label] of groupLabels(rowOrder, domainOf)) {
@@ -282,7 +287,7 @@ export function useMatrixFigure(
         xshift: -6,
         text: `<b>${DOMAIN_KEY_DICT[label] ?? label}</b>`,
         showarrow: false,
-        font: { size: 13 },
+        font: { size: 13, color: pt.labelText },
         textangle: '-90',
       });
     }
@@ -357,8 +362,9 @@ export function useMatrixFigure(
       // out of sync — the heatmap's pixel area is exactly width - (margin.l + margin.r).
       width: CELL * nCols + (margin.l ?? 0) + (margin.r ?? 0),
       margin,
-      paper_bgcolor: 'white',
-      plot_bgcolor: 'white',
+      paper_bgcolor: pt.paperBg,
+      plot_bgcolor: pt.plotBg,
+      font: { color: pt.labelText },
       dragmode: false,
       xaxis: {
         side: 'bottom',
@@ -381,5 +387,5 @@ export function useMatrixFigure(
     };
 
     return { data: [heatmap as Data], layout, rowOrder, colOrder };
-  }, [rows, metric, selection, showGlobal, showExo, showTrainingTime]);
+  }, [rows, metric, selection, showGlobal, showExo, showTrainingTime, isDark]);
 }

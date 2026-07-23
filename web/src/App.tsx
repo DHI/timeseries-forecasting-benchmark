@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo } from 'react';
 import { DomainChecklist } from './components/Sidebar/DomainChecklist';
 import { FamilyMultiSelect } from './components/Sidebar/FamilyMultiSelect';
 import { HoldTrainingTimeButton } from './components/Sidebar/HoldTrainingTimeButton';
@@ -10,14 +10,10 @@ import { ToggleGlobal } from './components/Sidebar/ToggleGlobal';
 import { MatrixGraph } from './components/Matrix/MatrixGraph';
 import { SelectionHint } from './components/Matrix/SelectionHint';
 import { BenchmarkDesign } from './components/BenchmarkDesign/BenchmarkDesign';
-import { CasePanel } from './components/CasePanel/CasePanel';
 import { InstructionsModal } from './components/InstructionsModal/InstructionsModal';
-import { MethodInfoPanel } from './components/MethodInfoPanel/MethodInfoPanel';
-import { TITLE_BAR_HEIGHT } from './components/MethodInfoPanel/MethodInfoCard';
-import { SnapshotPanel } from './components/SnapshotPanel/SnapshotPanel';
 import { useEdgeResize } from './hooks/useEdgeResize';
 import { DOMAIN_RESTRICTED_METRICS } from './data/metricConfig';
-import { TRAINING_TIME_MIN_ROWS } from './data/constants';
+import { TITLE_BAR_HEIGHT, TRAINING_TIME_MIN_ROWS } from './data/constants';
 import {
   casesEligibleForMetric,
   domainOptions,
@@ -27,6 +23,7 @@ import {
   orderedCases,
 } from './data/selectors';
 import { useJsonData } from './data/loadData';
+import { ThemeProvider, useTheme } from './theme/ThemeContext';
 import {
   AppStateProvider,
   initialAppState,
@@ -35,7 +32,30 @@ import {
 } from './state/AppStateContext';
 import type { CaseRegistry, MethodRegistry, ScoreRow } from './types/data';
 
+// Only rendered once a matrix cell is selected, and each pulls in its own Plotly traces
+// and/or react-markdown — split into their own chunks so the always-visible matrix view
+// doesn't pay for them upfront.
+const CasePanel = lazy(() =>
+  import('./components/CasePanel/CasePanel').then((m) => ({ default: m.CasePanel })),
+);
+const SnapshotPanel = lazy(() =>
+  import('./components/SnapshotPanel/SnapshotPanel').then((m) => ({ default: m.SnapshotPanel })),
+);
+const MethodInfoPanel = lazy(() =>
+  import('./components/MethodInfoPanel/MethodInfoPanel').then((m) => ({
+    default: m.MethodInfoPanel,
+  })),
+);
+
 function App() {
+  return (
+    <ThemeProvider>
+      <AppContent />
+    </ThemeProvider>
+  );
+}
+
+function AppContent() {
   const scores = useJsonData<ScoreRow[]>('data/scores.json');
   const methods = useJsonData<MethodRegistry>('data/methods.json');
   const cases = useJsonData<CaseRegistry>('data/cases.json');
@@ -201,8 +221,7 @@ function MainLayout({
   // zone, so leaving/re-entering it (or switching metrics within it) needs a full remount
   // rather than relying on Plotly's in-place update. Keying on the metric only while short
   // avoids remounting on every ordinary (>=4-row) metric switch, where react() already works.
-  const matrixKey =
-    matrixRowCount < TRAINING_TIME_MIN_ROWS ? `${state.metric}-short` : 'full';
+  const matrixKey = matrixRowCount < TRAINING_TIME_MIN_ROWS ? `${state.metric}-short` : 'full';
   const handleTrainingTimeChange = useCallback(
     (active: boolean) => {
       // Only block turning the overlay *on* for a too-short matrix; always let an
@@ -212,6 +231,8 @@ function MainLayout({
     },
     [trainingTimeDisabled, dispatch],
   );
+
+  const { theme, toggle: toggleTheme } = useTheme();
 
   const sidebarWidth = state.sidebarCollapsed ? 0 : 260;
   const selectedCase = state.selection.case_id ? cases[state.selection.case_id] : undefined;
@@ -231,7 +252,7 @@ function MainLayout({
           style={{
             width: sidebarWidth,
             height: '100%',
-            background: 'var(--panel-bg)',
+            background: 'var(--bg)',
             borderRight: state.sidebarCollapsed ? 'none' : '2px solid var(--border)',
             overflow: 'hidden',
             boxSizing: 'border-box',
@@ -253,7 +274,7 @@ function MainLayout({
                 value={state.metric}
                 onChange={(metric) => dispatch({ type: 'SET_METRIC', metric })}
               />
-              <p style={{ color: '#666', fontSize: '0.8em', marginTop: 4 }}>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.8em', marginTop: 4 }}>
                 NSE and KGE only apply to cases whose case.toml declares them (flow/level domains) —
                 the matrix rows narrow to just those cases when one is selected.
               </p>
@@ -281,7 +302,7 @@ function MainLayout({
               />
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginTop: 4 }}>
                 <MarkerSwatch corner="top-right" color="#FF1493" />
-                <p style={{ color: '#666', fontSize: '0.8em', margin: 0 }}>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.8em', margin: 0 }}>
                   Some global models have been trained with longer history.
                 </p>
               </div>
@@ -294,7 +315,7 @@ function MainLayout({
               />
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginTop: 4 }}>
                 <MarkerSwatch corner="bottom-left" color="#0B7285" />
-                <p style={{ color: '#666', fontSize: '0.8em', margin: 0 }}>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.8em', margin: 0 }}>
                   Where a method has an exogenous-aware variant and the case provides exogenous
                   data, this swaps in that variant's score for the cell. Cases or methods without an
                   exogenous option are unaffected.
@@ -308,17 +329,17 @@ function MainLayout({
                 disabled={trainingTimeDisabled}
                 title={
                   trainingTimeDisabled
-                    ? "Disabled for this short a matrix — see the note below"
+                    ? 'Disabled for this short a matrix — see the note below'
                     : undefined
                 }
               />
-              <p style={{ color: '#666', fontSize: '0.8em', marginTop: 4 }}>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.8em', marginTop: 4 }}>
                 Press and hold to show each cell's measured training time instead of its score. You
                 can still hover around matrix cells while holding the button. You can also hold the
                 space bar to do the same thing without clicking.
               </p>
               {trainingTimeDisabled && (
-                <p style={{ color: '#b45309', fontSize: '0.8em', marginTop: 4 }}>
+                <p style={{ color: 'var(--warning-text)', fontSize: '0.8em', marginTop: 4 }}>
                   Training time can't be shown for a matrix this short — a Plotly rendering bug
                   leaves the cells blank instead of updating. Select more domains or a
                   less-restrictive metric to check training time.
@@ -342,6 +363,20 @@ function MainLayout({
         >
           {state.sidebarCollapsed ? '▶' : '◀'}
         </button>
+        <button
+          type="button"
+          title="Toggle dark mode"
+          onClick={toggleTheme}
+          style={{
+            position: 'absolute',
+            top: 16,
+            left: (state.sidebarCollapsed ? 4 : sidebarWidth) + 32,
+            background: 'var(--bg)',
+            cursor: 'pointer',
+          }}
+        >
+          {theme === 'dark' ? '☀' : '🌙'}
+        </button>
         {state.sidebarCollapsed && <SidebarToggleHint />}
       </div>
       <main style={{ flex: 1, padding: 16, minWidth: 0, overflowX: 'auto' }}>
@@ -350,7 +385,7 @@ function MainLayout({
             <h1 style={{ margin: 0 }}>Timeseries Forecasting Benchmark</h1>
             <InstructionsModal />
           </div>
-          <p style={{ color: '#444', maxWidth: 1000 }}>
+          <p style={{ color: 'var(--text-secondary)', maxWidth: 1000 }}>
             The following matrix compiles the forecasting results of multiple methods across a
             variety of timeseries in different water domains. Each cell represents one case x method
             run, coloured by the metric chosen in the sidebar.
@@ -372,16 +407,18 @@ function MainLayout({
         </div>
         <div style={{ height: TITLE_BAR_HEIGHT }} />
       </main>
-      <MethodInfoPanel
-        caseId={state.selection.case_id}
-        caseMeta={selectedCase}
-        methodsRegistry={methods}
-        scores={scores}
-        methods={state.selection.methods}
-        showExogenous={state.showExogenous}
-        leftInset={sidebarWidth}
-        rightInset={casePanelWidth}
-      />
+      <Suspense fallback={null}>
+        <MethodInfoPanel
+          caseId={state.selection.case_id}
+          caseMeta={selectedCase}
+          methodsRegistry={methods}
+          scores={scores}
+          methods={state.selection.methods}
+          showExogenous={state.showExogenous}
+          leftInset={sidebarWidth}
+          rightInset={casePanelWidth}
+        />
+      </Suspense>
       {selectedCase && (
         <div
           style={{
@@ -417,23 +454,25 @@ function MainLayout({
               overflowY: 'auto',
             }}
           >
-            <CasePanel
-              caseId={state.selection.case_id!}
-              caseMeta={selectedCase}
-              scores={scores}
-              showGlobal={state.showGlobal}
-            />
-            <SnapshotPanel
-              caseId={state.selection.case_id!}
-              caseMeta={selectedCase}
-              scores={scores}
-              methods={state.selection.methods}
-              metric={state.metric}
-              showGlobal={state.showGlobal}
-              showExogenous={state.showExogenous}
-              onRemoveMethod={handleRemoveMethod}
-              onClear={handleClear}
-            />
+            <Suspense fallback={<p>Loading case details…</p>}>
+              <CasePanel
+                caseId={state.selection.case_id!}
+                caseMeta={selectedCase}
+                scores={scores}
+                showGlobal={state.showGlobal}
+              />
+              <SnapshotPanel
+                caseId={state.selection.case_id!}
+                caseMeta={selectedCase}
+                scores={scores}
+                methods={state.selection.methods}
+                metric={state.metric}
+                showGlobal={state.showGlobal}
+                showExogenous={state.showExogenous}
+                onRemoveMethod={handleRemoveMethod}
+                onClear={handleClear}
+              />
+            </Suspense>
           </div>
         </div>
       )}

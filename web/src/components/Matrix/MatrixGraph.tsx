@@ -1,10 +1,11 @@
-import { useCallback, useRef, useState } from 'react';
+import { memo, useCallback, useRef, useState } from 'react';
 import type { Config } from 'plotly.js';
 import Plot from '../../plotly';
 import { computeHoverOverlay } from './hoverGeometry';
 import type { HoverOverlay, PlotlyGraphDiv } from './hoverGeometry';
 import { HoverTooltips } from './HoverTooltips';
 import { useMatrixFigure } from './useMatrixFigure';
+import { useTheme } from '../../theme/ThemeContext';
 import type { SelectionState } from '../../state/selectionReducer';
 import type { ScoreRow } from '../../types/data';
 
@@ -41,7 +42,7 @@ type Props = {
   onCellClick: (caseId: string, method: string) => void;
 };
 
-export function MatrixGraph({
+function MatrixGraphComponent({
   rows,
   metric,
   selection,
@@ -50,6 +51,7 @@ export function MatrixGraph({
   showTrainingTime,
   onCellClick,
 }: Props) {
+  const { theme } = useTheme();
   const figure = useMatrixFigure(
     rows,
     metric,
@@ -57,6 +59,7 @@ export function MatrixGraph({
     showGlobal,
     showExogenous,
     showTrainingTime,
+    theme === 'dark',
   );
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const graphRef = useRef<HTMLDivElement | null>(null);
@@ -117,3 +120,5 @@ export function MatrixGraph({
     </div>
   );
 }
+
+export const MatrixGraph = memo(MatrixGraphComponent);

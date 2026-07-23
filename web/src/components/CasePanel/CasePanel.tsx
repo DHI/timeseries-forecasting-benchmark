@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import Markdown from 'react-markdown';
 import { caseHasExtendedHistory } from '../../data/selectors';
 import { TRAINING_TAIL_N } from '../../data/constants';
@@ -10,8 +11,12 @@ import { TestSplitPlot } from './TestSplitPlot';
 import { TrainingTailPlot } from './TrainingTailPlot';
 import type { CaseMeta, ScoreRow } from '../../types/data';
 
-const CAPTION_STYLE = { color: '#666', fontSize: '0.9em', margin: '12px 0 4px 0' };
-const SUBCAPTION_STYLE = { color: '#666', fontSize: '0.85em', margin: '10px 0 2px 0' };
+const CAPTION_STYLE = { color: 'var(--text-muted)', fontSize: '0.9em', margin: '12px 0 4px 0' };
+const SUBCAPTION_STYLE = {
+  color: 'var(--text-muted)',
+  fontSize: '0.85em',
+  margin: '10px 0 2px 0',
+};
 const SUMMARY_STYLE = { cursor: 'pointer', fontWeight: 'bold' as const, fontSize: '1em' };
 
 type Props = {
@@ -26,7 +31,7 @@ type Props = {
  * selected case. When `showGlobal` reveals extended history for this case, the training
  * snapshot, distribution, proportions bar, seasonal patterns, and sample counts all swap
  * in the extended-history train split. Port of app/app.py's `render_case_panel`. */
-export function CasePanel({ caseId, caseMeta, scores, showGlobal }: Props) {
+function CasePanelComponent({ caseId, caseMeta, scores, showGlobal }: Props) {
   const extended = showGlobal && caseHasExtendedHistory(scores, caseId);
   const trainTail = extended ? caseMeta.train_tail_extended : caseMeta.train_tail;
   const splitCounts = extended ? caseMeta.split_counts_extended : caseMeta.split_counts;
@@ -59,16 +64,14 @@ export function CasePanel({ caseId, caseMeta, scores, showGlobal }: Props) {
         <DistributionPlot distribution={distribution} caseId={caseId} />
         <p style={CAPTION_STYLE}>Train / val / test split</p>
         <ProportionsBar counts={splitCounts} caseId={caseId} />
-        <Markdown>{caseTrainingStats(caseMeta, extended)}</Markdown>  
+        <Markdown>{caseTrainingStats(caseMeta, extended)}</Markdown>
         {seasonalPatterns.length > 0 && (
           <>
-            <p style={CAPTION_STYLE}>
-              Seasonal pattern (detrended)
-            </p>
+            <p style={CAPTION_STYLE}>Seasonal pattern (detrended)</p>
             <p style={SUBCAPTION_STYLE}>
-              Grey dots are individual training points; the black line
-              is a smoothed curve showing the typical shape of the cycle. Zoom in (click and drag on
-              a subplot) to see the pattern more clearly.
+              Grey dots are individual training points; the black line is a smoothed curve showing
+              the typical shape of the cycle. Zoom in (click and drag on a subplot) to see the
+              pattern more clearly.
             </p>
             <SeasonalPatternPlot patterns={seasonalPatterns} />
           </>
@@ -77,3 +80,5 @@ export function CasePanel({ caseId, caseMeta, scores, showGlobal }: Props) {
     </div>
   );
 }
+
+export const CasePanel = memo(CasePanelComponent);

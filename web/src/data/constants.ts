@@ -46,6 +46,13 @@ export const METHOD_COLORS = [
  * app/snapshot.py's TRAINING_TAIL_N. */
 export const TRAINING_TAIL_N = 1000;
 
+/** A collapsed method-info card is exactly its title bar. Shared with App.tsx (which reserves
+ * this much space below the matrix column so a collapsed card never overlaps the last line of
+ * text above it) so the two can't drift apart — kept in this constants module rather than
+ * MethodInfoCard's own file so that a synchronous import of just this number doesn't drag
+ * MethodInfoCard's (lazy-loaded) react-markdown dependency into the main bundle. */
+export const TITLE_BAR_HEIGHT = 34;
+
 /** Matrices with fewer rows than this can't show the training-time overlay: Plotly.js
  * fails to repaint the heatmap for a matrix this short when switching to the overlay's
  * color scale (confirmed down to 3 rows; 4 rows renders correctly) — a Plotly bug, not

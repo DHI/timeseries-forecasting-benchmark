@@ -1,3 +1,4 @@
+import { memo, useMemo } from 'react';
 import { useJsonData } from '../../data/loadData';
 import { effectiveMethod } from '../../data/selectors';
 import { MethodChips } from './MethodChips';
@@ -5,7 +6,7 @@ import { SnapshotGrid } from './SnapshotGrid';
 import type { CaseMeta, ScoreRow, SnapshotBundle } from '../../types/data';
 
 const SUMMARY_STYLE = { cursor: 'pointer', fontWeight: 'bold' as const, fontSize: '1em' };
-const CAPTION_STYLE = { color: '#666', fontSize: '0.85em', margin: '0 0 8px 0' };
+const CAPTION_STYLE = { color: 'var(--text-muted)', fontSize: '0.85em', margin: '0 0 8px 0' };
 
 type Props = {
   caseId: string;
@@ -21,7 +22,7 @@ type Props = {
 
 /** Below the case panel: the curated forecast-snapshot grid for the selected case and up
  * to 3 selected methods. Port of app/app.py's `render_panel`. */
-export function SnapshotPanel({
+function SnapshotPanelComponent({
   caseId,
   caseMeta,
   scores,
@@ -33,10 +34,14 @@ export function SnapshotPanel({
   onClear,
 }: Props) {
   const bundleState = useJsonData<SnapshotBundle>(`data/snapshots/${caseId}.json`);
+  const effectiveMethods = useMemo(
+    () => methods.map((m) => effectiveMethod(scores, caseId, m, showExogenous)),
+    [scores, caseId, methods, showExogenous],
+  );
 
   if (methods.length === 0) {
     return (
-      <p style={{ color: '#666' }}>
+      <p style={{ color: 'var(--text-muted)' }}>
         Click a matrix cell to see real forecast snapshots: the best, median, and worst performing
         origins, by the metric selected above, for that method. Click more cells in the same row to
         overlay other methods on those same origins.
@@ -53,14 +58,17 @@ export function SnapshotPanel({
     );
   }
 
-  const effectiveMethods = methods.map((m) => effectiveMethod(scores, caseId, m, showExogenous));
-
   return (
     <div>
       <details open>
         <summary style={SUMMARY_STYLE}>Prediction snapshots</summary>
         <p style={CAPTION_STYLE}>
-          The following snapshots belong to the test split and were selected for exhibiting the best/median/worst <b>{effectiveMethods[0]}&apos;s {metric}</b>. The black line represents the actual target values.
+          The following snapshots belong to the test split and were selected for exhibiting the
+          best/median/worst{' '}
+          <b>
+            {effectiveMethods[0]}&apos;s {metric}
+          </b>
+          . The black line represents the actual target values.
         </p>
         <div
           style={{
@@ -88,3 +96,5 @@ export function SnapshotPanel({
     </div>
   );
 }
+
+export const SnapshotPanel = memo(SnapshotPanelComponent);
