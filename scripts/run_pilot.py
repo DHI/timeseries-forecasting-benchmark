@@ -3,6 +3,11 @@
 Usage:
     uv run python scripts/run_pilot.py              # real-or-synth fallback
     uv run python scripts/run_pilot.py --synth      # force synthetic generators
+
+To split a run across machines (e.g. GPU methods on one, CPU methods on another) use
+--tag to write a git-tracked partial result instead of the full pipeline, then combine
+the tagged files later with scripts/merge_pilot_results.py:
+    uv run python scripts/run_pilot.py --tag gpu_dl_nf --skip-baseline --with-dl --with-nf
 """
 
 from __future__ import annotations
@@ -39,16 +44,14 @@ from tsforecastbench.bench.methods import (
     ensemble_baselines,
     ensemble_baselines_theta,
 )
-from tsforecastbench.bench.viz import render_matrix
+from tsforecastbench.bench.report import RESULTS_DIR, write_pilot_artifacts
 from tsforecastbench.data.registry import discover_cases
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-RESULTS_DIR = REPO_ROOT / "results"
-# Committed, distilled copies for onboarding: a new clone gets real scores and matrix
-# figures without running the (multi-hour) pilot first. `results/` stays the gitignored
-# working directory — raw snapshots and the same metrics, kept for local debugging.
-DOCS_RESULTS_DIR = REPO_ROOT / "docs" / "results"
-DOCS_FIGURES_DIR = REPO_ROOT / "docs" / "figures" / "benchmark"
+# Tagged partial runs (--tag) land here instead of the gitignored results/ dir, so a
+# `git add` + push actually carries this machine's output to whichever machine runs the
+# merge (see scripts/merge_pilot_results.py).
+DOCS_PARTIAL_DIR = REPO_ROOT / "docs" / "results" / "partial"
 
 
 def build_methods():
@@ -114,6 +117,24 @@ def main() -> int:
         help="Add the neuralforecast zoo (TFT, iTransformer, TimesNet; needs the 'nf' "
         "extra — Linux/WSL only). GPU-accelerated when available.",
     )
+    p.add_argument(
+        "--tag",
+        default=None,
+        help="Write a tagged, git-tracked partial result to docs/results/partial/ instead "
+        "of the full results/ pipeline, for a run that covers only some method families "
+        "(e.g. a GPU-only machine running --with-dl --with-nf) and will be combined with "
+        "other tagged partial runs later via scripts/merge_pilot_results.py. Skips the "
+        "matrix PNGs and the docs/results/scores.parquet mirror, which only make sense "
+        "for the final merged result.",
+    )
+    p.add_argument(
+        "--skip-baseline",
+        action="store_true",
+        help="Skip the baseline/windowed-ML methods from build_methods() -- combine with "
+        "--with-dl/--with-nf/--with-fm to run only those families, e.g. on a GPU-only "
+        "machine where the baseline methods gain nothing from a GPU and are already "
+        "covered by another machine's run.",
+    )
     args = p.parse_args()
 
     all_cases = discover_cases()
@@ -123,7 +144,7 @@ def main() -> int:
         print(f"No matching cases found. Available: {list(all_cases)}")
         return 1
 
-    methods = build_methods()
+    methods = [] if args.skip_baseline else build_methods()
     if args.with_dl:
         from tsforecastbench.bench.methods import NHITSForecaster, PatchTSTForecaster
 
@@ -156,13 +177,20 @@ def main() -> int:
             TimesFMExoForecaster(),
             Moirai2ExoForecaster(),
         ]
+    if not methods:
+        print("No methods selected -- --skip-baseline needs at least one --with-* flag too.")
+        return 1
     method_order = [m.name for m in methods]
 
     mode = "single hold-out" if args.fast else f"rolling-origin ({args.origins} origins)"
     print(f"Running pilot: {len(cases)} case(s) x {len(methods)} method(s) - {mode}")
     print(f"Data mode: {'synthetic' if args.synth else 'real-or-synth fallback'}\n")
 
-    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    suffix = f"_{args.tag}" if args.tag else ""
+    out_dir = DOCS_PARTIAL_DIR if args.tag else RESULTS_DIR
+    metrics_path = out_dir / f"pilot_metrics{suffix}.parquet"
+    snapshots_path = out_dir / f"pilot_snapshots{suffix}.parquet"
+    out_dir.mkdir(parents=True, exist_ok=True)
     all_results = []
     all_snapshots = []
     for case in cases:
@@ -186,100 +214,30 @@ def main() -> int:
         if snaps is not None and not snaps.empty:
             all_snapshots.append(snaps)
         # incremental save so a multi-hour run is never all-or-nothing
-        pd.concat(all_results, ignore_index=True).to_parquet(
-            RESULTS_DIR / "pilot_metrics.parquet", index=False
-        )
+        pd.concat(all_results, ignore_index=True).to_parquet(metrics_path, index=False)
         if all_snapshots:
-            pd.concat(all_snapshots, ignore_index=True).to_parquet(
-                RESULTS_DIR / "pilot_snapshots.parquet", index=False
-            )
+            pd.concat(all_snapshots, ignore_index=True).to_parquet(snapshots_path, index=False)
         print()
 
     if not all_results:
         print("No case produced results.")
         return 1
     results = pd.concat(all_results, ignore_index=True)
-    results.to_parquet(RESULTS_DIR / "pilot_metrics.parquet", index=False)
-    DOCS_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    results.to_parquet(DOCS_RESULTS_DIR / "scores.parquet", index=False)
+    results.to_parquet(metrics_path, index=False)
     if all_snapshots:
-        pd.concat(all_snapshots, ignore_index=True).to_parquet(
-            RESULTS_DIR / "pilot_snapshots.parquet", index=False
-        )
+        pd.concat(all_snapshots, ignore_index=True).to_parquet(snapshots_path, index=False)
 
-    # Two matrices per metric. The main one is every method on the shared curated span
-    # (the local fit only, `used_extended_history=False`), so all methods are compared on
-    # identical data. The `_global` one shows the same `is_global` methods scored on the
-    # full single-series history where the case has any beyond the curated span (the
-    # extended fit, `used_extended_history=True`), falling back to the local score for
-    # cases/methods with no extra history. Reading the two side by side shows the gain a
-    # global-capable method gets from the extra training data.
-    # `docs_stem` is the name these land under in docs/figures/benchmark/ (matches the
-    # names already referenced by docs/RESULTS.md).
-    matrix_specs = [
-        ("MASE", "pilot_matrix_MASE", "MASE (lower is better)", "matrix_mase"),
-        (
-            "Skill_vs_Persistence",
-            "pilot_matrix_skill",
-            "skill vs persistence (higher is better)",
-            "matrix_skill_vs_persistence",
-        ),
-        (
-            "Skill_vs_Mean",
-            "pilot_matrix_skill_vs_mean",
-            "skill vs mean (higher is better)",
-            "matrix_skill_vs_mean",
-        ),
-    ]
-    local_results = results[~results["used_extended_history"]]
-    # For the global matrix, keep one row per (case, method, metric): the extended fit
-    # when it ran, otherwise the local fit. Sorting False<True and keeping the last row
-    # prefers the extended score wherever both exist.
-    global_results = (
-        results[results["is_global"]]
-        .sort_values("used_extended_history")
-        .drop_duplicates(subset=["case_id", "method", "metric"], keep="last")
-    )
-    global_method_order = [m for m in method_order if m in global_results["method"].unique()]
-
-    DOCS_FIGURES_DIR.mkdir(parents=True, exist_ok=True)
-    written = []
-    for metric, stem, label, docs_stem in matrix_specs:
-        render_matrix(
-            local_results,
-            metric=metric,
-            out_path=RESULTS_DIR / f"{stem}.png",
-            title=f"RK2026 pilot - {label}",
-            method_order=method_order,
+    if args.tag:
+        print(f"\nWrote tagged partial results to {metrics_path.relative_to(REPO_ROOT)}")
+        if all_snapshots:
+            print(f"  and {snapshots_path.relative_to(REPO_ROOT)}")
+        print(
+            "Commit these and combine with other tagged runs via "
+            "scripts/merge_pilot_results.py once every machine's run has finished."
         )
-        render_matrix(
-            local_results,
-            metric=metric,
-            out_path=DOCS_FIGURES_DIR / f"{docs_stem}.png",
-            title=f"RK2026 pilot - {label}",
-            method_order=method_order,
-        )
-        written.append(f"{stem}.png")
-        if global_method_order:
-            render_matrix(
-                global_results,
-                metric=metric,
-                out_path=RESULTS_DIR / f"{stem}_global.png",
-                title=f"RK2026 pilot - {label} (is_global methods, extended-history fit)",
-                method_order=global_method_order,
-            )
-            written.append(f"{stem}_global.png")
+        return 0
 
-    print(f"\nWrote results to {RESULTS_DIR.relative_to(REPO_ROOT)}/")
-    print(f"  pilot_metrics.parquet ({len(results)} rows)")
-    if all_snapshots:
-        n_snap = sum(len(s) for s in all_snapshots)
-        print(f"  pilot_snapshots.parquet ({n_snap} rows)")
-    if not global_method_order:
-        print("  [note] no is_global methods in this run; skipped the _global matrices")
-    print("  " + ", ".join(written))
-    print(f"Wrote committed onboarding copies to {DOCS_RESULTS_DIR.relative_to(REPO_ROOT)}/ and")
-    print(f"  {DOCS_FIGURES_DIR.relative_to(REPO_ROOT)}/ — commit these along with this run.")
+    write_pilot_artifacts(results, all_snapshots, method_order)
     return 0
 
 

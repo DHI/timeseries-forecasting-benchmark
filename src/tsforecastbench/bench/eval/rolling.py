@@ -244,7 +244,9 @@ def run_case_rolling(
                     "MASE": float(np.mean(np.abs(a - p)) / naive_scale)
                     if naive_scale
                     else float("nan"),
-                    "Skill_vs_Persistence": 1.0 - mse / mse_ref_p if mse_ref_p != 0.0 else float("nan"),
+                    "Skill_vs_Persistence": 1.0 - mse / mse_ref_p
+                    if mse_ref_p != 0.0
+                    else float("nan"),
                     "Skill_vs_Mean": 1.0 - mse / mse_ref_m if mse_ref_m != 0.0 else float("nan"),
                     "MAPE": mape(a, p),
                     "sMAPE": smape(a, p),

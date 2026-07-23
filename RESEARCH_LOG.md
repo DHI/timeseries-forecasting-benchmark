@@ -8,6 +8,25 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-23 — Split the pilot run across machines: tagged partial runs + a merge step
+
+`torchdl.py` (N-HiTS, PatchTST) and `nf_models.py` (TFT, iTransformer, TimesNet) are the only
+method families that actually benefit from a GPU — `dl.py`'s `DLinearForecaster` turned out to
+be a plain NumPy/scikit-learn Ridge fit with no GPU involvement, so it stays in the CPU-only
+baseline run. The plan is to run those two families on a Lightning AI Studio's GPU tier and
+everything else on a local machine, then combine the results — but `run_pilot.py` always
+overwrote the single `results/pilot_metrics.parquet` (and its `docs/results/scores.parquet`
+mirror), which would have clobbered whichever run finished last instead of merging with it.
+Added `--tag` to `run_pilot.py` (writes a partial result to the git-tracked
+`docs/results/partial/` instead of the gitignored `results/`, so it survives a push/pull between
+machines) and `--skip-baseline` (skip the hardcoded baseline/ML methods, so a GPU-only machine
+doesn't waste time re-fitting methods that gain nothing from a GPU), extracted the
+final-artifact-writing logic into `src/tsforecastbench/bench/report.py`, and added
+`scripts/merge_pilot_results.py` to recombine tagged files (deduping on case/method/metric) back
+into the merged parquet the web export already reads. Next: run
+`--tag gpu_dl_nf --skip-baseline --with-dl --with-nf` on the Lightning Studio, then merge with a
+local `--tag local` run that uses the same `--cases`/`--origins`.
+
 ## 2026-07-21 — Fixed the matrix heatmap going stale when leaving NSE/KGE for another metric
 
 Selecting NSE or KGE, then switching to a `Skill_vs_*` metric, left the heatmap showing the old
