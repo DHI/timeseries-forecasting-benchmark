@@ -10,6 +10,7 @@ export function MetricInfoModal() {
       ariaLabel="Show metric cheatsheet"
       heading="Metric cheatsheet"
       testId="metric-cheatsheet-backdrop"
+      size={15}
     >
       <dl style={{ color: 'var(--text-secondary)' }}>
         {METRIC_DESCRIPTIONS.map(({ key, description }) => (

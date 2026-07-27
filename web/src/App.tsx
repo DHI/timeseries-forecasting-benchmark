@@ -274,7 +274,15 @@ function MainLayout({
               }}
             >
               <h3>Controls</h3>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 16 }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  marginTop: 16,
+                  marginBottom: 4,
+                }}
+              >
                 <label style={{ fontWeight: 'bold' }}>Metric</label>
                 <MetricInfoModal />
               </div>
@@ -283,10 +291,6 @@ function MainLayout({
                 value={state.metric}
                 onChange={(metric) => dispatch({ type: 'SET_METRIC', metric })}
               />
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.8em', marginTop: 4 }}>
-                NSE and KGE only apply to cases whose case.toml declares them (flow/level domains) —
-                the matrix rows narrow to just those cases when one is selected.
-              </p>
               <label style={{ fontWeight: 'bold', display: 'block', marginTop: 16 }}>Domains</label>
               <DomainChecklist
                 options={domainOpts}
