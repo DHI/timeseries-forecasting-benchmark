@@ -292,6 +292,38 @@ export function useMatrixFigure(
       });
     }
 
+    // Axis super-titles, one level up from the family/domain group labels above. `paper`
+    // y=1/x=0 land at the plot area's own edge (same edge the group labels are anchored
+    // to), not the outer margin, so the x-axis title uses the same yref: 'y' + yshift
+    // scheme as the family labels above, with a bigger yshift to clear them.
+    annotations.push({
+      x: 0.5,
+      y: -0.5,
+      xref: 'paper',
+      yref: 'y',
+      xanchor: 'center',
+      yanchor: 'bottom',
+      yshift: 46,
+      text: 'Forecasting methods',
+      showarrow: false,
+      opacity: 0.85,
+      font: { size: 22, color: pt.labelText },
+    });
+    annotations.push({
+      x: 0,
+      y: 0.5,
+      xref: 'paper',
+      yref: 'paper',
+      xanchor: 'right',
+      yanchor: 'middle',
+      xshift: 25,
+      textangle: '-90',
+      text: 'Water domains',
+      showarrow: false,
+      opacity: 0.85,
+      font: { size: 22, color: pt.labelText },
+    });
+
     // @types/plotly.js is missing `zmid` (a real, documented plotly.js heatmap option —
     // just absent from this package's typings), hence the inline extension below.
     const heatmap: Partial<PlotData> & { zmid?: number } = {
@@ -347,8 +379,10 @@ export function useMatrixFigure(
     // sized to fit the colorbar title's widest possible second line ("[target unit]"),
     // left-anchored at the colorbar's own x — a plain 80px clipped it mid-word.
     const margin: Partial<Margin> & { autoexpand?: boolean } = {
-      l: 90,
-      t: 40,
+      // l/t include room for the "Water domains"/"Forecasting methods" super-title
+      // annotations above, on top of the space the family/domain group labels already need.
+      l: 114,
+      t: 96,
       r: 120,
       b: 80,
       autoexpand: false,
