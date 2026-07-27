@@ -4,6 +4,7 @@ import { FamilyMultiSelect } from './components/Sidebar/FamilyMultiSelect';
 import { HoldTrainingTimeButton } from './components/Sidebar/HoldTrainingTimeButton';
 import { MarkerSwatch } from './components/Sidebar/MarkerSwatch';
 import { MetricDropdown } from './components/Sidebar/MetricDropdown';
+import { MetricInfoModal } from './components/Sidebar/MetricInfoModal';
 import { SidebarToggleHint } from './components/Sidebar/SidebarToggleHint';
 import { ToggleExogenous } from './components/Sidebar/ToggleExogenous';
 import { ToggleGlobal } from './components/Sidebar/ToggleGlobal';
@@ -273,7 +274,10 @@ function MainLayout({
               }}
             >
               <h3>Controls</h3>
-              <label style={{ fontWeight: 'bold', display: 'block', marginTop: 16 }}>Metric</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 16 }}>
+                <label style={{ fontWeight: 'bold' }}>Metric</label>
+                <MetricInfoModal />
+              </div>
               <MetricDropdown
                 options={metricOpts}
                 value={state.metric}
@@ -390,11 +394,6 @@ function MainLayout({
             <h1 style={{ margin: 0 }}>Timeseries Forecasting Benchmark</h1>
             <InstructionsModal />
           </div>
-          <p style={{ color: 'var(--text-secondary)', maxWidth: textMaxWidth }}>
-            The following matrix compiles the forecasting results of multiple methods across a
-            variety of timeseries in different water domains. Each cell represents one case x method
-            run, coloured by the metric chosen in the sidebar.
-          </p>
           <div style={{ position: 'relative' }}>
             <MatrixGraph
               key={matrixKey}
