@@ -358,9 +358,9 @@ describe('useMatrixFigure — training-time overlay cell text color', () => {
     const { result } = renderHook(() =>
       useMatrixFigure(rows, 'MAE', EMPTY_SELECTION, false, false, false),
     );
-    // MAE's Reds colormap gets just as dark at high values, but only the training-time
-    // overlay's Greys config opts into the readability fix — CatBoost (0.01) is this row's
-    // best (lowest) value and so is bolded, LightGBM (10000) is the dark cell.
+    // MAE's RdYlGn_r colormap gets just as saturated at high values, but only the
+    // training-time overlay's Greys config opts into the readability fix — CatBoost (0.01)
+    // is this row's best (lowest) value and so is bolded, LightGBM (10000) is the dark cell.
     expect(annotationFontColor(result.current!, '<b>0.01</b>')).toBe('#000000');
     expect(annotationFontColor(result.current!, '10000.00')).toBe('#000000');
   });
