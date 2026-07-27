@@ -363,8 +363,20 @@ export function useMatrixFigure(
     };
     if (cfg.center !== null) {
       const finite = values.flat().filter((v) => Number.isFinite(v));
-      const lo = cfg.vlo ?? (finite.length ? Math.min(...finite) : 0);
-      const hi = cfg.vhi ?? (finite.length ? Math.max(...finite) : 1);
+      const dataLo = finite.length ? Math.min(...finite) : cfg.center;
+      const dataHi = finite.length ? Math.max(...finite) : cfg.center;
+      // vlo/vhi cap the colour scale against a single catastrophic outlier — they're
+      // not a fixed range. Shrink to whatever's actually on screen (so filtering
+      // methods/domains re-derives contrast) but still saturate an outlier beyond the
+      // cap to the edge colour rather than letting it wash out the rest of the view.
+      const lo =
+        cfg.vlo !== undefined && cfg.vhi !== undefined
+          ? Math.min(Math.max(dataLo, cfg.vlo), cfg.vhi)
+          : (cfg.vlo ?? dataLo);
+      const hi =
+        cfg.vlo !== undefined && cfg.vhi !== undefined
+          ? Math.max(Math.min(dataHi, cfg.vhi), cfg.vlo)
+          : (cfg.vhi ?? dataHi);
       heatmap.zmin = Math.min(lo, cfg.center);
       heatmap.zmax = Math.max(hi, cfg.center);
       heatmap.zmid = cfg.center;

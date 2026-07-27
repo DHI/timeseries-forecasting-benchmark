@@ -232,6 +232,53 @@ describe('useMatrixFigure — log color scale for heavy-tailed metrics', () => {
   });
 });
 
+describe('useMatrixFigure — colour range adapts to the filtered/visible cells', () => {
+  function heatmapRange(result: { current: { data: unknown[] } | null }) {
+    return result.current!.data[0] as { zmin: number; zmax: number; zmid: number };
+  }
+
+  it('shrinks MASE’s colour range to the visible data instead of its full [0, 2] cap', () => {
+    const rows = [
+      row({ metric: 'MASE', case_id: 'case_a', method: 'CatBoost', value: 0.8 }),
+      row({ metric: 'MASE', case_id: 'case_a', method: 'LightGBM', value: 1.2 }),
+    ];
+    const { result } = renderHook(() =>
+      useMatrixFigure(rows, 'MASE', EMPTY_SELECTION, false, false, false),
+    );
+    const { zmin, zmax, zmid } = heatmapRange(result);
+    expect(zmin).toBeCloseTo(0.8);
+    expect(zmax).toBeCloseTo(1.2);
+    expect(zmid).toBe(1.0);
+  });
+
+  it('still caps MASE’s colour range at [0, 2] when a catastrophic outlier is visible', () => {
+    const rows = [
+      row({ metric: 'MASE', case_id: 'case_a', method: 'CatBoost', value: 1.0 }),
+      row({ metric: 'MASE', case_id: 'case_a', method: 'LightGBM', value: 10 }),
+    ];
+    const { result } = renderHook(() =>
+      useMatrixFigure(rows, 'MASE', EMPTY_SELECTION, false, false, false),
+    );
+    const { zmin, zmax } = heatmapRange(result);
+    expect(zmin).toBeCloseTo(1.0);
+    expect(zmax).toBe(2);
+  });
+
+  it('keeps the centre anchored even when every visible value sits on one side of it', () => {
+    const rows = [
+      row({ metric: 'Skill_vs_Persistence', case_id: 'case_a', method: 'CatBoost', value: 0.3 }),
+      row({ metric: 'Skill_vs_Persistence', case_id: 'case_a', method: 'LightGBM', value: 0.6 }),
+    ];
+    const { result } = renderHook(() =>
+      useMatrixFigure(rows, 'Skill_vs_Persistence', EMPTY_SELECTION, false, false, false),
+    );
+    const { zmin, zmax, zmid } = heatmapRange(result);
+    expect(zmid).toBe(0);
+    expect(zmin).toBe(0);
+    expect(zmax).toBeCloseTo(0.6);
+  });
+});
+
 describe('useMatrixFigure — training-time overlay', () => {
   const rows = [
     row({ case_id: 'case_a', method: 'LightGBM', value: 1.0, seconds: 4.32 }),
