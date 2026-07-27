@@ -1302,12 +1302,30 @@
         "mlforecast",
         "forecasting"
       ]
+    },
+    {
+      "id": "2026-07-27-fm-split-caveat-in-case-panel",
+      "date": "2026-07-27",
+      "title": "Flagged foundation models in the case panel as not using the train/val split",
+      "category": "app-tooling",
+      "summary": "CasePanel now shows an inline note when a selected method is a foundation model, clarifying that its zero-shot forecast never fits to the case's train/val split shown in the split bar.",
+      "detail": "The case panel's train/val/test split bar and training-tail plot assume every method fits on the train split, which is false for foundation models (Chronos-Bolt, Chronos-2, TimesFM, Moirai-2): they forecast zero-shot from recent context, with no case-specific fit at all. That caveat already existed as prose in each method's collapsed \"Limitations\" card, but nothing tied it to the split visualization itself, so selecting a foundation model and looking at the split bar was misleading.\n\nAdded an inline note to `CasePanel` that appears only when a selected method's `family` is `fm`, reusing that existing classification (see the 2026-07-14 FM entry) rather than adding a new flag. If a fine-tuned FM variant is added later (per the plan's \"fine-tuning round\"), this note's `family === 'fm'` check will need revisiting, since it would then be wrong to say that variant skips the train split.",
+      "tags": [
+        "react",
+        "ui",
+        "foundation-model"
+      ]
     }
   ],
   "edges": [
     {
       "source": "2026-07-27-mlp-recursive-divergence-bounded",
       "target": "2026-07-10-mlp-scaling-fix",
+      "type": "relates-to"
+    },
+    {
+      "source": "2026-07-27-fm-split-caveat-in-case-panel",
+      "target": "2026-07-14-three-fms-added",
       "type": "relates-to"
     },
     {

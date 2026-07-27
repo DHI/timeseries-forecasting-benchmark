@@ -2,7 +2,7 @@
 // the method-card strip docked below the matrix. Box outlines are SVG; labels are plain HTML
 // overlaid on top, matching the existing hint components' "SVG for shape, HTML for text" split.
 const LABELS = [
-  { text: 'Sidebar', left: 27, top: 45 },
+  { text: 'Controls panel', left: 27, top: 45 },
   { text: 'Matrix', left: 130, top: 45 },
   { text: 'Case panel', left: 241, top: 45 },
   { text: 'Method cards', left: 130, top: 112 },

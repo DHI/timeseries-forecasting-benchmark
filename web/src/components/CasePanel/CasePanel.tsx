@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
 import Markdown from 'react-markdown';
 import { caseHasExtendedHistory } from '../../data/selectors';
 import { TRAINING_TAIL_N } from '../../data/constants';
@@ -18,12 +18,22 @@ const SUBCAPTION_STYLE = {
   margin: '10px 0 2px 0',
 };
 const SUMMARY_STYLE = { cursor: 'pointer', fontWeight: 'bold' as const, fontSize: '1em' };
+const FOUNDATION_NOTE_STYLE = {
+  display: 'flex',
+  alignItems: 'flex-start',
+  gap: 8,
+  border: '1px solid var(--warning-text)',
+  borderRadius: 4,
+  padding: '6px 10px',
+  margin: '4px 0 8px 0',
+};
 
 type Props = {
   caseId: string;
   caseMeta: CaseMeta;
   scores: ScoreRow[];
   showGlobal: boolean;
+  selectedMethods: string[];
 };
 
 /** Right-hand detail panel: training/test snapshots, a train-vs-test distribution, a
@@ -31,7 +41,7 @@ type Props = {
  * selected case. When `showGlobal` reveals extended history for this case, the training
  * snapshot, distribution, proportions bar, seasonal patterns, and sample counts all swap
  * in the extended-history train split. Port of app/app.py's `render_case_panel`. */
-function CasePanelComponent({ caseId, caseMeta, scores, showGlobal }: Props) {
+function CasePanelComponent({ caseId, caseMeta, scores, showGlobal, selectedMethods }: Props) {
   const extended = showGlobal && caseHasExtendedHistory(scores, caseId);
   const trainTail = extended ? caseMeta.train_tail_extended : caseMeta.train_tail;
   const splitCounts = extended ? caseMeta.split_counts_extended : caseMeta.split_counts;
@@ -42,6 +52,20 @@ function CasePanelComponent({ caseId, caseMeta, scores, showGlobal }: Props) {
   const caption =
     `Training data (last ${TRAINING_TAIL_N.toLocaleString('en-US')} points` +
     (extended ? ', including extended history)' : ')');
+
+  // Foundation models forecast zero-shot, from recent context, so the train/val/test
+  // split below doesn't describe how they were fit the way it does for other methods.
+  const foundationMethods = useMemo(() => {
+    const familyByMethod = new Map<string, string>();
+    for (const row of scores) {
+      if (row.case_id === caseId) familyByMethod.set(row.method, row.family);
+    }
+    return selectedMethods.filter((m) => familyByMethod.get(m) === 'fm');
+  }, [scores, caseId, selectedMethods]);
+  const foundationNote =
+    foundationMethods.length === 1
+      ? "is a zero-shot foundation model: it forecasts from recent context only and never fits on this case's train/val split."
+      : "are zero-shot foundation models: they forecast from recent context only and never fit on this case's train/val split.";
 
   return (
     <div>
@@ -56,6 +80,17 @@ function CasePanelComponent({ caseId, caseMeta, scores, showGlobal }: Props) {
       </details>
       <details open>
         <summary style={SUMMARY_STYLE}>Target data overview</summary>
+        {foundationMethods.length > 0 && (
+          <div style={FOUNDATION_NOTE_STYLE}>
+            <span aria-hidden="true" style={{ color: 'var(--warning-text)' }}>
+              ⚠
+            </span>
+            <p style={{ ...SUBCAPTION_STYLE, margin: 0 }}>
+              <strong>{foundationMethods.join(', ')}</strong> {foundationNote} The split below still
+              applies to the other methods and to how the test points are scored.
+            </p>
+          </div>
+        )}
         <p style={{ ...CAPTION_STYLE, margin: '0 0 4px 0' }}>{caption}</p>
         <TrainingTailPlot series={trainTail} caseId={caseId} />
         <p style={CAPTION_STYLE}>Test data (full test split)</p>

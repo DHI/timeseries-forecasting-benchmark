@@ -499,6 +499,7 @@ function MainLayout({
                 caseMeta={selectedCase}
                 scores={scores}
                 showGlobal={state.showGlobal}
+                selectedMethods={state.selection.methods}
               />
               <SnapshotPanel
                 caseId={state.selection.case_id!}

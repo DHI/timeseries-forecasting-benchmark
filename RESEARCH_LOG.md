@@ -8,6 +8,19 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-27 — Flagged foundation models in the case panel as not using the train/val split
+
+The case panel's train/val/test split bar and training-tail plot assume every method fits on
+the train split, which is false for foundation models (Chronos-Bolt, Chronos-2, TimesFM,
+Moirai-2): they forecast zero-shot from recent context, with no case-specific fit at all.
+That caveat already existed as prose in each method's collapsed "Limitations" card, but
+nothing tied it to the split visualization itself, so selecting a foundation model and
+looking at the split bar was misleading. Added an inline note to `CasePanel` that appears
+only when a selected method's `family` is `fm`, reusing that existing classification rather
+than adding a new flag. If a fine-tuned FM variant is added later (per the plan's "fine-tuning
+round"), this note's `family === 'fm'` check will need revisiting, since it would then be
+wrong to say that variant skips the train split.
+
 ## 2026-07-27 — Bounded MLP's recursive forecast to stop it diverging on smooth series
 
 MLP's MASE on `groundwater_yorktown` had blown up to 314.65 (RMSE 1383 m against a target
