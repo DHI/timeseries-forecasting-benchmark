@@ -429,6 +429,7 @@ function MainLayout({
             />
             {!selectedCase && <SelectionHint />}
           </div>
+          <h1>Getting started</h1>
         </div>
         <div
           style={{
