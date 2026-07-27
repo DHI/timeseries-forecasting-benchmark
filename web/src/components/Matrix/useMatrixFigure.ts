@@ -304,7 +304,7 @@ export function useMatrixFigure(
       xanchor: 'center',
       yanchor: 'bottom',
       yshift: 46,
-      text: 'Forecasting methods',
+      text: 'Methods',
       showarrow: false,
       opacity: 0.85,
       font: { size: 22, color: pt.labelText },
@@ -318,7 +318,7 @@ export function useMatrixFigure(
       yanchor: 'middle',
       xshift: -2,
       textangle: '-90',
-      text: 'Water domains',
+      text: 'Cases',
       showarrow: false,
       opacity: 0.85,
       font: { size: 22, color: pt.labelText },
@@ -391,7 +391,7 @@ export function useMatrixFigure(
     // sized to fit the colorbar title's widest possible second line ("[target unit]"),
     // left-anchored at the colorbar's own x — a plain 80px clipped it mid-word.
     const margin: Partial<Margin> & { autoexpand?: boolean } = {
-      // l/t include room for the "Water domains"/"Forecasting methods" super-title
+      // l/t include room for the "Cases"/"Methods" super-title
       // annotations above, on top of the space the family/domain group labels already need.
       l: 114,
       t: 96,
