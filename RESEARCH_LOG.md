@@ -8,6 +8,22 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-27 — Bounded MLP's recursive forecast to stop it diverging on smooth series
+
+MLP's MASE on `groundwater_yorktown` had blown up to 314.65 (RMSE 1383 m against a target
+that only spans 1.45–5.47 m). Traced it to `mlforecast`'s recursive multi-step strategy,
+shared by MLP with LightGBM/CatBoost/Ridge: each step's prediction feeds straight back in as
+the next step's lag input, and `MLPRegressor`'s unbounded output layer let one early
+miscalibration compound over the 30-step horizon — worst on groundwater because it's an
+unusually smooth, slow-moving series with long lags (90, 365) baked into the features, giving
+the recursion many steps to drift. Fixed by wrapping only the MLP regressor in a small
+estimator (`_BoundedRegressor` in `ml.py`) that clips each step's output to the training
+window's own range plus 4 standard deviations — applied on every recursive step, so drift
+can't build up. LightGBM/CatBoost/Ridge are untouched. `MLPForecaster` had no test coverage at
+all before this; added a regression test on `groundwater_yorktown` plus a smoke test. Scores
+need re-running to confirm the corrected numbers, and `docs/RESULTS.md`'s "MLP is the least
+robust method" write-up cites older, milder numbers that will need updating once they are.
+
 ## 2026-07-27 — One color scheme for every metric in the matrix heatmap, and it now adapts to filtering
 
 The matrix heatmap used two different color schemes depending on the metric: a green-to-red
