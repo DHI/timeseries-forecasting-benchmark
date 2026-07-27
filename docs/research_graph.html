@@ -1274,9 +1274,42 @@
         "migration",
         "cleanup"
       ]
+    },
+    {
+      "id": "2026-07-27-unified-heatmap-color-scheme",
+      "date": "2026-07-27",
+      "title": "One color scheme for every metric in the matrix heatmap, and it now adapts to filtering",
+      "category": "app-tooling",
+      "summary": "MAE/RMSE/MAPE/sMAPE moved onto the same green-to-red diverging scale as MASE/skill/NSE/KGE, and those five metrics' color range now shrinks to whatever's actually filtered into view instead of staying pinned to a fixed cap.",
+      "detail": "The matrix heatmap used two different color schemes depending on the metric: a green-to-red diverging scale for MASE/skill/NSE/KGE, but a plain white-to-red scale for MAE/RMSE/MAPE/sMAPE that never reached green even at their best value in view. Switched those four metrics (and the fallback used for any unrecognized metric) to the same green-to-red scale, auto-ranged over whatever's currently on screen rather than pinned to a fixed center — unlike MASE or the skill metrics, MAE/RMSE/MAPE/sMAPE have no fixed \"no better than X\" reference point, so there's no absolute value to center on.\n\nSeparately, MASE/skill/NSE/KGE's color range turned out to be pinned to their fixed `[vlo, vhi]` cap regardless of what was actually filtered into view — now the range shrinks to the visible cells' own min/max, still clamped into `[vlo, vhi]` so a catastrophic outlier left on screen still saturates to the edge color instead of stretching the scale for everything else. `web/src/data/metricConfig.ts`, `web/src/components/Matrix/useMatrixFigure.ts`, and the Python twin `src/tsforecastbench/bench/viz/matrix.py` were updated to keep the color logic in sync (the range-adaptation fix is web-only, since the Python script renders one static dataset per image rather than reflecting interactive filtering).",
+      "tags": [
+        "react",
+        "ui",
+        "heatmap",
+        "metrics"
+      ]
+    },
+    {
+      "id": "2026-07-27-mlp-recursive-divergence-bounded",
+      "date": "2026-07-27",
+      "title": "Bounded MLP's recursive forecast to stop it diverging on smooth series",
+      "category": "bug-fix",
+      "summary": "MLP's MASE on groundwater_yorktown had blown up to 314.65 because mlforecast's recursive predict loop let MLPRegressor's unbounded output compound over the horizon; fixed by clipping each step's prediction to the training range plus a margin.",
+      "detail": "MLP's MASE on `groundwater_yorktown` had blown up to 314.65 (RMSE 1383 m against a target that only spans 1.45–5.47 m). Traced it to `mlforecast`'s recursive multi-step strategy, shared by MLP with LightGBM/CatBoost/Ridge: each step's prediction feeds straight back in as the next step's lag input, and `MLPRegressor`'s unbounded output layer let one early miscalibration compound over the 30-step horizon — worst on groundwater because it's an unusually smooth, slow-moving series with long lags (90, 365) baked into the features, giving the recursion many steps to drift.\n\nFixed by wrapping only the MLP regressor in a small estimator (`_BoundedRegressor` in `ml.py`) that clips each step's output to the training window's own range plus 4 standard deviations — applied on every recursive step, so drift can't build up. LightGBM/CatBoost/Ridge are untouched. `MLPForecaster` had no test coverage at all before this; added a regression test on `groundwater_yorktown` plus a smoke test. Scores need re-running to confirm the corrected numbers, and `docs/RESULTS.md`'s \"MLP is the least robust method\" write-up cites older, milder numbers that will need updating once they are.",
+      "tags": [
+        "mlp",
+        "bug",
+        "mlforecast",
+        "forecasting"
+      ]
     }
   ],
   "edges": [
+    {
+      "source": "2026-07-27-mlp-recursive-divergence-bounded",
+      "target": "2026-07-10-mlp-scaling-fix",
+      "type": "relates-to"
+    },
     {
       "source": "2026-07-09-persist-real-forecasts",
       "target": "2026-07-08-interactive-app",
@@ -1550,6 +1583,16 @@
     {
       "source": "2026-07-21-legacy-dash-app-removed",
       "target": "2026-07-09-streamlit-to-dash",
+      "type": "relates-to"
+    },
+    {
+      "source": "2026-07-27-unified-heatmap-color-scheme",
+      "target": "2026-07-13-metrics-mape-nse-kge",
+      "type": "relates-to"
+    },
+    {
+      "source": "2026-07-27-unified-heatmap-color-scheme",
+      "target": "2026-07-20-training-time-heatmap-overlay",
       "type": "relates-to"
     }
   ],

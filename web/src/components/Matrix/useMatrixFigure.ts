@@ -304,7 +304,7 @@ export function useMatrixFigure(
       xanchor: 'center',
       yanchor: 'bottom',
       yshift: 46,
-      text: 'Forecasting methods',
+      text: 'Methods',
       showarrow: false,
       opacity: 0.85,
       font: { size: 22, color: pt.labelText },
@@ -318,7 +318,7 @@ export function useMatrixFigure(
       yanchor: 'middle',
       xshift: -2,
       textangle: '-90',
-      text: 'Water domains',
+      text: 'Cases',
       showarrow: false,
       opacity: 0.85,
       font: { size: 22, color: pt.labelText },
@@ -363,8 +363,20 @@ export function useMatrixFigure(
     };
     if (cfg.center !== null) {
       const finite = values.flat().filter((v) => Number.isFinite(v));
-      const lo = cfg.vlo ?? (finite.length ? Math.min(...finite) : 0);
-      const hi = cfg.vhi ?? (finite.length ? Math.max(...finite) : 1);
+      const dataLo = finite.length ? Math.min(...finite) : cfg.center;
+      const dataHi = finite.length ? Math.max(...finite) : cfg.center;
+      // vlo/vhi cap the colour scale against a single catastrophic outlier — they're
+      // not a fixed range. Shrink to whatever's actually on screen (so filtering
+      // methods/domains re-derives contrast) but still saturate an outlier beyond the
+      // cap to the edge colour rather than letting it wash out the rest of the view.
+      const lo =
+        cfg.vlo !== undefined && cfg.vhi !== undefined
+          ? Math.min(Math.max(dataLo, cfg.vlo), cfg.vhi)
+          : (cfg.vlo ?? dataLo);
+      const hi =
+        cfg.vlo !== undefined && cfg.vhi !== undefined
+          ? Math.max(Math.min(dataHi, cfg.vhi), cfg.vlo)
+          : (cfg.vhi ?? dataHi);
       heatmap.zmin = Math.min(lo, cfg.center);
       heatmap.zmax = Math.max(hi, cfg.center);
       heatmap.zmid = cfg.center;
@@ -379,7 +391,7 @@ export function useMatrixFigure(
     // sized to fit the colorbar title's widest possible second line ("[target unit]"),
     // left-anchored at the colorbar's own x — a plain 80px clipped it mid-word.
     const margin: Partial<Margin> & { autoexpand?: boolean } = {
-      // l/t include room for the "Water domains"/"Forecasting methods" super-title
+      // l/t include room for the "Cases"/"Methods" super-title
       // annotations above, on top of the space the family/domain group labels already need.
       l: 114,
       t: 96,

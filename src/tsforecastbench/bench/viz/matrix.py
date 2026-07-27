@@ -42,28 +42,28 @@ METRIC_CONFIG = {
         "lower_is_better": False,
     },
     "MAE": {
-        "cmap": "Reds",
+        "cmap": "RdYlGn_r",
         "center": None,
         "label": "MAE (lower is better)",
         "fmt": "{:.3g}",
         "lower_is_better": True,
     },
     "RMSE": {
-        "cmap": "Reds",
+        "cmap": "RdYlGn_r",
         "center": None,
         "label": "RMSE (lower is better)",
         "fmt": "{:.3g}",
         "lower_is_better": True,
     },
     "MAPE": {
-        "cmap": "Reds",
+        "cmap": "RdYlGn_r",
         "center": None,
         "label": "MAPE (lower is better)",
         "fmt": "{:.1%}",
         "lower_is_better": True,
     },
     "sMAPE": {
-        "cmap": "Reds",
+        "cmap": "RdYlGn_r",
         "center": None,
         "label": "sMAPE (lower is better)",
         "fmt": "{:.1%}",
@@ -103,7 +103,7 @@ def render_matrix(
     vhi: float | None = None,
 ) -> plt.Figure:
     cfg = METRIC_CONFIG.get(
-        metric, {"cmap": "viridis", "center": None, "label": metric, "fmt": "{:.3g}"}
+        metric, {"cmap": "RdYlGn_r", "center": None, "label": metric, "fmt": "{:.3g}"}
     )
 
     pivot = results[results["metric"] == metric].pivot(

@@ -250,6 +250,48 @@ class LinearLagsForecaster(_WindowedMLBase):
         return Ridge(alpha=1.0)
 
 
+class _BoundedRegressor:
+    """Clips predict() output to the fit-window target's own range, expanded by a
+    margin. mlforecast's recursive predict loop (`_predict_recursive` in
+    mlforecast/core.py) calls a fitted model's predict() once per horizon step and
+    feeds the raw output straight back in as the next step's lag input; tree models
+    can't leave their training leaf values and Ridge stays well-behaved, but
+    MLPRegressor's linear output layer is unbounded, so one miscalibrated step can
+    drift outside the training distribution and compound across the rest of the
+    horizon. Clipping every step's output before it's fed back in breaks that
+    compounding. Duck-types the get_params/set_params surface sklearn's `clone()`
+    needs rather than inheriting BaseEstimator, so no sklearn import is required here.
+    __sklearn_tags__ delegates to the wrapped estimator so Pipeline's fitted-check
+    (which calls it on its last step) works without that inheritance.
+    """
+
+    def __init__(self, estimator, margin_k: float = 4.0):
+        self.estimator = estimator
+        self.margin_k = margin_k
+
+    def get_params(self, deep=True):
+        return {"estimator": self.estimator, "margin_k": self.margin_k}
+
+    def set_params(self, **params):
+        for k, v in params.items():
+            setattr(self, k, v)
+        return self
+
+    def __sklearn_tags__(self):
+        return self.estimator.__sklearn_tags__()
+
+    def fit(self, X, y, **fit_kwargs):
+        self.estimator.fit(X, y, **fit_kwargs)
+        y = np.asarray(y, dtype=float)
+        pad = self.margin_k * y.std()
+        self.lo_ = float(y.min() - pad)
+        self.hi_ = float(y.max() + pad)
+        return self
+
+    def predict(self, X):
+        return np.clip(self.estimator.predict(X), self.lo_, self.hi_)
+
+
 class MLPForecaster(_WindowedMLBase):
     name = "MLP"
     max_train_steps = 20000
@@ -261,15 +303,19 @@ class MLPForecaster(_WindowedMLBase):
         from sklearn.preprocessing import StandardScaler
 
         # MLPRegressor is scale-sensitive; lags and calendar features (e.g. dayofyear up
-        # to 366) span very different ranges, so scale them first.
+        # to 366) span very different ranges, so scale them first. _BoundedRegressor
+        # guards against the recursive forecast diverging (see its docstring).
         return make_pipeline(
             StandardScaler(),
-            MLPRegressor(
-                hidden_layer_sizes=(64, 32),
-                activation="relu",
-                max_iter=300,
-                early_stopping=True,
-                random_state=0,
+            _BoundedRegressor(
+                MLPRegressor(
+                    hidden_layer_sizes=(64, 32),
+                    activation="relu",
+                    max_iter=300,
+                    early_stopping=True,
+                    random_state=0,
+                ),
+                margin_k=4.0,
             ),
         )
 

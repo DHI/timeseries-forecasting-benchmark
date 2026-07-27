@@ -4,12 +4,13 @@ import { FamilyMultiSelect } from './components/Sidebar/FamilyMultiSelect';
 import { HoldTrainingTimeButton } from './components/Sidebar/HoldTrainingTimeButton';
 import { MarkerSwatch } from './components/Sidebar/MarkerSwatch';
 import { MetricDropdown } from './components/Sidebar/MetricDropdown';
+import { MetricInfoModal } from './components/Sidebar/MetricInfoModal';
 import { SidebarToggleHint } from './components/Sidebar/SidebarToggleHint';
 import { ToggleExogenous } from './components/Sidebar/ToggleExogenous';
 import { ToggleGlobal } from './components/Sidebar/ToggleGlobal';
 import { MatrixGraph } from './components/Matrix/MatrixGraph';
 import { SelectionHint } from './components/Matrix/SelectionHint';
-import { BenchmarkDesign } from './components/BenchmarkDesign/BenchmarkDesign';
+import { AppInstructions } from './components/AppInstructions/AppInstructions';
 import { InstructionsModal } from './components/InstructionsModal/InstructionsModal';
 import { useEdgeResize } from './hooks/useEdgeResize';
 import { DOMAIN_RESTRICTED_METRICS } from './data/metricConfig';
@@ -273,16 +274,23 @@ function MainLayout({
               }}
             >
               <h3>Controls</h3>
-              <label style={{ fontWeight: 'bold', display: 'block', marginTop: 16 }}>Metric</label>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  marginTop: 16,
+                  marginBottom: 4,
+                }}
+              >
+                <label style={{ fontWeight: 'bold' }}>Metric</label>
+                <MetricInfoModal />
+              </div>
               <MetricDropdown
                 options={metricOpts}
                 value={state.metric}
                 onChange={(metric) => dispatch({ type: 'SET_METRIC', metric })}
               />
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.8em', marginTop: 4 }}>
-                NSE and KGE only apply to cases whose case.toml declares them (flow/level domains) —
-                the matrix rows narrow to just those cases when one is selected.
-              </p>
               <label style={{ fontWeight: 'bold', display: 'block', marginTop: 16 }}>Domains</label>
               <DomainChecklist
                 options={domainOpts}
@@ -384,17 +392,29 @@ function MainLayout({
         </button>
         {state.sidebarCollapsed && <SidebarToggleHint />}
       </div>
-      <main style={{ flex: 1, padding: 16, minWidth: 0, overflowX: 'auto' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+      <main
+        style={{
+          flex: 1,
+          minWidth: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          maxHeight: '100vh',
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            flexShrink: 0,
+            padding: '16px 16px 0',
+            overflow: 'auto',
+          }}
+        >
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <h1 style={{ margin: 0 }}>Timeseries Forecasting Benchmark</h1>
             <InstructionsModal />
           </div>
-          <p style={{ color: 'var(--text-secondary)', maxWidth: textMaxWidth }}>
-            The following matrix compiles the forecasting results of multiple methods across a
-            variety of timeseries in different water domains. Each cell represents one case x method
-            run, coloured by the metric chosen in the sidebar.
-          </p>
           <div style={{ position: 'relative' }}>
             <MatrixGraph
               key={matrixKey}
@@ -409,9 +429,22 @@ function MainLayout({
             />
             {!selectedCase && <SelectionHint />}
           </div>
-          <BenchmarkDesign maxWidth={textMaxWidth} />
+          <h1>Getting started</h1>
         </div>
-        <div style={{ height: TITLE_BAR_HEIGHT }} />
+        <div
+          style={{
+            flex: 1,
+            minHeight: 0,
+            overflow: 'auto',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            padding: '0 16px 16px',
+          }}
+        >
+          <AppInstructions maxWidth={textMaxWidth} />
+          <div style={{ height: TITLE_BAR_HEIGHT }} />
+        </div>
       </main>
       <Suspense fallback={null}>
         <MethodInfoPanel

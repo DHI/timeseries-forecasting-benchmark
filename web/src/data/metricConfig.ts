@@ -2,7 +2,7 @@
 // only the colour scale, not the printed value — a single catastrophic cell shouldn't
 // compress the whole colormap so every meaningful difference looks identical.
 export type MetricConfig = {
-  cmap: 'RdYlGn_r' | 'RdYlGn' | 'Reds' | 'Greys';
+  cmap: 'RdYlGn_r' | 'RdYlGn' | 'Greys';
   center: number | null;
   vlo?: number;
   vhi?: number;
@@ -54,7 +54,7 @@ export const METRIC_CONFIG: Record<string, MetricConfig> = {
     lowerIsBetter: false,
   },
   MAE: {
-    cmap: 'Reds',
+    cmap: 'RdYlGn_r',
     center: null,
     label: 'MAE (lower is better)',
     format: '.2f',
@@ -63,7 +63,7 @@ export const METRIC_CONFIG: Record<string, MetricConfig> = {
     lowerIsBetter: true,
   },
   RMSE: {
-    cmap: 'Reds',
+    cmap: 'RdYlGn_r',
     center: null,
     label: 'RMSE (lower is better)',
     format: '.2f',
@@ -72,7 +72,7 @@ export const METRIC_CONFIG: Record<string, MetricConfig> = {
     lowerIsBetter: true,
   },
   MAPE: {
-    cmap: 'Reds',
+    cmap: 'RdYlGn_r',
     center: null,
     label: 'MAPE (lower is better)',
     format: '.0f',
@@ -82,7 +82,7 @@ export const METRIC_CONFIG: Record<string, MetricConfig> = {
     lowerIsBetter: true,
   },
   sMAPE: {
-    cmap: 'Reds',
+    cmap: 'RdYlGn_r',
     center: null,
     label: 'sMAPE (lower is better)',
     format: '.0f',
@@ -131,7 +131,7 @@ export const TRAINING_TIME_CONFIG: MetricConfig = {
 };
 
 const FALLBACK_CONFIG: MetricConfig = {
-  cmap: 'Reds',
+  cmap: 'RdYlGn_r',
   center: null,
   label: '',
   format: '.3~g',
