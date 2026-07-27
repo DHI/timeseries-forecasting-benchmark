@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { DomainChecklist } from './components/Sidebar/DomainChecklist';
 import { FamilyMultiSelect } from './components/Sidebar/FamilyMultiSelect';
 import { HoldTrainingTimeButton } from './components/Sidebar/HoldTrainingTimeButton';
@@ -13,7 +13,7 @@ import { BenchmarkDesign } from './components/BenchmarkDesign/BenchmarkDesign';
 import { InstructionsModal } from './components/InstructionsModal/InstructionsModal';
 import { useEdgeResize } from './hooks/useEdgeResize';
 import { DOMAIN_RESTRICTED_METRICS } from './data/metricConfig';
-import { TITLE_BAR_HEIGHT, TRAINING_TIME_MIN_ROWS } from './data/constants';
+import { TEXT_WIDTH_OVERHANG, TITLE_BAR_HEIGHT, TRAINING_TIME_MIN_ROWS } from './data/constants';
 import {
   casesEligibleForMetric,
   domainOptions,
@@ -143,6 +143,11 @@ function MainLayout({
 }) {
   const state = useAppState();
   const dispatch = useAppDispatch();
+
+  // Undefined until MatrixGraph reports its first rendered width; the intro/Benchmark
+  // Design text falls back to its old fixed width until then.
+  const [matrixWidth, setMatrixWidth] = useState<number | undefined>(undefined);
+  const textMaxWidth = matrixWidth ? matrixWidth + TEXT_WIDTH_OVERHANG : 1000;
 
   const handleCellClick = useCallback(
     (caseId: string, method: string) => dispatch({ type: 'CELL_CLICK', case_id: caseId, method }),
@@ -385,7 +390,7 @@ function MainLayout({
             <h1 style={{ margin: 0 }}>Timeseries Forecasting Benchmark</h1>
             <InstructionsModal />
           </div>
-          <p style={{ color: 'var(--text-secondary)', maxWidth: 1000 }}>
+          <p style={{ color: 'var(--text-secondary)', maxWidth: textMaxWidth }}>
             The following matrix compiles the forecasting results of multiple methods across a
             variety of timeseries in different water domains. Each cell represents one case x method
             run, coloured by the metric chosen in the sidebar.
@@ -400,10 +405,11 @@ function MainLayout({
               showExogenous={state.showExogenous}
               showTrainingTime={state.trainingTimeOverlay}
               onCellClick={handleCellClick}
+              onWidthChange={setMatrixWidth}
             />
             {!selectedCase && <SelectionHint />}
           </div>
-          <BenchmarkDesign />
+          <BenchmarkDesign maxWidth={textMaxWidth} />
         </div>
         <div style={{ height: TITLE_BAR_HEIGHT }} />
       </main>

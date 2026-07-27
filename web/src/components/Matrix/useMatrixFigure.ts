@@ -1,7 +1,7 @@
 import { format as d3format } from 'd3-format';
 import { useMemo } from 'react';
 import type { Annotations, Data, Layout, Margin, PlotData, Shape } from 'plotly.js';
-import { CELL, DOMAIN_KEY_DICT, MATRIX_MARGIN } from '../../data/constants';
+import { CELL, DOMAIN_KEY_DICT } from '../../data/constants';
 import { colorscaleFor } from '../../data/colorscale';
 import { metricConfig, TRAINING_TIME_CONFIG, type MetricConfig } from '../../data/metricConfig';
 import {
@@ -316,7 +316,7 @@ export function useMatrixFigure(
       yref: 'paper',
       xanchor: 'right',
       yanchor: 'middle',
-      xshift: 25,
+      xshift: -2,
       textangle: '-90',
       text: 'Water domains',
       showarrow: false,
@@ -391,9 +391,13 @@ export function useMatrixFigure(
     const layout: Partial<Layout> = {
       annotations,
       shapes,
-      height: CELL * nRows + MATRIX_MARGIN,
-      // Derived from margin.l/margin.r (not a separate constant) so the two can never drift
-      // out of sync — the heatmap's pixel area is exactly width - (margin.l + margin.r).
+      // Both derived from the margin object itself (not separate constants) so they can
+      // never drift out of sync with it — the heatmap's pixel area is exactly
+      // width - (margin.l + margin.r) by height - (margin.t + margin.b). A fixed
+      // MATRIX_MARGIN constant here previously fell out of sync with margin.t/margin.b
+      // (after the axis super-titles grew margin.t), silently shrinking the plot area for
+      // short matrices (e.g. NSE/KGE's 3-row view) enough to push the heatmap off-canvas.
+      height: CELL * nRows + (margin.t ?? 0) + (margin.b ?? 0),
       width: CELL * nCols + (margin.l ?? 0) + (margin.r ?? 0),
       margin,
       paper_bgcolor: pt.paperBg,

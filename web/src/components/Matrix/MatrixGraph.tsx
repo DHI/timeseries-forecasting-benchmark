@@ -1,4 +1,4 @@
-import { memo, useCallback, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import type { Config } from 'plotly.js';
 import Plot from '../../plotly';
 import { computeHoverOverlay } from './hoverGeometry';
@@ -40,6 +40,9 @@ type Props = {
   showExogenous: boolean;
   showTrainingTime: boolean;
   onCellClick: (caseId: string, method: string) => void;
+  /** Reports the figure's rendered pixel width (heatmap + colorbar + axis-title margins)
+   * whenever it changes, so a caller can size surrounding content to match. */
+  onWidthChange?: (width: number) => void;
 };
 
 function MatrixGraphComponent({
@@ -50,6 +53,7 @@ function MatrixGraphComponent({
   showExogenous,
   showTrainingTime,
   onCellClick,
+  onWidthChange,
 }: Props) {
   const { theme } = useTheme();
   const figure = useMatrixFigure(
@@ -64,6 +68,10 @@ function MatrixGraphComponent({
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const graphRef = useRef<HTMLDivElement | null>(null);
   const [overlay, setOverlay] = useState<HoverOverlay | null>(null);
+
+  useEffect(() => {
+    if (figure?.layout.width) onWidthChange?.(figure.layout.width);
+  }, [figure, onWidthChange]);
 
   const handleHover = useCallback(
     (event: PlotMouseEvent) => {

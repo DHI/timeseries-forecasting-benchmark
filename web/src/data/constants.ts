@@ -1,8 +1,11 @@
-// Pixel size of one heatmap cell, and the fixed margin (title/colorbar/labels) around it
-// — together they size the heatmap figure so cells render square. Port of app/app.py's
-// CELL / MATRIX_MARGIN.
+// Pixel size of one heatmap cell — the figure's own width/height derive from this plus
+// its margin object (see useMatrixFigure.ts), so cells render square. Port of app/app.py's
+// CELL.
 export const CELL = 42;
-export const MATRIX_MARGIN = 120;
+
+/** How much wider the intro/Benchmark Design text blocks are than the matrix figure, so
+ * the text visually "wraps" the narrower heatmap+colorbar below/above it. */
+export const TEXT_WIDTH_OVERHANG = 80;
 
 /** Short row-label abbreviation per domain, so the vertical domain label column stays
  * narrow. Port of app/app.py's DOMAIN_KEY_DICT. */

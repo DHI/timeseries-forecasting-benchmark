@@ -1,12 +1,10 @@
-const TEXT_STYLE = { color: 'var(--text-secondary)', maxWidth: 1000 };
-
 /** Static methodology writeup below the matrix: splits, curation, model parameters, case
  * description, and exogenous-input handling. Port of app/app.py's "Benchmark Design" section. */
-export function BenchmarkDesign() {
+export function BenchmarkDesign({ maxWidth }: { maxWidth: number }) {
   return (
     <>
       <h2>Benchmark Design</h2>
-      <div style={TEXT_STYLE}>
+      <div style={{ color: 'var(--text-secondary)', maxWidth }}>
         <p>
           <strong>Splits. </strong>
           Each case declares its train/val/test split in case.toml, either as calendar dates
