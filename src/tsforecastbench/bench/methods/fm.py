@@ -86,21 +86,26 @@ def _load_chronos2_pipeline(model_name: str):
 
 
 def _load_timesfm(
-    model_name: str, max_context: int, max_horizon: int, return_backcast: bool = False
+    model_name: str, max_context: int | None, max_horizon: int, return_backcast: bool = False
 ):
     # Compilation bakes in the context/horizon caps, so cache per (model, caps) bucket.
     # `return_backcast` is a separate bucket dimension: `forecast_with_covariates` requires
     # it True to fit the xreg regressor, but turning it on changes what plain `forecast()`
     # returns (backcast prepended to the horizon, not just the horizon) — so the
     # covariate-fitting model must never be reused for a univariate call, and vice versa.
+    # `max_context=None` resolves below to the checkpoint's real context_limit, minus
+    # whatever headroom max_horizon needs (compile() requires max_context + max_horizon
+    # <= context_limit) — None plus max_horizon fully determines that, so it's still a
+    # safe cache key.
     key = (model_name, max_context, max_horizon, return_backcast)
     if key not in _TIMESFM_CACHE:
         import timesfm
 
         model = timesfm.TimesFM_2p5_200M_torch.from_pretrained(model_name)
+        resolved_max_context = max_context or (model.model.config.context_limit - max_horizon)
         model.compile(
             timesfm.ForecastConfig(
-                max_context=max_context,
+                max_context=resolved_max_context,
                 max_horizon=max_horizon,
                 normalize_inputs=True,
                 use_continuous_quantile_head=True,
@@ -110,7 +115,7 @@ def _load_timesfm(
                 return_backcast=return_backcast,
             )
         )
-        _TIMESFM_CACHE[key] = model
+        _TIMESFM_CACHE[key] = (model, resolved_max_context)
     return _TIMESFM_CACHE[key]
 
 
@@ -335,9 +340,11 @@ class TimesFMForecaster(Forecaster):
     def __init__(
         self,
         model_name: str = "google/timesfm-2.5-200m-pytorch",
-        max_context: int = 1024,
+        max_context: int | None = None,
     ):
         self.model_name = model_name
+        # None resolves to the checkpoint's real context_limit (see _load_timesfm),
+        # rather than guessing a number that may go stale across checkpoint releases.
         self.max_context = max_context
         self.uses_exogenous = self.use_exogenous
 
@@ -353,7 +360,6 @@ class TimesFMForecaster(Forecaster):
         future_exog: pd.DataFrame | None = None,
     ) -> pd.DataFrame:
         y = pd.to_numeric(history["y"], errors="coerce").ffill().bfill().to_numpy(dtype=float)
-        context = y[-self.max_context :]
         # max_horizon must cover the horizon; bucket to a stable value so the compiled
         # model is reused across origins rather than recompiled each call.
         max_horizon = max(256, horizon)
@@ -362,9 +368,10 @@ class TimesFMForecaster(Forecaster):
             # forecast_with_covariates needs return_backcast=True to fit the xreg
             # regressor; that changes what plain forecast() returns, so this must be a
             # separately cached compiled model, never the univariate one.
-            model = _load_timesfm(
+            model, ctx_len = _load_timesfm(
                 self.model_name, self.max_context, max_horizon, return_backcast=True
             )
+            context = y[-ctx_len:]
             n = len(context)
             covariates = {
                 c: [
@@ -385,7 +392,8 @@ class TimesFMForecaster(Forecaster):
             )
             y_hat = np.asarray(outputs[0], dtype=np.float64)[-horizon:]
         else:
-            model = _load_timesfm(self.model_name, self.max_context, max_horizon)
+            model, ctx_len = _load_timesfm(self.model_name, self.max_context, max_horizon)
+            context = y[-ctx_len:]
             point_forecast, _quantiles = model.forecast(horizon=horizon, inputs=[context])
             y_hat = np.asarray(point_forecast[0], dtype=np.float64)[:horizon]
         future = self._future_index(case, history["ds"].max(), horizon)
