@@ -8,7 +8,7 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
-## 2026-07-27 — One color scheme for every metric in the matrix heatmap
+## 2026-07-27 — One color scheme for every metric in the matrix heatmap, and it now adapts to filtering
 
 The matrix heatmap used two different color schemes depending on the metric: a green-to-red
 diverging scale for MASE/skill/NSE/KGE, but a plain white-to-red scale for MAE/RMSE/MAPE/sMAPE
@@ -16,8 +16,14 @@ that never reached green even at their best value in view. Switched those four m
 fallback used for any unrecognized metric) to the same green-to-red scale, auto-ranged over
 whatever's currently on screen rather than pinned to a fixed center — unlike MASE or the skill
 metrics, MAE/RMSE/MAPE/sMAPE have no fixed "no better than X" reference point, so there's no
-absolute value to center on. `web/src/data/metricConfig.ts` and its Python twin
-`src/tsforecastbench/bench/viz/matrix.py` were both updated to keep them in sync.
+absolute value to center on. Separately, MASE/skill/NSE/KGE's color range turned out to be pinned
+to their fixed `[vlo, vhi]` cap regardless of what was actually filtered into view — now the range
+shrinks to the visible cells' own min/max, still clamped into `[vlo, vhi]` so a catastrophic
+outlier left on screen still saturates to the edge color instead of stretching the scale for
+everything else. `web/src/data/metricConfig.ts`, `web/src/components/Matrix/useMatrixFigure.ts`,
+and the Python twin `src/tsforecastbench/bench/viz/matrix.py` were updated to keep the color logic
+in sync (the range-adaptation fix is web-only, since the Python script renders one static dataset
+per image rather than reflecting interactive filtering).
 
 ## 2026-07-23 — Split the pilot run across machines: tagged partial runs + a merge step
 
