@@ -238,8 +238,10 @@ class Chronos2Forecaster(Forecaster):
 
     use_exogenous: bool = False
 
-    def __init__(self, model_name: str = "amazon/chronos-2", context_length: int = 2048):
+    def __init__(self, model_name: str = "amazon/chronos-2", context_length: int | None = None):
         self.model_name = model_name
+        # None resolves to the loaded checkpoint's real context_length (predict()),
+        # rather than guessing a number that may go stale across checkpoint releases.
         self.context_length = context_length
         self.uses_exogenous = self.use_exogenous
 
@@ -254,26 +256,27 @@ class Chronos2Forecaster(Forecaster):
         horizon: int,
         future_exog: pd.DataFrame | None = None,
     ) -> pd.DataFrame:
+        pipe = _load_chronos2_pipeline(self.model_name)
+        ctx_len = self.context_length or pipe.model_context_length
         y = pd.to_numeric(history["y"], errors="coerce").ffill().bfill().to_numpy(dtype=float)
         ds = pd.DatetimeIndex(history["ds"])
         context_df = pd.DataFrame(
             {
                 "id": 0,
-                "timestamp": ds[-self.context_length :],
-                "target": y[-self.context_length :],
+                "timestamp": ds[-ctx_len:],
+                "target": y[-ctx_len:],
             }
         )
         exo = [c for c in _exo_cols(case) if c in history.columns] if self.use_exogenous else []
         future = self._future_index(case, history["ds"].max(), horizon)
         future_df = None
         if exo:
-            tail = history.iloc[-self.context_length :]
+            tail = history.iloc[-ctx_len:]
             for c in exo:
                 context_df[c] = pd.to_numeric(tail[c], errors="coerce").to_numpy()
             future_df = pd.DataFrame({"id": 0, "timestamp": future})
             for c in exo:
                 future_df[c] = _future_covariate(c, history[c], horizon, future_exog)
-        pipe = _load_chronos2_pipeline(self.model_name)
         pred = pipe.predict_df(
             context_df,
             future_df=future_df,
