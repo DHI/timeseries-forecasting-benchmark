@@ -1315,9 +1315,29 @@
         "ui",
         "foundation-model"
       ]
+    },
+    {
+      "id": "2026-07-27-fm-context-length-hardcoding",
+      "date": "2026-07-27",
+      "title": "Stopped hardcoding foundation-model context lengths; read them from the models instead",
+      "category": "bug-fix",
+      "summary": "Chronos-2 and TimesFM-2.5 were capped 4x and 16x below what their checkpoints actually support; both now read their real context limit off the loaded model, and Moirai-2.0 (whose old 1680 cap turned out to be an unrelated demo dataset's length, not a real value) now uses the full available history capped at its position-embedding cache size.",
+      "detail": "`fm.py`'s foundation-model wrappers each hardcoded a `context_length`/`max_context` default. Checked them against what the underlying checkpoints actually support: Chronos-2 was capped at 2048 when `amazon/chronos-2` supports 8192 (`pipe.model_context_length`), and TimesFM-2.5 was capped at 1024 when `google/timesfm-2.5-200m-pytorch` supports 16384 (`model.model.config.context_limit`). Both now default to `None` and resolve the real value from the loaded model instead of a guessed constant, so a checkpoint swap can't silently go stale again. Chronos-Bolt's 2048 was already correct and left untouched.\n\nMoirai-2.0's 1680 turned out to have no basis at all — it's just the length of an unrelated demo dataset (GluonTS `electricity`) in Salesforce's own example notebook, not a recommended or trained value, and Moirai-2.0 has no published max context length anywhere (paper, model card, or pretraining config) to read instead. It now uses the full available history, capped at the loaded module's position-embedding cache size (`max_seq_len * patch_size` = 8192) — the one real architectural limit that exists for this checkpoint, discovered from the model rather than guessed. Verified with a pilot spot-check on `discharge_saugeen` (23,741 rows, well over the old caps): all seven fm methods, including the `+exo` variants, ran and returned finite forecasts. Scores are expected to shift for Chronos-2, TimesFM-2.5, and Moirai-2.0 since they now condition on meaningfully more history, so prior fm results are stale and worth re-running.",
+      "tags": [
+        "foundation-model",
+        "chronos",
+        "timesfm",
+        "moirai",
+        "bug"
+      ]
     }
   ],
   "edges": [
+    {
+      "source": "2026-07-27-fm-context-length-hardcoding",
+      "target": "2026-07-14-three-fms-added",
+      "type": "fixes-bug-in"
+    },
     {
       "source": "2026-07-27-mlp-recursive-divergence-bounded",
       "target": "2026-07-10-mlp-scaling-fix",

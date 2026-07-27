@@ -8,6 +8,24 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-27 — Stopped hardcoding foundation-model context lengths; read them from the models instead
+
+Chronos-2 and TimesFM-2.5's context caps in `fm.py` turned out to be far below what the
+checkpoints actually support: Chronos-2 was capped at 2048 when `amazon/chronos-2` supports
+8192, and TimesFM-2.5 was capped at 1024 when `google/timesfm-2.5-200m-pytorch` supports 16384.
+Both wrappers now read the real value off the loaded model (`pipe.model_context_length`,
+`model.model.config.context_limit`) instead of a guessed constant, so a checkpoint swap can't
+silently go stale again. Moirai-2.0's old cap (1680) turned out to have no basis at all — it
+was just the length of an unrelated demo dataset in Salesforce's example notebook — and
+Moirai-2.0 has no published trained max context length to read instead, so it now uses the full
+available history capped at the loaded module's position-embedding cache size (`max_seq_len *
+patch_size` = 8192), the one real architectural limit that exists for this checkpoint.
+Chronos-Bolt was already correct (2048) and untouched. Verified with a pilot spot-check on
+`discharge_saugeen` (23,741 rows, well over the old caps) — all seven fm methods, including the
+`+exo` variants, ran and returned finite forecasts; scores are expected to shift for Chronos-2,
+TimesFM-2.5, and Moirai-2.0 since they now condition on meaningfully more history, so prior fm
+results are stale and worth re-running.
+
 ## 2026-07-27 — Flagged foundation models in the case panel as not using the train/val split
 
 The case panel's train/val/test split bar and training-tail plot assume every method fits on
