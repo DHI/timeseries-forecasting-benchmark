@@ -424,8 +424,9 @@ class Moirai2Forecaster(Forecaster):
         "pretraining on other series. Univariate by default — Moirai supports covariates "
         "natively, and the +exo variant feeds the case's declared covariates in as "
         "`feat_dynamic_real`, using a perfect-forecast proxy (not a real forecast of those "
-        "covariates) for the future values. Conditions on the most recent `context_length` "
-        "points of history."
+        "covariates) for the future values. Conditions on the full available history, "
+        "capped at the model's position-embedding cache size (max_seq_len * patch_size) "
+        "— Salesforce hasn't published a trained max context length for this model."
     )
     code_snippet = (
         "from gluonts.dataset.pandas import PandasDataset\n"
@@ -447,9 +448,12 @@ class Moirai2Forecaster(Forecaster):
     def __init__(
         self,
         model_name: str = "Salesforce/moirai-2.0-R-small",
-        context_length: int = 1680,
+        context_length: int | None = None,
     ):
         self.model_name = model_name
+        # None resolves in predict() to the full available history, capped at the
+        # loaded module's position-embedding cache size — Salesforce has never
+        # published a trained max context length for this model to read instead.
         self.context_length = context_length
         self.uses_exogenous = self.use_exogenous
 
@@ -468,10 +472,14 @@ class Moirai2Forecaster(Forecaster):
         from uni2ts.model.moirai2 import Moirai2Forecast
 
         y = pd.to_numeric(history["y"], errors="coerce").ffill().bfill().to_numpy(dtype=float)
-        ctx_len = min(self.context_length, len(y))
+        module = _load_moirai_module(self.model_name)
+        # Position-embedding cache size: the point past which the module has to
+        # dynamically resize its rotary cache rather than use what it was built with.
+        cache_cap = module.max_seq_len * module.patch_size
+        ctx_len = min(self.context_length or len(y), cache_cap, len(y))
         exo = [c for c in _exo_cols(case) if c in history.columns] if self.use_exogenous else []
         forecaster = Moirai2Forecast(
-            module=_load_moirai_module(self.model_name),
+            module=module,
             prediction_length=horizon,
             context_length=ctx_len,
             target_dim=1,
