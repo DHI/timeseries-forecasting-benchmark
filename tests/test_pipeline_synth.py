@@ -23,11 +23,13 @@ from tsforecastbench.bench.methods import (  # noqa: E402
     LightGBMForecaster,
     LinearLagsExoForecaster,
     MeanBaseline,
+    MLPForecaster,
     Persistence,
     SeasonalNaive,
     ensemble_baselines,
     ensemble_baselines_theta,
 )
+from tsforecastbench.bench.methods.ml import _BoundedRegressor  # noqa: E402
 from tsforecastbench.bench.viz import plot_leadtime_curve, render_matrix  # noqa: E402
 from tsforecastbench.data.registry import discover_cases, get_case  # noqa: E402
 from tsforecastbench.data.seasonality import dominant_period  # noqa: E402
@@ -160,6 +162,54 @@ def test_lightgbm_runs_on_one_case():
 def test_catboost_runs_on_one_case():
     res = run_case(get_case("waves_oregon"), [CatBoostForecaster()], prefer_synth=True)
     assert (res["status"] == "ok").all()
+
+
+def test_mlp_runs_on_one_case():
+    res = run_case(get_case("waves_oregon"), [MLPForecaster()], prefer_synth=True)
+    assert (res["status"] == "ok").all()
+
+
+def test_bounded_regressor_clips_predict_output():
+    """_BoundedRegressor must clip every call, since mlforecast's recursive predict
+    loop calls predict() once per horizon step and feeds the raw output straight back
+    in as the next step's lag input (see its docstring in ml.py)."""
+
+    class _WildStub:
+        def fit(self, X, y):
+            return self
+
+        def predict(self, X):
+            return np.full(len(X), 1e6)
+
+    y_train = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+    reg = _BoundedRegressor(_WildStub(), margin_k=1.0)
+    reg.fit(np.zeros((5, 1)), y_train)
+
+    preds = reg.predict(np.zeros((3, 1)))
+    assert np.all(preds <= reg.hi_)
+    assert reg.hi_ < 1e6
+
+
+def test_mlp_recursive_forecast_stays_bounded_on_smooth_case():
+    """Regression test for the groundwater_yorktown blow-up: MLP's recursive forecast
+    must not diverge far outside the training window's own range."""
+    case = get_case("groundwater_yorktown")
+    from tsforecastbench.bench.eval.loop import _horizon_to_steps
+
+    train = case.split_frame(case.synth())["train"]
+    horizon = _horizon_to_steps(case.horizon_primary, case.freq)
+
+    mlp = MLPForecaster()
+    mlp.fit(case, train)
+    y_hat = mlp.predict(case, train, horizon)["y_hat"].to_numpy()
+
+    y_train = train["y"].to_numpy()
+    span = y_train.max() - y_train.min()
+    # A generous multiple of the observed range: tight enough to catch a recurrence of
+    # the original ~1000x blow-up, loose enough not to be brittle to legitimate model
+    # variance.
+    assert y_hat.max() <= y_train.max() + 10 * span
+    assert y_hat.min() >= y_train.min() - 10 * span
 
 
 def test_rolling_matrix_runs():
