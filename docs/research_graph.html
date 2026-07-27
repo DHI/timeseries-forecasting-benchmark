@@ -1274,6 +1274,20 @@
         "migration",
         "cleanup"
       ]
+    },
+    {
+      "id": "2026-07-27-unified-heatmap-color-scheme",
+      "date": "2026-07-27",
+      "title": "One color scheme for every metric in the matrix heatmap",
+      "category": "app-tooling",
+      "summary": "MAE/RMSE/MAPE/sMAPE moved from a white-to-red scale that never reached green to the same green-to-red diverging scale already used for MASE/skill/NSE/KGE, auto-ranged since they have no fixed center to pivot on.",
+      "detail": "The matrix heatmap used two different color schemes depending on the metric: a green-to-red diverging scale for MASE/skill/NSE/KGE, but a plain white-to-red scale for MAE/RMSE/MAPE/sMAPE that never reached green even at their best value in view. Switched those four metrics (and the fallback used for any unrecognized metric) to the same green-to-red scale, auto-ranged over whatever's currently on screen rather than pinned to a fixed center — unlike MASE or the skill metrics, MAE/RMSE/MAPE/sMAPE have no fixed \"no better than X\" reference point, so there's no absolute value to center on. `web/src/data/metricConfig.ts` and its Python twin `src/tsforecastbench/bench/viz/matrix.py` were both updated to keep them in sync.",
+      "tags": [
+        "react",
+        "ui",
+        "heatmap",
+        "metrics"
+      ]
     }
   ],
   "edges": [
@@ -1550,6 +1564,16 @@
     {
       "source": "2026-07-21-legacy-dash-app-removed",
       "target": "2026-07-09-streamlit-to-dash",
+      "type": "relates-to"
+    },
+    {
+      "source": "2026-07-27-unified-heatmap-color-scheme",
+      "target": "2026-07-13-metrics-mape-nse-kge",
+      "type": "relates-to"
+    },
+    {
+      "source": "2026-07-27-unified-heatmap-color-scheme",
+      "target": "2026-07-20-training-time-heatmap-overlay",
       "type": "relates-to"
     }
   ],

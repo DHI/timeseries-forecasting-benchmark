@@ -8,6 +8,17 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-27 — One color scheme for every metric in the matrix heatmap
+
+The matrix heatmap used two different color schemes depending on the metric: a green-to-red
+diverging scale for MASE/skill/NSE/KGE, but a plain white-to-red scale for MAE/RMSE/MAPE/sMAPE
+that never reached green even at their best value in view. Switched those four metrics (and the
+fallback used for any unrecognized metric) to the same green-to-red scale, auto-ranged over
+whatever's currently on screen rather than pinned to a fixed center — unlike MASE or the skill
+metrics, MAE/RMSE/MAPE/sMAPE have no fixed "no better than X" reference point, so there's no
+absolute value to center on. `web/src/data/metricConfig.ts` and its Python twin
+`src/tsforecastbench/bench/viz/matrix.py` were both updated to keep them in sync.
+
 ## 2026-07-23 — Split the pilot run across machines: tagged partial runs + a merge step
 
 `torchdl.py` (N-HiTS, PatchTST) and `nf_models.py` (TFT, iTransformer, TimesNet) are the only
