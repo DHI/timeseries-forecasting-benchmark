@@ -1,15 +1,23 @@
+import { ClickCellDiagram } from './ClickCellDiagram';
+import { PageOverviewDiagram } from './PageOverviewDiagram';
+import { ResizeHandleDiagram } from './ResizeHandleDiagram';
+
 /** Static usage writeup below the matrix: selecting methods, the case details panel, and the
  * control panel's filters, metric selection, and toggles. */
 export function AppInstructions({ maxWidth }: { maxWidth: number }) {
   return (
     <>
-      <h2>App instructions</h2>
+      <h2>How to get started</h2>
       <div style={{ color: 'var(--text-secondary)', maxWidth }}>
+        <PageOverviewDiagram />
         <h3>Selecting methods in the matrix</h3>
         <p>
           Click a cell to open a method card for it. You can have up to three method cards open at
-          once, all from the same row (case).
+          once, all from the same row (case). Hovering a cell (without clicking) highlights its row
+          and column and shows the case ID and method name, so you can orient yourself before you
+          click.
         </p>
+        <ClickCellDiagram />
         <ul>
           <li>
             The first cell you click becomes the <strong>reference method</strong>. When you open
@@ -34,10 +42,14 @@ export function AppInstructions({ maxWidth }: { maxWidth: number }) {
             You can&apos;t compare methods across different cases.
           </li>
         </ul>
+        <h3>Method cards</h3>
         <p>
-          Each method card can be resized: drag the thin bar just under its title up or down to show
-          more or less of its content.
+          Click a card&apos;s title bar to collapse it down to just that bar, or to expand it again
+          &mdash; hovering the bar shows a tooltip confirming which of the two it&apos;ll do. Drag
+          the same bar up or down instead of clicking it to resize the card&apos;s content, showing
+          more or less of it.
         </p>
+        <ResizeHandleDiagram />
         <h3>Case details panel</h3>
         <p>
           The panel on the right can be resized too — drag its left edge to make it wider or
@@ -112,9 +124,9 @@ export function AppInstructions({ maxWidth }: { maxWidth: number }) {
           Press and hold this button, or hold the space bar, to see each cell&apos;s measured
           training time instead of its score. The whole matrix — including any cells already swapped
           by the two checkboxes above — switches to timing for as long as you hold it down; release
-          to go back to normal. You can still move your mouse around the matrix while holding, and
-          the usual row/column hover tooltips keep working, so you can hold with one hand (so to
-          speak) and hover to identify cells with the other.
+          to go back to normal. The row/column hover highlight described above still works while
+          holding, so you can hold with one hand (so to speak) and hover to identify cells with the
+          other.
         </p>
       </div>
     </>
