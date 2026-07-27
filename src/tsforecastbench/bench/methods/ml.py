@@ -261,6 +261,8 @@ class _BoundedRegressor:
     horizon. Clipping every step's output before it's fed back in breaks that
     compounding. Duck-types the get_params/set_params surface sklearn's `clone()`
     needs rather than inheriting BaseEstimator, so no sklearn import is required here.
+    __sklearn_tags__ delegates to the wrapped estimator so Pipeline's fitted-check
+    (which calls it on its last step) works without that inheritance.
     """
 
     def __init__(self, estimator, margin_k: float = 4.0):
@@ -274,6 +276,9 @@ class _BoundedRegressor:
         for k, v in params.items():
             setattr(self, k, v)
         return self
+
+    def __sklearn_tags__(self):
+        return self.estimator.__sklearn_tags__()
 
     def fit(self, X, y, **fit_kwargs):
         self.estimator.fit(X, y, **fit_kwargs)
