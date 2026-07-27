@@ -41,11 +41,11 @@ export const METRIC_DESCRIPTIONS: { key: string; description: string }[] = [
   {
     key: 'NSE',
     description:
-      'Nash-Sutcliffe Efficiency, a hydrology-standard fit measure. 1 = perfect, 0 = no better than predicting the mean, negative = worse than the mean. Higher is better. Only meaningful for flow/water-level cases.',
+      'Nash-Sutcliffe Efficiency, a hydrology-standard fit measure. 1 = perfect, 0 = no better than predicting the mean, negative = worse than the mean. Higher is better. Only applies to cases whose case.toml declares it (flow/level domains) — selecting it narrows the matrix rows to just those cases.',
   },
   {
     key: 'KGE',
     description:
-      'Kling-Gupta Efficiency: splits error into correlation, bias, and variability components. 1 = perfect. Higher is better. Only meaningful for flow/water-level cases.',
+      'Kling-Gupta Efficiency: splits error into correlation, bias, and variability components. 1 = perfect. Higher is better. Only applies to cases whose case.toml declares it (flow/level domains) — selecting it narrows the matrix rows to just those cases.',
   },
 ];
