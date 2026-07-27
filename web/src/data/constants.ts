@@ -3,7 +3,7 @@
 // CELL.
 export const CELL = 42;
 
-/** How much wider the intro/Benchmark Design text blocks are than the matrix figure, so
+/** How much wider the intro/App instructions text blocks are than the matrix figure, so
  * the text visually "wraps" the narrower heatmap+colorbar below/above it. */
 export const TEXT_WIDTH_OVERHANG = 80;
 

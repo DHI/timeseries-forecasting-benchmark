@@ -9,7 +9,7 @@ import { ToggleExogenous } from './components/Sidebar/ToggleExogenous';
 import { ToggleGlobal } from './components/Sidebar/ToggleGlobal';
 import { MatrixGraph } from './components/Matrix/MatrixGraph';
 import { SelectionHint } from './components/Matrix/SelectionHint';
-import { BenchmarkDesign } from './components/BenchmarkDesign/BenchmarkDesign';
+import { AppInstructions } from './components/AppInstructions/AppInstructions';
 import { InstructionsModal } from './components/InstructionsModal/InstructionsModal';
 import { useEdgeResize } from './hooks/useEdgeResize';
 import { DOMAIN_RESTRICTED_METRICS } from './data/metricConfig';
@@ -409,7 +409,7 @@ function MainLayout({
             />
             {!selectedCase && <SelectionHint />}
           </div>
-          <BenchmarkDesign maxWidth={textMaxWidth} />
+          <AppInstructions maxWidth={textMaxWidth} />
         </div>
         <div style={{ height: TITLE_BAR_HEIGHT }} />
       </main>
