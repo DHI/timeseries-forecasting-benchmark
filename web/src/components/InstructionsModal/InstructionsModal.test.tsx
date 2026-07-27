@@ -8,18 +8,18 @@ describe('InstructionsModal', () => {
     const user = userEvent.setup();
     render(<InstructionsModal />);
 
-    expect(screen.queryByText(/Selecting methods in the matrix/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Curation enforces minimum lengths/)).not.toBeInTheDocument();
 
-    await user.click(screen.getByTitle('App instructions'));
-    expect(screen.getByText(/Selecting methods in the matrix/)).toBeInTheDocument();
+    await user.click(screen.getByTitle('Benchmark Design'));
+    expect(screen.getByText(/Curation enforces minimum lengths/)).toBeInTheDocument();
 
     await user.click(screen.getByTitle('Close'));
-    expect(screen.queryByText(/Selecting methods in the matrix/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Curation enforces minimum lengths/)).not.toBeInTheDocument();
 
-    await user.click(screen.getByTitle('App instructions'));
-    expect(screen.getByText(/Selecting methods in the matrix/)).toBeInTheDocument();
+    await user.click(screen.getByTitle('Benchmark Design'));
+    expect(screen.getByText(/Curation enforces minimum lengths/)).toBeInTheDocument();
 
     await user.click(screen.getByTestId('instructions-backdrop'));
-    expect(screen.queryByText(/Selecting methods in the matrix/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Curation enforces minimum lengths/)).not.toBeInTheDocument();
   });
 });

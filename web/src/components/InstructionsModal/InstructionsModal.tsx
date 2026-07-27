@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import Markdown from 'react-markdown';
-import { APP_INSTRUCTIONS } from '../../data/appInstructions';
+import { BENCHMARK_DESIGN } from '../../data/benchmarkDesign';
 
 /** Thin grey info icon next to the page title; clicking it opens a centered, scrollable modal
- * with the app's usage instructions (moved here from the repo root's `APP_INSTRUCTIONS.md`).
- * Styled like the app's other panels (white background / black border via the `--bg` /
- * `--border` tokens from index.css) rather than as a one-off. */
+ * with the benchmark's design/methodology writeup. Styled like the app's other panels (white
+ * background / black border via the `--bg` / `--border` tokens from index.css) rather than as
+ * a one-off. */
 export function InstructionsModal() {
   const [open, setOpen] = useState(false);
 
@@ -13,8 +13,8 @@ export function InstructionsModal() {
     <>
       <button
         type="button"
-        title="App instructions"
-        aria-label="Show app instructions"
+        title="Benchmark Design"
+        aria-label="Show benchmark design details"
         onClick={() => setOpen(true)}
         style={{
           width: 22,
@@ -87,9 +87,9 @@ export function InstructionsModal() {
               >
                 ✕
               </button>
-              <h2 style={{ margin: 0 }}>App instructions</h2>
+              <h2 style={{ margin: 0 }}>Benchmark Design</h2>
             </div>
-            <Markdown>{APP_INSTRUCTIONS}</Markdown>
+            <Markdown>{BENCHMARK_DESIGN}</Markdown>
           </div>
         </div>
       )}
