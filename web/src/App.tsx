@@ -392,8 +392,25 @@ function MainLayout({
         </button>
         {state.sidebarCollapsed && <SidebarToggleHint />}
       </div>
-      <main style={{ flex: 1, padding: 16, minWidth: 0, overflowX: 'auto' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+      <main
+        style={{
+          flex: 1,
+          minWidth: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          maxHeight: '100vh',
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            flexShrink: 0,
+            padding: '16px 16px 0',
+            overflow: 'auto',
+          }}
+        >
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <h1 style={{ margin: 0 }}>Timeseries Forecasting Benchmark</h1>
             <InstructionsModal />
@@ -412,9 +429,21 @@ function MainLayout({
             />
             {!selectedCase && <SelectionHint />}
           </div>
-          <AppInstructions maxWidth={textMaxWidth} />
         </div>
-        <div style={{ height: TITLE_BAR_HEIGHT }} />
+        <div
+          style={{
+            flex: 1,
+            minHeight: 0,
+            overflow: 'auto',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            padding: '0 16px 16px',
+          }}
+        >
+          <AppInstructions maxWidth={textMaxWidth} />
+          <div style={{ height: TITLE_BAR_HEIGHT }} />
+        </div>
       </main>
       <Suspense fallback={null}>
         <MethodInfoPanel
