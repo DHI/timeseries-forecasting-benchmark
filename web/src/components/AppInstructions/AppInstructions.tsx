@@ -7,8 +7,13 @@ import { ResizeHandleDiagram } from './ResizeHandleDiagram';
 export function AppInstructions({ maxWidth }: { maxWidth: number }) {
   return (
     <>
-      <h2>How to get started</h2>
+      <h1>Getting started</h1>
       <div style={{ color: 'var(--text-secondary)', maxWidth }}>
+        <p>
+          This page compares forecasting methods across cases in a heatmap. Click a cell to dig into
+          a case, drag panels to resize them, and use the sidebar to filter the matrix down to what
+          you care about. The diagram below shows where everything sits.
+        </p>
         <PageOverviewDiagram />
         <h3>Selecting methods in the matrix</h3>
         <p>
@@ -44,10 +49,9 @@ export function AppInstructions({ maxWidth }: { maxWidth: number }) {
         </ul>
         <h3>Method cards</h3>
         <p>
-          Click a card&apos;s title bar to collapse it down to just that bar, or to expand it again
-          &mdash; hovering the bar shows a tooltip confirming which of the two it&apos;ll do. Drag
-          the same bar up or down instead of clicking it to resize the card&apos;s content, showing
-          more or less of it.
+          Click a card&apos;s title bar to collapse it down to just that bar, or to expand it again.
+          Drag the same bar up or down instead of clicking it to resize the card&apos;s content,
+          showing more or less of it.
         </p>
         <ResizeHandleDiagram />
         <h3>Case details panel</h3>
