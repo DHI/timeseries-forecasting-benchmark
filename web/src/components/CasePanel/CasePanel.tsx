@@ -18,6 +18,7 @@ const SUBCAPTION_STYLE = {
   margin: '10px 0 2px 0',
 };
 const SUMMARY_STYLE = { cursor: 'pointer', fontWeight: 'bold' as const, fontSize: '1em' };
+const LOCAL_FAMILIES = new Set(['baseline', 'classical', 'ensemble']);
 const FOUNDATION_NOTE_STYLE = {
   display: 'flex',
   alignItems: 'flex-start',
@@ -72,6 +73,17 @@ function CasePanelComponent({ caseId, caseMeta, scores, showGlobal, selectedMeth
       ? "is a zero-shot foundation model: it forecasts from recent context only and never fits on this case's train/val split."
       : "are zero-shot foundation models: they forecast from recent context only and never fit on this case's train/val split.";
 
+  // Local methods have no single trained model — unlike the global (ML/DL) methods, which
+  // fit once on the train/val split, these refit from scratch at every forecast origin.
+  const localMethods = useMemo(
+    () => selectedMethods.filter((m) => LOCAL_FAMILIES.has(familyByMethod.get(m) ?? '')),
+    [familyByMethod, selectedMethods],
+  );
+  const localNote =
+    localMethods.length === 1
+      ? "is a local method: it's refit from scratch at every forecast origin, using all history up to that point, rather than being fit once on the train/val split like the global (ML/DL) methods."
+      : "are local methods: they're refit from scratch at every forecast origin, using all history up to that point, rather than being fit once on the train/val split like the global (ML/DL) methods.";
+
   return (
     <div>
       <div style={{ fontWeight: 'bold', fontSize: '1.1em', margin: '0 0 4px 0' }}>
@@ -93,6 +105,18 @@ function CasePanelComponent({ caseId, caseMeta, scores, showGlobal, selectedMeth
             <p style={{ ...SUBCAPTION_STYLE, margin: 0 }}>
               <strong>{foundationMethods.join(', ')}</strong> {foundationNote} The split below still
               applies to the other methods and to how the test points are scored.
+            </p>
+          </div>
+        )}
+        {localMethods.length > 0 && (
+          <div style={FOUNDATION_NOTE_STYLE}>
+            <span aria-hidden="true" style={{ color: 'var(--warning-text)' }}>
+              ⚠
+            </span>
+            <p style={{ ...SUBCAPTION_STYLE, margin: 0 }}>
+              <strong>{localMethods.join(', ')}</strong> {localNote} The split below still applies
+              to how the test points are scored, but there's no single trained model here the way
+              there is for global methods — it refits at every origin instead.
             </p>
           </div>
         )}

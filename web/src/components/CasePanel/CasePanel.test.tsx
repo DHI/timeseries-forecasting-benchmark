@@ -91,4 +91,38 @@ describe('CasePanel', () => {
     expect(screen.getByText(/is a zero-shot foundation model/)).toBeInTheDocument();
     expect(screen.getByText('TimesFM-2.5')).toBeInTheDocument();
   });
+
+  it('notes that a selected local method refits at every origin', () => {
+    render(
+      <ThemeProvider>
+        <CasePanel
+          caseId="demand_ltown"
+          caseMeta={caseMeta}
+          scores={scores}
+          showGlobal={false}
+          selectedMethods={['Persistence']}
+        />
+      </ThemeProvider>,
+    );
+
+    expect(screen.getByText(/is a local method/)).toBeInTheDocument();
+    expect(screen.getByText('Persistence')).toBeInTheDocument();
+  });
+
+  it('shows both notes when local and foundation methods are selected together', () => {
+    render(
+      <ThemeProvider>
+        <CasePanel
+          caseId="demand_ltown"
+          caseMeta={caseMeta}
+          scores={scores}
+          showGlobal={false}
+          selectedMethods={['Persistence', 'TimesFM-2.5']}
+        />
+      </ThemeProvider>,
+    );
+
+    expect(screen.getByText(/is a zero-shot foundation model/)).toBeInTheDocument();
+    expect(screen.getByText(/is a local method/)).toBeInTheDocument();
+  });
 });
