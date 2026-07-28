@@ -5,7 +5,7 @@ import type { HoverOverlay, Rect } from './hoverGeometry';
 // _COL_TRIANGLE_STYLE / _DIM_RECT_STYLE.
 const TOOLTIP_BG = '#2a3f5f';
 
-const tooltipBoxStyle: CSSProperties = {
+export const tooltipBoxStyle: CSSProperties = {
   background: TOOLTIP_BG,
   color: 'white',
   padding: '3px 8px',
