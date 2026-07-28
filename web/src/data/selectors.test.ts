@@ -29,7 +29,8 @@ function row(overrides: Partial<ScoreRow>): ScoreRow {
     horizon: '24h',
     metric: 'MAE',
     value: 1.0,
-    seconds: 0.1,
+    fit_seconds: 0.08,
+    predict_seconds: 0.02,
     frac_finite_test: 1.0,
     status: 'ok',
     n_origins: 40,
@@ -196,8 +197,8 @@ describe('pivotValues', () => {
   });
 
   it('pivots on a custom field when a value accessor is given', () => {
-    const rows = [row({ case_id: 'c1', method: 'm1', value: 1.5, seconds: 4.32 })];
-    const grid = pivotValues(rows, ['c1'], ['m1'], (r) => r.seconds);
+    const rows = [row({ case_id: 'c1', method: 'm1', value: 1.5, fit_seconds: 4.32 })];
+    const grid = pivotValues(rows, ['c1'], ['m1'], (r) => r.fit_seconds);
     expect(grid).toEqual([[4.32]]);
   });
 });

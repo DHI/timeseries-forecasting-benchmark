@@ -24,7 +24,8 @@ const SCORES = [
     horizon: '24h',
     metric: 'MASE',
     value: 1.42,
-    seconds: 0.01,
+    fit_seconds: 0.005,
+    predict_seconds: 0.005,
     frac_finite_test: 1.0,
     status: 'ok',
     n_origins: 40,
@@ -180,7 +181,9 @@ describe('App', () => {
 
     const button = screen.getByRole('button', { name: 'Show training time' }) as HTMLButtonElement;
     expect(button.disabled).toBe(true);
-    expect(screen.getByText(/Training time can't be shown for a matrix this short/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Training time can't be shown for a matrix this short/),
+    ).toBeInTheDocument();
   });
 
   it('keeps training time enabled once the matrix reaches TRAINING_TIME_MIN_ROWS', async () => {

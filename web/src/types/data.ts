@@ -10,7 +10,8 @@ export type ScoreRow = {
   horizon: string;
   metric: string;
   value: number | null;
-  seconds: number | null;
+  fit_seconds: number | null;
+  predict_seconds: number | null;
   frac_finite_test: number | null;
   status: string;
   n_origins: number;

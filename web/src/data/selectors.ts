@@ -126,7 +126,8 @@ export function formatSnakeCaseLabel(label: string, separator = ' '): string {
 
 /** case_id/method -> value, for one metric, restricted to the given row/column order.
  * `valueOf` picks which field to pivot — defaults to the score (`row.value`), but the
- * training-time overlay passes `(r) => r.seconds` to pivot on timing instead. */
+ * training-time overlay passes `(r) => (r.fit_seconds ?? 0) + (r.predict_seconds ?? 0)`
+ * to pivot on timing instead. */
 export function pivotValues(
   rows: ScoreRow[],
   rowOrder: string[],
