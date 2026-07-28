@@ -8,6 +8,21 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-28 — Reverted foundation-model context to full history, capped at model max
+
+The seasonal-period context rule from earlier today (2 x the case's longest declared seasonal
+cycle) drastically hurt foundation-model accuracy: `2 x max(seasonalities)` is only tens to a
+few hundred points for most cases, far below the 1024–2048 of history these models were built
+to use. "Two cycles" is a rule of thumb for detecting a period, not for how much history a
+pretrained model should condition on, so it threw away the FMs' main strength. Switched all
+four zero-shot models (Chronos-Bolt, Chronos-2, TimesFM-2.5, Moirai-2.0) back to the full
+available history capped at each model's real limit, and deleted the seasonal-sizing helpers
+rather than leave a dead fallback. This is safe for TimesFM now: it sizes its per-origin
+compiled shape to the available history, so the all-NaN bug that motivated the seasonal rule
+can't recur — which also means that earlier "model max hurt 21 of 28 comparisons" verdict was
+contaminated by the NaN bug and is no longer trustworthy. Prior FM results are stale; re-run
+the pilot for a clean comparison against the original moderate caps.
+
 ## 2026-07-28 — Split training-time measurement into fit and predict, averaged per rolling origin
 
 Audited why the web app's training-time heatmap showed classical methods (AutoARIMA, Theta,

@@ -1361,9 +1361,29 @@
         "methodology",
         "is-global"
       ]
+    },
+    {
+      "id": "2026-07-28-fm-context-full-history",
+      "date": "2026-07-28",
+      "title": "Reverted foundation-model context to full history, capped at model max",
+      "category": "bug-fix",
+      "summary": "The 2-seasonal-periods context rule from earlier today drastically hurt foundation-model accuracy — 2 x max(seasonalities) is only tens to a few hundred points, far below the 1024–2048 of history these models were built to use; reverted all four zero-shot models to the full available history capped at each model's real limit and deleted the seasonal-sizing helpers.",
+      "detail": "The seasonal-period rule (2 x the case's longest declared seasonal cycle) starved the foundation models: `2 x max(seasonalities)` is tiny — 48 points for an hourly `[12,24]` case, 336 for hourly demand `[24,168]` — next to the 1024–2048 of history these models were built to exploit. \"Two cycles\" is a rule of thumb for detecting a period, not for how much history a pretrained model should condition on, so it threw away the FMs' main strength.\n\nSwitched all four zero-shot models (Chronos-Bolt, Chronos-2, TimesFM-2.5, Moirai-2.0) back to the full available history capped at each model's real limit, and deleted the seasonal-sizing machinery (`_seasonal_context_len`, `DEFAULT_CONTEXT_PERIODS`, the `context_periods` params) outright rather than leave a dead fallback. TimesFM now sizes its per-origin compiled variant to the available history instead of the seasonal window, keeping the per-length compile from the NaN fix — so the all-NaN bug can't recur. That earlier \"model max hurt 21 of 28 comparisons\" verdict was contaminated by the TimesFM NaN bug (now fixed), so prior FM results are stale and need a clean re-run to judge full-history-capped against the original moderate caps.",
+      "tags": [
+        "foundation-model",
+        "chronos",
+        "timesfm",
+        "moirai",
+        "context-length"
+      ]
     }
   ],
   "edges": [
+    {
+      "source": "2026-07-28-fm-context-full-history",
+      "target": "2026-07-28-fm-context-seasonal-periods",
+      "type": "supersedes"
+    },
     {
       "source": "2026-07-27-fm-context-length-hardcoding",
       "target": "2026-07-14-three-fms-added",
