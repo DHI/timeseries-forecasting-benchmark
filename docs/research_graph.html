@@ -1332,6 +1332,19 @@
       ]
     },
     {
+      "id": "2026-07-28-local-method-caveat-in-case-panel",
+      "date": "2026-07-28",
+      "title": "Flagged local methods in the case panel as refit at every origin",
+      "category": "app-tooling",
+      "summary": "CasePanel now shows a second inline note, alongside the existing foundation-model one, when a selected method is baseline/classical/ensemble: these have no single trained model, refitting from scratch at every rolling origin instead of fitting once on train/val like the ML/DL families.",
+      "detail": "The case panel already warned when a selected method is a zero-shot foundation model, since it never fits the train/val split shown in the split bar — but gave no equivalent warning for local methods (baseline, classical, ensemble), whose training routine is just as different from what a user familiar with global-model workflows would expect: they have no single trained model at all, refitting from scratch at every rolling forecast origin (`is_global=False`, see the 2026-07-13 fit-once entry) instead of fitting once on train/val like the ML/DL families.\n\nAdded a second inline note to `CasePanel`, styled and worded to match the existing foundation-model note, that appears whenever a selected method's `family` is `baseline`, `classical`, or `ensemble`. Kept it as a separate banner rather than merging with the foundation-model note, since the two families fail the \"trained once on train/val\" assumption for different reasons and conflating them into one sentence would blur which limitation applies to which selected method.",
+      "tags": [
+        "react",
+        "ui",
+        "is-global"
+      ]
+    },
+    {
       "id": "2026-07-28-fm-context-seasonal-periods",
       "date": "2026-07-28",
       "title": "Foundation-model context length now tracks seasonal periods, not model max",
@@ -1432,6 +1445,16 @@
     {
       "source": "2026-07-27-fm-split-caveat-in-case-panel",
       "target": "2026-07-14-three-fms-added",
+      "type": "relates-to"
+    },
+    {
+      "source": "2026-07-28-local-method-caveat-in-case-panel",
+      "target": "2026-07-27-fm-split-caveat-in-case-panel",
+      "type": "relates-to"
+    },
+    {
+      "source": "2026-07-28-local-method-caveat-in-case-panel",
+      "target": "2026-07-13-fit-once-not-refit",
       "type": "relates-to"
     },
     {

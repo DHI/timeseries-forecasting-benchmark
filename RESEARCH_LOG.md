@@ -8,6 +8,18 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-28 — Flagged local methods in the case panel as refit at every origin
+
+The case panel already warned when a selected method is a zero-shot foundation model, since it
+never fits the train/val split shown in the split bar — but gave no equivalent warning for local
+methods (baseline, classical, ensemble), whose training routine is just as different from what a
+user familiar with global-model workflows would expect: they have no single trained model at all,
+refitting from scratch at every rolling forecast origin instead of fitting once on train/val like
+the ML/DL families. Added a second inline note, styled and worded to match the existing
+foundation-model one, that appears whenever a selected method's family is baseline, classical, or
+ensemble. Kept it as a separate banner rather than merging with the foundation-model note, since
+the two families fail the "trained once on train/val" assumption for different reasons.
+
 ## 2026-07-28 — Fixed FM context to a single pre-test window, no longer growing per origin
 
 The revert earlier today put the FMs back on full history capped at the model max, but because
