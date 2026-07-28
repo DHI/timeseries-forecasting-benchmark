@@ -38,21 +38,6 @@ _PIPELINE_CACHE: dict = {}
 _TIMESFM_CACHE: dict = {}
 _MOIRAI_CACHE: dict = {}
 
-# At least 2 full cycles of a case's longest declared seasonal period is the standard
-# rule of thumb for how much history a model needs to recognize a periodic pattern.
-DEFAULT_CONTEXT_PERIODS = 2
-
-
-def _seasonal_context_len(case: Case, n_periods: int, cap: int) -> int:
-    """Context length target: `n_periods` x the case's longest declared seasonal period
-    (`case.seasonalities`, already in steps at the case's freq), capped at `cap` (the
-    model's real max capacity). Falls back to `cap` outright for a case that declares no
-    seasonality — there's no period to key a window on.
-    """
-    if not case.seasonalities:
-        return cap
-    return min(n_periods * max(case.seasonalities), cap)
-
 
 def _future_covariate(
     col: str, hist_series: pd.Series, horizon: int, future_exog: pd.DataFrame | None
@@ -126,9 +111,13 @@ def _round_to_patch(n: int, patch: int, cap: int) -> int:
     return rounded_up if rounded_up <= cap else (cap // patch) * patch
 
 
-def _timesfm_context_len(model, case: Case, n_periods: int, max_horizon: int) -> int:
+def _timesfm_context_len(model, n_available: int, max_horizon: int) -> int:
+    # Full available history, capped at the model's real limit (compile() requires
+    # max_context + max_horizon <= context_limit). Rounding up can overshoot the available
+    # length by at most patch-1 steps -- well under the full-patch (32-step) shortfall that
+    # makes compile()'s baked-in shape return all-NaN, so it stays safe.
     cap = model.model.config.context_limit - max_horizon
-    target = _seasonal_context_len(case, n_periods, cap)
+    target = min(n_available, cap)
     return _round_to_patch(target, model.model.config.input_patch_len, cap)
 
 
@@ -201,8 +190,7 @@ class ChronosForecaster(Forecaster):
     limitations = (
         "Zero-shot: never learns anything case-specific, only what it picked up "
         "from pretraining on other series. Univariate — ignores exogenous inputs. "
-        "Conditions on 2 periods of the case's longest declared seasonal cycle, "
-        "capped at the most recent 2,048 points of history (context_length)."
+        "Only conditions on the most recent 2,048 points of history (context_length)."
     )
     code_snippet = (
         "from chronos import BaseChronosPipeline\n\n"
@@ -215,20 +203,11 @@ class ChronosForecaster(Forecaster):
         "y_hat = quantiles[..., 1]            # median"
     )
 
-    def __init__(
-        self,
-        model_name: str = "amazon/chronos-bolt-small",
-        context_length: int = 2048,
-        context_periods: int | None = None,
-    ):
+    def __init__(self, model_name: str = "amazon/chronos-bolt-small", context_length: int = 2048):
         self.model_name = model_name
-        # The ceiling cap, not the target (see _seasonal_context_len) -- Chronos-Bolt's
-        # real context_length, unlike Chronos-2/TimesFM/Moirai it isn't read from the
-        # library since 2048 already matches the checkpoint.
+        # Chronos-Bolt's real context_length -- unlike Chronos-2/TimesFM/Moirai it isn't read
+        # from the library since 2048 already matches the checkpoint.
         self.context_length = context_length
-        self.context_periods = (
-            context_periods if context_periods is not None else DEFAULT_CONTEXT_PERIODS
-        )
 
     def fit(self, case: Case, train: pd.DataFrame) -> None:
         # Zero-shot: no training and no fit-time state. predict conditions on the recent
@@ -245,8 +224,7 @@ class ChronosForecaster(Forecaster):
         import torch
 
         y = pd.to_numeric(history["y"], errors="coerce").ffill().bfill().to_numpy(dtype=float)
-        ctx_len = _seasonal_context_len(case, self.context_periods, self.context_length)
-        context = y[-ctx_len:]
+        context = y[-self.context_length :]
         pipe = _load_pipeline(self.model_name)
         ctx = torch.tensor(context, dtype=torch.float32)
         # predict_quantiles -> (quantiles [B, H, Q], mean [B, H]); take the median quantile
@@ -286,8 +264,7 @@ class Chronos2Forecaster(Forecaster):
         "covariates natively, and the +exo variant feeds the case's declared covariates "
         "to `predict_df` as past+future covariate columns, using a perfect-forecast "
         "proxy (not a real forecast of those covariates) for the future values. "
-        "Conditions on 2 periods of the case's longest declared seasonal cycle, "
-        "capped at `context_length` points of history."
+        "Conditions on the most recent `context_length` points of history."
     )
     code_snippet = (
         "from chronos import Chronos2Pipeline\n\n"
@@ -306,20 +283,11 @@ class Chronos2Forecaster(Forecaster):
 
     use_exogenous: bool = False
 
-    def __init__(
-        self,
-        model_name: str = "amazon/chronos-2",
-        context_length: int | None = None,
-        context_periods: int | None = None,
-    ):
+    def __init__(self, model_name: str = "amazon/chronos-2", context_length: int | None = None):
         self.model_name = model_name
-        # None resolves to the loaded checkpoint's real context_length -- the ceiling
-        # cap, not the target (see _seasonal_context_len); set explicitly to override
-        # the cap itself.
+        # None resolves to the loaded checkpoint's real context_length (predict()),
+        # rather than guessing a number that may go stale across checkpoint releases.
         self.context_length = context_length
-        self.context_periods = (
-            context_periods if context_periods is not None else DEFAULT_CONTEXT_PERIODS
-        )
         self.uses_exogenous = self.use_exogenous
 
     def fit(self, case: Case, train: pd.DataFrame) -> None:
@@ -334,8 +302,7 @@ class Chronos2Forecaster(Forecaster):
         future_exog: pd.DataFrame | None = None,
     ) -> pd.DataFrame:
         pipe = _load_chronos2_pipeline(self.model_name)
-        cap = self.context_length or pipe.model_context_length
-        ctx_len = _seasonal_context_len(case, self.context_periods, cap)
+        ctx_len = self.context_length or pipe.model_context_length
         y = pd.to_numeric(history["y"], errors="coerce").ffill().bfill().to_numpy(dtype=float)
         ds = pd.DatetimeIndex(history["ds"])
         context_df = pd.DataFrame(
@@ -393,9 +360,8 @@ class TimesFMForecaster(Forecaster):
         "pretraining. Univariate by default — the +exo variant feeds the case's declared "
         "covariates to `forecast_with_covariates` as an xreg regressor fit alongside the "
         "TimesFM forecast, using a perfect-forecast proxy (not a real forecast of those "
-        "covariates) for the future values. Conditions on 2 periods of the case's longest "
-        "declared seasonal cycle, capped at `max_context`; horizons beyond `max_horizon` "
-        "are not supported."
+        "covariates) for the future values. Conditions on the full available history, capped "
+        "at the checkpoint's `context_limit`; horizons beyond `max_horizon` are not supported."
     )
     code_snippet = (
         "import timesfm\n\n"
@@ -417,15 +383,12 @@ class TimesFMForecaster(Forecaster):
         self,
         model_name: str = "google/timesfm-2.5-200m-pytorch",
         max_context: int | None = None,
-        context_periods: int | None = None,
     ):
         self.model_name = model_name
-        # None resolves per-case in predict() (see _timesfm_context_len); set explicitly
-        # to bypass the seasonal target and force a fixed value.
+        # None resolves per-origin in predict() to the available history, capped at the
+        # checkpoint's real context_limit (see _timesfm_context_len); set explicitly to
+        # force a fixed value.
         self.max_context = max_context
-        self.context_periods = (
-            context_periods if context_periods is not None else DEFAULT_CONTEXT_PERIODS
-        )
         self.uses_exogenous = self.use_exogenous
 
     def fit(self, case: Case, train: pd.DataFrame) -> None:
@@ -444,9 +407,7 @@ class TimesFMForecaster(Forecaster):
         # model is reused across origins rather than recompiled each call.
         max_horizon = max(256, horizon)
         base_model = _load_timesfm_model(self.model_name)
-        ctx_len = self.max_context or _timesfm_context_len(
-            base_model, case, self.context_periods, max_horizon
-        )
+        ctx_len = self.max_context or _timesfm_context_len(base_model, len(y), max_horizon)
         exo = [c for c in _exo_cols(case) if c in history.columns] if self.use_exogenous else []
         if exo:
             # forecast_with_covariates needs return_backcast=True to fit the xreg
@@ -506,10 +467,9 @@ class Moirai2Forecaster(Forecaster):
         "pretraining on other series. Univariate by default — Moirai supports covariates "
         "natively, and the +exo variant feeds the case's declared covariates in as "
         "`feat_dynamic_real`, using a perfect-forecast proxy (not a real forecast of those "
-        "covariates) for the future values. Conditions on 2 periods of the case's "
-        "longest declared seasonal cycle, capped at the model's position-embedding "
-        "cache size (max_seq_len * patch_size) — Salesforce hasn't published a trained "
-        "max context length for this model."
+        "covariates) for the future values. Conditions on the full available history, "
+        "capped at the model's position-embedding cache size (max_seq_len * patch_size) "
+        "— Salesforce hasn't published a trained max context length for this model."
     )
     code_snippet = (
         "from gluonts.dataset.pandas import PandasDataset\n"
@@ -532,17 +492,12 @@ class Moirai2Forecaster(Forecaster):
         self,
         model_name: str = "Salesforce/moirai-2.0-R-small",
         context_length: int | None = None,
-        context_periods: int | None = None,
     ):
         self.model_name = model_name
-        # None resolves in predict() to the position-embedding cache size -- the
-        # ceiling cap, not the target (see _seasonal_context_len); set explicitly to
-        # override the cap itself. Salesforce has never published a trained max context
-        # length for this model to read instead.
+        # None resolves in predict() to the full available history, capped at the
+        # loaded module's position-embedding cache size — Salesforce has never
+        # published a trained max context length for this model to read instead.
         self.context_length = context_length
-        self.context_periods = (
-            context_periods if context_periods is not None else DEFAULT_CONTEXT_PERIODS
-        )
         self.uses_exogenous = self.use_exogenous
 
     def fit(self, case: Case, train: pd.DataFrame) -> None:
@@ -564,8 +519,7 @@ class Moirai2Forecaster(Forecaster):
         # Position-embedding cache size: the point past which the module has to
         # dynamically resize its rotary cache rather than use what it was built with.
         cache_cap = module.max_seq_len * module.patch_size
-        cap = min(self.context_length or cache_cap, cache_cap)
-        ctx_len = min(_seasonal_context_len(case, self.context_periods, cap), len(y))
+        ctx_len = min(self.context_length or len(y), cache_cap, len(y))
         exo = [c for c in _exo_cols(case) if c in history.columns] if self.use_exogenous else []
         forecaster = Moirai2Forecast(
             module=module,
