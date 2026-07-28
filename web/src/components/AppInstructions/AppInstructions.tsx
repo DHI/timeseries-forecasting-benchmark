@@ -119,11 +119,18 @@ export function AppInstructions({ maxWidth }: { maxWidth: number }) {
       </p>
       <h4>&quot;Show training time&quot; button</h4>
       <p>
-        Press and hold this button, or hold the space bar, to see each cell&apos;s measured training
-        time instead of its score. The whole matrix — including any cells already swapped by the two
-        checkboxes above — switches to timing for as long as you hold it down; release to go back to
-        normal. The row/column hover highlight described above still works while holding, so you can
-        hold with one hand (so to speak) and hover to identify cells with the other.
+        Press and hold this button, or hold the space bar, to see each cell&apos;s cost to produce
+        one forecast with that method, instead of its score. The whole matrix — including any cells
+        already swapped by the two checkboxes above — switches to timing for as long as you hold it
+        down; release to go back to normal. The row/column hover highlight described above still
+        works while holding, so you can hold with one hand (so to speak) and hover to identify cells
+        with the other.
+      </p>
+      <p>
+        The number shown is fit time (if the method needs fitting) plus predict time. Classical
+        statistical methods are refit at every rolling origin, so their fit time reflects one such
+        refit; zero-shot foundation models have no case-specific training at all, so their number is
+        essentially inference time. Hover a cell while holding to see the fit/predict split.
       </p>
     </div>
   );

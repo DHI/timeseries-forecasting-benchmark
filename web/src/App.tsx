@@ -347,9 +347,10 @@ function MainLayout({
                 }
               />
               <p style={{ color: 'var(--text-muted)', fontSize: '0.8em', marginTop: 4 }}>
-                Press and hold to show each cell's measured training time instead of its score. You
-                can still hover around matrix cells while holding the button. You can also hold the
-                space bar to do the same thing without clicking.
+                Press and hold to show each cell's cost to produce one forecast (fit, if the method
+                needs it, plus predict) instead of its score. Hover a cell while holding to see the
+                fit/predict split. You can still hover around matrix cells while holding the button.
+                You can also hold the space bar to do the same thing without clicking.
               </p>
               {trainingTimeDisabled && (
                 <p style={{ color: 'var(--warning-text)', fontSize: '0.8em', marginTop: 4 }}>
