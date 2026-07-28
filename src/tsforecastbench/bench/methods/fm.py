@@ -31,7 +31,7 @@ import numpy as np
 import pandas as pd
 
 from tsforecastbench.bench.methods.base import Forecaster
-from tsforecastbench.bench.methods.ml import _exo_cols, _fit_len
+from tsforecastbench.bench.methods.ml import _exo_cols, _fit_len, _naive_ds
 from tsforecastbench.data.schema import Case
 
 _PIPELINE_CACHE: dict = {}
@@ -545,9 +545,13 @@ class Moirai2Forecaster(Forecaster):
             past_feat_dynamic_real_dim=0,
         )
         predictor = forecaster.create_predictor(batch_size=1)
-        hist_ds = pd.DatetimeIndex(history["ds"])
+        future = self._future_index(case, history["ds"].max(), horizon)
+        # gluonts converts the index to a PeriodArray at case.freq internally, which warns
+        # and drops tz info if given tz-aware timestamps -- strip it ourselves first, same
+        # as every other method family's library boundary (ml.py/classical.py/nf_models.py).
+        hist_ds = pd.DatetimeIndex(_naive_ds(history["ds"]))
         if exo:
-            future = self._future_index(case, history["ds"].max(), horizon)
+            future_ds = pd.DatetimeIndex(_naive_ds(pd.Series(future)))
             data = {"target": np.concatenate([y, np.zeros(horizon)])}
             for c in exo:
                 hist_vals = (
@@ -555,7 +559,7 @@ class Moirai2Forecaster(Forecaster):
                 )
                 future_vals = _future_covariate(c, history[c], horizon, future_exog)
                 data[c] = np.concatenate([hist_vals, future_vals])
-            full_df = pd.DataFrame(data, index=hist_ds.append(future))
+            full_df = pd.DataFrame(data, index=hist_ds.append(future_ds))
             dataset = PandasDataset(
                 full_df,
                 target="target",
@@ -568,7 +572,6 @@ class Moirai2Forecaster(Forecaster):
             dataset = PandasDataset(hist, target="target", freq=case.freq)
         forecast = next(iter(predictor.predict(dataset)))
         y_hat = np.asarray(forecast.median, dtype=np.float64)[:horizon]
-        future = self._future_index(case, history["ds"].max(), horizon)
         return pd.DataFrame({"ds": future, "y_hat": y_hat})
 
 
