@@ -2,10 +2,10 @@
 // the method-card strip docked below the matrix. Box outlines are SVG; labels are plain HTML
 // overlaid on top, matching the existing hint components' "SVG for shape, HTML for text" split.
 const LABELS = [
-  { text: 'Controls panel', left: 27, top: 45 },
-  { text: 'Matrix', left: 130, top: 45 },
-  { text: 'Case panel', left: 241, top: 45 },
-  { text: 'Method cards', left: 130, top: 112 },
+  { text: 'Controls panel', left: 27, top: 45, width: 54 },
+  { text: 'Matrix', left: 130, top: 45, width: 140 },
+  { text: 'Case panel', left: 241, top: 45, width: 70 },
+  { text: 'Method cards', left: 130, top: 112, width: 140 },
 ];
 
 export function PageOverviewDiagram() {
@@ -51,13 +51,14 @@ export function PageOverviewDiagram() {
           strokeDasharray="4 3"
         />
       </svg>
-      {LABELS.map(({ text, left, top }) => (
+      {LABELS.map(({ text, left, top, width }) => (
         <span
           key={text}
           style={{
             position: 'absolute',
             left,
             top,
+            width,
             transform: 'translate(-50%, -50%)',
             fontSize: '0.75em',
             color: 'var(--text-muted)',
