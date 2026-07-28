@@ -8,6 +8,22 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-28 — Split training-time measurement into fit and predict, averaged per rolling origin
+
+Audited why the web app's training-time heatmap showed classical methods (AutoARIMA, Theta,
+TBATS) as far more expensive than zero-shot foundation models, which read as counterintuitive.
+The single `seconds` field turned out to conflate fit and predict time, and — because
+classical/naive methods refit at every rolling origin while global methods (including zero-shot
+FMs, whose fit is a no-op) fit once — implicitly multiplied only the classical numbers by
+`n_origins`. Split the eval loop's timing into `fit_seconds`/`predict_seconds`, each averaged per
+origin so the number reads as "cost of one origin's cycle" regardless of how many origins a run
+used; the heatmap now shows their sum (cost to produce one forecast) by default, with the split
+available on hover. TimesFM-2.5's current ~149s average is entirely predict time despite
+`fit=pass` — likely the known TimesFM slowness noted in the fixed-fm commits — so a fit-only
+metric would have hidden it as free, which is why both numbers are kept rather than fit alone.
+`results/pilot_metrics.parquet`/`docs/results/scores.parquet` need a re-run before the new fields
+are populated; the old `seconds` column no longer exists.
+
 ## 2026-07-28 — Foundation-model context length now tracks seasonal periods, not model max
 
 Re-scored the merged pilot results from yesterday's context-length fix and found it wasn't

@@ -1346,6 +1346,21 @@
         "bug",
         "seasonality"
       ]
+    },
+    {
+      "id": "2026-07-28-fit-predict-timing-split",
+      "date": "2026-07-28",
+      "title": "Split training-time measurement into fit and predict, averaged per rolling origin",
+      "category": "methodology",
+      "summary": "The web app's single \"seconds\" field conflated fit and predict time and implicitly multiplied only classical methods' cost by n_origins (they refit every origin; global/zero-shot methods fit once); split into fit_seconds/predict_seconds, each averaged per origin, so the heatmap shows a fair \"cost to produce one forecast\" with the split available on hover.",
+      "detail": "Audited why the training-time heatmap showed classical methods (AutoARIMA, Theta, TBATS) as far more expensive than zero-shot foundation models, which read as counterintuitive to a non-expert comparing methods. The single `seconds` field timed fit and predict together as one wall-clock block, and because classical/naive methods (`is_global=False`) refit at every rolling origin while global methods (`is_global=True`, including zero-shot FMs whose `fit()` is a no-op) fit once, the same field implicitly meant \"n_origins fits + n_origins predicts\" for one family and \"1 fit + n_origins predicts\" for the other — not a fair comparison, and nothing in the UI explained the difference.\n\nSplit the eval loop's timing (`rolling.py`, `loop.py`) into `fit_seconds` and `predict_seconds`, each averaged per rolling origin rather than summed, so both read as \"cost of one origin's cycle\" regardless of how many origins a given run used. The heatmap's training-time overlay now shows their sum (cost to produce one forecast) by default — same UX as before — with a hover tooltip revealing the fit/predict split, gated so it only appears while the overlay is held. Pulling the old (conflated) numbers from `docs/results/scores.parquet` showed TimesFM-2.5 averaging ~149s per case despite `fit=pass`, i.e. its entire cost is predict/inference time, almost certainly the known TimesFM slowness noted in the fixed-fm commits — a fit-only metric would have shown it as free, which is why both fields are kept rather than fit alone. `results/pilot_metrics.parquet`/`docs/results/scores.parquet` need a re-run before the new fields are populated; the old `seconds` column no longer exists.",
+      "tags": [
+        "web-app",
+        "eval",
+        "timing",
+        "methodology",
+        "is-global"
+      ]
     }
   ],
   "edges": [
@@ -1357,6 +1372,16 @@
     {
       "source": "2026-07-28-fm-context-seasonal-periods",
       "target": "2026-07-27-fm-context-length-hardcoding",
+      "type": "supersedes"
+    },
+    {
+      "source": "2026-07-28-fit-predict-timing-split",
+      "target": "2026-07-13-fit-once-not-refit",
+      "type": "relates-to"
+    },
+    {
+      "source": "2026-07-28-fit-predict-timing-split",
+      "target": "2026-07-20-training-time-heatmap-overlay",
       "type": "supersedes"
     },
     {
