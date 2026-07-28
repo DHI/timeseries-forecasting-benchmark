@@ -15,6 +15,14 @@ forecast is obtained depends on the method's `is_global` flag (see `methods.base
   parameters. This stays leak-free and makes raising `n_origins` cheap for the methods
   that otherwise dominate runtime.
 
+`fit_seconds`/`predict_seconds` in the output are each averaged per origin, not summed:
+for a local method that's the mean over its `n_origins` refits; for a global method
+`fit_seconds` is its one fit (a single sample) and `predict_seconds` is the mean predict
+call. This keeps both numbers a "cost of one origin's cycle" regardless of how many
+origins a given run used, and keeps fit and predict comparable across method families
+that pay for very different things (a zero-shot foundation model's `fit_seconds` is ~0;
+its real cost is inference, i.e. `predict_seconds`).
+
 Scoring uses only genuinely observed points (the curated frame's `y_observed` mask);
 filled points never enter a metric.
 
@@ -89,8 +97,8 @@ def run_case_rolling(
 
     Returns `(metrics, snapshots)`:
     - `metrics` keeps the tidy record shape of `loop.run_case` (case_id, domain, method,
-      horizon, metric, value, seconds, frac_finite_test, status) so the matrix renderer is
-      unchanged.
+      horizon, metric, value, fit_seconds, predict_seconds, frac_finite_test, status) so
+      the matrix renderer is unchanged.
     - `snapshots` holds every origin's full predicted series (columns `SNAPSHOT_COLUMNS`:
       case_id, method, used_extended_history, origin_id, origin_ds, ds, y_hat) so the
       results viewer can draw real forecasts. Origins are case-level, so `origin_id`/
@@ -171,7 +179,14 @@ def run_case_rolling(
         if method.is_global and method.pools_segments and ext_segments is not None:
             variants.append((ext_segments, True))
         for segs, used_extended in variants:
-            t0 = time.perf_counter()
+            # Timed separately (not as one fit+predict block) because a global method's
+            # single fit and a local method's per-origin refit are fundamentally different
+            # amounts of work — see the module docstring. Both are averaged per origin
+            # (fit_times has 1 entry for a global method, `n_origins` for a local one) so
+            # `fit_seconds` answers "how much does one fit cost", not "how many origins did
+            # this run use".
+            fit_times: list[float] = []
+            predict_times: list[float] = []
             a, p, ref_p, ref_m = [], [], [], []  # pooled actual, pred, persistence, mean
             method_snaps: list[pd.DataFrame] = []
             n_ok = 0
@@ -187,7 +202,9 @@ def run_case_rolling(
                     fit_frame = (
                         pd.concat([*segs], ignore_index=True) if used_extended else train_val
                     )
+                    t_fit0 = time.perf_counter()
                     method.fit(case, fit_frame)
+                    fit_times.append(time.perf_counter() - t_fit0)
                 for i, o in enumerate(origins):
                     local_hist = full_fit.iloc[:o]
                     if used_extended:
@@ -198,8 +215,12 @@ def run_case_rolling(
                         history = local_hist
                     fexog = full_fit.iloc[o : o + H][["ds", *exo_present]] if exo_present else None
                     if not method.is_global:
+                        t_fit0 = time.perf_counter()
                         method.fit(case, history)
+                        fit_times.append(time.perf_counter() - t_fit0)
+                    t_pred0 = time.perf_counter()
                     preds = method.predict(case, history, H, future_exog=fexog)
+                    predict_times.append(time.perf_counter() - t_pred0)
                     y_hat = preds["y_hat"].to_numpy(float)
                     # Full predicted series (all H steps, before masking) so the viewer
                     # draws a continuous forecast line even where the actual has gaps.
@@ -258,7 +279,8 @@ def run_case_rolling(
             except Exception as exc:
                 metrics = {k: float("nan") for k in metric_names}
                 status = f"error: {type(exc).__name__}: {str(exc)[:70]}"
-            seconds = time.perf_counter() - t0
+            fit_seconds = float(np.mean(fit_times)) if fit_times else float("nan")
+            predict_seconds = float(np.mean(predict_times)) if predict_times else float("nan")
             for metric_name, value in metrics.items():
                 records.append(
                     {
@@ -272,7 +294,8 @@ def run_case_rolling(
                         "horizon": case.horizon_primary,
                         "metric": metric_name,
                         "value": value,
-                        "seconds": seconds,
+                        "fit_seconds": fit_seconds,
+                        "predict_seconds": predict_seconds,
                         "frac_finite_test": float(len(a) / max(1, len(origins) * H))
                         if isinstance(a, np.ndarray)
                         else 0.0,
@@ -282,7 +305,8 @@ def run_case_rolling(
                 )
             tag = " [ext]" if used_extended else ""
             print(
-                f"  {method.name:>18s}{tag:>6s}: {status[:48]:<48s} ({n_ok} origins, {seconds:.1f}s)"
+                f"  {method.name:>18s}{tag:>6s}: {status[:48]:<48s} "
+                f"({n_ok} origins, fit {fit_seconds:.2f}s, predict {predict_seconds:.2f}s)"
             )
     snapshots = (
         pd.concat(snap_frames, ignore_index=True)
