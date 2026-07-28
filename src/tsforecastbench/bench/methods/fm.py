@@ -190,7 +190,8 @@ class ChronosForecaster(Forecaster):
     limitations = (
         "Zero-shot: never learns anything case-specific, only what it picked up "
         "from pretraining on other series. Univariate — ignores exogenous inputs. "
-        "Only conditions on the most recent 2,048 points of history (context_length)."
+        "Conditions on a fixed window sized to the case's pre-test history, capped at the "
+        "most recent 2,048 points (context_length)."
     )
     code_snippet = (
         "from chronos import BaseChronosPipeline\n\n"
@@ -210,9 +211,10 @@ class ChronosForecaster(Forecaster):
         self.context_length = context_length
 
     def fit(self, case: Case, train: pd.DataFrame) -> None:
-        # Zero-shot: no training and no fit-time state. predict conditions on the recent
-        # observed context of the history it is handed, so one fit serves every origin.
-        pass
+        # Zero-shot: no case-specific training. The only fit-time state is the pre-test
+        # history length, which pins the context to a fixed width (see predict) so it stays
+        # constant across rolling origins instead of growing with each one.
+        self._n_fit = len(train)
 
     def predict(
         self,
@@ -224,7 +226,9 @@ class ChronosForecaster(Forecaster):
         import torch
 
         y = pd.to_numeric(history["y"], errors="coerce").ffill().bfill().to_numpy(dtype=float)
-        context = y[-self.context_length :]
+        # Fixed width sized at fit time, sliding to the most recent points of each origin.
+        ctx_len = min(self._n_fit, self.context_length)
+        context = y[-ctx_len:]
         pipe = _load_pipeline(self.model_name)
         ctx = torch.tensor(context, dtype=torch.float32)
         # predict_quantiles -> (quantiles [B, H, Q], mean [B, H]); take the median quantile
@@ -264,7 +268,8 @@ class Chronos2Forecaster(Forecaster):
         "covariates natively, and the +exo variant feeds the case's declared covariates "
         "to `predict_df` as past+future covariate columns, using a perfect-forecast "
         "proxy (not a real forecast of those covariates) for the future values. "
-        "Conditions on the most recent `context_length` points of history."
+        "Conditions on a fixed window sized to the case's pre-test history, capped at "
+        "`context_length` points."
     )
     code_snippet = (
         "from chronos import Chronos2Pipeline\n\n"
@@ -291,8 +296,9 @@ class Chronos2Forecaster(Forecaster):
         self.uses_exogenous = self.use_exogenous
 
     def fit(self, case: Case, train: pd.DataFrame) -> None:
-        # Zero-shot: no training and no fit-time state (see ChronosForecaster.fit).
-        pass
+        # Records the pre-test history length to pin a fixed context width (see
+        # ChronosForecaster.fit); no case-specific training.
+        self._n_fit = len(train)
 
     def predict(
         self,
@@ -302,7 +308,8 @@ class Chronos2Forecaster(Forecaster):
         future_exog: pd.DataFrame | None = None,
     ) -> pd.DataFrame:
         pipe = _load_chronos2_pipeline(self.model_name)
-        ctx_len = self.context_length or pipe.model_context_length
+        cap = self.context_length or pipe.model_context_length
+        ctx_len = min(self._n_fit, cap)
         y = pd.to_numeric(history["y"], errors="coerce").ffill().bfill().to_numpy(dtype=float)
         ds = pd.DatetimeIndex(history["ds"])
         context_df = pd.DataFrame(
@@ -360,8 +367,9 @@ class TimesFMForecaster(Forecaster):
         "pretraining. Univariate by default — the +exo variant feeds the case's declared "
         "covariates to `forecast_with_covariates` as an xreg regressor fit alongside the "
         "TimesFM forecast, using a perfect-forecast proxy (not a real forecast of those "
-        "covariates) for the future values. Conditions on the full available history, capped "
-        "at the checkpoint's `context_limit`; horizons beyond `max_horizon` are not supported."
+        "covariates) for the future values. Conditions on a fixed window sized to the case's "
+        "pre-test history, capped at the checkpoint's `context_limit`; horizons beyond "
+        "`max_horizon` are not supported."
     )
     code_snippet = (
         "import timesfm\n\n"
@@ -392,8 +400,11 @@ class TimesFMForecaster(Forecaster):
         self.uses_exogenous = self.use_exogenous
 
     def fit(self, case: Case, train: pd.DataFrame) -> None:
-        # Zero-shot: no training and no fit-time state (see ChronosForecaster.fit).
-        pass
+        # Records the pre-test history length to pin a fixed context width (see
+        # ChronosForecaster.fit); no case-specific training. Sizing the context from this
+        # fixed length rather than the growing per-origin history means one compiled shape
+        # per case instead of one per origin.
+        self._n_fit = len(train)
 
     def predict(
         self,
@@ -407,7 +418,8 @@ class TimesFMForecaster(Forecaster):
         # model is reused across origins rather than recompiled each call.
         max_horizon = max(256, horizon)
         base_model = _load_timesfm_model(self.model_name)
-        ctx_len = self.max_context or _timesfm_context_len(base_model, len(y), max_horizon)
+        # Fixed width from the pre-test history, so the compiled shape is stable per case.
+        ctx_len = self.max_context or _timesfm_context_len(base_model, self._n_fit, max_horizon)
         exo = [c for c in _exo_cols(case) if c in history.columns] if self.use_exogenous else []
         if exo:
             # forecast_with_covariates needs return_backcast=True to fit the xreg
@@ -467,9 +479,10 @@ class Moirai2Forecaster(Forecaster):
         "pretraining on other series. Univariate by default — Moirai supports covariates "
         "natively, and the +exo variant feeds the case's declared covariates in as "
         "`feat_dynamic_real`, using a perfect-forecast proxy (not a real forecast of those "
-        "covariates) for the future values. Conditions on the full available history, "
-        "capped at the model's position-embedding cache size (max_seq_len * patch_size) "
-        "— Salesforce hasn't published a trained max context length for this model."
+        "covariates) for the future values. Conditions on a fixed window sized to the "
+        "case's pre-test history, capped at the model's position-embedding cache size "
+        "(max_seq_len * patch_size) — Salesforce hasn't published a trained max context "
+        "length for this model."
     )
     code_snippet = (
         "from gluonts.dataset.pandas import PandasDataset\n"
@@ -501,8 +514,9 @@ class Moirai2Forecaster(Forecaster):
         self.uses_exogenous = self.use_exogenous
 
     def fit(self, case: Case, train: pd.DataFrame) -> None:
-        # Zero-shot: no training and no fit-time state (see ChronosForecaster.fit).
-        pass
+        # Records the pre-test history length to pin a fixed context width (see
+        # ChronosForecaster.fit); no case-specific training.
+        self._n_fit = len(train)
 
     def predict(
         self,
@@ -519,7 +533,8 @@ class Moirai2Forecaster(Forecaster):
         # Position-embedding cache size: the point past which the module has to
         # dynamically resize its rotary cache rather than use what it was built with.
         cache_cap = module.max_seq_len * module.patch_size
-        ctx_len = min(self.context_length or len(y), cache_cap, len(y))
+        cap = min(self.context_length or cache_cap, cache_cap)
+        ctx_len = min(self._n_fit, cap)
         exo = [c for c in _exo_cols(case) if c in history.columns] if self.use_exogenous else []
         forecaster = Moirai2Forecast(
             module=module,
