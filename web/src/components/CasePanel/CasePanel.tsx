@@ -53,15 +53,20 @@ function CasePanelComponent({ caseId, caseMeta, scores, showGlobal, selectedMeth
     `Training data (last ${TRAINING_TAIL_N.toLocaleString('en-US')} points` +
     (extended ? ', including extended history)' : ')');
 
+  const familyByMethod = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const row of scores) {
+      if (row.case_id === caseId) map.set(row.method, row.family);
+    }
+    return map;
+  }, [scores, caseId]);
+
   // Foundation models forecast zero-shot, from recent context, so the train/val/test
   // split below doesn't describe how they were fit the way it does for other methods.
-  const foundationMethods = useMemo(() => {
-    const familyByMethod = new Map<string, string>();
-    for (const row of scores) {
-      if (row.case_id === caseId) familyByMethod.set(row.method, row.family);
-    }
-    return selectedMethods.filter((m) => familyByMethod.get(m) === 'fm');
-  }, [scores, caseId, selectedMethods]);
+  const foundationMethods = useMemo(
+    () => selectedMethods.filter((m) => familyByMethod.get(m) === 'fm'),
+    [familyByMethod, selectedMethods],
+  );
   const foundationNote =
     foundationMethods.length === 1
       ? "is a zero-shot foundation model: it forecasts from recent context only and never fits on this case's train/val split."
