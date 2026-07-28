@@ -100,27 +100,61 @@ def _load_chronos2_pipeline(model_name: str):
     return _PIPELINE_CACHE[model_name]
 
 
+_TIMESFM_MODEL_CACHE: dict = {}
+
+
+def _load_timesfm_model(model_name: str):
+    # The expensive step: reads the checkpoint's weights. Kept separate from .compile()
+    # below so a new per-case context length never forces a reload.
+    if model_name not in _TIMESFM_MODEL_CACHE:
+        import timesfm
+
+        _TIMESFM_MODEL_CACHE[model_name] = timesfm.TimesFM_2p5_200M_torch.from_pretrained(
+            model_name
+        )
+    return _TIMESFM_MODEL_CACHE[model_name]
+
+
+def _round_to_patch(n: int, patch: int, cap: int) -> int:
+    """Round `n` up to a whole multiple of `patch` -- compile() does this internally and
+    silently (verified: requesting max_context=336 with patch=32 compiles a shape of
+    352), so rounding here keeps the array sliced for `inputs` in sync with the exact
+    shape compile() actually bakes in. Rounds down instead if rounding up would exceed
+    `cap` (compile() requires max_context + max_horizon <= context_limit).
+    """
+    rounded_up = -(-n // patch) * patch
+    return rounded_up if rounded_up <= cap else (cap // patch) * patch
+
+
+def _timesfm_context_len(model, case: Case, n_periods: int, max_horizon: int) -> int:
+    cap = model.model.config.context_limit - max_horizon
+    target = _seasonal_context_len(case, n_periods, cap)
+    return _round_to_patch(target, model.model.config.input_patch_len, cap)
+
+
 def _load_timesfm(
-    model_name: str, max_context: int | None, max_horizon: int, return_backcast: bool = False
+    model_name: str, max_context: int, max_horizon: int, return_backcast: bool = False
 ):
-    # Compilation bakes in the context/horizon caps, so cache per (model, caps) bucket.
+    # Compilation bakes in the context/horizon caps, so cache per (model, caps) bucket --
+    # one bucket per distinct per-case context length now, rather than one shared bucket.
     # `return_backcast` is a separate bucket dimension: `forecast_with_covariates` requires
     # it True to fit the xreg regressor, but turning it on changes what plain `forecast()`
     # returns (backcast prepended to the horizon, not just the horizon) — so the
     # covariate-fitting model must never be reused for a univariate call, and vice versa.
-    # `max_context=None` resolves below to the checkpoint's real context_limit, minus
-    # whatever headroom max_horizon needs (compile() requires max_context + max_horizon
-    # <= context_limit) — None plus max_horizon fully determines that, so it's still a
-    # safe cache key.
+    # Each bucket miss is a `copy.copy` of the shared loaded model (weights stay shared,
+    # verified empirically: two copies compiled at different shapes coexist and produce
+    # correct, non-cross-contaminating results) plus a fresh `.compile()`, not a checkpoint
+    # reload -- so a 12-case pilot costs ~12-24 cheap compiles, not 12-24 full reloads.
     key = (model_name, max_context, max_horizon, return_backcast)
     if key not in _TIMESFM_CACHE:
+        import copy
+
         import timesfm
 
-        model = timesfm.TimesFM_2p5_200M_torch.from_pretrained(model_name)
-        resolved_max_context = max_context or (model.model.config.context_limit - max_horizon)
-        model.compile(
+        variant = copy.copy(_load_timesfm_model(model_name))
+        variant.compile(
             timesfm.ForecastConfig(
-                max_context=resolved_max_context,
+                max_context=max_context,
                 max_horizon=max_horizon,
                 normalize_inputs=True,
                 use_continuous_quantile_head=True,
@@ -130,7 +164,7 @@ def _load_timesfm(
                 return_backcast=return_backcast,
             )
         )
-        _TIMESFM_CACHE[key] = (model, resolved_max_context)
+        _TIMESFM_CACHE[key] = variant
     return _TIMESFM_CACHE[key]
 
 
@@ -349,16 +383,19 @@ class TimesFMForecaster(Forecaster):
     library = "timesfm (Google TimesFM 2.5, torch backend)"
     compute_profile = (
         "CPU-capable but slow (200M params); zero-shot, so there's no per-case training — "
-        "one forward pass per prediction. The pretrained model is loaded and compiled once "
-        "(per context/horizon cap) and cached across every case and origin."
+        "one forward pass per prediction. The pretrained weights are loaded once per "
+        "process; each distinct per-case context length gets its own cheap compiled "
+        "variant (a shallow copy of the loaded model, not a reload), cached across every "
+        "origin of that case."
     )
     limitations = (
         "Zero-shot: never learns anything case-specific, only what it picked up from "
         "pretraining. Univariate by default — the +exo variant feeds the case's declared "
         "covariates to `forecast_with_covariates` as an xreg regressor fit alongside the "
         "TimesFM forecast, using a perfect-forecast proxy (not a real forecast of those "
-        "covariates) for the future values. Conditions on the most recent `max_context` "
-        "points; horizons beyond `max_horizon` are not supported."
+        "covariates) for the future values. Conditions on 2 periods of the case's longest "
+        "declared seasonal cycle, capped at `max_context`; horizons beyond `max_horizon` "
+        "are not supported."
     )
     code_snippet = (
         "import timesfm\n\n"
@@ -380,11 +417,15 @@ class TimesFMForecaster(Forecaster):
         self,
         model_name: str = "google/timesfm-2.5-200m-pytorch",
         max_context: int | None = None,
+        context_periods: int | None = None,
     ):
         self.model_name = model_name
-        # None resolves to the checkpoint's real context_limit (see _load_timesfm),
-        # rather than guessing a number that may go stale across checkpoint releases.
+        # None resolves per-case in predict() (see _timesfm_context_len); set explicitly
+        # to bypass the seasonal target and force a fixed value.
         self.max_context = max_context
+        self.context_periods = (
+            context_periods if context_periods is not None else DEFAULT_CONTEXT_PERIODS
+        )
         self.uses_exogenous = self.use_exogenous
 
     def fit(self, case: Case, train: pd.DataFrame) -> None:
@@ -402,14 +443,16 @@ class TimesFMForecaster(Forecaster):
         # max_horizon must cover the horizon; bucket to a stable value so the compiled
         # model is reused across origins rather than recompiled each call.
         max_horizon = max(256, horizon)
+        base_model = _load_timesfm_model(self.model_name)
+        ctx_len = self.max_context or _timesfm_context_len(
+            base_model, case, self.context_periods, max_horizon
+        )
         exo = [c for c in _exo_cols(case) if c in history.columns] if self.use_exogenous else []
         if exo:
             # forecast_with_covariates needs return_backcast=True to fit the xreg
             # regressor; that changes what plain forecast() returns, so this must be a
             # separately cached compiled model, never the univariate one.
-            model, ctx_len = _load_timesfm(
-                self.model_name, self.max_context, max_horizon, return_backcast=True
-            )
+            model = _load_timesfm(self.model_name, ctx_len, max_horizon, return_backcast=True)
             context = y[-ctx_len:]
             n = len(context)
             covariates = {
@@ -431,7 +474,7 @@ class TimesFMForecaster(Forecaster):
             )
             y_hat = np.asarray(outputs[0], dtype=np.float64)[-horizon:]
         else:
-            model, ctx_len = _load_timesfm(self.model_name, self.max_context, max_horizon)
+            model = _load_timesfm(self.model_name, ctx_len, max_horizon)
             context = y[-ctx_len:]
             point_forecast, _quantiles = model.forecast(horizon=horizon, inputs=[context])
             y_hat = np.asarray(point_forecast[0], dtype=np.float64)[:horizon]
