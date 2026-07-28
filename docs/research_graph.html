@@ -1376,9 +1376,29 @@
         "moirai",
         "context-length"
       ]
+    },
+    {
+      "id": "2026-07-28-fm-context-fixed-window",
+      "date": "2026-07-28",
+      "title": "Fixed FM context to a single pre-test window, no longer growing per origin",
+      "category": "bug-fix",
+      "summary": "The full-history revert grew the context as the rolling origin advanced, forcing TimesFM (whose compile() bakes a static input shape) to recompile at every origin for short-history cases; fixed all four FMs to a single window sized once from the pre-test history (train+val) at fit time, capped per model, sliding to each origin without growing.",
+      "detail": "The earlier full-history revert put the FMs back on the available history capped at the model max, but because the rolling-origin history grows at each origin, that context grew with it — harmless for the three eager models, but it forced TimesFM (whose `compile()` bakes a static input shape) to recompile a variant at every origin for any case with less pre-test history than its cap.\n\nFixed all four (Chronos-Bolt, Chronos-2, TimesFM-2.5, Moirai-2.0) to a single window whose width is recorded once in `fit()` from the pre-test history (train+val) and capped per model; `predict()` still slices the most recent points, so the window slides forward to each origin without growing. This is safe because the eval loop (`rolling.py`) fits a global method once on train+val and the first origin conditions on exactly that block, so the fixed width can never exceed any origin's available history — TimesFM stays NaN-free and compiles once per case. All four now share one fixed-window rule, differing only by cap. Only short series (train+val below the cap) change from the revert; long series already sat at the cap. FM results are stale and need a re-run.",
+      "tags": [
+        "foundation-model",
+        "chronos",
+        "timesfm",
+        "moirai",
+        "context-length"
+      ]
     }
   ],
   "edges": [
+    {
+      "source": "2026-07-28-fm-context-fixed-window",
+      "target": "2026-07-28-fm-context-full-history",
+      "type": "supersedes"
+    },
     {
       "source": "2026-07-28-fm-context-full-history",
       "target": "2026-07-28-fm-context-seasonal-periods",

@@ -8,6 +8,20 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-28 — Fixed FM context to a single pre-test window, no longer growing per origin
+
+The revert earlier today put the FMs back on full history capped at the model max, but because
+the rolling-origin history grows at each origin, that context grew with it — harmless for the
+three eager models, but it forced TimesFM (whose `compile()` bakes a static input shape) to
+recompile a variant at every origin for any case with less pre-test history than its cap.
+Fixed all four to a single window whose width is set once from the pre-test history (train+val)
+at fit time and capped per model; predict still slices the most recent points, so the window
+slides forward to each origin without growing. This is safe because the eval loop fits global
+methods once on train+val and the first origin conditions on exactly that block, so the fixed
+width never exceeds any origin's available history — TimesFM stays NaN-free and compiles once
+per case. Only short series (train+val below the cap) change from the revert; long series
+already sat at the cap. FM results are stale and need a re-run.
+
 ## 2026-07-28 — Reverted foundation-model context to full history, capped at model max
 
 The seasonal-period context rule from earlier today (2 x the case's longest declared seasonal
