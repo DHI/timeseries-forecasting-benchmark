@@ -8,6 +8,24 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-28 — Foundation-model context length now tracks seasonal periods, not model max
+
+Re-scored the merged pilot results from yesterday's context-length fix and found it wasn't
+clearly better: of 28 case/method comparisons across Chronos-2, TimesFM-2.5, and Moirai-2.0,
+only 7 improved and 21 got worse. Worse, TimesFM-2.5 came back all-NaN on 8 of 12 cases — its
+`compile()` step bakes in a fixed input shape, and the `timesfm` library returns NaN whenever
+the actual input is shorter than that shape by a full patch (32 steps) or more, confirmed by
+bisection and independent of the data itself; yesterday's fix made this reachable by pushing
+the compiled shape up to the model's full 16,128-step capacity, well past what most cases'
+early rolling origins have available. Switched all four zero-shot models (Chronos-Bolt,
+Chronos-2, TimesFM-2.5, Moirai-2.0) from "as much history as the model can take" to "2 periods
+of the case's longest declared seasonal cycle, capped at the model's real limit" — a standard
+rule of thumb rather than a tuned value, and it also clears the TimesFM bug since every case's
+seasonal window now sits well below its available history at every rolling origin. Also removed
+the `input_window` field from the `Case` schema and every `case.toml`: it turned out to be dead,
+never read anywhere outside the schema declaration itself. Prior fm results (including
+yesterday's) are stale and need re-running.
+
 ## 2026-07-27 — Stopped hardcoding foundation-model context lengths; read them from the models instead
 
 Chronos-2 and TimesFM-2.5's context caps in `fm.py` turned out to be far below what the

@@ -1330,6 +1330,22 @@
         "moirai",
         "bug"
       ]
+    },
+    {
+      "id": "2026-07-28-fm-context-seasonal-periods",
+      "date": "2026-07-28",
+      "title": "Foundation-model context length now tracks seasonal periods, not model max",
+      "category": "bug-fix",
+      "summary": "Yesterday's \"use the model's real max context\" fix wasn't clearly better (21 of 28 case/method comparisons got worse) and broke TimesFM-2.5 with all-NaN forecasts on 8 of 12 cases; switched all four fm wrappers to size context as 2 periods of a case's longest declared seasonal cycle instead.",
+      "detail": "Re-scored the merged pilot results from yesterday's context-length fix and found it wasn't clearly better: of 28 case/method comparisons across Chronos-2, TimesFM-2.5, and Moirai-2.0, only 7 improved and 21 got worse. Worse, TimesFM-2.5 came back all-NaN on 8 of 12 cases — its `compile()` step bakes in a fixed input shape, and the `timesfm` library returns NaN whenever the actual input is shorter than that shape by a full patch (32 steps) or more, confirmed by bisection and independent of the data itself; yesterday's fix made this reachable by pushing the compiled shape up to the model's full 16,128-step capacity, well past what most cases' early rolling origins have available.\n\nSwitched all four zero-shot models (Chronos-Bolt, Chronos-2, TimesFM-2.5, Moirai-2.0) from \"as much history as the model can take\" to \"2 periods of the case's longest declared seasonal cycle, capped at the model's real limit\" — a standard rule of thumb rather than a tuned value, and it also clears the TimesFM bug since every case's seasonal window now sits well below its available history at every rolling origin. `_load_timesfm` was restructured to split loading the checkpoint (cached per model name) from compiling a shape (a cheap `copy.copy` + `.compile()`, verified to produce correct, non-cross-contaminating results across shapes sharing one loaded model), so a new per-case context length never forces a checkpoint reload. Also removed the `input_window` field from the `Case` schema and every `case.toml`: it turned out to be dead, never read anywhere outside the schema declaration itself. Prior fm results (including yesterday's) are stale and need re-running.",
+      "tags": [
+        "foundation-model",
+        "chronos",
+        "timesfm",
+        "moirai",
+        "bug",
+        "seasonality"
+      ]
     }
   ],
   "edges": [
@@ -1337,6 +1353,11 @@
       "source": "2026-07-27-fm-context-length-hardcoding",
       "target": "2026-07-14-three-fms-added",
       "type": "fixes-bug-in"
+    },
+    {
+      "source": "2026-07-28-fm-context-seasonal-periods",
+      "target": "2026-07-27-fm-context-length-hardcoding",
+      "type": "supersedes"
     },
     {
       "source": "2026-07-27-mlp-recursive-divergence-bounded",
