@@ -13,6 +13,7 @@ import { SelectionHint } from './components/Matrix/SelectionHint';
 import { AppInstructions } from './components/AppInstructions/AppInstructions';
 import { InstructionsModal } from './components/InstructionsModal/InstructionsModal';
 import { useEdgeResize } from './hooks/useEdgeResize';
+import { useHoldButton } from './hooks/useHoldButton';
 import { DOMAIN_RESTRICTED_METRICS } from './data/metricConfig';
 import { TEXT_WIDTH_OVERHANG, TITLE_BAR_HEIGHT, TRAINING_TIME_MIN_ROWS } from './data/constants';
 import {
@@ -237,6 +238,9 @@ function MainLayout({
     },
     [trainingTimeDisabled, dispatch],
   );
+  // Registered here rather than inside HoldTrainingTimeButton so the space-bar listener
+  // stays live even while the Controls panel (and thus the button) is unmounted.
+  const trainingTimeHold = useHoldButton(handleTrainingTimeChange);
 
   const { theme, toggle: toggleTheme } = useTheme();
 
@@ -338,7 +342,7 @@ function MainLayout({
                 Training time
               </label>
               <HoldTrainingTimeButton
-                onChange={handleTrainingTimeChange}
+                onMouseDown={trainingTimeHold.onMouseDown}
                 disabled={trainingTimeDisabled}
                 title={
                   trainingTimeDisabled
