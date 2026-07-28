@@ -33,8 +33,10 @@ def main() -> int:
         )
         print("\n=== Fraction of test window observed (NaN-masked) ===")
         print(local.groupby("case_id")["frac_finite_test"].first().round(3).to_string())
-        print("\n=== Method runtimes (s) ===")
-        print(local.groupby(["case_id", "method"])["seconds"].first().unstack().round(2))
+        print("\n=== Method fit time, per origin (s) ===")
+        print(local.groupby(["case_id", "method"])["fit_seconds"].first().unstack().round(2))
+        print("\n=== Method predict time, per origin (s) ===")
+        print(local.groupby(["case_id", "method"])["predict_seconds"].first().unstack().round(2))
 
         ext = df[df["used_extended_history"]] if "used_extended_history" in df else df.iloc[:0]
         if not ext.empty:
