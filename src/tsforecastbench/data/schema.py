@@ -82,7 +82,6 @@ class Case(BaseModel):
     seasonalities: list[int]
     horizon_primary: str
     horizons_eval: list[str] = Field(default_factory=list)
-    input_window: str
     exogenous: list[str] = Field(default_factory=list)
     exogenous_known_future: list[str] = Field(default_factory=list)
     # Domain-expert judgment, not derivable from measured skill: which exogenous columns

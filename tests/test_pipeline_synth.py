@@ -113,7 +113,6 @@ def test_climatology_on_nonseasonal_case_is_global_mean():
         freq="1h",
         seasonalities=[],
         horizon_primary="6h",
-        input_window="24h",
         splits={"train_end": "2020-01-01", "val_end": "2021-01-01", "test_end": "2022-01-01"},
         source={"name": "test"},
     )

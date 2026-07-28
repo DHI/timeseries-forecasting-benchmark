@@ -9,7 +9,6 @@ freq = "1D"
 seasonalities = [90,365]
 horizon_primary = "30D"
 horizons_eval = ["7D", "14D", "30D"]
-input_window = "90D"
 
 exogenous = ["precip", "temp_air"]
 exogenous_known_future = ["precip", "temp_air"]

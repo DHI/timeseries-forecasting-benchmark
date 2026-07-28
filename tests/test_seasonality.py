@@ -32,7 +32,6 @@ def _case_kwargs(**overrides) -> dict:
         freq="1h",
         seasonalities=[24, 168],
         horizon_primary="24h",
-        input_window="7D",
         splits={"train_end": "2020-01-01", "val_end": "2021-01-01", "test_end": "2022-01-01"},
         source={"name": "test"},
     )
