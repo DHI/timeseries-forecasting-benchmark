@@ -36,6 +36,20 @@ const methodMeta: MethodMeta = {
   compute_profile: 'cpu',
   limitations: 'None.',
   code_snippet: 'fit(x, y)',
+  capabilities: {
+    trend: true,
+    seasonality: true,
+    multiple_seasonality: false,
+    exogenous: true,
+  },
+  scorecard: {
+    history_requirements: 'High',
+    interpretability: 'Medium',
+    fit_cost: 'Low',
+    inference_cost: 'Low',
+    tuning_effort: 'Medium',
+    robustness_to_noise: 'Medium',
+  },
 };
 
 describe('MethodInfoCard', () => {

@@ -17,6 +17,29 @@ export type ScoreRow = {
   n_origins: number;
 };
 
+export type ScorecardLevel = 'Low' | 'Medium' | 'High';
+
+/** What structure a method can represent at all. Mirrors the Python `Capabilities` model in
+ * src/tsforecastbench/bench/methods/scorecard.py; `exogenous` describes the method, not the
+ * column, so plain LightGBM is true even though its column feeds no covariates. */
+export type Capabilities = {
+  trend: boolean;
+  seasonality: boolean;
+  multiple_seasonality: boolean;
+  exogenous: boolean;
+};
+
+/** What a method costs to use. Mirrors the Python `Scorecard` model; hand-authored
+ * judgement, not measured from the results. Field order here matches the model's. */
+export type Scorecard = {
+  history_requirements: ScorecardLevel;
+  interpretability: ScorecardLevel;
+  fit_cost: ScorecardLevel;
+  inference_cost: ScorecardLevel;
+  tuning_effort: ScorecardLevel;
+  robustness_to_noise: ScorecardLevel;
+};
+
 export type MethodMeta = {
   family: string;
   description: string;
@@ -25,6 +48,8 @@ export type MethodMeta = {
   compute_profile: string;
   limitations: string;
   code_snippet: string;
+  capabilities: Capabilities;
+  scorecard: Scorecard;
 };
 
 export type MethodRegistry = Record<string, MethodMeta>;

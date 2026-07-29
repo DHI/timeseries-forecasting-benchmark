@@ -38,6 +38,20 @@ function methodMeta(overrides: Partial<MethodMeta> = {}): MethodMeta {
     compute_profile: '',
     limitations: '',
     code_snippet: '',
+    capabilities: {
+      trend: false,
+      seasonality: false,
+      multiple_seasonality: false,
+      exogenous: false,
+    },
+    scorecard: {
+      history_requirements: 'Low',
+      interpretability: 'High',
+      fit_cost: 'Low',
+      inference_cost: 'Low',
+      tuning_effort: 'Low',
+      robustness_to_noise: 'Medium',
+    },
     ...overrides,
   };
 }
