@@ -61,10 +61,10 @@ function CasePanelComponent({ caseId, caseMeta, scores, showGlobal, selectedMeth
     return map;
   }, [scores, caseId]);
 
-  // Local vs global is a per-method property, not a per-family one: the classical family
-  // is split, with AutoARIMA/AutoETS/Theta/MSTL fitting once while TBATS is refit per
-  // origin. So read the flag the eval loop actually acted on rather than inferring it
-  // from `family`.
+  // Local vs global is a per-method property, not a per-family one: the naive baselines
+  // and the ensembles built on them are refit per origin while every classical method
+  // (AutoARIMA/AutoETS/Theta/MSTL/TBATS) fits once. So read the flag the eval loop
+  // actually acted on rather than inferring it from `family`.
   const isGlobalByMethod = useMemo(() => {
     const map = new Map<string, boolean>();
     for (const row of scores) {
@@ -85,9 +85,7 @@ function CasePanelComponent({ caseId, caseMeta, scores, showGlobal, selectedMeth
       : "are zero-shot foundation models: they forecast from recent context only and never fit on this case's train/val split.";
 
   // Local methods have no single reusable trained model, so they're refit from scratch at
-  // every forecast origin. That's the naive baselines and the ensembles built on them, plus
-  // TBATS — statsforecast ties its component search to each fit and offers no way to roll a
-  // fitted TBATS forward.
+  // every forecast origin. That's the naive baselines and the ensembles built on them.
   const localMethods = useMemo(
     () => selectedMethods.filter((m) => isGlobalByMethod.get(m) === false),
     [isGlobalByMethod, selectedMethods],

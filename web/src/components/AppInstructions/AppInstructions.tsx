@@ -79,15 +79,10 @@ export function AppInstructions({ maxWidth }: { maxWidth: number }) {
       <p>
         This toggle applies only to <strong>global methods</strong>: methods that fit one model and
         reuse it for every forecast origin, rather than refitting at each origin. That covers the
-        ML, DL, and foundation-model families, plus most of the classical ones (AutoARIMA, AutoETS,
-        Theta, MSTL). Baseline and ensemble methods are refit at every origin, so there&apos;s no
-        separate &quot;trained model&quot; to extend, and this checkbox has no effect on them.
-      </p>
-      <p>
-        TBATS is the one classical exception: the library ties its component search to every fit and
-        offers no way to roll a fitted TBATS forward, so it too is refit at each origin. That means
-        it re-estimates on more recent data than the fit-once methods do, which is worth keeping in
-        mind when comparing its column against theirs.
+        ML, DL, and foundation-model families, plus all of the classical ones (AutoARIMA, AutoETS,
+        Theta, MSTL, TBATS). Baseline and ensemble methods are refit at every origin, so
+        there&apos;s no separate &quot;trained model&quot; to extend, and this checkbox has no
+        effect on them.
       </p>
       <p>
         Among global methods, this benchmark currently only scores the full-history fit for those
@@ -135,10 +130,10 @@ export function AppInstructions({ maxWidth }: { maxWidth: number }) {
         with the other.
       </p>
       <p>
-        The number shown is fit time (if the method needs fitting) plus predict time. Baseline,
-        ensemble and TBATS methods are refit at every rolling origin, so their fit time reflects one
-        such refit; the fit-once methods (ML, DL, and the other classical ones) report that single
-        fit; zero-shot foundation models have no case-specific training at all, so their number is
+        The number shown is fit time (if the method needs fitting) plus predict time. Baseline and
+        ensemble methods are refit at every rolling origin, so their fit time reflects one such
+        refit; the fit-once methods (ML, DL, and the classical ones) report that single fit;
+        zero-shot foundation models have no case-specific training at all, so their number is
         essentially inference time. Predict time is not uniformly small either — Theta and MSTL
         re-derive a seasonal decomposition over the whole history at every origin, so on the longest
         records their predict cost dominates their fit cost by a wide margin. Hover a cell while

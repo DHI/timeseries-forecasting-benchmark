@@ -56,14 +56,15 @@ function scoreRow(method: string, family: string, isGlobal = family === 'fm'): S
   };
 }
 
-// The classical family is deliberately split: AutoARIMA fits once, TBATS is refit per
-// origin, so local-vs-global has to be read off `is_global` rather than inferred from
-// `family`.
+// Local-vs-global has to be read off `is_global` rather than inferred from `family`: every
+// real classical method (AutoARIMA, AutoETS, Theta, MSTL, TBATS) fits once today, but the
+// panel's logic must still key off the flag itself in case that ever splits again.
+// `MockLocalClassical` is a synthetic fixture for that scenario, not a real forecaster.
 const scores: ScoreRow[] = [
   scoreRow('Persistence', 'baseline'),
   scoreRow('TimesFM-2.5', 'fm'),
   scoreRow('AutoARIMA', 'classical', true),
-  scoreRow('TBATS', 'classical', false),
+  scoreRow('MockLocalClassical', 'classical', false),
 ];
 
 describe('CasePanel', () => {
@@ -141,13 +142,13 @@ describe('CasePanel', () => {
           caseMeta={caseMeta}
           scores={scores}
           showGlobal={false}
-          selectedMethods={['AutoARIMA', 'TBATS']}
+          selectedMethods={['AutoARIMA', 'MockLocalClassical']}
         />
       </ThemeProvider>,
     );
 
     expect(screen.getByText(/is a local method/)).toBeInTheDocument();
-    expect(screen.getByText('TBATS')).toBeInTheDocument();
+    expect(screen.getByText('MockLocalClassical')).toBeInTheDocument();
     expect(screen.queryByText('AutoARIMA')).not.toBeInTheDocument();
   });
 
