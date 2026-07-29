@@ -8,6 +8,18 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-29 — Method cards get a Gaps capability, derived rather than hand-authored
+
+Added a fifth Handles chip answering whether a method can use history from before a gap in
+the record. Tracing how gaps actually get handled showed it's centralized infrastructure
+(`curate.py` fills small ones, `_segment_extended`/`segment_arrays` split the record at big
+ones before any `fit` call), not something each method implements — the one place a real
+per-method distinction already exists is the existing `pools_segments` flag. Rather than
+hand-copying that value into each of the ~19 `Capabilities(...)` declarations (risking drift
+the moment a subclass overrides `pools_segments` without touching `capabilities`, as
+`ITransformerForecaster` already does), `gaps` is computed from `pools_segments` once in
+`webdata.py`'s export step, guarded by a new test that would catch exactly that drift.
+
 ## 2026-07-29 — Gave MLP a `+exo` variant
 
 MLP already had the full covariate pipeline through `_WindowedMLBase` (the same lag +

@@ -342,6 +342,20 @@
 {
   "nodes": [
     {
+      "id": "2026-07-29-gaps-capability",
+      "date": "2026-07-29",
+      "title": "Method cards get a Gaps capability, derived rather than hand-authored",
+      "category": "app-tooling",
+      "summary": "Added a fifth Handles chip for whether a method can use history from before a gap in the record, computed from the existing pools_segments flag at export time instead of hand-copied into each Capabilities() declaration.",
+      "detail": "Tracing how gaps in the data actually get handled showed it's centralized infrastructure, not something each method implements: `curate.py` fills small gaps and `_segment_extended`/`segment_arrays` split the record at big ones before any `fit` call ever runs. The one place a real per-method distinction already exists is the `pools_segments` flag (true for the ML/DL/neuralforecast base classes whose fit pools the full multi-segment extended history, false for classical/persistence and zero-shot foundation models).\n\nRather than hand-copying that value into each of the ~19 `Capabilities(...)` declarations, `gaps` is computed from `pools_segments` once in `webdata.py`'s `_method_registry()`. This matters concretely: `ITransformerForecaster` already overrides `pools_segments = False` on top of `_NFBase` without touching `capabilities`, so a hand-copied literal would have shown it as gap-tolerant when it isn't. A new test (`test_gaps_capability_matches_pools_segments`) locks the derivation in place.",
+      "tags": [
+        "results-app",
+        "method-cards",
+        "scorecard",
+        "method-metadata"
+      ]
+    },
+    {
       "id": "2026-07-29-mlp-exo-variant",
       "date": "2026-07-29",
       "title": "Gave MLP a +exo variant",
@@ -1469,6 +1483,11 @@
     }
   ],
   "edges": [
+    {
+      "source": "2026-07-29-gaps-capability",
+      "target": "2026-07-29-method-scorecards",
+      "type": "relates-to"
+    },
     {
       "source": "2026-07-29-mlp-exo-variant",
       "target": "2026-07-27-mlp-recursive-divergence-bounded",
