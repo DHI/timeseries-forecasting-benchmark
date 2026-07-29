@@ -240,40 +240,113 @@ class AutoETSForecaster(Forecaster):
         return pd.DataFrame({"ds": future, "y_hat": y_hat})
 
 
-class TBATSForecaster(Forecaster):
-    """TBATS (Trigonometric, Box-Cox, ARMA, Trend, Seasonal) via statsforecast.
+def _select_tbats_spec(
+    y: np.ndarray, periods: list[int]
+) -> tuple[list[int], int, np.ndarray, float]:
+    """Harmonics-per-period and AR-error order for `TBATSForecaster`, chosen once by AIC
+    over a couple of candidates each — affordable now that this fit runs once per case
+    rather than once per rolling origin, unlike TBATS's own automatic component search.
 
-    Handles complex and multiple seasonal patterns via trigonometric terms.
+    Returns `(harmonics, ar_order, params, aic)` for the winning spec so `fit` doesn't
+    need to refit it a second time.
+    """
+    import itertools
+
+    from statsmodels.tsa.statespace.structural import UnobservedComponents
+
+    harmonics_candidates = [sorted({1, min(3, p // 2)}) for p in periods]
+    ar_candidates = (0, 1)
+
+    best_aic = np.inf
+    best: tuple[list[int], int, np.ndarray, float] | None = None
+    for harmonics in itertools.product(*harmonics_candidates):
+        freq_seasonal = [
+            {"period": p, "harmonics": h} for p, h in zip(periods, harmonics, strict=True)
+        ]
+        for ar_order in ar_candidates:
+            try:
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    res = UnobservedComponents(
+                        y,
+                        level="local linear trend",
+                        freq_seasonal=freq_seasonal or None,
+                        autoregressive=ar_order or None,
+                    ).fit(disp=False)
+            except Exception:
+                continue
+            if res.aic < best_aic:
+                best_aic = res.aic
+                best = (list(harmonics), ar_order, res.params, res.aic)
+    if best is None:
+        raise ValueError("TBATS: no candidate spec converged")
+    return best
+
+
+class TBATSForecaster(Forecaster):
+    """Custom Box-Cox/Yeo-Johnson + trigonometric-seasonal + AR-errors state-space model,
+    inspired by TBATS but fit once rather than reimplementing statsforecast's per-origin
+    TBATS (which couples its own automatic component search to every fit call).
+
+    Built directly on `statsmodels.tsa.statespace.structural.UnobservedComponents`: a
+    local linear trend, one harmonic (trigonometric) seasonal block per declared period,
+    and AR errors in place of TBATS's full ARMA errors. `fit` picks the transform, the
+    harmonics per period, and the AR order once (see `_select_tbats_spec`), then fits the
+    model once for parameters `predict` holds fixed while rebuilding on each origin's
+    growing history — the same fixed-parameter roll-forward as AutoARIMA/AutoETS above.
+    This is a documented simplification relative to the published TBATS estimator (AR
+    errors instead of full ARMA, no automatic component-inclusion search), not
+    statsforecast's implementation; `name` stays "TBATS" for continuity of existing
+    result columns.
+
     season_length accepts an int, a list of ints (e.g. [24, 168] for
     daily+weekly in hourly data), or None to use the case's declared
-    dominant period (1, non-seasonal, when seasonalities = []).
+    dominant period (1, non-seasonal, when seasonalities = []). Periods without at least
+    2 full cycles in the training window are dropped, same as MSTL below.
     max_train_steps is set lower than other classicals because TBATS fit
     cost is substantially higher.
 
     When the training data contains non-positive values, a Yeo-Johnson
-    power transform is applied before fitting and inverted on the forecasts,
-    since TBATS's internal Box-Cox transform requires strictly positive data.
+    power transform is used in place of Box-Cox before fitting and inverted on the
+    forecasts, since Box-Cox requires strictly positive data. The transform (and its
+    fitted parameter) is chosen once from the fit-time window and reused unchanged at
+    every origin.
     """
 
     name = "TBATS"
     family = "classical"
-    library = "statsforecast (Nixtla)"
+    is_global = True
+    library = (
+        "statsmodels (custom Box-Cox/Yeo-Johnson + trigonometric-seasonal + AR-errors "
+        "state-space model, inspired by TBATS)"
+    )
     compute_profile = (
-        "CPU only; the heaviest of the classical methods here, so it's fit on a "
-        "smaller window (3,000 points) than its siblings — still typically seconds "
-        "per case, but noticeably slower than AutoARIMA/AutoETS/Theta."
+        "CPU only; the heaviest of the classical methods here at fit time — a small "
+        "one-time AIC comparison over harmonics/AR-order candidates, fit on a smaller "
+        "window (3,000 points) than its siblings; each origin after that is a single "
+        "Kalman filter pass over the fixed spec/parameters, no re-optimization."
     )
     limitations = (
-        "Univariate: ignores exogenous inputs. Its internal Box-Cox transform assumes "
-        "strictly positive data; a Yeo-Johnson fallback (see below) handles series "
-        "that dip to zero or negative."
+        "Univariate: ignores exogenous inputs. A custom simplification of the published "
+        "TBATS estimator, not statsforecast's implementation: AR errors instead of full "
+        "ARMA, and harmonics/AR order chosen by a small one-time AIC comparison rather "
+        "than TBATS's exhaustive automatic component search. Its Box-Cox transform "
+        "assumes strictly positive data; a Yeo-Johnson fallback (see below) handles "
+        "series that dip to zero or negative. Transform and spec/parameters are fixed "
+        "at fit time."
     )
     code_snippet = (
-        "from statsforecast import StatsForecast\n"
-        "from statsforecast.models import TBATS\n\n"
-        "sf = StatsForecast(models=[TBATS(season_length=season_length)], freq=case.freq)\n"
-        "sf.fit(train_df)                     # train_df: unique_id, ds, y\n"
-        'y_hat = sf.predict(h=horizon)["TBATS"]'
+        "from statsmodels.tsa.statespace.structural import UnobservedComponents\n\n"
+        "spec = dict(\n"
+        "    level='local linear trend',\n"
+        "    freq_seasonal=[{'period': p, 'harmonics': k_p} for p in periods],\n"
+        "    autoregressive=ar_order,          # k_p, ar_order chosen once by AIC\n"
+        ")\n"
+        "params = UnobservedComponents(train_y_transformed, **spec).fit().params\n\n"
+        "# each origin: rebuild on the growing history, hold params fixed\n"
+        "y_hat_t = UnobservedComponents(history_y_transformed, **spec)\\\n"
+        "    .smooth(params).forecast(horizon)\n"
+        "y_hat = power_transformer.inverse_transform(y_hat_t)"
     )
 
     def __init__(self, season_length: int | list[int] | None = None, max_train_steps: int = 3000):
@@ -282,43 +355,40 @@ class TBATSForecaster(Forecaster):
 
     def fit(self, case: Case, train: pd.DataFrame) -> None:
         from sklearn.preprocessing import PowerTransformer
-        from statsforecast import StatsForecast
-        from statsforecast.models import TBATS
 
         from tsforecastbench.data.seasonality import dominant_period
 
         df = _prepare_train(train, self.max_train_steps)
-        season_length = (
+        resolved = (
             self.season_length
             if self.season_length is not None
             else dominant_period(case.seasonalities, df["y"].to_numpy())
         )
+        periods = resolved if isinstance(resolved, list) else ([resolved] if resolved > 1 else [])
+        self._periods = sorted(p for p in periods if len(df) >= 2 * p)
 
-        # Apply Yeo-Johnson when Box-Cox would be disabled (non-positive data).
+        # Box-Cox needs strictly positive data; Yeo-Johnson handles the rest. Chosen once
+        # here (statsforecast's TBATS used to redo this check on every per-origin refit).
         y_vals = df["y"].to_numpy(dtype=float)
-        if np.any(y_vals <= 0):
-            self._pt = PowerTransformer(method="yeo-johnson", standardize=False)
-            df["y"] = self._pt.fit_transform(y_vals.reshape(-1, 1)).ravel()
-        else:
-            self._pt = None
+        method = "box-cox" if np.all(y_vals > 0) else "yeo-johnson"
+        self._pt = PowerTransformer(method=method, standardize=False)
+        y_t = self._pt.fit_transform(y_vals.reshape(-1, 1)).ravel()
 
-        # Yeo-Johnson output isn't guaranteed strictly positive (unlike Box-Cox), so
-        # TBATS's own positivity check can still trip and re-disable its Box-Cox with a
-        # UserWarning even though we've already handled the transform. Pass
-        # use_boxcox=False explicitly in that case to get the same outcome silently.
-        use_boxcox = not (self._pt is not None)
-        self._sf = StatsForecast(
-            models=[TBATS(season_length=season_length, use_boxcox=use_boxcox)],
-            freq=case.freq,
-            n_jobs=1,
+        self._harmonics, self._ar_order, self._params, _aic = _select_tbats_spec(y_t, self._periods)
+
+    def _build_model(self, y: np.ndarray):
+        from statsmodels.tsa.statespace.structural import UnobservedComponents
+
+        freq_seasonal = [
+            {"period": p, "harmonics": h}
+            for p, h in zip(self._periods, self._harmonics, strict=True)
+        ]
+        return UnobservedComponents(
+            y,
+            level="local linear trend",
+            freq_seasonal=freq_seasonal or None,
+            autoregressive=self._ar_order or None,
         )
-        # TBATS's internal optimizer transiently overflows float64 while probing
-        # inadmissible parameter candidates it goes on to reject; harmless noise.
-        with warnings.catch_warnings():
-            warnings.filterwarnings(
-                "ignore", message="overflow encountered in square", category=RuntimeWarning
-            )
-            self._sf.fit(df)
 
     def predict(
         self,
@@ -327,10 +397,13 @@ class TBATSForecaster(Forecaster):
         horizon: int,
         future_exog: pd.DataFrame | None = None,
     ) -> pd.DataFrame:
-        fcst = self._sf.predict(h=horizon)
-        y_hat = fcst["TBATS"].to_numpy().astype(np.float64)
-        if self._pt is not None:
-            y_hat = self._pt.inverse_transform(y_hat.reshape(-1, 1)).ravel()
+        y_vals = pd.to_numeric(history["y"], errors="coerce").ffill().bfill().to_numpy(dtype=float)
+        y_t = self._pt.transform(y_vals.reshape(-1, 1)).ravel()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            res = self._build_model(y_t).smooth(self._params)
+        y_hat_t = np.asarray(res.forecast(horizon), dtype=np.float64)
+        y_hat = self._pt.inverse_transform(y_hat_t.reshape(-1, 1)).ravel()
         future = self._future_index(case, history["ds"].max(), horizon)
         return pd.DataFrame({"ds": future, "y_hat": y_hat})
 
