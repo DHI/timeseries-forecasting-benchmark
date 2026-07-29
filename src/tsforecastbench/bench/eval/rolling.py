@@ -5,15 +5,19 @@ errors are pooled per lead time and averaged over all origins, giving the canoni
 "skill degrades with lead time" curve used to compare methods. How the model behind each
 forecast is obtained depends on the method's `is_global` flag (see `methods.base`):
 
-- Local methods (AutoARIMA, AutoETS, Theta, TBATS, MSTL, and the naive baselines) have no
-  separable trained model, so they are refit on the curated history up to each cutoff --
-  that refit is simply how they fold in the newer data.
-- Global methods (LightGBM, CatBoost, MLP, LinearLags, DLinear, Chronos, and the optional
-  torch/neuralforecast models) estimate a reusable model once, on data strictly before
-  the test period, then evaluate every cutoff by inference alone -- each origin's predict
-  conditions on the real observed history up to that origin without re-estimating any
-  parameters. This stays leak-free and makes raising `n_origins` cheap for the methods
-  that otherwise dominate runtime.
+- Local methods (the naive baselines and the baseline ensembles) have no separable
+  trained model, so they are refit on the curated history up to each cutoff -- that refit
+  is simply how they fold in the newer data.
+- Global methods (AutoARIMA, AutoETS, Theta, TBATS, MSTL, LightGBM, CatBoost, MLP,
+  LinearLags, DLinear, Chronos, and the optional torch/neuralforecast models) estimate a
+  reusable model once, on data strictly before the test period, then evaluate every
+  cutoff by inference alone -- each origin's predict conditions on the real observed
+  history up to that origin without re-estimating any parameters. This stays leak-free
+  and makes raising `n_origins` cheap for the methods that otherwise dominate runtime.
+  The classical methods (AutoARIMA/AutoETS/Theta/TBATS/MSTL) hold their order/spec and
+  parameters fixed from fit time, same as any other global method -- see
+  `methods.classical` for how each one's roll-forward genuinely conditions on new history
+  without re-estimating anything.
 
 `fit_seconds`/`predict_seconds` in the output are each averaged per origin, not summed:
 for a local method that's the mean over its `n_origins` refits; for a global method

@@ -79,18 +79,21 @@ export function AppInstructions({ maxWidth }: { maxWidth: number }) {
       <p>
         This toggle applies only to <strong>global methods</strong>: methods that fit one model and
         reuse it for every forecast origin, rather than refitting at each origin. That covers the
-        ML, DL, and foundation-model families. Baseline, classical, and ensemble methods are refit
-        at every origin, so there&apos;s no separate &quot;trained model&quot; to extend, and this
+        ML, DL, classical, and foundation-model families. Baseline and ensemble methods are refit at
+        every origin, so there&apos;s no separate &quot;trained model&quot; to extend, and this
         checkbox has no effect on them.
       </p>
       <p>
-        Among global methods, only those that actually learn from training data (ML and DL) can make
-        use of more history — turning the checkbox on refits them on the case&apos;s full available
-        history instead of just the shared curated span everyone is scored on, and swaps in that
-        score. Foundation models are also &quot;global&quot; in the sense of reusing one fit, but
-        they work zero-shot from recent context rather than learning from a training window, so
-        extra history doesn&apos;t change their forecasts — the checkbox doesn&apos;t affect them
-        either, even though they sit in the same family group.
+        Among global methods, this benchmark currently only scores the full-history fit for those
+        that actually learn from training data (ML and DL) — turning the checkbox on refits them on
+        the case&apos;s full available history instead of just the shared curated span everyone is
+        scored on, and swaps in that score. Classical methods (AutoARIMA, AutoETS, Theta, TBATS,
+        MSTL) also fit once and roll forward like ML/DL, but a full-history variant isn&apos;t wired
+        up for them yet, so the checkbox has no effect on them either. Foundation models are also
+        &quot;global&quot; in the sense of reusing one fit, but they work zero-shot from recent
+        context rather than learning from a training window, so extra history doesn&apos;t change
+        their forecasts — the checkbox doesn&apos;t affect them either, even though they sit in the
+        same family group.
       </p>
       <p>
         When a cell&apos;s value has been swapped to the full-history version, it&apos;s marked with
@@ -127,9 +130,10 @@ export function AppInstructions({ maxWidth }: { maxWidth: number }) {
         with the other.
       </p>
       <p>
-        The number shown is fit time (if the method needs fitting) plus predict time. Classical
-        statistical methods are refit at every rolling origin, so their fit time reflects one such
-        refit; zero-shot foundation models have no case-specific training at all, so their number is
+        The number shown is fit time (if the method needs fitting) plus predict time. Baseline and
+        ensemble methods are refit at every rolling origin, so their fit time reflects one such
+        refit; classical, ML, and DL methods fit once and their fit time reflects that single fit;
+        zero-shot foundation models have no case-specific training at all, so their number is
         essentially inference time. Hover a cell while holding to see the fit/predict split.
       </p>
     </div>

@@ -18,7 +18,7 @@ const SUBCAPTION_STYLE = {
   margin: '10px 0 2px 0',
 };
 const SUMMARY_STYLE = { cursor: 'pointer', fontWeight: 'bold' as const, fontSize: '1em' };
-const LOCAL_FAMILIES = new Set(['baseline', 'classical', 'ensemble']);
+const LOCAL_FAMILIES = new Set(['baseline', 'ensemble']);
 const FOUNDATION_NOTE_STYLE = {
   display: 'flex',
   alignItems: 'flex-start',
@@ -73,16 +73,17 @@ function CasePanelComponent({ caseId, caseMeta, scores, showGlobal, selectedMeth
       ? "is a zero-shot foundation model: it forecasts from recent context only and never fits on this case's train/val split."
       : "are zero-shot foundation models: they forecast from recent context only and never fit on this case's train/val split.";
 
-  // Local methods have no single trained model — unlike the global (ML/DL) methods, which
-  // fit once on the train/val split, these refit from scratch at every forecast origin.
+  // Local (baseline/ensemble) methods have no single trained model — unlike the global
+  // methods (ML/DL, and classical now that AutoARIMA/AutoETS/Theta/TBATS/MSTL fit once
+  // and roll forward), these refit from scratch at every forecast origin.
   const localMethods = useMemo(
     () => selectedMethods.filter((m) => LOCAL_FAMILIES.has(familyByMethod.get(m) ?? '')),
     [familyByMethod, selectedMethods],
   );
   const localNote =
     localMethods.length === 1
-      ? "is a local method: it's refit from scratch at every forecast origin, using all history up to that point, rather than being fit once on the train/val split like the global (ML/DL) methods."
-      : "are local methods: they're refit from scratch at every forecast origin, using all history up to that point, rather than being fit once on the train/val split like the global (ML/DL) methods.";
+      ? "is a local method: it's refit from scratch at every forecast origin, using all history up to that point, rather than being fit once on the train/val split like the global (ML/DL/classical) methods."
+      : "are local methods: they're refit from scratch at every forecast origin, using all history up to that point, rather than being fit once on the train/val split like the global (ML/DL/classical) methods.";
 
   return (
     <div>

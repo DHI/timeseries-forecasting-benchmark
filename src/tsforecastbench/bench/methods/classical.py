@@ -1,8 +1,16 @@
 """Classical statistical methods - Nixtla statsforecast AutoARIMA.
 
-Two tractability choices, both standard practice:
+Three tractability choices, all standard practice:
 
-1. Non-seasonal by default. AutoARIMA with a seasonal period m fits SARIMA models whose
+1. Fit once, roll forward. statsforecast's Auto* wrappers couple order/parameter search
+   to every `.fit()` call, but ARIMA, ETS, Theta, and TBATS are all mathematically
+   representable as fixed parameters plus a state that can be updated (filtered) through
+   new observations without re-estimation. So every forecaster here is `is_global`: order
+   or spec search runs once, in `fit`, and `predict` conditions on each rolling origin's
+   growing `history` by holding those parameters fixed (a Kalman/state filter pass, not a
+   re-fit) -- see each class's docstring for its specific fixed-parameter mechanism.
+
+2. Non-seasonal by default. AutoARIMA with a seasonal period m fits SARIMA models whose
    cost explodes with m; seasonal ARIMA at sub-daily frequency (m=96 for 15-min, even
    m=24) is impractical. AutoETS is likewise impractical at large m (its seasonal state
    grows with m). So AutoARIMA/AutoETS here are the short-memory autoregressive baselines
@@ -11,9 +19,10 @@ Two tractability choices, both standard practice:
    which deseasonalizes cheaply. Pass season_length explicitly to force a seasonal
    AutoARIMA/AutoETS fit on a low-period case.
 
-2. Capped training window. Stepwise-search cost grows with length, so we fit on the most
-   recent max_train_steps observations. Truncating from the front does not move the
-   forecast origin, so test alignment is preserved.
+3. Capped training window. Order/spec-search cost grows with length, so we search on the
+   most recent max_train_steps observations. Truncating from the front does not move the
+   forecast origin, so test alignment is preserved; `predict`'s fixed-parameter roll-forward
+   is not capped this way -- it conditions on the real, uncapped history it is handed.
 """
 
 from __future__ import annotations

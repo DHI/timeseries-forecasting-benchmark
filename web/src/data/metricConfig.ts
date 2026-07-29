@@ -124,13 +124,13 @@ export const METRIC_CONFIG: Record<string, MetricConfig> = {
  *
  * The cell value is `fit_seconds + predict_seconds`, each already averaged per rolling
  * origin (see ScoreRow / eval.rolling) — for a method that refits at every origin
- * (classical/naive), `fit_seconds` is the mean cost of one such refit; for a method that
- * fits once (global ML/DL, zero-shot foundation models), it's that single fit's cost, and
- * for zero-shot methods specifically it's ~0 since they have no case-specific training.
- * So this reads as "cost to produce one forecast with this method", not a training-time-only
- * number and not something that scales with how many origins a run used. Hovering a cell
- * while this overlay is held shows the fit/predict split (see MatrixGraph's breakdown
- * tooltip). */
+ * (baseline/ensemble), `fit_seconds` is the mean cost of one such refit; for a method that
+ * fits once (global ML/DL/classical, zero-shot foundation models), it's that single fit's
+ * cost, and for zero-shot methods specifically it's ~0 since they have no case-specific
+ * training. So this reads as "cost to produce one forecast with this method", not a
+ * training-time-only number and not something that scales with how many origins a run
+ * used. Hovering a cell while this overlay is held shows the fit/predict split (see
+ * MatrixGraph's breakdown tooltip). */
 export const TRAINING_TIME_CONFIG: MetricConfig = {
   cmap: 'Greys',
   center: null,
