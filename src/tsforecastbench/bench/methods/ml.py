@@ -18,6 +18,7 @@ import numpy as np
 import pandas as pd
 
 from tsforecastbench.bench.methods.base import Forecaster
+from tsforecastbench.bench.methods.scorecard import Capabilities, Level, Scorecard
 from tsforecastbench.data.schema import Case
 from tsforecastbench.data.seasonality import dominant_period, position_in_cycle
 
@@ -124,6 +125,15 @@ class _WindowedMLBase(Forecaster):
         "fcst.fit(train_df, static_features=[])\n"
         "y_hat = fcst.predict(h=horizon, ids=[target_uid])"
     )
+    # Shared by every regressor in this pipeline, since these follow from the feature table
+    # rather than from the estimator. Lags cover all of the case's declared periods and the
+    # date features span several cycles at once, so multiple seasonality is handled. The
+    # pipeline can feed covariates for any of these regressors (that is all `use_exogenous`
+    # switches), whether or not a +exo column happens to be registered for it — but subclasses
+    # whose estimator cannot leave the training target's range override `trend` to False.
+    capabilities = Capabilities(
+        trend=True, seasonality=True, multiple_seasonality=True, exogenous=True
+    )
 
     def __init__(self):
         self.uses_exogenous = self.use_exogenous
@@ -220,6 +230,19 @@ class _WindowedMLBase(Forecaster):
 class LightGBMForecaster(_WindowedMLBase):
     name = "LightGBM"
     library = "mlforecast + lightgbm"
+    # A tree's prediction is an average of training targets, so it cannot output a value
+    # outside the range it was fit on — no trend extrapolation, by construction.
+    capabilities = _WindowedMLBase.capabilities.model_copy(update={"trend": False})
+    # Feature importances make it inspectable but not readable; needs a lot of rows before
+    # the lag table is worth fitting, and n_estimators/learning_rate are real choices.
+    scorecard = Scorecard(
+        history_requirements=Level.HIGH,
+        interpretability=Level.MEDIUM,
+        fit_cost=Level.LOW,
+        inference_cost=Level.LOW,
+        tuning_effort=Level.MEDIUM,
+        robustness_to_noise=Level.MEDIUM,
+    )
 
     def _make_model(self):
         from lightgbm import LGBMRegressor
@@ -230,6 +253,16 @@ class LightGBMForecaster(_WindowedMLBase):
 class CatBoostForecaster(_WindowedMLBase):
     name = "CatBoost"
     library = "mlforecast + catboost"
+    # Bounded by the training target range for the same reason LightGBM is.
+    capabilities = _WindowedMLBase.capabilities.model_copy(update={"trend": False})
+    scorecard = Scorecard(
+        history_requirements=Level.HIGH,
+        interpretability=Level.MEDIUM,
+        fit_cost=Level.LOW,
+        inference_cost=Level.LOW,
+        tuning_effort=Level.MEDIUM,
+        robustness_to_noise=Level.MEDIUM,
+    )
 
     def _make_model(self):
         from catboost import CatBoostRegressor
@@ -242,6 +275,18 @@ class CatBoostForecaster(_WindowedMLBase):
 class LinearLagsForecaster(_WindowedMLBase):
     name = "LinearLags"
     library = "mlforecast + scikit-learn (Ridge)"
+    # Keeps the base's trend=True: linear in its lag features, so unlike the tree models it
+    # can extrapolate past the range it was fit on.
+    # Cheapest of the windowed models to fit, with one meaningful knob (alpha), and readable
+    # coefficients — though dozens of them, so inspectable rather than at-a-glance.
+    scorecard = Scorecard(
+        history_requirements=Level.MEDIUM,
+        interpretability=Level.MEDIUM,
+        fit_cost=Level.LOW,
+        inference_cost=Level.LOW,
+        tuning_effort=Level.LOW,
+        robustness_to_noise=Level.MEDIUM,
+    )
 
     def _make_model(self):
         from sklearn.linear_model import Ridge
@@ -296,6 +341,21 @@ class MLPForecaster(_WindowedMLBase):
     name = "MLP"
     max_train_steps = 20000
     library = "mlforecast + scikit-learn (MLPRegressor)"
+    # `_BoundedRegressor` clips its output to the fit window's range, so it cannot carry a
+    # level drift past what it saw either.
+    capabilities = _WindowedMLBase.capabilities.model_copy(update={"trend": False})
+    # The one windowed model that needed a guard against its own recursive forecast
+    # diverging (see `_BoundedRegressor`) — hence Low robustness — and the one with several
+    # interacting knobs: layer sizes, iterations, early stopping, feature scaling. Capped to
+    # the most recent 20,000 points because it is the slowest of the four to fit.
+    scorecard = Scorecard(
+        history_requirements=Level.HIGH,
+        interpretability=Level.LOW,
+        fit_cost=Level.MEDIUM,
+        inference_cost=Level.LOW,
+        tuning_effort=Level.HIGH,
+        robustness_to_noise=Level.LOW,
+    )
 
     def _make_model(self):
         from sklearn.neural_network import MLPRegressor
