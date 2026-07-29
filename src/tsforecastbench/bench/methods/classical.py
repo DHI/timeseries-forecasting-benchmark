@@ -40,24 +40,47 @@ def _prepare_train(train: pd.DataFrame, max_train_steps: int) -> pd.DataFrame:
 
 
 class AutoARIMAForecaster(Forecaster):
+    """Order-search-once ARIMA: statsforecast picks the (S)ARIMA spec, statsmodels holds
+    the fixed-parameter Kalman filter that conditions on each origin's growing history.
+
+    statsforecast's own AutoARIMA is a from-scratch reimplementation, not a statsmodels
+    wrapper, so its fitted coefficients don't translate into statsmodels' parameterization
+    directly. Instead, `fit` uses statsforecast only for what it's good at — stepwise
+    order search — then fits `statsmodels.tsa.statespace.sarimax.SARIMAX` once on the same
+    window to get params in a form `.filter()` can hold fixed. `predict` rebuilds a SARIMAX
+    of that same order on the (longer) history it's handed and calls `.filter(params)` — a
+    Kalman recursion with no optimizer call — so the forecast genuinely reflects the new
+    observations without ever re-estimating order or coefficients.
+    """
+
     name = "AutoARIMA"
     family = "classical"
-    library = "statsforecast (Nixtla)"
+    is_global = True
+    library = "statsforecast (Nixtla) for order search + statsmodels for fixed-param roll-forward"
     compute_profile = (
-        "CPU only; a stepwise order search, typically seconds per case (fit is capped "
-        "at the most recent 5,000 points by default)."
+        "CPU only; a stepwise order search and one statsmodels fit at fit time (capped "
+        "at the most recent 5,000 points by default); each origin after that is a single "
+        "Kalman filter pass over the fixed order/parameters, no re-optimization."
     )
     limitations = (
         "Non-seasonal by default (season_length=1) — a large seasonal period would "
         "explode SARIMA's search cost, so seasonal structure isn't modeled unless you "
-        "pass season_length explicitly. Univariate: ignores exogenous inputs."
+        "pass season_length explicitly. Univariate: ignores exogenous inputs. Order and "
+        "coefficients are fixed at fit time; a structural change in the series after fit "
+        "is tracked through the Kalman state, not through re-estimation."
     )
     code_snippet = (
         "from statsforecast import StatsForecast\n"
-        "from statsforecast.models import AutoARIMA\n\n"
+        "from statsforecast.models import AutoARIMA\n"
+        "from statsmodels.tsa.statespace.sarimax import SARIMAX\n\n"
         "sf = StatsForecast(models=[AutoARIMA(season_length=1)], freq=case.freq)\n"
-        "sf.fit(train_df)                     # train_df: unique_id, ds, y\n"
-        'y_hat = sf.predict(h=horizon)["AutoARIMA"]'
+        "sf.fit(train_df)                     # train_df: unique_id, ds, y -- order search only\n"
+        "order, seasonal_order, trend = ...   # read off sf.fitted_[0, 0].model_\n"
+        "params = SARIMAX(train_y, order=order, seasonal_order=seasonal_order, trend=trend)\\\n"
+        "    .fit().params                    # one statsmodels fit for fixed params\n\n"
+        "# each origin: rebuild on the growing history, hold params fixed\n"
+        "y_hat = SARIMAX(history_y, order=order, seasonal_order=seasonal_order, trend=trend)\\\n"
+        "    .filter(params).forecast(horizon)"
     )
 
     def __init__(self, season_length: int = 1, max_train_steps: int = 5000):
@@ -70,12 +93,29 @@ class AutoARIMAForecaster(Forecaster):
 
         df = _prepare_train(train, self.max_train_steps)
 
-        self._sf = StatsForecast(
+        sf = StatsForecast(
             models=[AutoARIMA(season_length=self.season_length)],
             freq=case.freq,
             n_jobs=1,
         )
-        self._sf.fit(df)
+        sf.fit(df)
+        fitted = sf.fitted_[0, 0]
+        p, q, ar_p, ar_q, m, d, seasonal_d = (int(v) for v in fitted.model_["arma"])
+        self._order = (p, d, q)
+        self._seasonal_order = (ar_p, seasonal_d, ar_q, m) if m > 1 else (0, 0, 0, 0)
+        coef = fitted.model_["coef"]
+        self._trend = "t" if "drift" in coef else ("c" if "intercept" in coef else "n")
+
+        y = df["y"].to_numpy(dtype=float)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            model = self._build_model(y)
+            self._params = model.fit(disp=False).params
+
+    def _build_model(self, y: np.ndarray):
+        from statsmodels.tsa.statespace.sarimax import SARIMAX
+
+        return SARIMAX(y, order=self._order, seasonal_order=self._seasonal_order, trend=self._trend)
 
     def predict(
         self,
@@ -84,15 +124,30 @@ class AutoARIMAForecaster(Forecaster):
         horizon: int,
         future_exog: pd.DataFrame | None = None,
     ) -> pd.DataFrame:
-        fcst = self._sf.predict(h=horizon)
-        y_hat = fcst["AutoARIMA"].to_numpy().astype(np.float64)
-        last_ds = history["ds"].max()
-        future = self._future_index(case, last_ds, horizon)
+        y = pd.to_numeric(history["y"], errors="coerce").ffill().bfill().to_numpy(dtype=float)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            res = self._build_model(y).filter(self._params)
+        y_hat = np.asarray(res.forecast(horizon), dtype=np.float64)
+        future = self._future_index(case, history["ds"].max(), horizon)
         return pd.DataFrame({"ds": future, "y_hat": y_hat})
 
 
+_ETS_LETTER = {"A": "add", "M": "mul", "N": None}
+
+
 class AutoETSForecaster(Forecaster):
-    """Exponential smoothing state space (auto-selected) via statsforecast.
+    """Order-search-once ETS: statsforecast picks the error/trend/season spec,
+    statsmodels holds the fixed-parameter state that conditions on each origin's growing
+    history.
+
+    `fit` runs statsforecast's AutoETS once to choose the spec (error/trend/season type
+    letters + damped flag), then fits `statsmodels.tsa.exponential_smoothing.ets.ETSModel`
+    once on the same window for params in a form `.smooth()` can hold fixed. Unlike
+    AutoARIMA/SARIMAX, ETSModel has no incremental `.append()`/`.extend()`, so `predict`
+    rebuilds the model on the longer history and re-runs the full filter each origin
+    (still no optimizer call) — cheap relative to re-optimizing, but a real O(n) cost per
+    origin worth knowing about for very long histories.
 
     Like AutoARIMA, season_length defaults to 1 (non-seasonal); set explicitly for
     cases where a small seasonal period is appropriate. max_train_steps caps fit cost.
@@ -100,22 +155,31 @@ class AutoETSForecaster(Forecaster):
 
     name = "AutoETS"
     family = "classical"
-    library = "statsforecast (Nixtla)"
+    is_global = True
+    library = "statsforecast (Nixtla) for spec search + statsmodels for fixed-param roll-forward"
     compute_profile = (
-        "CPU only; searches over error/trend/season state combinations, typically "
-        "seconds per case (fit is capped at the most recent 5,000 points by default)."
+        "CPU only; searches over error/trend/season state combinations plus one "
+        "statsmodels fit at fit time (capped at the most recent 5,000 points by "
+        "default); each origin after that re-filters the fixed spec/parameters over the "
+        "growing history — no re-optimization, but a full O(n) refilter (ETSModel has no "
+        "incremental update), unlike AutoARIMA's cheaper Kalman-filter roll-forward."
     )
     limitations = (
         "Non-seasonal by default (season_length=1), like AutoARIMA — its seasonal "
         "state grows with the period, so a large seasonal period is impractical unless "
-        "you pass season_length explicitly. Univariate: ignores exogenous inputs."
+        "you pass season_length explicitly. Univariate: ignores exogenous inputs. Spec "
+        "and coefficients are fixed at fit time."
     )
     code_snippet = (
         "from statsforecast import StatsForecast\n"
-        "from statsforecast.models import AutoETS\n\n"
+        "from statsforecast.models import AutoETS\n"
+        "from statsmodels.tsa.exponential_smoothing.ets import ETSModel\n\n"
         "sf = StatsForecast(models=[AutoETS(season_length=1)], freq=case.freq)\n"
-        "sf.fit(train_df)                     # train_df: unique_id, ds, y\n"
-        'y_hat = sf.predict(h=horizon)["AutoETS"]'
+        "sf.fit(train_df)                     # train_df: unique_id, ds, y -- spec search only\n"
+        "spec = ...                           # read off sf.fitted_[0, 0].model_['components']\n"
+        "params = ETSModel(train_y, **spec).fit().params   # one statsmodels fit for fixed params\n\n"
+        "# each origin: rebuild on the growing history, hold params fixed\n"
+        "y_hat = ETSModel(history_y, **spec).smooth(params).forecast(horizon)"
     )
 
     def __init__(self, season_length: int = 1, max_train_steps: int = 5000):
@@ -128,12 +192,37 @@ class AutoETSForecaster(Forecaster):
 
         df = _prepare_train(train, self.max_train_steps)
 
-        self._sf = StatsForecast(
+        sf = StatsForecast(
             models=[AutoETS(season_length=self.season_length)],
             freq=case.freq,
             n_jobs=1,
         )
-        self._sf.fit(df)
+        sf.fit(df)
+        fitted = sf.fitted_[0, 0]
+        error, trend, season, damped_flag = fitted.model_["components"]
+        self._error = _ETS_LETTER[error]
+        self._trend = _ETS_LETTER[trend]
+        self._seasonal = _ETS_LETTER[season]
+        self._damped = damped_flag == "D"
+        self._season_periods = self.season_length if self._seasonal is not None else None
+
+        y = df["y"].to_numpy(dtype=float)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            model = self._build_model(y)
+            self._params = model.fit(disp=False).params
+
+    def _build_model(self, y: np.ndarray):
+        from statsmodels.tsa.exponential_smoothing.ets import ETSModel
+
+        return ETSModel(
+            y,
+            error=self._error,
+            trend=self._trend,
+            damped_trend=self._damped,
+            seasonal=self._seasonal,
+            seasonal_periods=self._season_periods,
+        )
 
     def predict(
         self,
@@ -142,8 +231,11 @@ class AutoETSForecaster(Forecaster):
         horizon: int,
         future_exog: pd.DataFrame | None = None,
     ) -> pd.DataFrame:
-        fcst = self._sf.predict(h=horizon)
-        y_hat = fcst["AutoETS"].to_numpy().astype(np.float64)
+        y = pd.to_numeric(history["y"], errors="coerce").ffill().bfill().to_numpy(dtype=float)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            res = self._build_model(y).smooth(self._params)
+        y_hat = np.asarray(res.forecast(horizon), dtype=np.float64)
         future = self._future_index(case, history["ds"].max(), horizon)
         return pd.DataFrame({"ds": future, "y_hat": y_hat})
 
