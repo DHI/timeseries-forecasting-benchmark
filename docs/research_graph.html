@@ -342,6 +342,20 @@
 {
   "nodes": [
     {
+      "id": "2026-07-29-method-scorecards",
+      "date": "2026-07-29",
+      "title": "Method cards now carry a capability set and an operational scorecard",
+      "category": "app-tooling",
+      "summary": "Every method declares four capability booleans and six Low/Medium/High operational ratings, rendered on its card as a check/dash row and labelled segment meters.",
+      "detail": "The method cards described each method in prose only, so nothing on them let you compare two methods at a glance. Every method now declares two Pydantic objects beside its existing metadata: `Capabilities`, four booleans for what structure it can represent (trend, seasonality, multiple seasonality, exogenous support), and `Scorecard`, six Low/Medium/High ratings for what it costs to use (history needed, interpretability, fit cost, inference cost, tuning effort, robustness to noise). Splitting them matters: a graded rating answers \"how much\" and a boolean answers \"can it at all\", and \"Medium seasonality\" is not a real thing.\n\nThree fields from the first sketch were reshaped for the same reason. Implementation effort was dropped -- all 32 methods are thin library wrappers, so the rating would have been fiction -- and replaced with tuning effort, which genuinely varies. A single computational cost hid the fit-once versus refit-per-origin distinction, so it was split into fit cost and inference cost, both anchored to the `fit_seconds`/`predict_seconds` the eval loop already records; that immediately separates Theta and MSTL (cheap to fit, expensive per origin) from TBATS (the mirror image). Small/large dataset support collapsed into one history-need field, since whether a method can exploit a long record is already *measured* by the extended-history matrix.\n\nThe ratings are hand-authored judgement, not derived from results, and the app says so in an info modal on each card. A method and its `+exo` variant share one declaration, since `+exo` records which configuration a column ran rather than a different estimator. On the card, bar length is the size of a rating and bar colour is whether that size is good, so a low fit cost draws one short green bar.",
+      "tags": [
+        "results-app",
+        "method-cards",
+        "scorecard",
+        "method-metadata"
+      ]
+    },
+    {
       "id": "2026-07-09-persist-real-forecasts",
       "date": "2026-07-09",
       "title": "Persist real per-origin forecasts and overlay methods in the results app",
@@ -1775,6 +1789,21 @@
       "source": "2026-07-27-unified-heatmap-color-scheme",
       "target": "2026-07-20-training-time-heatmap-overlay",
       "type": "relates-to"
+    },
+    {
+      "source": "2026-07-29-method-scorecards",
+      "target": "2026-07-13-method-info-library-cost",
+      "type": "depends-on"
+    },
+    {
+      "source": "2026-07-29-method-scorecards",
+      "target": "2026-07-28-fit-predict-timing-split",
+      "type": "relates-to"
+    },
+    {
+      "source": "2026-07-29-method-scorecards",
+      "target": "2026-07-29-classical-fit-once",
+      "type": "relates-to"
     }
   ],
   "clusters": [
@@ -1868,15 +1897,25 @@
       "label": "Letting global methods train on more history than the shared curated span, from an inert flag to a real gain"
     },
     {
-      "nodes": ["2026-07-14-three-fms-added", "2026-07-15-fm-exo-variants"],
+      "nodes": [
+        "2026-07-14-three-fms-added",
+        "2026-07-15-fm-exo-variants"
+      ],
       "label": "Adding zero-shot foundation models, then giving the covariate-capable ones exogenous variants"
     },
     {
-      "nodes": ["2026-07-13-metrics-mape-nse-kge", "2026-07-21-domain-controls-follow-narrowing"],
+      "nodes": [
+        "2026-07-13-metrics-mape-nse-kge",
+        "2026-07-21-domain-controls-follow-narrowing"
+      ],
       "label": "Adding hydrology-specific metrics, then keeping the sidebar controls honest about which cases qualify"
     },
     {
-      "nodes": ["2026-07-10-bottom-method-info-panel", "2026-07-13-method-info-library-cost"],
+      "nodes": [
+        "2026-07-10-bottom-method-info-panel",
+        "2026-07-13-method-info-library-cost",
+        "2026-07-29-method-scorecards"
+      ],
       "label": "Growing the method-info panel from a placeholder blurb into real implementation detail"
     }
   ]

@@ -8,6 +8,30 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-29 — Method cards now carry a capability set and an operational scorecard
+
+The method cards described each method in prose only, so nothing on them let you compare two
+methods at a glance. Every method now declares two Pydantic objects beside its existing
+metadata: `Capabilities`, four booleans for what structure it can represent (trend,
+seasonality, multiple seasonality, exogenous support), and `Scorecard`, six Low/Medium/High
+ratings for what it costs to use (history needed, interpretability, fit cost, inference cost,
+tuning effort, robustness to noise). Splitting them matters: a graded rating answers "how
+much" and a boolean answers "can it at all", and "Medium seasonality" is not a real thing.
+
+Three fields from the first sketch were reshaped for the same reason. Implementation effort
+was dropped — all 32 methods are thin library wrappers, so the rating would have been
+fiction — and replaced with tuning effort, which genuinely varies. A single computational
+cost hid the fit-once versus refit-per-origin distinction, so it was split into fit cost and
+inference cost, both anchored to the `fit_seconds`/`predict_seconds` the eval loop already
+records; that immediately separates Theta and MSTL (cheap to fit, expensive per origin) from
+TBATS (the mirror image). Small/large dataset support collapsed into one history-need field,
+since whether a method can exploit a long record is already *measured* by the
+extended-history matrix.
+
+The ratings are hand-authored judgement, not derived from results, and the app says so in an
+info modal on each card. A method and its `+exo` variant share one declaration, since `+exo`
+records which configuration a column ran rather than a different estimator.
+
 ## 2026-07-29 — Converted the classical methods to fit once and roll forward, except TBATS
 
 The classical methods used to refit from scratch at every rolling origin while the ML, DL and
