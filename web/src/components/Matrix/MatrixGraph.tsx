@@ -35,12 +35,14 @@ function TrainingTimeBreakdownTooltip({
     left,
     top,
     transform: 'translate(-50%, -140%)',
+    padding: '12px 16px',
+    lineHeight: 1.6,
     ...tooltipBoxStyle,
   };
   return (
     <div style={style}>
-      Fit: {formatBreakdownSeconds(breakdown.fitSeconds)} · Predict:{' '}
-      {formatBreakdownSeconds(breakdown.predictSeconds)}
+      <div>Fit: {formatBreakdownSeconds(breakdown.fitSeconds)}</div>
+      <div>Predict: {formatBreakdownSeconds(breakdown.predictSeconds)}</div>
     </div>
   );
 }
