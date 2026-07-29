@@ -71,4 +71,16 @@ describe('MethodInfoCard', () => {
     await user.click(screen.getByTitle('Expand'));
     expect(screen.getByText('A test method.')).toBeInTheDocument();
   });
+
+  it('shows the capability row and the scorecard meters', () => {
+    render(
+      <MethodInfoCard method="LightGBM" index={0} caseMeta={caseMeta} methodMeta={methodMeta} />,
+    );
+
+    expect(screen.getByText('Handles')).toBeInTheDocument();
+    expect(screen.getByLabelText('Exogenous: yes')).toBeInTheDocument();
+    expect(screen.getByText('Scorecard')).toBeInTheDocument();
+    expect(screen.getByLabelText('History needed: High')).toBeInTheDocument();
+    expect(screen.getByTitle('How to read the scorecard')).toBeInTheDocument();
+  });
 });

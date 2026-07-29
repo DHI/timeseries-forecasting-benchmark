@@ -3,12 +3,24 @@ import Markdown from 'react-markdown';
 import { METHOD_COLORS, TITLE_BAR_HEIGHT } from '../../data/constants';
 import { useEdgeResize } from '../../hooks/useEdgeResize';
 import { methodInfo, methodInfoDetail } from '../../data/methodText';
+import { InfoModal } from '../InfoModal/InfoModal';
+import { CapabilityRow, ScorecardMeters } from './MethodScorecard';
 import type { CaseMeta, MethodMeta } from '../../types/data';
 
 const CARD_MIN_WIDTH = 220;
-const DEFAULT_CONTENT_HEIGHT = 220;
+// Tall enough for the description plus the Handles row and six meters without scrolling on
+// first open; the title bar is a drag handle, so a user can still resize from here.
+const DEFAULT_CONTENT_HEIGHT = 300;
+
 const MIN_CONTENT_HEIGHT = 120;
 const MAX_CONTENT_HEIGHT = 800;
+
+const BLOCK_HEADING_STYLE = {
+  fontSize: '0.85em',
+  fontWeight: 'bold',
+  marginTop: 8,
+  marginBottom: 2,
+} as const;
 
 type Props = {
   method: string;
@@ -92,6 +104,44 @@ function MethodInfoCardComponent({ method, index, caseMeta, methodMeta }: Props)
           <div style={{ fontSize: '0.85em' }}>
             <Markdown>{methodInfo(caseMeta, methodMeta)}</Markdown>
           </div>
+          {methodMeta && (
+            <>
+              <div style={BLOCK_HEADING_STYLE}>Handles</div>
+              <CapabilityRow capabilities={methodMeta.capabilities} />
+              <div
+                style={{ ...BLOCK_HEADING_STYLE, display: 'flex', alignItems: 'center', gap: 4 }}
+              >
+                Scorecard
+                <InfoModal
+                  buttonTitle="How to read the scorecard"
+                  ariaLabel="How to read the scorecard"
+                  heading="How to read the scorecard"
+                  testId={`scorecard-info-${method}`}
+                  size={16}
+                >
+                  <p>
+                    These ratings are the benchmark authors&rsquo; qualitative judgement of each
+                    method, not measurements taken from the results matrix. They are meant to narrow
+                    a shortlist before you read the matrix, not to stand in for it. The two cost
+                    ratings are anchored to the fit and predict times the benchmark actually
+                    records, so they should not contradict the training-time overlay.
+                  </p>
+                  <p>
+                    A bar&rsquo;s <strong>length</strong> is the size of the rating and its{' '}
+                    <strong>colour</strong> is whether that size is good for the field. Some fields
+                    are better when low: a low fit cost draws one short green bar, while a low
+                    interpretability draws one short red bar.
+                  </p>
+                  <p>
+                    <strong>Handles</strong> above is a separate question — whether the method has a
+                    mechanism for that structure at all. Exogenous there describes the method rather
+                    than this column, so a method shown without covariates may still support them.
+                  </p>
+                </InfoModal>
+              </div>
+              <ScorecardMeters scorecard={methodMeta.scorecard} />
+            </>
+          )}
           <details style={{ marginTop: 6 }}>
             <summary style={{ fontSize: '0.85em', cursor: 'pointer' }}>
               Implementation detail
