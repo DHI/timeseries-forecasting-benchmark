@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 
 from tsforecastbench.bench.methods.base import Forecaster
+from tsforecastbench.bench.methods.scorecard import Capabilities, Level, Scorecard
 from tsforecastbench.data.schema import Case
 from tsforecastbench.data.seasonality import dominant_period, position_in_cycle
 
@@ -20,6 +21,19 @@ class MeanBaseline(Forecaster):
         "other methods should comfortably beat."
     )
     code_snippet = "mean = train['y'].mean()\ny_hat = [mean] * horizon"
+    capabilities = Capabilities(
+        trend=False, seasonality=False, multiple_seasonality=False, exogenous=False
+    )
+    # Averaging the whole split makes one bad point negligible, hence robust; the flip side
+    # is that it has no mechanism for anything at all.
+    scorecard = Scorecard(
+        history_requirements=Level.LOW,
+        interpretability=Level.HIGH,
+        fit_cost=Level.LOW,
+        inference_cost=Level.LOW,
+        tuning_effort=Level.LOW,
+        robustness_to_noise=Level.HIGH,
+    )
 
     def fit(self, case: Case, train: pd.DataFrame) -> None:
         self._mean = float(train["y"].mean())
@@ -46,6 +60,19 @@ class Persistence(Forecaster):
         "series with a trend, cycle, or fast dynamics beyond one step."
     )
     code_snippet = "last_value = history['y'].iloc[-1]\ny_hat = [last_value] * horizon"
+    capabilities = Capabilities(
+        trend=False, seasonality=False, multiple_seasonality=False, exogenous=False
+    )
+    # The whole forecast rests on one observation, so an outlier at the origin propagates
+    # across the entire horizon — the least robust method here despite being the simplest.
+    scorecard = Scorecard(
+        history_requirements=Level.LOW,
+        interpretability=Level.HIGH,
+        fit_cost=Level.LOW,
+        inference_cost=Level.LOW,
+        tuning_effort=Level.LOW,
+        robustness_to_noise=Level.LOW,
+    )
 
     def fit(self, case: Case, train: pd.DataFrame) -> None:
         pass
@@ -75,6 +102,19 @@ class SeasonalNaive(Forecaster):
     )
     code_snippet = (
         "seasonal_window = train['y'].tail(season_length)\ny_hat = tile(seasonal_window, horizon)"
+    )
+    capabilities = Capabilities(
+        trend=False, seasonality=True, multiple_seasonality=False, exogenous=False
+    )
+    # Needs a full cycle before it can run at all, and tiles that one cycle verbatim, so a
+    # noisy last period is reproduced rather than averaged away.
+    scorecard = Scorecard(
+        history_requirements=Level.MEDIUM,
+        interpretability=Level.HIGH,
+        fit_cost=Level.LOW,
+        inference_cost=Level.LOW,
+        tuning_effort=Level.LOW,
+        robustness_to_noise=Level.LOW,
     )
 
     def __init__(self, season_length: int | None = None):
@@ -133,6 +173,19 @@ class Climatology(Forecaster):
         "position = position_in_cycle(freq, period, train['ds'])\n"
         "climatology = train.groupby(position)['y'].mean()\n"
         "y_hat = [climatology[position_in_cycle(freq, period, ds)] for ds in future_ds]"
+    )
+    capabilities = Capabilities(
+        trend=False, seasonality=True, multiple_seasonality=False, exogenous=False
+    )
+    # Wants several cycles so each within-cycle position has something to average, and that
+    # averaging is what makes it the robust seasonal baseline where SeasonalNaive isn't.
+    scorecard = Scorecard(
+        history_requirements=Level.MEDIUM,
+        interpretability=Level.HIGH,
+        fit_cost=Level.LOW,
+        inference_cost=Level.LOW,
+        tuning_effort=Level.LOW,
+        robustness_to_noise=Level.HIGH,
     )
 
     def _key(self, idx: pd.DatetimeIndex) -> np.ndarray:
