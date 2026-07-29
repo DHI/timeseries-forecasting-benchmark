@@ -1408,10 +1408,10 @@
     {
       "id": "2026-07-29-classical-fit-once",
       "date": "2026-07-29",
-      "title": "Converted classical methods to fit once and roll forward, matching ML/DL/FM",
+      "title": "Converted the classical methods to fit once and roll forward, except TBATS",
       "category": "methodology",
-      "summary": "AutoARIMA, AutoETS, Theta, TBATS, MSTL-ETS, and MSTL-ARIMA are now is_global=True: order/spec search runs once via statsforecast, then a statsmodels model holds parameters fixed while conditioning on each origin's growing history, removing the classical-vs-ML/DL/FM inconsistency in fit/predict timing.",
-      "detail": "The classical methods used to refit from scratch at every rolling origin, because statsforecast's `Auto*` wrappers couple order/parameter search to every `.fit()` call with no way to hold parameters fixed while conditioning on new history — an implementation artifact, not a property of these models: ARIMA, ETS, Theta, and a TBATS-like state-space model are all mathematically representable as fixed parameters plus a state that can be updated through new observations without re-estimation.\n\nAll six are now `is_global=True`. AutoARIMA and AutoETS run statsforecast's own search once to pick the (S)ARIMA order or ETS spec, then fit `statsmodels`' `SARIMAX`/`ETSModel` once for parameters in a form `.filter()`/`.smooth()` can hold fixed; `predict` rebuilds the same model on the longer history each origin hands it and reuses those fixed parameters — a Kalman filter pass for AutoARIMA, a full refilter (no incremental update exists) for AutoETS. Theta needed no second fit stage: AutoTheta's own `forward()` already re-runs its fixed-parameter filter over a new series. TBATS is now a custom Box-Cox/Yeo-Johnson + trigonometric-seasonal + AR-errors model built on `statsmodels`' `UnobservedComponents` rather than statsforecast's implementation — a documented simplification (AR errors instead of full ARMA, harmonics/AR order picked once by a small AIC comparison instead of an exhaustive search) kept under the same \"TBATS\" name for result continuity. MSTL-ETS/MSTL-ARIMA now decouple decomposition from the trend model: `statsmodels`' `MSTL` runs once and each seasonal component is frozen as a position-in-cycle lookup (the same convention the Climatology baseline uses), then the (now fit-once) trend forecaster fits once on the deseasonalized series.\n\nUpdated every place that described classical methods as refit-per-origin: `rolling.py`'s docstring, the case panel's local-method banner (classical no longer belongs there), and the app's usage instructions. Existing classical results are stale and need a pilot re-run.",
+      "summary": "AutoARIMA, AutoETS, Theta, MSTL-ETS and MSTL-ARIMA are now is_global=True through statsforecast's own forward(y, h), removing the confound of letting classical methods re-estimate at every origin while ML/DL/FM are fit once. TBATS stays local — statsforecast offers no forward for it — with the protocol difference flagged.",
+      "detail": "The classical methods used to refit from scratch at every rolling origin while the ML, DL and foundation models were fit once and rolled forward. That confounds method quality with how often a method is allowed to re-estimate, so the comparison across families was not apples-to-apples.\n\nstatsforecast already ships the mechanism: `AutoARIMA`, `AutoETS`, `AutoTheta` and `MSTL` all implement `forward(y, h)`, applying an already-fitted model to a new series without calling an optimizer (`ets_f(y, m, model=fitted)` reads alpha/beta/gamma/phi and the initial state straight out of the fit; `Arima(x=y, model=fitted)` is the path R's `forecast::Arima(x, model=fit)` uses). `AutoARIMA.forward` reproduces statsforecast's native forecast exactly, so these five remain the library's estimators rather than reimplementations. Two deterministic pieces are re-derived per origin — Theta's seasonality test and decomposition, and MSTL's STL — which is the direct analogue of the ML methods recomputing their sin/cos features, and keeps the seasonal shape current instead of frozen.\n\nTBATS is the exception: statsforecast couples its automatic component search to every `.fit()` and exposes no `forward`. A custom Box-Cox/Yeo-Johnson + trigonometric-seasonal + AR-errors `UnobservedComponents` substitute was built and then rejected — it stopped the column meaning published TBATS, and it inherited its own calibration problems (its harmonics ceiling captured only 79% of a peaked 96-step diurnal shape, and AIC could not fix that without a 200x cost blow-up). So TBATS is refit per origin, with the protocol difference flagged in the app and in its own `limitations`.\n\nThe roll-forward is deliberately not capped to the fit window: `predict` conditions on the whole history it is handed, because truncating would substitute an arbitrary re-initialization for the state the fitted model implies. The cost is real and uneven, and is reported rather than engineered around — on a 200,000-point history one origin costs ~0.03s for AutoARIMA and ~0.01s for AutoETS, but ~110s for Theta (superlinear) and ~28s for MSTL. Existing classical results are stale and need a pilot re-run, which will be substantially slower than the last one for `surge_cuxhaven` in particular.",
       "tags": [
         "classical",
         "arima",
@@ -1420,7 +1420,8 @@
         "tbats",
         "mstl",
         "is-global",
-        "statsmodels"
+        "statsforecast",
+        "fairness"
       ]
     }
   ],
@@ -1428,7 +1429,7 @@
     {
       "source": "2026-07-29-classical-fit-once",
       "target": "2026-07-13-fit-once-not-refit",
-      "type": "supersedes"
+      "type": "relates-to"
     },
     {
       "source": "2026-07-29-classical-fit-once",
