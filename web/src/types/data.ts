@@ -21,12 +21,18 @@ export type ScorecardLevel = 'Low' | 'Medium' | 'High';
 
 /** What structure a method can represent at all. Mirrors the Python `Capabilities` model in
  * src/tsforecastbench/bench/methods/scorecard.py; `exogenous` describes the method, not the
- * column, so plain LightGBM is true even though its column feeds no covariates. */
+ * column, so plain LightGBM is true even though its column feeds no covariates.
+ *
+ * `gaps` is the one field with no counterpart in that Python model — it's re-exposed from
+ * `Forecaster.pools_segments` at export time (see `webdata.py`'s `_method_registry()`)
+ * rather than hand-declared per method, since it's mechanically derivable rather than a
+ * judgment call. */
 export type Capabilities = {
   trend: boolean;
   seasonality: boolean;
   multiple_seasonality: boolean;
   exogenous: boolean;
+  gaps: boolean;
 };
 
 /** What a method costs to use. Mirrors the Python `Scorecard` model; hand-authored

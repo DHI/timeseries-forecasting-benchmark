@@ -35,6 +35,11 @@ export const CAPABILITY_FIELDS: readonly CapabilityField[] = [
     label: 'Exogenous',
     help: 'Can consume covariates in principle. This describes the method, not this column — a method shown here without covariates may still support them (that is what its +exo column is).',
   },
+  {
+    key: 'gaps',
+    label: 'Gaps',
+    help: 'Has a fit path that pools history from before a gap in the record. This only shows a difference in the extended-history matrix — the shared local matrix is always gap-free by the time any method sees it.',
+  },
 ];
 
 export type ScorecardField = {

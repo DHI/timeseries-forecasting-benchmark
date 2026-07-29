@@ -43,6 +43,7 @@ function methodMeta(overrides: Partial<MethodMeta> = {}): MethodMeta {
       seasonality: false,
       multiple_seasonality: false,
       exogenous: false,
+      gaps: false,
     },
     scorecard: {
       history_requirements: 'Low',

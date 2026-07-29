@@ -41,6 +41,7 @@ const methodMeta: MethodMeta = {
     seasonality: true,
     multiple_seasonality: false,
     exogenous: true,
+    gaps: false,
   },
   scorecard: {
     history_requirements: 'High',

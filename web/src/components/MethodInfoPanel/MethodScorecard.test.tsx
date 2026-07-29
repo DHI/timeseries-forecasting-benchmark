@@ -8,6 +8,7 @@ const capabilities: Capabilities = {
   seasonality: true,
   multiple_seasonality: false,
   exogenous: false,
+  gaps: false,
 };
 
 const scorecard: Scorecard = {
@@ -26,6 +27,7 @@ describe('CapabilityRow', () => {
     expect(screen.getByLabelText('Trend: yes')).toBeInTheDocument();
     expect(screen.getByLabelText('Multiple seasonality: no')).toBeInTheDocument();
     expect(screen.getByLabelText('Exogenous: no')).toBeInTheDocument();
+    expect(screen.getByLabelText('Gaps: no')).toBeInTheDocument();
   });
 });
 
