@@ -48,6 +48,20 @@ def _prepare_train(train: pd.DataFrame, max_train_steps: int) -> pd.DataFrame:
     return df
 
 
+def _record_is_strictly_positive(train: pd.DataFrame) -> bool:
+    """Whether the *whole* training record is strictly positive.
+
+    Deliberately reads `train`, not `_prepare_train`'s capped window. A method that fits
+    once and rolls forward is handed a history reaching back before that window, so any
+    spec choice conditional on positivity (Box-Cox, multiplicative ETS components) has to
+    be made against the full record -- the recent tail can look strictly positive while an
+    earlier stretch dips to zero, and a spec chosen from the tail alone then fails on the
+    history `predict` receives.
+    """
+    y = pd.to_numeric(train["y"], errors="coerce").to_numpy(dtype=float)
+    return bool(np.all(y[np.isfinite(y)] > 0))
+
+
 class AutoARIMAForecaster(Forecaster):
     """Order-search-once ARIMA: statsforecast picks the (S)ARIMA spec, statsmodels holds
     the fixed-parameter Kalman filter that conditions on each origin's growing history.
@@ -177,7 +191,9 @@ class AutoETSForecaster(Forecaster):
         "Non-seasonal by default (season_length=1), like AutoARIMA — its seasonal "
         "state grows with the period, so a large seasonal period is impractical unless "
         "you pass season_length explicitly. Univariate: ignores exogenous inputs. Spec "
-        "and coefficients are fixed at fit time."
+        "and coefficients are fixed at fit time, so on a series that is not strictly "
+        "positive anywhere in its record the spec is restricted to additive components — "
+        "a multiplicative one could not be filtered over the full history."
     )
     code_snippet = (
         "from statsforecast import StatsForecast\n"
@@ -209,6 +225,13 @@ class AutoETSForecaster(Forecaster):
         sf.fit(df)
         fitted = sf.fitted_[0, 0]
         error, trend, season, damped_flag = fitted.model_["components"]
+        # statsforecast only offers multiplicative components when the series it searched
+        # on is strictly positive, and ETSModel refuses to filter a multiplicative spec
+        # over non-positive data at all. The search saw only the capped window, so re-apply
+        # that admissibility rule against the full record and fall back to the additive
+        # form of any component the record rules out.
+        if not _record_is_strictly_positive(train):
+            error, trend, season = ("A" if c == "M" else c for c in (error, trend, season))
         self._error = _ETS_LETTER[error]
         self._trend = _ETS_LETTER[trend]
         self._seasonal = _ETS_LETTER[season]
@@ -377,9 +400,11 @@ class TBATSForecaster(Forecaster):
         self._periods = sorted(p for p in periods if len(df) >= 2 * p)
 
         # Box-Cox needs strictly positive data; Yeo-Johnson handles the rest. Chosen once
-        # here (statsforecast's TBATS used to redo this check on every per-origin refit).
+        # here (statsforecast's TBATS used to redo this check on every per-origin refit), so
+        # it is decided against the full record rather than the capped window `predict` never
+        # sees the start of. The transform itself is still *fitted* on the window.
         y_vals = df["y"].to_numpy(dtype=float)
-        method = "box-cox" if np.all(y_vals > 0) else "yeo-johnson"
+        method = "box-cox" if _record_is_strictly_positive(train) else "yeo-johnson"
         self._pt = PowerTransformer(method=method, standardize=False)
         y_t = self._pt.fit_transform(y_vals.reshape(-1, 1)).ravel()
 
