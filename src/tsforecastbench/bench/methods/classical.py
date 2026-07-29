@@ -59,6 +59,7 @@ import numpy as np
 import pandas as pd
 
 from tsforecastbench.bench.methods.base import Forecaster
+from tsforecastbench.bench.methods.scorecard import Capabilities, Level, Scorecard
 from tsforecastbench.data.schema import Case
 
 
@@ -140,6 +141,20 @@ class AutoARIMAForecaster(_ForwardForecaster):
         "# each origin: fixed-parameter recursion over the growing history, no re-fit\n"
         "y_hat = model.forward(history_y, horizon)['mean']"
     )
+    # Non-seasonal here by design (season_length=1, see choice 2 in the module docstring).
+    capabilities = Capabilities(
+        trend=True, seasonality=False, multiple_seasonality=False, exogenous=False
+    )
+    # Both costs Low on measured numbers: seconds for the one order search, ~0.03s per
+    # origin even on a 200,000-point history — the cheapest roll-forward of the classicals.
+    scorecard = Scorecard(
+        history_requirements=Level.MEDIUM,
+        interpretability=Level.MEDIUM,
+        fit_cost=Level.LOW,
+        inference_cost=Level.LOW,
+        tuning_effort=Level.LOW,
+        robustness_to_noise=Level.MEDIUM,
+    )
 
     def __init__(self, season_length: int = 1, max_train_steps: int = 5000):
         self.season_length = season_length
@@ -183,6 +198,21 @@ class AutoETSForecaster(_ForwardForecaster):
         "model.fit(train_y)                   # train_y: 1D array -- spec search once\n\n"
         "# each origin: fixed-parameter smoothing over the growing history, no re-fit\n"
         "y_hat = model.forward(history_y, horizon)['mean']"
+    )
+
+    # Non-seasonal here by design (season_length=1), like AutoARIMA.
+    capabilities = Capabilities(
+        trend=True, seasonality=False, multiple_seasonality=False, exogenous=False
+    )
+    # Named level/trend components make it the more readable of the two, and ~0.01s per
+    # origin makes it the cheapest to roll forward.
+    scorecard = Scorecard(
+        history_requirements=Level.MEDIUM,
+        interpretability=Level.HIGH,
+        fit_cost=Level.LOW,
+        inference_cost=Level.LOW,
+        tuning_effort=Level.LOW,
+        robustness_to_noise=Level.MEDIUM,
     )
 
     def __init__(self, season_length: int = 1, max_train_steps: int = 5000):
@@ -241,6 +271,22 @@ class TBATSForecaster(Forecaster):
         "sf = StatsForecast(models=[TBATS(season_length=season_length)], freq=case.freq)\n"
         "sf.fit(train_df)                     # train_df: unique_id, ds, y\n"
         'y_hat = sf.predict(h=horizon)["TBATS"]'
+    )
+    # Trigonometric seasonal terms, and season_length takes a list — the classical method
+    # built for several periods at once.
+    capabilities = Capabilities(
+        trend=True, seasonality=True, multiple_seasonality=True, exogenous=False
+    )
+    # The inverse profile of Theta and MSTL below: predict is a plain lookup off an already
+    # fitted model, but there is no `forward`, so the component search reruns at every
+    # origin and the whole cost sits in fit_cost.
+    scorecard = Scorecard(
+        history_requirements=Level.MEDIUM,
+        interpretability=Level.MEDIUM,
+        fit_cost=Level.MEDIUM,
+        inference_cost=Level.LOW,
+        tuning_effort=Level.LOW,
+        robustness_to_noise=Level.MEDIUM,
     )
 
     def __init__(self, season_length: int | list[int] | None = None, max_train_steps: int = 3000):
@@ -346,6 +392,22 @@ class ThetaForecaster(_ForwardForecaster):
         "y_hat = model.forward(history_y, horizon)['mean']"
     )
 
+    # Deseasonalizes via a cheap classical decomposition on the case's dominant period —
+    # one period, not several.
+    capabilities = Capabilities(
+        trend=True, seasonality=True, multiple_seasonality=False, exogenous=False
+    )
+    # Cheap to fit, but the most expensive roll-forward here: the per-origin cost is
+    # superlinear in history length — 0.02s at 5,000 points, ~110s at 200,000.
+    scorecard = Scorecard(
+        history_requirements=Level.MEDIUM,
+        interpretability=Level.HIGH,
+        fit_cost=Level.LOW,
+        inference_cost=Level.HIGH,
+        tuning_effort=Level.LOW,
+        robustness_to_noise=Level.MEDIUM,
+    )
+
     def __init__(self, season_length: int | None = None, max_train_steps: int = 8000):
         self.season_length = season_length
         self.max_train_steps = max_train_steps
@@ -412,6 +474,23 @@ class _MSTLBase(_ForwardForecaster):
         "model.fit(train_y)                   # train_y: 1D array -- decompose + fit once\n\n"
         "# each origin: re-derive STL, forward the fixed-parameter trend model, reseasonalize\n"
         "y_hat = model.forward(history_y, horizon)['mean']"
+    )
+    # Shared by both MSTL variants: the seasonal handling and the cost profile come from the
+    # decomposition, not from which trend model sits inside it. Declared here rather than
+    # twice below so the two can't drift apart.
+    capabilities = Capabilities(
+        trend=True, seasonality=True, multiple_seasonality=True, exogenous=False
+    )
+    # Needs >=2 full cycles of every declared period before it will fit at all, and STL cost
+    # grows with history x period, so predict is the expensive half — ~0.7s per origin at
+    # 5,000 points up to ~28s at 200,000 for periods [24, 168].
+    scorecard = Scorecard(
+        history_requirements=Level.MEDIUM,
+        interpretability=Level.MEDIUM,
+        fit_cost=Level.LOW,
+        inference_cost=Level.HIGH,
+        tuning_effort=Level.LOW,
+        robustness_to_noise=Level.MEDIUM,
     )
 
     def _make_trend_forecaster(self):
