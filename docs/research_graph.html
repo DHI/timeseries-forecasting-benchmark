@@ -356,6 +356,20 @@
       ]
     },
     {
+      "id": "2026-07-29-mlp-exo-not-in-pilot",
+      "date": "2026-07-29",
+      "title": "MLP+exo existed but was never in the pilot run",
+      "category": "eval-pipeline",
+      "summary": "MLPExoForecaster was added but scripts/run_pilot.py's build_methods() never picked it up, while methods.json still showed a card for it since that generator reads the class registry, not results. Added it to build_methods(); a pilot re-run is needed before MLP+exo scores show up anywhere.",
+      "detail": "The web app's method card for MLP looked like it had an exogenous variant with no data behind it. Tracing it back: `MLPExoForecaster` was registered as a class earlier the same day, but `scripts/run_pilot.py`'s `build_methods()` never added it to the list of methods actually run — the other three Tier 2 exo siblings (LinearLags, LightGBM, CatBoost) were wired in, MLP was not. `methods.json` builds its cards straight from the `Forecaster` class registry rather than from results, so it kept showing an MLP+exo card that had nothing behind it. The web app's own `effectiveMethod` selector already checks for a backing scores row before swapping in an exo variant, so it correctly never showed one for MLP -- but nothing in the pipeline flagged that the omission existed. Added `MLPExoForecaster()` to `build_methods()`; a pilot re-run is needed to populate real MLP+exo scores.",
+      "tags": [
+        "mlp",
+        "exogenous",
+        "eval-pipeline",
+        "results-app"
+      ]
+    },
+    {
       "id": "2026-07-29-mlp-exo-variant",
       "date": "2026-07-29",
       "title": "Gave MLP a +exo variant",
@@ -1491,6 +1505,11 @@
     {
       "source": "2026-07-29-mlp-exo-variant",
       "target": "2026-07-27-mlp-recursive-divergence-bounded",
+      "type": "relates-to"
+    },
+    {
+      "source": "2026-07-29-mlp-exo-not-in-pilot",
+      "target": "2026-07-29-mlp-exo-variant",
       "type": "relates-to"
     },
     {

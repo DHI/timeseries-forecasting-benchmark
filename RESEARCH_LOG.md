@@ -8,6 +8,16 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-29 — MLP+exo existed but was never in the pilot run
+
+`MLPExoForecaster` was added earlier today (see below) but `scripts/run_pilot.py`'s
+`build_methods()` never picked it up — the other three Tier 2 exo siblings
+(LinearLags, LightGBM, CatBoost) were added to that list, MLP was not. `methods.json`
+still showed an MLP+exo card because that generator reads the method class registry, not
+the results, so the card looked live even with zero backing scores. Added
+`MLPExoForecaster()` to `build_methods()`; a pilot re-run is needed before MLP+exo scores
+show up anywhere.
+
 ## 2026-07-29 — Method cards get a Gaps capability, derived rather than hand-authored
 
 Added a fifth Handles chip answering whether a method can use history from before a gap in
