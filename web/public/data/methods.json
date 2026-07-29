@@ -11,7 +11,8 @@
       "trend": true,
       "seasonality": false,
       "multiple_seasonality": false,
-      "exogenous": false
+      "exogenous": false,
+      "gaps": false
     },
     "scorecard": {
       "history_requirements": "Medium",
@@ -34,7 +35,8 @@
       "trend": true,
       "seasonality": false,
       "multiple_seasonality": false,
-      "exogenous": false
+      "exogenous": false,
+      "gaps": false
     },
     "scorecard": {
       "history_requirements": "Medium",
@@ -57,7 +59,8 @@
       "trend": false,
       "seasonality": true,
       "multiple_seasonality": true,
-      "exogenous": true
+      "exogenous": true,
+      "gaps": true
     },
     "scorecard": {
       "history_requirements": "High",
@@ -80,7 +83,8 @@
       "trend": false,
       "seasonality": true,
       "multiple_seasonality": true,
-      "exogenous": true
+      "exogenous": true,
+      "gaps": true
     },
     "scorecard": {
       "history_requirements": "High",
@@ -103,7 +107,8 @@
       "trend": true,
       "seasonality": true,
       "multiple_seasonality": true,
-      "exogenous": true
+      "exogenous": true,
+      "gaps": false
     },
     "scorecard": {
       "history_requirements": "Low",
@@ -126,7 +131,8 @@
       "trend": true,
       "seasonality": true,
       "multiple_seasonality": true,
-      "exogenous": true
+      "exogenous": true,
+      "gaps": false
     },
     "scorecard": {
       "history_requirements": "Low",
@@ -149,7 +155,8 @@
       "trend": true,
       "seasonality": true,
       "multiple_seasonality": true,
-      "exogenous": false
+      "exogenous": false,
+      "gaps": false
     },
     "scorecard": {
       "history_requirements": "Low",
@@ -172,7 +179,8 @@
       "trend": false,
       "seasonality": true,
       "multiple_seasonality": false,
-      "exogenous": false
+      "exogenous": false,
+      "gaps": false
     },
     "scorecard": {
       "history_requirements": "Medium",
@@ -195,7 +203,8 @@
       "trend": true,
       "seasonality": true,
       "multiple_seasonality": true,
-      "exogenous": false
+      "exogenous": false,
+      "gaps": true
     },
     "scorecard": {
       "history_requirements": "High",
@@ -218,7 +227,8 @@
       "trend": true,
       "seasonality": true,
       "multiple_seasonality": true,
-      "exogenous": false
+      "exogenous": false,
+      "gaps": false
     },
     "scorecard": {
       "history_requirements": "High",
@@ -241,7 +251,8 @@
       "trend": false,
       "seasonality": true,
       "multiple_seasonality": true,
-      "exogenous": true
+      "exogenous": true,
+      "gaps": true
     },
     "scorecard": {
       "history_requirements": "High",
@@ -264,7 +275,8 @@
       "trend": false,
       "seasonality": true,
       "multiple_seasonality": true,
-      "exogenous": true
+      "exogenous": true,
+      "gaps": true
     },
     "scorecard": {
       "history_requirements": "High",
@@ -287,7 +299,8 @@
       "trend": true,
       "seasonality": true,
       "multiple_seasonality": true,
-      "exogenous": true
+      "exogenous": true,
+      "gaps": true
     },
     "scorecard": {
       "history_requirements": "Medium",
@@ -310,7 +323,8 @@
       "trend": true,
       "seasonality": true,
       "multiple_seasonality": true,
-      "exogenous": true
+      "exogenous": true,
+      "gaps": true
     },
     "scorecard": {
       "history_requirements": "Medium",
@@ -333,7 +347,8 @@
       "trend": false,
       "seasonality": true,
       "multiple_seasonality": true,
-      "exogenous": true
+      "exogenous": true,
+      "gaps": true
     },
     "scorecard": {
       "history_requirements": "High",
@@ -356,7 +371,8 @@
       "trend": false,
       "seasonality": true,
       "multiple_seasonality": true,
-      "exogenous": true
+      "exogenous": true,
+      "gaps": true
     },
     "scorecard": {
       "history_requirements": "High",
@@ -379,7 +395,8 @@
       "trend": true,
       "seasonality": true,
       "multiple_seasonality": true,
-      "exogenous": false
+      "exogenous": false,
+      "gaps": false
     },
     "scorecard": {
       "history_requirements": "Medium",
@@ -402,7 +419,8 @@
       "trend": true,
       "seasonality": true,
       "multiple_seasonality": true,
-      "exogenous": false
+      "exogenous": false,
+      "gaps": false
     },
     "scorecard": {
       "history_requirements": "Medium",
@@ -425,7 +443,8 @@
       "trend": false,
       "seasonality": false,
       "multiple_seasonality": false,
-      "exogenous": false
+      "exogenous": false,
+      "gaps": false
     },
     "scorecard": {
       "history_requirements": "Low",
@@ -448,7 +467,8 @@
       "trend": true,
       "seasonality": true,
       "multiple_seasonality": true,
-      "exogenous": true
+      "exogenous": true,
+      "gaps": false
     },
     "scorecard": {
       "history_requirements": "Low",
@@ -471,7 +491,8 @@
       "trend": true,
       "seasonality": true,
       "multiple_seasonality": true,
-      "exogenous": true
+      "exogenous": true,
+      "gaps": false
     },
     "scorecard": {
       "history_requirements": "Low",
@@ -494,7 +515,8 @@
       "trend": true,
       "seasonality": true,
       "multiple_seasonality": true,
-      "exogenous": false
+      "exogenous": false,
+      "gaps": true
     },
     "scorecard": {
       "history_requirements": "High",
@@ -517,7 +539,8 @@
       "trend": true,
       "seasonality": true,
       "multiple_seasonality": true,
-      "exogenous": false
+      "exogenous": false,
+      "gaps": true
     },
     "scorecard": {
       "history_requirements": "High",
@@ -540,7 +563,8 @@
       "trend": false,
       "seasonality": false,
       "multiple_seasonality": false,
-      "exogenous": false
+      "exogenous": false,
+      "gaps": false
     },
     "scorecard": {
       "history_requirements": "Low",
@@ -563,7 +587,8 @@
       "trend": false,
       "seasonality": true,
       "multiple_seasonality": false,
-      "exogenous": false
+      "exogenous": false,
+      "gaps": false
     },
     "scorecard": {
       "history_requirements": "Medium",
@@ -586,7 +611,8 @@
       "trend": true,
       "seasonality": true,
       "multiple_seasonality": true,
-      "exogenous": false
+      "exogenous": false,
+      "gaps": false
     },
     "scorecard": {
       "history_requirements": "Medium",
@@ -609,7 +635,8 @@
       "trend": true,
       "seasonality": true,
       "multiple_seasonality": true,
-      "exogenous": false
+      "exogenous": false,
+      "gaps": true
     },
     "scorecard": {
       "history_requirements": "High",
@@ -632,7 +659,8 @@
       "trend": true,
       "seasonality": true,
       "multiple_seasonality": false,
-      "exogenous": false
+      "exogenous": false,
+      "gaps": false
     },
     "scorecard": {
       "history_requirements": "Medium",
@@ -655,7 +683,8 @@
       "trend": true,
       "seasonality": true,
       "multiple_seasonality": true,
-      "exogenous": true
+      "exogenous": true,
+      "gaps": false
     },
     "scorecard": {
       "history_requirements": "Low",
@@ -678,7 +707,8 @@
       "trend": true,
       "seasonality": true,
       "multiple_seasonality": true,
-      "exogenous": true
+      "exogenous": true,
+      "gaps": false
     },
     "scorecard": {
       "history_requirements": "Low",
@@ -701,7 +731,8 @@
       "trend": true,
       "seasonality": true,
       "multiple_seasonality": true,
-      "exogenous": false
+      "exogenous": false,
+      "gaps": true
     },
     "scorecard": {
       "history_requirements": "High",
@@ -724,7 +755,8 @@
       "trend": false,
       "seasonality": true,
       "multiple_seasonality": false,
-      "exogenous": false
+      "exogenous": false,
+      "gaps": false
     },
     "scorecard": {
       "history_requirements": "Medium",
@@ -747,7 +779,8 @@
       "trend": true,
       "seasonality": true,
       "multiple_seasonality": false,
-      "exogenous": false
+      "exogenous": false,
+      "gaps": false
     },
     "scorecard": {
       "history_requirements": "Medium",
