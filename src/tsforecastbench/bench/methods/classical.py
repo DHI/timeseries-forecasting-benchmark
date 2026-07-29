@@ -249,7 +249,8 @@ class TBATSForecaster(Forecaster):
     limb) gets that trend extrapolated indefinitely in log-space, and exponentiating a
     runaway linear log-trend is exponential growth. One `discharge_saugeen` origin
     (1973-03-09) forecast up to 16,761 against an actual peak of ~210; the genuine AIC
-    search doesn't force that trend and the same origin now tops out at 229.
+    search doesn't force that trend and the same origin's worst forecast is now 317,
+    within the actual window's own peak of 326.
 
     Each origin then rolls the fitted (frozen) coefficients forward via
     `calcTBATSFaster`/`tbats_forecast` -- the same internal state-space recursion

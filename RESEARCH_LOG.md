@@ -23,9 +23,9 @@ calls internally), fit once per the `is_global` protocol and rolled forward via
 from the fit-once TBATS rejected in the entry below: that attempt substituted a simplified
 model under the TBATS name, while this one runs the library's own genuinely selected model,
 just rolled forward by hand since statsforecast never wired up a `forward()` for it.
-Re-running `discharge_saugeen`'s 40-origin backtest: MASE 8.76 → 1.09, RMSE 1105.9 → 44.3,
-no more per-origin blowups. TBATS's existing results across every case are now stale and
-need a pilot re-run.
+Re-running `discharge_saugeen`'s 40-origin backtest through the real eval pipeline: MASE
+8.76 → 0.97, RMSE 1105.9 → 46.75, no more per-origin blowups. TBATS's existing results
+across every case are now stale and need a pilot re-run.
 
 ## 2026-07-29 — Method cards now carry a capability set and an operational scorecard
 
