@@ -55,6 +55,19 @@ def test_every_score_row_method_is_in_methods_registry(tmp_path):
     assert not missing, f"scores.json references method(s) missing from methods.json: {missing}"
 
 
+def test_methods_carry_capabilities_and_scorecard(tmp_path):
+    """The method card renders these as markup rather than through the markdown path, so a
+    missing key is a crash in the app rather than a blank line. Field names and the
+    cross-field rules are checked in test_method_scorecards.py; this only pins that the
+    export actually carries them."""
+    _scores, methods, _cases = _export(tmp_path)
+    for name, meta in methods.items():
+        assert isinstance(meta["capabilities"], dict), name
+        assert isinstance(meta["scorecard"], dict), name
+        assert all(isinstance(v, bool) for v in meta["capabilities"].values()), name
+        assert all(v in {"Low", "Medium", "High"} for v in meta["scorecard"].values()), name
+
+
 def test_scores_have_no_nan_json_literal(tmp_path):
     export_scores(tmp_path)
     raw = tmp_path.joinpath("scores.json").read_text()

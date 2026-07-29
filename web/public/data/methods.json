@@ -1,21 +1,49 @@
 {
   "AutoARIMA": {
     "family": "classical",
-    "description": "No description yet.",
+    "description": "Stepwise-order-search ARIMA via statsforecast, fit once and rolled forward.",
     "uses_exogenous": false,
     "library": "statsforecast (Nixtla)",
-    "compute_profile": "CPU only; a stepwise order search, typically seconds per case (fit is capped at the most recent 5,000 points by default).",
-    "limitations": "Non-seasonal by default (season_length=1) \u2014 a large seasonal period would explode SARIMA's search cost, so seasonal structure isn't modeled unless you pass season_length explicitly. Univariate: ignores exogenous inputs.",
-    "code_snippet": "from statsforecast import StatsForecast\nfrom statsforecast.models import AutoARIMA\n\nsf = StatsForecast(models=[AutoARIMA(season_length=1)], freq=case.freq)\nsf.fit(train_df)                     # train_df: unique_id, ds, y\ny_hat = sf.predict(h=horizon)[\"AutoARIMA\"]"
+    "compute_profile": "CPU only; a stepwise order search at fit time, typically seconds per case (searched on the most recent 5,000 points by default); each origin after that is one fixed-parameter `forward` pass over that origin's whole history \u2014 ~0.03s even on a 200,000-point one, the cheapest roll-forward of the classical methods here.",
+    "limitations": "Non-seasonal by default (season_length=1) \u2014 a large seasonal period would explode SARIMA's search cost, so seasonal structure isn't modeled unless you pass season_length explicitly. Univariate: ignores exogenous inputs. Order and coefficients are fixed at fit time, so a structural change in the series after fit is tracked through the recursion's state, not through re-estimation.",
+    "code_snippet": "from statsforecast.models import AutoARIMA\n\nmodel = AutoARIMA(season_length=1)\nmodel.fit(train_y)                   # train_y: 1D array -- order search once\n\n# each origin: fixed-parameter recursion over the growing history, no re-fit\ny_hat = model.forward(history_y, horizon)['mean']",
+    "capabilities": {
+      "trend": true,
+      "seasonality": false,
+      "multiple_seasonality": false,
+      "exogenous": false
+    },
+    "scorecard": {
+      "history_requirements": "Medium",
+      "interpretability": "Medium",
+      "fit_cost": "Low",
+      "inference_cost": "Low",
+      "tuning_effort": "Low",
+      "robustness_to_noise": "Medium"
+    }
   },
   "AutoETS": {
     "family": "classical",
-    "description": "Exponential smoothing state space (auto-selected) via statsforecast.",
+    "description": "Exponential smoothing state space (auto-selected) via statsforecast, fit once and\n    rolled forward.",
     "uses_exogenous": false,
     "library": "statsforecast (Nixtla)",
-    "compute_profile": "CPU only; searches over error/trend/season state combinations, typically seconds per case (fit is capped at the most recent 5,000 points by default).",
-    "limitations": "Non-seasonal by default (season_length=1), like AutoARIMA \u2014 its seasonal state grows with the period, so a large seasonal period is impractical unless you pass season_length explicitly. Univariate: ignores exogenous inputs.",
-    "code_snippet": "from statsforecast import StatsForecast\nfrom statsforecast.models import AutoETS\n\nsf = StatsForecast(models=[AutoETS(season_length=1)], freq=case.freq)\nsf.fit(train_df)                     # train_df: unique_id, ds, y\ny_hat = sf.predict(h=horizon)[\"AutoETS\"]"
+    "compute_profile": "CPU only; searches over error/trend/season state combinations at fit time, typically seconds per case (searched on the most recent 5,000 points by default); each origin after that is one fixed-parameter `forward` pass over that origin's whole history \u2014 ~0.01s even on a 200,000-point one.",
+    "limitations": "Non-seasonal by default (season_length=1), like AutoARIMA \u2014 its seasonal state grows with the period, so a large seasonal period is impractical unless you pass season_length explicitly. Univariate: ignores exogenous inputs. Spec and smoothing parameters are fixed at fit time.",
+    "code_snippet": "from statsforecast.models import AutoETS\n\nmodel = AutoETS(season_length=1)\nmodel.fit(train_y)                   # train_y: 1D array -- spec search once\n\n# each origin: fixed-parameter smoothing over the growing history, no re-fit\ny_hat = model.forward(history_y, horizon)['mean']",
+    "capabilities": {
+      "trend": true,
+      "seasonality": false,
+      "multiple_seasonality": false,
+      "exogenous": false
+    },
+    "scorecard": {
+      "history_requirements": "Medium",
+      "interpretability": "High",
+      "fit_cost": "Low",
+      "inference_cost": "Low",
+      "tuning_effort": "Low",
+      "robustness_to_noise": "Medium"
+    }
   },
   "CatBoost+exo": {
     "family": "ml",
@@ -24,7 +52,21 @@
     "library": "mlforecast + catboost",
     "compute_profile": "CPU only; a lag+calendar feature table is built once, then the regressor fits on it directly \u2014 fast for the linear/tree models here, slower for the MLP (which also cross-validates an early-stopping split).",
     "limitations": "Needs enough history to fill its lag windows (shortest lag 1, longest tied to the case's declared seasonal periods). The univariate variant ignores exogenous inputs entirely; the +exo variant sees only the future covariate values supplied at predict time (a perfect-forecast proxy in this benchmark, not a real forecast of those covariates).",
-    "code_snippet": "from mlforecast import MLForecast\n\nfcst = MLForecast(\n    models=[<regressor>],           # e.g. LGBMRegressor, Ridge, MLPRegressor\n    freq=case.freq,\n    lags=[1, 2, 4, 8, 16, 32, *case.seasonalities],\n    date_features=[\"dayofweek\", \"month\", ...],\n)\nfcst.fit(train_df, static_features=[])\ny_hat = fcst.predict(h=horizon, ids=[target_uid])"
+    "code_snippet": "from mlforecast import MLForecast\n\nfcst = MLForecast(\n    models=[<regressor>],           # e.g. LGBMRegressor, Ridge, MLPRegressor\n    freq=case.freq,\n    lags=[1, 2, 4, 8, 16, 32, *case.seasonalities],\n    date_features=[\"dayofweek\", \"month\", ...],\n)\nfcst.fit(train_df, static_features=[])\ny_hat = fcst.predict(h=horizon, ids=[target_uid])",
+    "capabilities": {
+      "trend": false,
+      "seasonality": true,
+      "multiple_seasonality": true,
+      "exogenous": true
+    },
+    "scorecard": {
+      "history_requirements": "High",
+      "interpretability": "Medium",
+      "fit_cost": "Low",
+      "inference_cost": "Low",
+      "tuning_effort": "Medium",
+      "robustness_to_noise": "Medium"
+    }
   },
   "CatBoost": {
     "family": "ml",
@@ -33,7 +75,21 @@
     "library": "mlforecast + catboost",
     "compute_profile": "CPU only; a lag+calendar feature table is built once, then the regressor fits on it directly \u2014 fast for the linear/tree models here, slower for the MLP (which also cross-validates an early-stopping split).",
     "limitations": "Needs enough history to fill its lag windows (shortest lag 1, longest tied to the case's declared seasonal periods). The univariate variant ignores exogenous inputs entirely; the +exo variant sees only the future covariate values supplied at predict time (a perfect-forecast proxy in this benchmark, not a real forecast of those covariates).",
-    "code_snippet": "from mlforecast import MLForecast\n\nfcst = MLForecast(\n    models=[<regressor>],           # e.g. LGBMRegressor, Ridge, MLPRegressor\n    freq=case.freq,\n    lags=[1, 2, 4, 8, 16, 32, *case.seasonalities],\n    date_features=[\"dayofweek\", \"month\", ...],\n)\nfcst.fit(train_df, static_features=[])\ny_hat = fcst.predict(h=horizon, ids=[target_uid])"
+    "code_snippet": "from mlforecast import MLForecast\n\nfcst = MLForecast(\n    models=[<regressor>],           # e.g. LGBMRegressor, Ridge, MLPRegressor\n    freq=case.freq,\n    lags=[1, 2, 4, 8, 16, 32, *case.seasonalities],\n    date_features=[\"dayofweek\", \"month\", ...],\n)\nfcst.fit(train_df, static_features=[])\ny_hat = fcst.predict(h=horizon, ids=[target_uid])",
+    "capabilities": {
+      "trend": false,
+      "seasonality": true,
+      "multiple_seasonality": true,
+      "exogenous": true
+    },
+    "scorecard": {
+      "history_requirements": "High",
+      "interpretability": "Medium",
+      "fit_cost": "Low",
+      "inference_cost": "Low",
+      "tuning_effort": "Medium",
+      "robustness_to_noise": "Medium"
+    }
   },
   "Chronos-2+exo": {
     "family": "fm",
@@ -42,7 +98,21 @@
     "library": "chronos-forecasting (Amazon Chronos-2) + torch",
     "compute_profile": "CPU-capable but slower than Chronos-Bolt (120M params); zero-shot, so there's no per-case training \u2014 one forward pass per prediction via the DataFrame API. The pretrained model is loaded once and cached across every case and origin.",
     "limitations": "Zero-shot: never learns anything case-specific, only what it picked up from pretraining on other series. Univariate by default \u2014 Chronos-2 supports covariates natively, and the +exo variant feeds the case's declared covariates to `predict_df` as past+future covariate columns, using a perfect-forecast proxy (not a real forecast of those covariates) for the future values. Conditions on a fixed window sized to the case's pre-test history, capped at `context_length` points.",
-    "code_snippet": "from chronos import Chronos2Pipeline\n\npipe = Chronos2Pipeline.from_pretrained(\"amazon/chronos-2\", device_map=\"cpu\")\npred = pipe.predict_df(\n    context_df,                      # id / timestamp / target (+ covariate) columns\n    future_df=future_df,             # +exo: future covariate values (id/timestamp/cols)\n    prediction_length=horizon,\n    quantile_levels=[0.1, 0.5, 0.9],\n    id_column=\"id\",\n    timestamp_column=\"timestamp\",\n    target=\"target\",\n)\ny_hat = pred[\"predictions\"]          # median"
+    "code_snippet": "from chronos import Chronos2Pipeline\n\npipe = Chronos2Pipeline.from_pretrained(\"amazon/chronos-2\", device_map=\"cpu\")\npred = pipe.predict_df(\n    context_df,                      # id / timestamp / target (+ covariate) columns\n    future_df=future_df,             # +exo: future covariate values (id/timestamp/cols)\n    prediction_length=horizon,\n    quantile_levels=[0.1, 0.5, 0.9],\n    id_column=\"id\",\n    timestamp_column=\"timestamp\",\n    target=\"target\",\n)\ny_hat = pred[\"predictions\"]          # median",
+    "capabilities": {
+      "trend": true,
+      "seasonality": true,
+      "multiple_seasonality": true,
+      "exogenous": true
+    },
+    "scorecard": {
+      "history_requirements": "Low",
+      "interpretability": "Low",
+      "fit_cost": "Low",
+      "inference_cost": "High",
+      "tuning_effort": "Low",
+      "robustness_to_noise": "Medium"
+    }
   },
   "Chronos-2": {
     "family": "fm",
@@ -51,7 +121,21 @@
     "library": "chronos-forecasting (Amazon Chronos-2) + torch",
     "compute_profile": "CPU-capable but slower than Chronos-Bolt (120M params); zero-shot, so there's no per-case training \u2014 one forward pass per prediction via the DataFrame API. The pretrained model is loaded once and cached across every case and origin.",
     "limitations": "Zero-shot: never learns anything case-specific, only what it picked up from pretraining on other series. Univariate by default \u2014 Chronos-2 supports covariates natively, and the +exo variant feeds the case's declared covariates to `predict_df` as past+future covariate columns, using a perfect-forecast proxy (not a real forecast of those covariates) for the future values. Conditions on a fixed window sized to the case's pre-test history, capped at `context_length` points.",
-    "code_snippet": "from chronos import Chronos2Pipeline\n\npipe = Chronos2Pipeline.from_pretrained(\"amazon/chronos-2\", device_map=\"cpu\")\npred = pipe.predict_df(\n    context_df,                      # id / timestamp / target (+ covariate) columns\n    future_df=future_df,             # +exo: future covariate values (id/timestamp/cols)\n    prediction_length=horizon,\n    quantile_levels=[0.1, 0.5, 0.9],\n    id_column=\"id\",\n    timestamp_column=\"timestamp\",\n    target=\"target\",\n)\ny_hat = pred[\"predictions\"]          # median"
+    "code_snippet": "from chronos import Chronos2Pipeline\n\npipe = Chronos2Pipeline.from_pretrained(\"amazon/chronos-2\", device_map=\"cpu\")\npred = pipe.predict_df(\n    context_df,                      # id / timestamp / target (+ covariate) columns\n    future_df=future_df,             # +exo: future covariate values (id/timestamp/cols)\n    prediction_length=horizon,\n    quantile_levels=[0.1, 0.5, 0.9],\n    id_column=\"id\",\n    timestamp_column=\"timestamp\",\n    target=\"target\",\n)\ny_hat = pred[\"predictions\"]          # median",
+    "capabilities": {
+      "trend": true,
+      "seasonality": true,
+      "multiple_seasonality": true,
+      "exogenous": true
+    },
+    "scorecard": {
+      "history_requirements": "Low",
+      "interpretability": "Low",
+      "fit_cost": "Low",
+      "inference_cost": "High",
+      "tuning_effort": "Low",
+      "robustness_to_noise": "Medium"
+    }
   },
   "Chronos-Bolt": {
     "family": "fm",
@@ -60,7 +144,21 @@
     "library": "chronos-forecasting (Amazon Chronos-Bolt) + torch",
     "compute_profile": "CPU-capable; zero-shot, so there's no per-case training \u2014 one forward pass per prediction. The pretrained model is loaded once and cached across every case and origin.",
     "limitations": "Zero-shot: never learns anything case-specific, only what it picked up from pretraining on other series. Univariate \u2014 ignores exogenous inputs. Conditions on a fixed window sized to the case's pre-test history, capped at the most recent 2,048 points (context_length).",
-    "code_snippet": "from chronos import BaseChronosPipeline\n\npipe = BaseChronosPipeline.from_pretrained(\"amazon/chronos-bolt-small\", device_map=\"cpu\")\nquantiles, _mean = pipe.predict_quantiles(\n    inputs=context,                  # last 2048 observed values\n    prediction_length=horizon,\n    quantile_levels=[0.1, 0.5, 0.9],\n)\ny_hat = quantiles[..., 1]            # median"
+    "code_snippet": "from chronos import BaseChronosPipeline\n\npipe = BaseChronosPipeline.from_pretrained(\"amazon/chronos-bolt-small\", device_map=\"cpu\")\nquantiles, _mean = pipe.predict_quantiles(\n    inputs=context,                  # last 2048 observed values\n    prediction_length=horizon,\n    quantile_levels=[0.1, 0.5, 0.9],\n)\ny_hat = quantiles[..., 1]            # median",
+    "capabilities": {
+      "trend": true,
+      "seasonality": true,
+      "multiple_seasonality": true,
+      "exogenous": false
+    },
+    "scorecard": {
+      "history_requirements": "Low",
+      "interpretability": "Low",
+      "fit_cost": "Low",
+      "inference_cost": "Medium",
+      "tuning_effort": "Low",
+      "robustness_to_noise": "Medium"
+    }
   },
   "Climatology": {
     "family": "baseline",
@@ -69,7 +167,21 @@
     "library": "pandas/numpy only",
     "compute_profile": "CPU, negligible \u2014 one groupby-mean over the training split.",
     "limitations": "Averages history by position in the dominant seasonal cycle, so it captures a stable average shape but not trend, one-off events, or year-to-year drift; falls back to the global mean on a case declared non-seasonal.",
-    "code_snippet": "position = position_in_cycle(freq, period, train['ds'])\nclimatology = train.groupby(position)['y'].mean()\ny_hat = [climatology[position_in_cycle(freq, period, ds)] for ds in future_ds]"
+    "code_snippet": "position = position_in_cycle(freq, period, train['ds'])\nclimatology = train.groupby(position)['y'].mean()\ny_hat = [climatology[position_in_cycle(freq, period, ds)] for ds in future_ds]",
+    "capabilities": {
+      "trend": false,
+      "seasonality": true,
+      "multiple_seasonality": false,
+      "exogenous": false
+    },
+    "scorecard": {
+      "history_requirements": "Medium",
+      "interpretability": "High",
+      "fit_cost": "Low",
+      "inference_cost": "Low",
+      "tuning_effort": "Low",
+      "robustness_to_noise": "High"
+    }
   },
   "DLinear": {
     "family": "dl",
@@ -78,7 +190,21 @@
     "library": "scikit-learn (Ridge) \u2014 no deep-learning framework",
     "compute_profile": "CPU only, fast; both linear maps collapse into a single closed-form ridge fit on the decomposed window, so there's no gradient-descent training loop.",
     "limitations": "Univariate \u2014 ignores exogenous inputs. The trend/remainder decomposition is a fixed moving average, not learned, so an unusually shaped trend can leak into the remainder term.",
-    "code_snippet": "from sklearn.linear_model import Ridge\n\ntrend = moving_average(window, kernel)\nremainder = window - trend\nmodel = Ridge(alpha=alpha).fit(concat([trend, remainder]), target_window)\ny_hat = model.predict(concat([trend, remainder]))"
+    "code_snippet": "from sklearn.linear_model import Ridge\n\ntrend = moving_average(window, kernel)\nremainder = window - trend\nmodel = Ridge(alpha=alpha).fit(concat([trend, remainder]), target_window)\ny_hat = model.predict(concat([trend, remainder]))",
+    "capabilities": {
+      "trend": true,
+      "seasonality": true,
+      "multiple_seasonality": true,
+      "exogenous": false
+    },
+    "scorecard": {
+      "history_requirements": "High",
+      "interpretability": "Medium",
+      "fit_cost": "Low",
+      "inference_cost": "Low",
+      "tuning_effort": "Low",
+      "robustness_to_noise": "Medium"
+    }
   },
   "iTransformer": {
     "family": "dl",
@@ -87,7 +213,21 @@
     "library": "neuralforecast + pytorch_lightning",
     "compute_profile": "Uses a GPU automatically if one is available (accelerator='auto'), otherwise falls back to CPU; a heavier training loop (up to 500 steps, full pytorch_lightning trainer overhead) than the custom torch models in torchdl.py. Only available on Linux with Python <3.13 (the `nf` extra), since neuralforecast depends on `ray`.",
     "limitations": "Univariate \u2014 ignores exogenous inputs. Trains a fresh model per case with no hyperparameter tuning, using the same architecture defaults regardless of the series' scale or frequency. Architecturally multivariate but fixed to a single series here (n_series=1), so unlike its siblings it can't pool the extra segments of an extended-history fit.",
-    "code_snippet": "import neuralforecast.models as nfm\nfrom neuralforecast import NeuralForecast\n\nmodel = getattr(nfm, model_name)(h=horizon, input_size=lookback, max_steps=500)\nnf = NeuralForecast(models=[model], freq=case.freq)\nnf.fit(train_df)                     # train_df: unique_id, ds, y\ny_hat = nf.predict()[model_name]"
+    "code_snippet": "import neuralforecast.models as nfm\nfrom neuralforecast import NeuralForecast\n\nmodel = getattr(nfm, model_name)(h=horizon, input_size=lookback, max_steps=500)\nnf = NeuralForecast(models=[model], freq=case.freq)\nnf.fit(train_df)                     # train_df: unique_id, ds, y\ny_hat = nf.predict()[model_name]",
+    "capabilities": {
+      "trend": true,
+      "seasonality": true,
+      "multiple_seasonality": true,
+      "exogenous": false
+    },
+    "scorecard": {
+      "history_requirements": "High",
+      "interpretability": "Low",
+      "fit_cost": "High",
+      "inference_cost": "Low",
+      "tuning_effort": "High",
+      "robustness_to_noise": "Medium"
+    }
   },
   "LightGBM+exo": {
     "family": "ml",
@@ -96,7 +236,21 @@
     "library": "mlforecast + lightgbm",
     "compute_profile": "CPU only; a lag+calendar feature table is built once, then the regressor fits on it directly \u2014 fast for the linear/tree models here, slower for the MLP (which also cross-validates an early-stopping split).",
     "limitations": "Needs enough history to fill its lag windows (shortest lag 1, longest tied to the case's declared seasonal periods). The univariate variant ignores exogenous inputs entirely; the +exo variant sees only the future covariate values supplied at predict time (a perfect-forecast proxy in this benchmark, not a real forecast of those covariates).",
-    "code_snippet": "from mlforecast import MLForecast\n\nfcst = MLForecast(\n    models=[<regressor>],           # e.g. LGBMRegressor, Ridge, MLPRegressor\n    freq=case.freq,\n    lags=[1, 2, 4, 8, 16, 32, *case.seasonalities],\n    date_features=[\"dayofweek\", \"month\", ...],\n)\nfcst.fit(train_df, static_features=[])\ny_hat = fcst.predict(h=horizon, ids=[target_uid])"
+    "code_snippet": "from mlforecast import MLForecast\n\nfcst = MLForecast(\n    models=[<regressor>],           # e.g. LGBMRegressor, Ridge, MLPRegressor\n    freq=case.freq,\n    lags=[1, 2, 4, 8, 16, 32, *case.seasonalities],\n    date_features=[\"dayofweek\", \"month\", ...],\n)\nfcst.fit(train_df, static_features=[])\ny_hat = fcst.predict(h=horizon, ids=[target_uid])",
+    "capabilities": {
+      "trend": false,
+      "seasonality": true,
+      "multiple_seasonality": true,
+      "exogenous": true
+    },
+    "scorecard": {
+      "history_requirements": "High",
+      "interpretability": "Medium",
+      "fit_cost": "Low",
+      "inference_cost": "Low",
+      "tuning_effort": "Medium",
+      "robustness_to_noise": "Medium"
+    }
   },
   "LightGBM": {
     "family": "ml",
@@ -105,7 +259,21 @@
     "library": "mlforecast + lightgbm",
     "compute_profile": "CPU only; a lag+calendar feature table is built once, then the regressor fits on it directly \u2014 fast for the linear/tree models here, slower for the MLP (which also cross-validates an early-stopping split).",
     "limitations": "Needs enough history to fill its lag windows (shortest lag 1, longest tied to the case's declared seasonal periods). The univariate variant ignores exogenous inputs entirely; the +exo variant sees only the future covariate values supplied at predict time (a perfect-forecast proxy in this benchmark, not a real forecast of those covariates).",
-    "code_snippet": "from mlforecast import MLForecast\n\nfcst = MLForecast(\n    models=[<regressor>],           # e.g. LGBMRegressor, Ridge, MLPRegressor\n    freq=case.freq,\n    lags=[1, 2, 4, 8, 16, 32, *case.seasonalities],\n    date_features=[\"dayofweek\", \"month\", ...],\n)\nfcst.fit(train_df, static_features=[])\ny_hat = fcst.predict(h=horizon, ids=[target_uid])"
+    "code_snippet": "from mlforecast import MLForecast\n\nfcst = MLForecast(\n    models=[<regressor>],           # e.g. LGBMRegressor, Ridge, MLPRegressor\n    freq=case.freq,\n    lags=[1, 2, 4, 8, 16, 32, *case.seasonalities],\n    date_features=[\"dayofweek\", \"month\", ...],\n)\nfcst.fit(train_df, static_features=[])\ny_hat = fcst.predict(h=horizon, ids=[target_uid])",
+    "capabilities": {
+      "trend": false,
+      "seasonality": true,
+      "multiple_seasonality": true,
+      "exogenous": true
+    },
+    "scorecard": {
+      "history_requirements": "High",
+      "interpretability": "Medium",
+      "fit_cost": "Low",
+      "inference_cost": "Low",
+      "tuning_effort": "Medium",
+      "robustness_to_noise": "Medium"
+    }
   },
   "LinearLags+exo": {
     "family": "ml",
@@ -114,7 +282,21 @@
     "library": "mlforecast + scikit-learn (Ridge)",
     "compute_profile": "CPU only; a lag+calendar feature table is built once, then the regressor fits on it directly \u2014 fast for the linear/tree models here, slower for the MLP (which also cross-validates an early-stopping split).",
     "limitations": "Needs enough history to fill its lag windows (shortest lag 1, longest tied to the case's declared seasonal periods). The univariate variant ignores exogenous inputs entirely; the +exo variant sees only the future covariate values supplied at predict time (a perfect-forecast proxy in this benchmark, not a real forecast of those covariates).",
-    "code_snippet": "from mlforecast import MLForecast\n\nfcst = MLForecast(\n    models=[<regressor>],           # e.g. LGBMRegressor, Ridge, MLPRegressor\n    freq=case.freq,\n    lags=[1, 2, 4, 8, 16, 32, *case.seasonalities],\n    date_features=[\"dayofweek\", \"month\", ...],\n)\nfcst.fit(train_df, static_features=[])\ny_hat = fcst.predict(h=horizon, ids=[target_uid])"
+    "code_snippet": "from mlforecast import MLForecast\n\nfcst = MLForecast(\n    models=[<regressor>],           # e.g. LGBMRegressor, Ridge, MLPRegressor\n    freq=case.freq,\n    lags=[1, 2, 4, 8, 16, 32, *case.seasonalities],\n    date_features=[\"dayofweek\", \"month\", ...],\n)\nfcst.fit(train_df, static_features=[])\ny_hat = fcst.predict(h=horizon, ids=[target_uid])",
+    "capabilities": {
+      "trend": true,
+      "seasonality": true,
+      "multiple_seasonality": true,
+      "exogenous": true
+    },
+    "scorecard": {
+      "history_requirements": "Medium",
+      "interpretability": "Medium",
+      "fit_cost": "Low",
+      "inference_cost": "Low",
+      "tuning_effort": "Low",
+      "robustness_to_noise": "Medium"
+    }
   },
   "LinearLags": {
     "family": "ml",
@@ -123,7 +305,21 @@
     "library": "mlforecast + scikit-learn (Ridge)",
     "compute_profile": "CPU only; a lag+calendar feature table is built once, then the regressor fits on it directly \u2014 fast for the linear/tree models here, slower for the MLP (which also cross-validates an early-stopping split).",
     "limitations": "Needs enough history to fill its lag windows (shortest lag 1, longest tied to the case's declared seasonal periods). The univariate variant ignores exogenous inputs entirely; the +exo variant sees only the future covariate values supplied at predict time (a perfect-forecast proxy in this benchmark, not a real forecast of those covariates).",
-    "code_snippet": "from mlforecast import MLForecast\n\nfcst = MLForecast(\n    models=[<regressor>],           # e.g. LGBMRegressor, Ridge, MLPRegressor\n    freq=case.freq,\n    lags=[1, 2, 4, 8, 16, 32, *case.seasonalities],\n    date_features=[\"dayofweek\", \"month\", ...],\n)\nfcst.fit(train_df, static_features=[])\ny_hat = fcst.predict(h=horizon, ids=[target_uid])"
+    "code_snippet": "from mlforecast import MLForecast\n\nfcst = MLForecast(\n    models=[<regressor>],           # e.g. LGBMRegressor, Ridge, MLPRegressor\n    freq=case.freq,\n    lags=[1, 2, 4, 8, 16, 32, *case.seasonalities],\n    date_features=[\"dayofweek\", \"month\", ...],\n)\nfcst.fit(train_df, static_features=[])\ny_hat = fcst.predict(h=horizon, ids=[target_uid])",
+    "capabilities": {
+      "trend": true,
+      "seasonality": true,
+      "multiple_seasonality": true,
+      "exogenous": true
+    },
+    "scorecard": {
+      "history_requirements": "Medium",
+      "interpretability": "Medium",
+      "fit_cost": "Low",
+      "inference_cost": "Low",
+      "tuning_effort": "Low",
+      "robustness_to_noise": "Medium"
+    }
   },
   "MLP": {
     "family": "ml",
@@ -132,25 +328,67 @@
     "library": "mlforecast + scikit-learn (MLPRegressor)",
     "compute_profile": "CPU only; a lag+calendar feature table is built once, then the regressor fits on it directly \u2014 fast for the linear/tree models here, slower for the MLP (which also cross-validates an early-stopping split).",
     "limitations": "Needs enough history to fill its lag windows (shortest lag 1, longest tied to the case's declared seasonal periods). The univariate variant ignores exogenous inputs entirely; the +exo variant sees only the future covariate values supplied at predict time (a perfect-forecast proxy in this benchmark, not a real forecast of those covariates).",
-    "code_snippet": "from mlforecast import MLForecast\n\nfcst = MLForecast(\n    models=[<regressor>],           # e.g. LGBMRegressor, Ridge, MLPRegressor\n    freq=case.freq,\n    lags=[1, 2, 4, 8, 16, 32, *case.seasonalities],\n    date_features=[\"dayofweek\", \"month\", ...],\n)\nfcst.fit(train_df, static_features=[])\ny_hat = fcst.predict(h=horizon, ids=[target_uid])"
+    "code_snippet": "from mlforecast import MLForecast\n\nfcst = MLForecast(\n    models=[<regressor>],           # e.g. LGBMRegressor, Ridge, MLPRegressor\n    freq=case.freq,\n    lags=[1, 2, 4, 8, 16, 32, *case.seasonalities],\n    date_features=[\"dayofweek\", \"month\", ...],\n)\nfcst.fit(train_df, static_features=[])\ny_hat = fcst.predict(h=horizon, ids=[target_uid])",
+    "capabilities": {
+      "trend": false,
+      "seasonality": true,
+      "multiple_seasonality": true,
+      "exogenous": true
+    },
+    "scorecard": {
+      "history_requirements": "High",
+      "interpretability": "Low",
+      "fit_cost": "Medium",
+      "inference_cost": "Low",
+      "tuning_effort": "High",
+      "robustness_to_noise": "Low"
+    }
   },
   "MSTL-ARIMA": {
     "family": "classical",
     "description": "MSTL with an AutoARIMA trend-cycle/residual forecaster. Capped tighter than\n    MSTL-ETS because the ARIMA stepwise search is the more expensive fit.",
     "uses_exogenous": false,
     "library": "statsforecast (Nixtla) \u2014 trend forecaster: AutoARIMA",
-    "compute_profile": "CPU only; a fast STL-based decomposition plus the subclass's trend forecaster (fit is capped at 8,000 points) \u2014 typically seconds per case.",
-    "limitations": "Univariate: ignores exogenous inputs. Needs at least 2 full cycles of each declared seasonal period in the training window to fit at all; raises rather than degenerating into a duplicate non-seasonal forecast when a case has no seasonality it can use.",
-    "code_snippet": "from statsforecast import StatsForecast\nfrom statsforecast.models import MSTL\n\nsf = StatsForecast(\n    models=[MSTL(season_length=periods, trend_forecaster=<trend_forecaster>)],\n    freq=case.freq,\n)\nsf.fit(train_df)                     # train_df: unique_id, ds, y\ny_hat = sf.predict(h=horizon)[\"MSTL\"]"
+    "compute_profile": "CPU only; a fast STL-based decomposition plus the subclass's trend forecaster, on the most recent 8,000 points \u2014 typically seconds per case. Each origin after that re-derives STL over that origin's whole history and forwards the trend model with its parameters fixed; STL cost grows with history x period, so a long record is slow \u2014 ~0.7s at 5,000 points up to ~28s at 200,000 for periods [24, 168].",
+    "limitations": "Univariate: ignores exogenous inputs. Needs at least 2 full cycles of each declared seasonal period in the training window to fit at all; raises rather than degenerating into a duplicate non-seasonal forecast when a case has no seasonality it can use. The trend model's parameters are fixed at fit time; the STL decomposition around them is re-derived from each origin's full history, which keeps the seasonal shape current but makes predict the expensive half on a long record.",
+    "code_snippet": "from statsforecast.models import MSTL\n\nmodel = MSTL(season_length=periods, trend_forecaster=<trend_forecaster>)\nmodel.fit(train_y)                   # train_y: 1D array -- decompose + fit once\n\n# each origin: re-derive STL, forward the fixed-parameter trend model, reseasonalize\ny_hat = model.forward(history_y, horizon)['mean']",
+    "capabilities": {
+      "trend": true,
+      "seasonality": true,
+      "multiple_seasonality": true,
+      "exogenous": false
+    },
+    "scorecard": {
+      "history_requirements": "Medium",
+      "interpretability": "Medium",
+      "fit_cost": "Low",
+      "inference_cost": "High",
+      "tuning_effort": "Low",
+      "robustness_to_noise": "Medium"
+    }
   },
   "MSTL-ETS": {
     "family": "classical",
     "description": "MSTL with an AutoETS trend-cycle/residual forecaster (statsforecast's default).",
     "uses_exogenous": false,
     "library": "statsforecast (Nixtla) \u2014 trend forecaster: AutoETS",
-    "compute_profile": "CPU only; a fast STL-based decomposition plus the subclass's trend forecaster (fit is capped at 8,000 points) \u2014 typically seconds per case.",
-    "limitations": "Univariate: ignores exogenous inputs. Needs at least 2 full cycles of each declared seasonal period in the training window to fit at all; raises rather than degenerating into a duplicate non-seasonal forecast when a case has no seasonality it can use.",
-    "code_snippet": "from statsforecast import StatsForecast\nfrom statsforecast.models import MSTL\n\nsf = StatsForecast(\n    models=[MSTL(season_length=periods, trend_forecaster=<trend_forecaster>)],\n    freq=case.freq,\n)\nsf.fit(train_df)                     # train_df: unique_id, ds, y\ny_hat = sf.predict(h=horizon)[\"MSTL\"]"
+    "compute_profile": "CPU only; a fast STL-based decomposition plus the subclass's trend forecaster, on the most recent 8,000 points \u2014 typically seconds per case. Each origin after that re-derives STL over that origin's whole history and forwards the trend model with its parameters fixed; STL cost grows with history x period, so a long record is slow \u2014 ~0.7s at 5,000 points up to ~28s at 200,000 for periods [24, 168].",
+    "limitations": "Univariate: ignores exogenous inputs. Needs at least 2 full cycles of each declared seasonal period in the training window to fit at all; raises rather than degenerating into a duplicate non-seasonal forecast when a case has no seasonality it can use. The trend model's parameters are fixed at fit time; the STL decomposition around them is re-derived from each origin's full history, which keeps the seasonal shape current but makes predict the expensive half on a long record.",
+    "code_snippet": "from statsforecast.models import MSTL\n\nmodel = MSTL(season_length=periods, trend_forecaster=<trend_forecaster>)\nmodel.fit(train_y)                   # train_y: 1D array -- decompose + fit once\n\n# each origin: re-derive STL, forward the fixed-parameter trend model, reseasonalize\ny_hat = model.forward(history_y, horizon)['mean']",
+    "capabilities": {
+      "trend": true,
+      "seasonality": true,
+      "multiple_seasonality": true,
+      "exogenous": false
+    },
+    "scorecard": {
+      "history_requirements": "Medium",
+      "interpretability": "Medium",
+      "fit_cost": "Low",
+      "inference_cost": "High",
+      "tuning_effort": "Low",
+      "robustness_to_noise": "Medium"
+    }
   },
   "Mean": {
     "family": "baseline",
@@ -159,7 +397,21 @@
     "library": "pandas/numpy only",
     "compute_profile": "CPU, negligible \u2014 one mean over the training split.",
     "limitations": "Ignores trend, seasonality, and recency entirely; useful only as a floor other methods should comfortably beat.",
-    "code_snippet": "mean = train['y'].mean()\ny_hat = [mean] * horizon"
+    "code_snippet": "mean = train['y'].mean()\ny_hat = [mean] * horizon",
+    "capabilities": {
+      "trend": false,
+      "seasonality": false,
+      "multiple_seasonality": false,
+      "exogenous": false
+    },
+    "scorecard": {
+      "history_requirements": "Low",
+      "interpretability": "High",
+      "fit_cost": "Low",
+      "inference_cost": "Low",
+      "tuning_effort": "Low",
+      "robustness_to_noise": "High"
+    }
   },
   "Moirai-2.0+exo": {
     "family": "fm",
@@ -168,7 +420,21 @@
     "library": "uni2ts (Salesforce Moirai-2.0) + gluonts + torch",
     "compute_profile": "CPU-capable but slow; zero-shot, so there's no per-case training \u2014 one forward pass per prediction through the GluonTS predictor. The pretrained weights are loaded once and cached across every case and origin.",
     "limitations": "Zero-shot: never learns anything case-specific, only what it picked up from pretraining on other series. Univariate by default \u2014 Moirai supports covariates natively, and the +exo variant feeds the case's declared covariates in as `feat_dynamic_real`, using a perfect-forecast proxy (not a real forecast of those covariates) for the future values. Conditions on a fixed window sized to the case's pre-test history, capped at the model's position-embedding cache size (max_seq_len * patch_size) \u2014 Salesforce hasn't published a trained max context length for this model.",
-    "code_snippet": "from gluonts.dataset.pandas import PandasDataset\nfrom uni2ts.model.moirai2 import Moirai2Forecast, Moirai2Module\n\nforecaster = Moirai2Forecast(\n    module=Moirai2Module.from_pretrained(\"Salesforce/moirai-2.0-R-small\"),\n    prediction_length=horizon, context_length=ctx_len,\n    target_dim=1, feat_dynamic_real_dim=0, past_feat_dynamic_real_dim=0,\n    # +exo: feat_dynamic_real_dim=len(exo_cols); dataset built with\n    # PandasDataset(df, feat_dynamic_real=exo_cols, future_length=horizon)\n)\npredictor = forecaster.create_predictor(batch_size=1)\nforecast = next(iter(predictor.predict(dataset)))\ny_hat = forecast.median"
+    "code_snippet": "from gluonts.dataset.pandas import PandasDataset\nfrom uni2ts.model.moirai2 import Moirai2Forecast, Moirai2Module\n\nforecaster = Moirai2Forecast(\n    module=Moirai2Module.from_pretrained(\"Salesforce/moirai-2.0-R-small\"),\n    prediction_length=horizon, context_length=ctx_len,\n    target_dim=1, feat_dynamic_real_dim=0, past_feat_dynamic_real_dim=0,\n    # +exo: feat_dynamic_real_dim=len(exo_cols); dataset built with\n    # PandasDataset(df, feat_dynamic_real=exo_cols, future_length=horizon)\n)\npredictor = forecaster.create_predictor(batch_size=1)\nforecast = next(iter(predictor.predict(dataset)))\ny_hat = forecast.median",
+    "capabilities": {
+      "trend": true,
+      "seasonality": true,
+      "multiple_seasonality": true,
+      "exogenous": true
+    },
+    "scorecard": {
+      "history_requirements": "Low",
+      "interpretability": "Low",
+      "fit_cost": "Low",
+      "inference_cost": "High",
+      "tuning_effort": "Low",
+      "robustness_to_noise": "Medium"
+    }
   },
   "Moirai-2.0": {
     "family": "fm",
@@ -177,7 +443,21 @@
     "library": "uni2ts (Salesforce Moirai-2.0) + gluonts + torch",
     "compute_profile": "CPU-capable but slow; zero-shot, so there's no per-case training \u2014 one forward pass per prediction through the GluonTS predictor. The pretrained weights are loaded once and cached across every case and origin.",
     "limitations": "Zero-shot: never learns anything case-specific, only what it picked up from pretraining on other series. Univariate by default \u2014 Moirai supports covariates natively, and the +exo variant feeds the case's declared covariates in as `feat_dynamic_real`, using a perfect-forecast proxy (not a real forecast of those covariates) for the future values. Conditions on a fixed window sized to the case's pre-test history, capped at the model's position-embedding cache size (max_seq_len * patch_size) \u2014 Salesforce hasn't published a trained max context length for this model.",
-    "code_snippet": "from gluonts.dataset.pandas import PandasDataset\nfrom uni2ts.model.moirai2 import Moirai2Forecast, Moirai2Module\n\nforecaster = Moirai2Forecast(\n    module=Moirai2Module.from_pretrained(\"Salesforce/moirai-2.0-R-small\"),\n    prediction_length=horizon, context_length=ctx_len,\n    target_dim=1, feat_dynamic_real_dim=0, past_feat_dynamic_real_dim=0,\n    # +exo: feat_dynamic_real_dim=len(exo_cols); dataset built with\n    # PandasDataset(df, feat_dynamic_real=exo_cols, future_length=horizon)\n)\npredictor = forecaster.create_predictor(batch_size=1)\nforecast = next(iter(predictor.predict(dataset)))\ny_hat = forecast.median"
+    "code_snippet": "from gluonts.dataset.pandas import PandasDataset\nfrom uni2ts.model.moirai2 import Moirai2Forecast, Moirai2Module\n\nforecaster = Moirai2Forecast(\n    module=Moirai2Module.from_pretrained(\"Salesforce/moirai-2.0-R-small\"),\n    prediction_length=horizon, context_length=ctx_len,\n    target_dim=1, feat_dynamic_real_dim=0, past_feat_dynamic_real_dim=0,\n    # +exo: feat_dynamic_real_dim=len(exo_cols); dataset built with\n    # PandasDataset(df, feat_dynamic_real=exo_cols, future_length=horizon)\n)\npredictor = forecaster.create_predictor(batch_size=1)\nforecast = next(iter(predictor.predict(dataset)))\ny_hat = forecast.median",
+    "capabilities": {
+      "trend": true,
+      "seasonality": true,
+      "multiple_seasonality": true,
+      "exogenous": true
+    },
+    "scorecard": {
+      "history_requirements": "Low",
+      "interpretability": "Low",
+      "fit_cost": "Low",
+      "inference_cost": "High",
+      "tuning_effort": "Low",
+      "robustness_to_noise": "Medium"
+    }
   },
   "N-HiTS": {
     "family": "dl",
@@ -186,7 +466,21 @@
     "library": "torch (custom implementation, no ray/lightning)",
     "compute_profile": "CPU (no GPU dependency); trains a small network from scratch per case \u2014 600 gradient steps over randomly sampled windows \u2014 making these the heaviest CPU methods in the benchmark. Keep rolling-origin counts modest when including them.",
     "limitations": "Univariate \u2014 ignores exogenous inputs (the covariate story lives in the windowed-ML +exo columns instead). Each window is instance-normalised (RevIN-style) before the model and de-normalised after, which is what makes the same architecture usable across very different series scales.",
-    "code_snippet": "net = <NHiTSNet or PatchTSTNet>(lookback, horizon)\nopt = torch.optim.Adam(net.parameters(), lr=1e-3)\nfor step in range(600):\n    xb, yb = sample_batch(windows, batch_size=256)\n    mu, sd = xb.mean(1), xb.std(1)          # per-window instance norm\n    pred = net((xb - mu) / sd) * sd + mu\n    loss = mse_loss(pred, yb)\n    loss.backward(); opt.step()"
+    "code_snippet": "net = <NHiTSNet or PatchTSTNet>(lookback, horizon)\nopt = torch.optim.Adam(net.parameters(), lr=1e-3)\nfor step in range(600):\n    xb, yb = sample_batch(windows, batch_size=256)\n    mu, sd = xb.mean(1), xb.std(1)          # per-window instance norm\n    pred = net((xb - mu) / sd) * sd + mu\n    loss = mse_loss(pred, yb)\n    loss.backward(); opt.step()",
+    "capabilities": {
+      "trend": true,
+      "seasonality": true,
+      "multiple_seasonality": true,
+      "exogenous": false
+    },
+    "scorecard": {
+      "history_requirements": "High",
+      "interpretability": "Low",
+      "fit_cost": "High",
+      "inference_cost": "Low",
+      "tuning_effort": "High",
+      "robustness_to_noise": "Medium"
+    }
   },
   "PatchTST": {
     "family": "dl",
@@ -195,7 +489,21 @@
     "library": "torch (custom implementation, no ray/lightning)",
     "compute_profile": "CPU (no GPU dependency); trains a small network from scratch per case \u2014 600 gradient steps over randomly sampled windows \u2014 making these the heaviest CPU methods in the benchmark. Keep rolling-origin counts modest when including them.",
     "limitations": "Univariate \u2014 ignores exogenous inputs (the covariate story lives in the windowed-ML +exo columns instead). Each window is instance-normalised (RevIN-style) before the model and de-normalised after, which is what makes the same architecture usable across very different series scales.",
-    "code_snippet": "net = <NHiTSNet or PatchTSTNet>(lookback, horizon)\nopt = torch.optim.Adam(net.parameters(), lr=1e-3)\nfor step in range(600):\n    xb, yb = sample_batch(windows, batch_size=256)\n    mu, sd = xb.mean(1), xb.std(1)          # per-window instance norm\n    pred = net((xb - mu) / sd) * sd + mu\n    loss = mse_loss(pred, yb)\n    loss.backward(); opt.step()"
+    "code_snippet": "net = <NHiTSNet or PatchTSTNet>(lookback, horizon)\nopt = torch.optim.Adam(net.parameters(), lr=1e-3)\nfor step in range(600):\n    xb, yb = sample_batch(windows, batch_size=256)\n    mu, sd = xb.mean(1), xb.std(1)          # per-window instance norm\n    pred = net((xb - mu) / sd) * sd + mu\n    loss = mse_loss(pred, yb)\n    loss.backward(); opt.step()",
+    "capabilities": {
+      "trend": true,
+      "seasonality": true,
+      "multiple_seasonality": true,
+      "exogenous": false
+    },
+    "scorecard": {
+      "history_requirements": "High",
+      "interpretability": "Low",
+      "fit_cost": "High",
+      "inference_cost": "Low",
+      "tuning_effort": "High",
+      "robustness_to_noise": "Medium"
+    }
   },
   "Persistence": {
     "family": "baseline",
@@ -204,7 +512,21 @@
     "library": "pandas/numpy only",
     "compute_profile": "CPU, negligible \u2014 no fitting at all.",
     "limitations": "Repeats the last observed value for the whole horizon; degrades fast on any series with a trend, cycle, or fast dynamics beyond one step.",
-    "code_snippet": "last_value = history['y'].iloc[-1]\ny_hat = [last_value] * horizon"
+    "code_snippet": "last_value = history['y'].iloc[-1]\ny_hat = [last_value] * horizon",
+    "capabilities": {
+      "trend": false,
+      "seasonality": false,
+      "multiple_seasonality": false,
+      "exogenous": false
+    },
+    "scorecard": {
+      "history_requirements": "Low",
+      "interpretability": "High",
+      "fit_cost": "Low",
+      "inference_cost": "Low",
+      "tuning_effort": "Low",
+      "robustness_to_noise": "Low"
+    }
   },
   "SeasonalNaive": {
     "family": "baseline",
@@ -213,16 +535,44 @@
     "library": "pandas/numpy only",
     "compute_profile": "CPU, negligible \u2014 tiles the last observed seasonal cycle.",
     "limitations": "Repeats the most recent full cycle of the case's dominant declared seasonal period; refuses to run on a case declared non-seasonal, and can't adapt if the cycle's shape drifts over time.",
-    "code_snippet": "seasonal_window = train['y'].tail(season_length)\ny_hat = tile(seasonal_window, horizon)"
+    "code_snippet": "seasonal_window = train['y'].tail(season_length)\ny_hat = tile(seasonal_window, horizon)",
+    "capabilities": {
+      "trend": false,
+      "seasonality": true,
+      "multiple_seasonality": false,
+      "exogenous": false
+    },
+    "scorecard": {
+      "history_requirements": "Medium",
+      "interpretability": "High",
+      "fit_cost": "Low",
+      "inference_cost": "Low",
+      "tuning_effort": "Low",
+      "robustness_to_noise": "Low"
+    }
   },
   "TBATS": {
     "family": "classical",
     "description": "TBATS (Trigonometric, Box-Cox, ARMA, Trend, Seasonal) via statsforecast.",
     "uses_exogenous": false,
     "library": "statsforecast (Nixtla)",
-    "compute_profile": "CPU only; the heaviest of the classical methods here, so it's fit on a smaller window (3,000 points) than its siblings \u2014 still typically seconds per case, but noticeably slower than AutoARIMA/AutoETS/Theta.",
-    "limitations": "Univariate: ignores exogenous inputs. Its internal Box-Cox transform assumes strictly positive data; a Yeo-Johnson fallback (see below) handles series that dip to zero or negative.",
-    "code_snippet": "from statsforecast import StatsForecast\nfrom statsforecast.models import TBATS\n\nsf = StatsForecast(models=[TBATS(season_length=season_length)], freq=case.freq)\nsf.fit(train_df)                     # train_df: unique_id, ds, y\ny_hat = sf.predict(h=horizon)[\"TBATS\"]"
+    "compute_profile": "CPU only; the heaviest of the classical methods here, so it's fit on a smaller window (3,000 points) than its siblings \u2014 still typically seconds per case, but noticeably slower than AutoARIMA/AutoETS/Theta. Refit at every rolling origin, so `fit_seconds` is the cost of one such refit.",
+    "limitations": "Univariate: ignores exogenous inputs. Its internal Box-Cox transform assumes strictly positive data; a Yeo-Johnson fallback (see below) handles series that dip to zero or negative. Unlike the other classical methods, this one is refit from scratch at every rolling origin \u2014 statsforecast ties its component search to each fit and offers no way to roll a fitted TBATS forward \u2014 so it re-estimates on more recent data than the fit-once methods do, and its accuracy is not measured under quite the same protocol as theirs.",
+    "code_snippet": "from statsforecast import StatsForecast\nfrom statsforecast.models import TBATS\n\nsf = StatsForecast(models=[TBATS(season_length=season_length)], freq=case.freq)\nsf.fit(train_df)                     # train_df: unique_id, ds, y\ny_hat = sf.predict(h=horizon)[\"TBATS\"]",
+    "capabilities": {
+      "trend": true,
+      "seasonality": true,
+      "multiple_seasonality": true,
+      "exogenous": false
+    },
+    "scorecard": {
+      "history_requirements": "Medium",
+      "interpretability": "Medium",
+      "fit_cost": "Medium",
+      "inference_cost": "Low",
+      "tuning_effort": "Low",
+      "robustness_to_noise": "Medium"
+    }
   },
   "TFT": {
     "family": "dl",
@@ -231,16 +581,44 @@
     "library": "neuralforecast + pytorch_lightning",
     "compute_profile": "Uses a GPU automatically if one is available (accelerator='auto'), otherwise falls back to CPU; a heavier training loop (up to 500 steps, full pytorch_lightning trainer overhead) than the custom torch models in torchdl.py. Only available on Linux with Python <3.13 (the `nf` extra), since neuralforecast depends on `ray`.",
     "limitations": "Univariate \u2014 ignores exogenous inputs. Trains a fresh model per case with no hyperparameter tuning, using the same architecture defaults regardless of the series' scale or frequency.",
-    "code_snippet": "import neuralforecast.models as nfm\nfrom neuralforecast import NeuralForecast\n\nmodel = getattr(nfm, model_name)(h=horizon, input_size=lookback, max_steps=500)\nnf = NeuralForecast(models=[model], freq=case.freq)\nnf.fit(train_df)                     # train_df: unique_id, ds, y\ny_hat = nf.predict()[model_name]"
+    "code_snippet": "import neuralforecast.models as nfm\nfrom neuralforecast import NeuralForecast\n\nmodel = getattr(nfm, model_name)(h=horizon, input_size=lookback, max_steps=500)\nnf = NeuralForecast(models=[model], freq=case.freq)\nnf.fit(train_df)                     # train_df: unique_id, ds, y\ny_hat = nf.predict()[model_name]",
+    "capabilities": {
+      "trend": true,
+      "seasonality": true,
+      "multiple_seasonality": true,
+      "exogenous": false
+    },
+    "scorecard": {
+      "history_requirements": "High",
+      "interpretability": "Low",
+      "fit_cost": "High",
+      "inference_cost": "Low",
+      "tuning_effort": "High",
+      "robustness_to_noise": "Medium"
+    }
   },
   "Theta": {
     "family": "classical",
     "description": "Theta method (auto-optimized) via statsforecast \u2014 a strong, cheap classical\n    benchmark, often the one to beat among non-ML methods.",
     "uses_exogenous": false,
     "library": "statsforecast (Nixtla)",
-    "compute_profile": "CPU only; a cheap deseasonalize/fit/re-seasonalize decomposition, typically the fastest of the classical methods here (fit is capped at 8,000 points).",
-    "limitations": "Univariate: ignores exogenous inputs. Deseasonalization is a fixed classical decomposition rather than a learned model, so it can lag a genuinely shifting seasonal shape.",
-    "code_snippet": "from statsforecast import StatsForecast\nfrom statsforecast.models import AutoTheta\n\nsf = StatsForecast(models=[AutoTheta(season_length=season_length)], freq=case.freq)\nsf.fit(train_df)                     # train_df: unique_id, ds, y\ny_hat = sf.predict(h=horizon)[\"AutoTheta\"]"
+    "compute_profile": "CPU only; a cheap deseasonalize/fit/re-seasonalize decomposition at fit time (searched on the most recent 8,000 points). Cheap to fit, but the most expensive roll-forward here: each origin re-derives the decomposition and re-runs the fixed-parameter filter over that origin's whole history, at a cost superlinear in its length \u2014 0.02s at 5,000 points, ~2.5s at 50,000, ~110s at 200,000.",
+    "limitations": "Univariate: ignores exogenous inputs. Parameters are fixed at fit time, but the deseasonalization is a fixed classical decomposition re-derived from each origin's history rather than a learned model, so it can lag a genuinely shifting seasonal shape and its multiplicative-vs-additive choice can differ between origins.",
+    "code_snippet": "from statsforecast.models import AutoTheta\n\nmodel = AutoTheta(season_length=season_length)\nmodel.fit(train_y)                   # train_y: 1D array -- picks params once\n\n# each origin: fixed-parameter filter over the growing history, no re-fit\ny_hat = model.forward(history_y, horizon)['mean']",
+    "capabilities": {
+      "trend": true,
+      "seasonality": true,
+      "multiple_seasonality": false,
+      "exogenous": false
+    },
+    "scorecard": {
+      "history_requirements": "Medium",
+      "interpretability": "High",
+      "fit_cost": "Low",
+      "inference_cost": "High",
+      "tuning_effort": "Low",
+      "robustness_to_noise": "Medium"
+    }
   },
   "TimesFM-2.5+exo": {
     "family": "fm",
@@ -249,7 +627,21 @@
     "library": "timesfm (Google TimesFM 2.5, torch backend)",
     "compute_profile": "CPU-capable but slow (200M params); zero-shot, so there's no per-case training \u2014 one forward pass per prediction. The pretrained weights are loaded once per process; each distinct per-case context length gets its own cheap compiled variant (a shallow copy of the loaded model, not a reload), cached across every origin of that case.",
     "limitations": "Zero-shot: never learns anything case-specific, only what it picked up from pretraining. Univariate by default \u2014 the +exo variant feeds the case's declared covariates to `forecast_with_covariates` as an xreg regressor fit alongside the TimesFM forecast, using a perfect-forecast proxy (not a real forecast of those covariates) for the future values. Conditions on a fixed window sized to the case's pre-test history, capped at the checkpoint's `context_limit`; horizons beyond `max_horizon` are not supported.",
-    "code_snippet": "import timesfm\n\nmodel = timesfm.TimesFM_2p5_200M_torch.from_pretrained(\"google/timesfm-2.5-200m-pytorch\")\nmodel.compile(timesfm.ForecastConfig(max_context=1024, max_horizon=256,\n    normalize_inputs=True, use_continuous_quantile_head=True))\npoint_forecast, _quantiles = model.forecast(\n    horizon=horizon,\n    inputs=[context],                # list of 1D arrays, one per series\n)\ny_hat = point_forecast[0]\n# +exo: model.forecast_with_covariates(inputs=[context],\n#     dynamic_numerical_covariates={name: [context_and_horizon_values]})"
+    "code_snippet": "import timesfm\n\nmodel = timesfm.TimesFM_2p5_200M_torch.from_pretrained(\"google/timesfm-2.5-200m-pytorch\")\nmodel.compile(timesfm.ForecastConfig(max_context=1024, max_horizon=256,\n    normalize_inputs=True, use_continuous_quantile_head=True))\npoint_forecast, _quantiles = model.forecast(\n    horizon=horizon,\n    inputs=[context],                # list of 1D arrays, one per series\n)\ny_hat = point_forecast[0]\n# +exo: model.forecast_with_covariates(inputs=[context],\n#     dynamic_numerical_covariates={name: [context_and_horizon_values]})",
+    "capabilities": {
+      "trend": true,
+      "seasonality": true,
+      "multiple_seasonality": true,
+      "exogenous": true
+    },
+    "scorecard": {
+      "history_requirements": "Low",
+      "interpretability": "Low",
+      "fit_cost": "Low",
+      "inference_cost": "High",
+      "tuning_effort": "Low",
+      "robustness_to_noise": "Medium"
+    }
   },
   "TimesFM-2.5": {
     "family": "fm",
@@ -258,7 +650,21 @@
     "library": "timesfm (Google TimesFM 2.5, torch backend)",
     "compute_profile": "CPU-capable but slow (200M params); zero-shot, so there's no per-case training \u2014 one forward pass per prediction. The pretrained weights are loaded once per process; each distinct per-case context length gets its own cheap compiled variant (a shallow copy of the loaded model, not a reload), cached across every origin of that case.",
     "limitations": "Zero-shot: never learns anything case-specific, only what it picked up from pretraining. Univariate by default \u2014 the +exo variant feeds the case's declared covariates to `forecast_with_covariates` as an xreg regressor fit alongside the TimesFM forecast, using a perfect-forecast proxy (not a real forecast of those covariates) for the future values. Conditions on a fixed window sized to the case's pre-test history, capped at the checkpoint's `context_limit`; horizons beyond `max_horizon` are not supported.",
-    "code_snippet": "import timesfm\n\nmodel = timesfm.TimesFM_2p5_200M_torch.from_pretrained(\"google/timesfm-2.5-200m-pytorch\")\nmodel.compile(timesfm.ForecastConfig(max_context=1024, max_horizon=256,\n    normalize_inputs=True, use_continuous_quantile_head=True))\npoint_forecast, _quantiles = model.forecast(\n    horizon=horizon,\n    inputs=[context],                # list of 1D arrays, one per series\n)\ny_hat = point_forecast[0]\n# +exo: model.forecast_with_covariates(inputs=[context],\n#     dynamic_numerical_covariates={name: [context_and_horizon_values]})"
+    "code_snippet": "import timesfm\n\nmodel = timesfm.TimesFM_2p5_200M_torch.from_pretrained(\"google/timesfm-2.5-200m-pytorch\")\nmodel.compile(timesfm.ForecastConfig(max_context=1024, max_horizon=256,\n    normalize_inputs=True, use_continuous_quantile_head=True))\npoint_forecast, _quantiles = model.forecast(\n    horizon=horizon,\n    inputs=[context],                # list of 1D arrays, one per series\n)\ny_hat = point_forecast[0]\n# +exo: model.forecast_with_covariates(inputs=[context],\n#     dynamic_numerical_covariates={name: [context_and_horizon_values]})",
+    "capabilities": {
+      "trend": true,
+      "seasonality": true,
+      "multiple_seasonality": true,
+      "exogenous": true
+    },
+    "scorecard": {
+      "history_requirements": "Low",
+      "interpretability": "Low",
+      "fit_cost": "Low",
+      "inference_cost": "High",
+      "tuning_effort": "Low",
+      "robustness_to_noise": "Medium"
+    }
   },
   "TimesNet": {
     "family": "dl",
@@ -267,7 +673,21 @@
     "library": "neuralforecast + pytorch_lightning",
     "compute_profile": "Uses a GPU automatically if one is available (accelerator='auto'), otherwise falls back to CPU; a heavier training loop (up to 500 steps, full pytorch_lightning trainer overhead) than the custom torch models in torchdl.py. Only available on Linux with Python <3.13 (the `nf` extra), since neuralforecast depends on `ray`.",
     "limitations": "Univariate \u2014 ignores exogenous inputs. Trains a fresh model per case with no hyperparameter tuning, using the same architecture defaults regardless of the series' scale or frequency.",
-    "code_snippet": "import neuralforecast.models as nfm\nfrom neuralforecast import NeuralForecast\n\nmodel = getattr(nfm, model_name)(h=horizon, input_size=lookback, max_steps=500)\nnf = NeuralForecast(models=[model], freq=case.freq)\nnf.fit(train_df)                     # train_df: unique_id, ds, y\ny_hat = nf.predict()[model_name]"
+    "code_snippet": "import neuralforecast.models as nfm\nfrom neuralforecast import NeuralForecast\n\nmodel = getattr(nfm, model_name)(h=horizon, input_size=lookback, max_steps=500)\nnf = NeuralForecast(models=[model], freq=case.freq)\nnf.fit(train_df)                     # train_df: unique_id, ds, y\ny_hat = nf.predict()[model_name]",
+    "capabilities": {
+      "trend": true,
+      "seasonality": true,
+      "multiple_seasonality": true,
+      "exogenous": false
+    },
+    "scorecard": {
+      "history_requirements": "High",
+      "interpretability": "Low",
+      "fit_cost": "High",
+      "inference_cost": "Low",
+      "tuning_effort": "High",
+      "robustness_to_noise": "Medium"
+    }
   },
   "EnsembleBaselines": {
     "family": "ensemble",
@@ -276,7 +696,21 @@
     "library": "no additional library \u2014 combines member forecasters' own outputs",
     "compute_profile": "Sum of its members' costs; cheap in practice since the members are the naive baselines (and optionally the fast classical Theta method).",
     "limitations": "Only as good as its members \u2014 a median/mean of weak forecasts is still weak. A member that fails at one origin is silently dropped from that step's combination rather than failing the whole prediction.",
-    "code_snippet": "member_forecasts = [m.predict(case, history, horizon) for m in members]\nstacked = np.vstack([f['y_hat'] for f in member_forecasts])\ny_hat = np.nanmedian(stacked, axis=0)   # or np.nanmean if combine='mean'"
+    "code_snippet": "member_forecasts = [m.predict(case, history, horizon) for m in members]\nstacked = np.vstack([f['y_hat'] for f in member_forecasts])\ny_hat = np.nanmedian(stacked, axis=0)   # or np.nanmean if combine='mean'",
+    "capabilities": {
+      "trend": false,
+      "seasonality": true,
+      "multiple_seasonality": false,
+      "exogenous": false
+    },
+    "scorecard": {
+      "history_requirements": "Medium",
+      "interpretability": "Medium",
+      "fit_cost": "Low",
+      "inference_cost": "Low",
+      "tuning_effort": "Low",
+      "robustness_to_noise": "High"
+    }
   },
   "EnsembleBaselinesTheta": {
     "family": "ensemble",
@@ -285,6 +719,20 @@
     "library": "no additional library \u2014 combines member forecasters' own outputs",
     "compute_profile": "Sum of its members' costs; cheap in practice since the members are the naive baselines (and optionally the fast classical Theta method).",
     "limitations": "Only as good as its members \u2014 a median/mean of weak forecasts is still weak. A member that fails at one origin is silently dropped from that step's combination rather than failing the whole prediction.",
-    "code_snippet": "member_forecasts = [m.predict(case, history, horizon) for m in members]\nstacked = np.vstack([f['y_hat'] for f in member_forecasts])\ny_hat = np.nanmedian(stacked, axis=0)   # or np.nanmean if combine='mean'"
+    "code_snippet": "member_forecasts = [m.predict(case, history, horizon) for m in members]\nstacked = np.vstack([f['y_hat'] for f in member_forecasts])\ny_hat = np.nanmedian(stacked, axis=0)   # or np.nanmean if combine='mean'",
+    "capabilities": {
+      "trend": true,
+      "seasonality": true,
+      "multiple_seasonality": false,
+      "exogenous": false
+    },
+    "scorecard": {
+      "history_requirements": "Medium",
+      "interpretability": "Medium",
+      "fit_cost": "Low",
+      "inference_cost": "Low",
+      "tuning_effort": "Low",
+      "robustness_to_noise": "High"
+    }
   }
 }
