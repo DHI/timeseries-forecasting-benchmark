@@ -482,17 +482,26 @@ class ThetaForecaster(Forecaster):
 
 
 class _MSTLBase(Forecaster):
-    """MSTL decomposition + a classical trend-cycle/residual forecaster (statsforecast).
+    """MSTL decomposition, frozen once, plus a fit-once classical trend-cycle/residual
+    forecaster from this module.
 
-    MSTL removes one or more seasonal components with a fast STL-based decomposition,
-    fits the subclass's `trend_forecaster` on the seasonally-adjusted series, and
-    re-applies the seasonal pattern to the forecast. This is the seasonal classical
-    counterpart to the non-seasonal AutoARIMA/AutoETS baselines, and works uniformly
-    across frequencies with large or multiple seasonal periods (168h weekly, 365d yearly)
-    that native seasonal ARIMA/ETS cannot afford.
+    Decouples decomposition (frozen at fit time) from the trend forecaster (itself
+    fit-once, see `AutoETSForecaster`/`AutoARIMAForecaster` above): `fit` runs
+    `statsmodels.tsa.seasonal.MSTL` once on the training window, freezes each seasonal
+    component's shape as a position-in-cycle lookup (the same convention the Climatology
+    baseline and the sin/cos ML features use — see `data.seasonality.position_in_cycle`),
+    and fits the subclass's trend forecaster once on the seasonally-adjusted series.
+    `predict` looks up the frozen seasonal value at each timestamp of the growing
+    `history` and the forecast horizon, subtracts it from `history` before handing that to
+    the (already fit-once) trend forecaster, and adds it back to the trend forecaster's
+    output — so the seasonal shape is genuinely fixed at fit time, while the trend
+    forecaster still conditions on new observations exactly as it does standalone. This
+    is the seasonal classical counterpart to the non-seasonal AutoARIMA/AutoETS
+    baselines, and works uniformly across frequencies with large or multiple seasonal
+    periods (168h weekly, 365d yearly) that native seasonal ARIMA/ETS cannot afford.
 
     Periods come from the case's declared `seasonalities`, filtered to those the training
-    series is long enough to support (STL needs >=2 full cycles). If the case is declared
+    series is long enough to support (MSTL needs >=2 full cycles). If the case is declared
     non-seasonal or none survive, MSTL is genuinely inapplicable and fit raises rather than
     silently degenerating into the plain non-seasonal trend forecaster (which would just
     duplicate the AutoARIMA/AutoETS column).
@@ -500,35 +509,44 @@ class _MSTLBase(Forecaster):
 
     name = "MSTL"
     family = "classical"
+    is_global = True
     max_train_steps = 8000
-    library = "statsforecast (Nixtla)"
+    library = "statsmodels (MSTL decomposition, frozen once)"
     compute_profile = (
-        "CPU only; a fast STL-based decomposition plus the subclass's trend forecaster "
-        "(fit is capped at 8,000 points) — typically seconds per case."
+        "CPU only; a fast STL-based decomposition plus the subclass's trend forecaster's "
+        "own fit cost, at fit time (capped at 8,000 points); each origin after that looks "
+        "up the frozen seasonal shape and calls the (already fit-once) trend forecaster's "
+        "predict — no decomposition or trend re-fitting."
     )
     limitations = (
         "Univariate: ignores exogenous inputs. Needs at least 2 full cycles of each "
         "declared seasonal period in the training window to fit at all; raises rather "
         "than degenerating into a duplicate non-seasonal forecast when a case has no "
-        "seasonality it can use."
+        "seasonality it can use. The seasonal shape is a fixed lookup frozen at fit "
+        "time, not re-estimated as history grows."
     )
     code_snippet = (
-        "from statsforecast import StatsForecast\n"
-        "from statsforecast.models import MSTL\n\n"
-        "sf = StatsForecast(\n"
-        "    models=[MSTL(season_length=periods, trend_forecaster=<trend_forecaster>)],\n"
-        "    freq=case.freq,\n"
-        ")\n"
-        "sf.fit(train_df)                     # train_df: unique_id, ds, y\n"
-        'y_hat = sf.predict(h=horizon)["MSTL"]'
+        "from statsmodels.tsa.seasonal import MSTL\n"
+        "from tsforecastbench.data.seasonality import position_in_cycle\n\n"
+        "decomposition = MSTL(train_y, periods=periods).fit()   # once, at fit time\n"
+        "seasonal_lookup = {\n"
+        "    p: pd.Series(decomposition.seasonal[..., i]).groupby(\n"
+        "        position_in_cycle(case.freq, p, train_ds)).mean()\n"
+        "    for i, p in enumerate(periods)\n"
+        "}\n"
+        "trend_forecaster.fit(case, train_deseasonalized)       # once, e.g. AutoETS/AutoARIMA\n\n"
+        "# each origin: look up the frozen seasonal shape, add to the trend forecast\n"
+        "seasonal = sum(seasonal_lookup[p][position_in_cycle(case.freq, p, ds)] for p in periods)\n"
+        "y_hat = trend_forecaster.predict(case, history_deseasonalized, horizon)['y_hat'] + seasonal"
     )
 
-    def _make_trend_forecaster(self):
+    def _make_trend_forecaster(self) -> Forecaster:
         raise NotImplementedError
 
     def fit(self, case: Case, train: pd.DataFrame) -> None:
-        from statsforecast import StatsForecast
-        from statsforecast.models import MSTL
+        from statsmodels.tsa.seasonal import MSTL
+
+        from tsforecastbench.data.seasonality import position_in_cycle
 
         df = _prepare_train(train, self.max_train_steps)
 
@@ -540,17 +558,34 @@ class _MSTLBase(Forecaster):
                 f"MSTL inapplicable: no declared period with >=2 cycles in {len(df)} train "
                 f"points (declared {case.seasonalities})"
             )
-        # MSTL takes an int for a single period or a list for multiple.
-        season_length = periods[0] if len(periods) == 1 else periods
+        self._freq = case.freq
+        self._periods = periods
 
-        self._sf = StatsForecast(
-            models=[
-                MSTL(season_length=season_length, trend_forecaster=self._make_trend_forecaster())
-            ],
-            freq=case.freq,
-            n_jobs=1,
-        )
-        self._sf.fit(df)
+        y = df["y"].to_numpy(dtype=float)
+        decomposition = MSTL(y, periods=periods).fit()
+        seasonal = np.asarray(decomposition.seasonal)
+        if seasonal.ndim == 1:
+            seasonal = seasonal[:, None]
+
+        ds = pd.DatetimeIndex(df["ds"])
+        self._seasonal_lookup = [
+            pd.Series(seasonal[:, i]).groupby(position_in_cycle(case.freq, p, ds)).mean()
+            for i, p in enumerate(periods)
+        ]
+
+        train_adj = df[["unique_id", "ds"]].copy()
+        train_adj["y"] = y - seasonal.sum(axis=1)
+        self._trend_forecaster = self._make_trend_forecaster()
+        self._trend_forecaster.fit(case, train_adj)
+
+    def _seasonal_component(self, ds: pd.DatetimeIndex) -> np.ndarray:
+        from tsforecastbench.data.seasonality import position_in_cycle
+
+        total = np.zeros(len(ds))
+        for p, lookup in zip(self._periods, self._seasonal_lookup, strict=True):
+            keys = position_in_cycle(self._freq, p, ds)
+            total += np.array([lookup.get(k, 0.0) for k in keys], dtype=np.float64)
+        return total
 
     def predict(
         self,
@@ -559,35 +594,38 @@ class _MSTLBase(Forecaster):
         horizon: int,
         future_exog: pd.DataFrame | None = None,
     ) -> pd.DataFrame:
-        fcst = self._sf.predict(h=horizon)
-        y_hat = fcst["MSTL"].to_numpy().astype(np.float64)
-        future = self._future_index(case, history["ds"].max(), horizon)
+        hist_ds = pd.DatetimeIndex(pd.to_datetime(history["ds"]))
+        history_adj = history.copy()
+        history_adj["y"] = pd.to_numeric(history["y"], errors="coerce").to_numpy(
+            dtype=float
+        ) - self._seasonal_component(hist_ds)
+        trend_preds = self._trend_forecaster.predict(
+            case, history_adj, horizon, future_exog=future_exog
+        )
+        future = pd.DatetimeIndex(trend_preds["ds"])
+        y_hat = trend_preds["y_hat"].to_numpy(dtype=float) + self._seasonal_component(future)
         return pd.DataFrame({"ds": future, "y_hat": y_hat})
 
 
 class MSTLAutoETSForecaster(_MSTLBase):
-    """MSTL with an AutoETS trend-cycle/residual forecaster (statsforecast's default)."""
+    """MSTL with a fit-once AutoETS trend-cycle/residual forecaster."""
 
     name = "MSTL-ETS"
-    library = "statsforecast (Nixtla) — trend forecaster: AutoETS"
+    library = "statsmodels (MSTL, frozen once) — trend forecaster: AutoETS"
 
-    def _make_trend_forecaster(self):
-        from statsforecast.models import AutoETS
-
-        # model="ZZN": auto error/trend, no seasonal component — MSTL already removed
-        # seasonality, and it rejects a seasonally-adjusting trend forecaster.
-        return AutoETS(model="ZZN")
+    def _make_trend_forecaster(self) -> Forecaster:
+        # Non-seasonal (season_length=1): MSTL already removed seasonality, and the
+        # trend forecaster should not re-fit a seasonal component of its own.
+        return AutoETSForecaster()
 
 
 class MSTLAutoARIMAForecaster(_MSTLBase):
-    """MSTL with an AutoARIMA trend-cycle/residual forecaster. Capped tighter than
-    MSTL-ETS because the ARIMA stepwise search is the more expensive fit."""
+    """MSTL with a fit-once AutoARIMA trend-cycle/residual forecaster. Capped tighter
+    than MSTL-ETS because the ARIMA stepwise search is the more expensive fit."""
 
     name = "MSTL-ARIMA"
     max_train_steps = 5000
-    library = "statsforecast (Nixtla) — trend forecaster: AutoARIMA"
+    library = "statsmodels (MSTL, frozen once) — trend forecaster: AutoARIMA"
 
-    def _make_trend_forecaster(self):
-        from statsforecast.models import AutoARIMA
-
-        return AutoARIMA()
+    def _make_trend_forecaster(self) -> Forecaster:
+        return AutoARIMAForecaster()
