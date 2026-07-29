@@ -8,6 +8,25 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-29 — Converted classical methods to fit once and roll forward, matching ML/DL/FM
+
+The classical methods (AutoARIMA, AutoETS, Theta, TBATS, MSTL-ETS, MSTL-ARIMA) used to
+refit from scratch at every rolling origin, because statsforecast's `Auto*` wrappers
+couple order/parameter search to every `.fit()` call with no way to hold parameters fixed
+while conditioning on new history — an implementation artifact, not a property of these
+models. All six are now `is_global=True`: order or spec search runs once via
+statsforecast, then a statsmodels model (SARIMAX, ETSModel, or a custom TBATS-inspired
+`UnobservedComponents` state-space model) holds those parameters fixed while conditioning
+on each origin's growing history through a Kalman filter or refilter, the same
+fixed-parameter roll-forward AutoTheta's own `forward()` already did. TBATS is now a
+documented simplification of the published estimator (AR errors instead of full ARMA,
+harmonics/AR order picked by a one-time AIC comparison instead of an exhaustive search)
+rather than statsforecast's implementation, and MSTL now freezes its seasonal
+decomposition as a position-in-cycle lookup at fit time instead of redoing STL every
+origin. This removes the main inconsistency between classical and ML/DL/FM methods in
+the benchmark's fit/predict timing and history handling; existing classical results are
+stale and need a pilot re-run.
+
 ## 2026-07-28 — Flagged local methods in the case panel as refit at every origin
 
 The case panel already warned when a selected method is a zero-shot foundation model, since it
