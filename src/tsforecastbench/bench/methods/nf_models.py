@@ -18,6 +18,7 @@ import numpy as np
 import pandas as pd
 
 from tsforecastbench.bench.methods.base import Forecaster, lookback_for
+from tsforecastbench.bench.methods.scorecard import Capabilities, Level, Scorecard
 from tsforecastbench.data.schema import Case
 
 _MAX_STEPS = 500
@@ -59,6 +60,24 @@ class _NFBase(Forecaster):
         "nf = NeuralForecast(models=[model], freq=case.freq)\n"
         "nf.fit(train_df)                     # train_df: unique_id, ds, y\n"
         "y_hat = nf.predict()[model_name]"
+    )
+    # Shared by all three: window models that learn trend and several interacting periods
+    # from the lookback. neuralforecast supports future covariates for some of these
+    # architectures, but this wrapper wires none of them, so there is no pathway here.
+    capabilities = Capabilities(
+        trend=True, seasonality=True, multiple_seasonality=True, exogenous=False
+    )
+    # A full pytorch_lightning training loop per case, heavier than the custom torch models
+    # in torchdl.py, against one forward pass at predict. Tuning effort is High as the cost
+    # of doing it properly: these run on architecture defaults regardless of the series'
+    # scale or frequency, which is a limitation rather than an absence of knobs.
+    scorecard = Scorecard(
+        history_requirements=Level.HIGH,
+        interpretability=Level.LOW,
+        fit_cost=Level.HIGH,
+        inference_cost=Level.LOW,
+        tuning_effort=Level.HIGH,
+        robustness_to_noise=Level.MEDIUM,
     )
 
     def fit(self, case: Case, train: pd.DataFrame) -> None:
