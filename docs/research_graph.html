@@ -1887,24 +1887,46 @@
     {
       "nodes": [
         "2026-07-08-interactive-app",
-        "2026-07-09-persist-real-forecasts",
         "2026-07-09-streamlit-to-dash",
-        "2026-07-09-two-app-bugs",
-        "2026-07-09-multi-snapshot-panel",
         "2026-07-09-case-context-panel",
+        "2026-07-09-multi-snapshot-panel",
+        "2026-07-09-two-app-bugs",
+        "2026-07-09-persist-real-forecasts",
+        "2026-07-10-extended-history-viewer-toggle",
+        "2026-07-10-is-global-flag-inert",
+        "2026-07-10-bottom-method-info-panel",
         "2026-07-10-merge-case-snapshot-panels",
         "2026-07-10-move-snapshot-vertical-column",
-        "2026-07-15-react-training-test-axis-fix",
-        "2026-07-15-react-dash-parity-gaps",
+        "2026-07-10-extended-history-per-segment",
+        "2026-07-13-method-info-library-cost",
+        "2026-07-13-fit-once-not-refit",
+        "2026-07-13-metrics-mape-nse-kge",
+        "2026-07-14-three-fms-added",
         "2026-07-15-react-port-started",
+        "2026-07-15-fm-exo-variants",
+        "2026-07-15-react-dash-parity-gaps",
+        "2026-07-15-react-training-test-axis-fix",
         "2026-07-19-eda-react-pages-workflow",
         "2026-07-20-sidebar-collapsed-default",
         "2026-07-20-training-time-heatmap-overlay",
         "2026-07-21-training-time-overlay-disabled-short-matrices",
+        "2026-07-21-legacy-dash-app-removed",
         "2026-07-21-app-instructions-moved-into-app",
-        "2026-07-21-legacy-dash-app-removed"
+        "2026-07-21-domain-controls-follow-narrowing",
+        "2026-07-27-fm-context-length-hardcoding",
+        "2026-07-27-unified-heatmap-color-scheme",
+        "2026-07-27-fm-split-caveat-in-case-panel",
+        "2026-07-28-fit-predict-timing-split",
+        "2026-07-28-fm-context-full-history",
+        "2026-07-28-local-method-caveat-in-case-panel",
+        "2026-07-28-fm-context-seasonal-periods",
+        "2026-07-28-fm-context-fixed-window",
+        "2026-07-29-tbats-fit-once",
+        "2026-07-29-method-scorecards",
+        "2026-07-29-classical-fit-once",
+        "2026-07-29-gaps-capability"
       ],
-      "label": "The results-viewer's long migration: Streamlit → Dash → a standalone React app, ending with Dash retired"
+      "label": "The results-viewer app's whole arc: Streamlit → Dash → a standalone React app, the method-info panel growing into a full scorecard, foundation models arriving and their context length settling down, and every method family reaching fit-once discipline"
     },
     {
       "nodes": [
@@ -1929,9 +1951,12 @@
         "2026-07-03-ensemble-baselines",
         "2026-07-08-mstl-statsmodels-swap",
         "2026-07-10-mlp-scaling-fix",
-        "2026-07-10-dedupe-method-helpers"
+        "2026-07-10-dedupe-method-helpers",
+        "2026-07-27-mlp-recursive-divergence-bounded",
+        "2026-07-29-mlp-exo-variant",
+        "2026-07-29-mlp-exo-not-in-pilot"
       ],
-      "label": "Auditing the method suite, then working through what it found: seasonal baselines, gap handling, ensembles, cleanup"
+      "label": "Auditing the method suite, then working through what it found — seasonal baselines, gap handling, ensembles, cleanup — and, later, MLP's own recurring rough edges: scaling, divergence, a missing +exo variant and pilot registration"
     },
     {
       "nodes": [
@@ -1963,37 +1988,6 @@
         "2026-07-20-heatmap-bleed-sidebar-fix"
       ],
       "label": "Making the case and method-info panels resizable, and chasing the layout bugs that resizing introduced"
-    },
-    {
-      "nodes": [
-        "2026-07-10-extended-history-viewer-toggle",
-        "2026-07-10-extended-history-per-segment",
-        "2026-07-10-is-global-flag-inert",
-        "2026-07-13-fit-once-not-refit"
-      ],
-      "label": "Letting global methods train on more history than the shared curated span, from an inert flag to a real gain"
-    },
-    {
-      "nodes": [
-        "2026-07-14-three-fms-added",
-        "2026-07-15-fm-exo-variants"
-      ],
-      "label": "Adding zero-shot foundation models, then giving the covariate-capable ones exogenous variants"
-    },
-    {
-      "nodes": [
-        "2026-07-13-metrics-mape-nse-kge",
-        "2026-07-21-domain-controls-follow-narrowing"
-      ],
-      "label": "Adding hydrology-specific metrics, then keeping the sidebar controls honest about which cases qualify"
-    },
-    {
-      "nodes": [
-        "2026-07-10-bottom-method-info-panel",
-        "2026-07-13-method-info-library-cost",
-        "2026-07-29-method-scorecards"
-      ],
-      "label": "Growing the method-info panel from a placeholder blurb into real implementation detail"
     }
   ]
 }
@@ -2488,19 +2482,34 @@
       return 8 + Math.min(subDegree.get(d.id) || 0, 6) * 1.6;
     }
 
-    const subDateExtent = d3.extent(subNodes, (d) => new Date(d.date));
-    const subX = d3.scaleTime().domain(subDateExtent).range([60, Math.max(140, w - 60)]);
+    // Radial layout: nodes take a fixed angle (oldest to newest, clockwise from
+    // the top) around an ellipse sized to the panel, so a cluster reads as a
+    // ring rather than a single stretched-out horizontal timeline.
+    const sortedByDate = subNodes
+      .slice()
+      .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+    const angleStep = (2 * Math.PI) / sortedByDate.length;
+    sortedByDate.forEach((d, i) => {
+      d.angle = i * angleStep - Math.PI / 2;
+    });
+
+    const cx = w / 2;
+    const cy = h / 2;
+    const rx = Math.max(80, w / 2 - 90);
+    const ry = Math.max(70, h / 2 - 70);
+    const idealX = (d) => cx + rx * Math.cos(d.angle);
+    const idealY = (d) => cy + ry * Math.sin(d.angle);
 
     clusterSim = d3
       .forceSimulation(subNodes)
       .force(
         "link",
-        d3.forceLink(subLinks).id((d) => d.id).distance(70).strength(0.5)
+        d3.forceLink(subLinks).id((d) => d.id).distance(60).strength(0.25)
       )
-      .force("charge", d3.forceManyBody().strength(-180))
+      .force("charge", d3.forceManyBody().strength(-140))
       .force("collide", d3.forceCollide().radius((d) => subRadiusFor(d) + 10))
-      .force("x", d3.forceX((d) => subX(new Date(d.date))).strength(0.15))
-      .force("y", d3.forceY(h / 2).strength(0.06));
+      .force("x", d3.forceX(idealX).strength(0.35))
+      .force("y", d3.forceY(idealY).strength(0.35));
 
     const subLink = lg
       .selectAll("path")
@@ -2515,7 +2524,8 @@
     subNode.append("circle").attr("r", subRadiusFor).attr("fill", (d) => categoryColor(d.category));
     subNode
       .append("text")
-      .attr("x", (d) => subRadiusFor(d) + 4)
+      .attr("text-anchor", (d) => (Math.cos(d.angle) < -0.15 ? "end" : "start"))
+      .attr("x", (d) => (Math.cos(d.angle) < -0.15 ? -(subRadiusFor(d) + 4) : subRadiusFor(d) + 4))
       .attr("y", 3)
       .text((d) => (d.title.length > 46 ? d.title.slice(0, 44) + "…" : d.title));
 
