@@ -7,6 +7,9 @@ Each converted forecaster (AutoARIMA, AutoETS, Theta, TBATS, MSTL-ETS, MSTL-ARIM
   2. Never re-run its order/spec search or numerical optimizer inside `predict` -- proven
      by spying on the relevant library entry point and checking it is called exactly once
      across several `predict` calls, all triggered by the single `fit` call.
+  3. Choose a spec that stays valid for the whole history `predict` will be handed, not
+     just for the capped window the search ran on -- the fixture below plants a zero
+     before that window, which is what `sewerlevel_bellinge` does in practice.
 """
 
 from __future__ import annotations
@@ -51,6 +54,17 @@ def _synthetic_series(n: int = 500, period: int = 24, seed: int = 0) -> pd.DataF
     y = 50 + 5 * np.sin(2 * np.pi * t / period) + np.cumsum(rng.normal(scale=0.2, size=n))
     ds = pd.date_range("2020-01-01", periods=n, freq="h")
     return pd.DataFrame({"unique_id": "a", "ds": ds, "y": y})
+
+
+def _series_with_zero_before_the_search_window(n: int = 500, window: int = 200) -> pd.DataFrame:
+    """Strictly positive over the most recent `window` points, but dipping to zero before
+    them -- so a spec search capped at `window` sees only positive data while `predict`,
+    handed the whole record, sees the zero. `sewerlevel_bellinge` has exactly this shape:
+    one 0.000 reading, ~40k points before the end of train+val.
+    """
+    df = _synthetic_series(n=n)
+    df.loc[(n - window) // 2, "y"] = 0.0
+    return df
 
 
 def _assert_conditions_on_growing_history(method, case, train) -> None:
@@ -157,6 +171,46 @@ def test_tbats_never_reoptimizes_in_predict():
         _multi_origin_predict(method, case, train)
 
     assert optimizer.call_count == 0
+
+
+def test_tbats_transform_stays_valid_for_history_before_the_search_window():
+    case = _case([24])
+    train = _series_with_zero_before_the_search_window()
+    method = TBATSForecaster(season_length=24, max_train_steps=200)
+    method.fit(case, train)
+
+    assert method._pt.method == "yeo-johnson"
+    y_hat = method.predict(case, train, 6)["y_hat"].to_numpy()
+    assert np.isfinite(y_hat).all()
+
+
+def test_tbats_keeps_box_cox_when_the_whole_record_is_positive():
+    case = _case([24])
+    method = TBATSForecaster(season_length=24, max_train_steps=200)
+    method.fit(case, _synthetic_series())
+
+    assert method._pt.method == "box-cox"
+
+
+def test_auto_ets_spec_stays_valid_for_history_before_the_search_window():
+    case = _case([24])
+    train = _series_with_zero_before_the_search_window()
+    method = AutoETSForecaster(season_length=24, max_train_steps=200)
+    method.fit(case, train)
+
+    assert "mul" not in (method._error, method._trend, method._seasonal)
+    y_hat = method.predict(case, train, 6)["y_hat"].to_numpy()
+    assert np.isfinite(y_hat).all()
+
+
+def test_auto_ets_keeps_a_multiplicative_spec_when_the_whole_record_is_positive():
+    case = _case([24])
+    method = AutoETSForecaster(season_length=24, max_train_steps=200)
+    method.fit(case, _synthetic_series())
+
+    # The downgrade above is driven by the record's sign, not applied unconditionally: on
+    # this series statsforecast picks a multiplicative error, and it must survive.
+    assert method._error == "mul"
 
 
 def test_mstl_ets_conditions_on_growing_history():
