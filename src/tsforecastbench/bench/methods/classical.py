@@ -339,6 +339,12 @@ class ThetaForecaster(Forecaster):
     """Theta method (auto-optimized) via statsforecast — a strong, cheap classical
     benchmark, often the one to beat among non-ML methods.
 
+    Fit-once: AutoTheta's own `forward(y, h)` re-runs its fixed-parameter recursive
+    filter over a new series without touching the optimizer, so `fit` picks the
+    deseasonalization/parameters once and `predict` just calls `forward` on each origin's
+    growing history — no re-instantiation or re-fitting needed, unlike AutoARIMA/AutoETS
+    which needed a second statsmodels fit to get a form that could hold parameters fixed.
+
     Seasonal by default: AutoTheta handles seasonality with a cheap classical
     decomposition (deseasonalize, fit, re-seasonalize) rather than a costly seasonal
     state, so — unlike AutoARIMA/AutoETS here — wiring the case's seasonal period in is
@@ -351,22 +357,24 @@ class ThetaForecaster(Forecaster):
 
     name = "Theta"
     family = "classical"
+    is_global = True
     library = "statsforecast (Nixtla)"
     compute_profile = (
-        "CPU only; a cheap deseasonalize/fit/re-seasonalize decomposition, typically "
-        "the fastest of the classical methods here (fit is capped at 8,000 points)."
+        "CPU only; a cheap deseasonalize/fit/re-seasonalize decomposition at fit time "
+        "(capped at 8,000 points); each origin after that is a cheap fixed-parameter "
+        "`forward` pass, no re-fitting."
     )
     limitations = (
         "Univariate: ignores exogenous inputs. Deseasonalization is a fixed classical "
         "decomposition rather than a learned model, so it can lag a genuinely "
-        "shifting seasonal shape."
+        "shifting seasonal shape. Parameters are fixed at fit time."
     )
     code_snippet = (
-        "from statsforecast import StatsForecast\n"
         "from statsforecast.models import AutoTheta\n\n"
-        "sf = StatsForecast(models=[AutoTheta(season_length=season_length)], freq=case.freq)\n"
-        "sf.fit(train_df)                     # train_df: unique_id, ds, y\n"
-        'y_hat = sf.predict(h=horizon)["AutoTheta"]'
+        "model = AutoTheta(season_length=season_length)\n"
+        "model.fit(train_y)                   # train_y: 1D array -- picks params once\n\n"
+        "# each origin: fixed-parameter filter over the growing history, no re-fit\n"
+        "y_hat = model.forward(history_y, horizon)['mean']"
     )
 
     def __init__(self, season_length: int | None = None, max_train_steps: int = 8000):
@@ -374,7 +382,6 @@ class ThetaForecaster(Forecaster):
         self.max_train_steps = max_train_steps
 
     def fit(self, case: Case, train: pd.DataFrame) -> None:
-        from statsforecast import StatsForecast
         from statsforecast.models import AutoTheta
 
         from tsforecastbench.data.seasonality import dominant_period
@@ -385,13 +392,8 @@ class ThetaForecaster(Forecaster):
             if self.season_length is not None
             else dominant_period(case.seasonalities, df["y"].to_numpy())
         )
-        self._sf = StatsForecast(
-            models=[AutoTheta(season_length=season_length)],
-            freq=case.freq,
-            n_jobs=1,
-        )
-        self._sf.fit(df)
-        self._col = "AutoTheta"
+        self._model = AutoTheta(season_length=season_length)
+        self._model.fit(df["y"].to_numpy(dtype=float))
 
     def predict(
         self,
@@ -400,8 +402,8 @@ class ThetaForecaster(Forecaster):
         horizon: int,
         future_exog: pd.DataFrame | None = None,
     ) -> pd.DataFrame:
-        fcst = self._sf.predict(h=horizon)
-        y_hat = fcst[self._col].to_numpy().astype(np.float64)
+        y = pd.to_numeric(history["y"], errors="coerce").ffill().bfill().to_numpy(dtype=float)
+        y_hat = self._model.forward(y, horizon)["mean"].astype(np.float64)
         future = self._future_index(case, history["ds"].max(), horizon)
         return pd.DataFrame({"ds": future, "y_hat": y_hat})
 
