@@ -2,13 +2,29 @@
 
 Three tractability choices, all standard practice:
 
-1. Fit once, roll forward. statsforecast's Auto* wrappers couple order/parameter search
-   to every `.fit()` call, but ARIMA, ETS, Theta, and TBATS are all mathematically
-   representable as fixed parameters plus a state that can be updated (filtered) through
-   new observations without re-estimation. So every forecaster here is `is_global`: order
-   or spec search runs once, in `fit`, and `predict` conditions on each rolling origin's
-   growing `history` by holding those parameters fixed (a Kalman/state filter pass, not a
-   re-fit) -- see each class's docstring for its specific fixed-parameter mechanism.
+1. Fit once, roll forward. statsforecast's `AutoARIMA`, `AutoETS`, `AutoTheta` and `MSTL`
+   all expose `forward(y, h)`: apply the already-fitted model to a new series. It reads the
+   fitted parameters straight back out (`ets_f(y, m, model=fitted)` takes alpha/beta/gamma/
+   phi and the initial state from the fit and runs one filter pass; `Arima(x=y,
+   model=fitted)` is the same apply-without-re-estimating path R's `forecast::Arima(x,
+   model=fit)` uses) and never calls an optimizer. So those four are `is_global`: the
+   order/spec search runs once in `fit`, and `predict` conditions on each rolling origin's
+   growing `history` through `forward`. TBATS is the exception -- statsforecast couples its
+   automatic component search to every `.fit()` and offers no `forward` -- so it stays
+   local, refit per origin; see its docstring.
+
+   Two things `forward` deliberately does *not* freeze, both fine and worth knowing:
+
+   - Deterministic decompositions are re-derived per origin. AutoTheta re-runs its
+     seasonality test and `seasonal_decompose` inside `forward`, and MSTL re-runs STL, both
+     over the origin's own history. No parameter is re-estimated -- this is the direct
+     analogue of the ML methods recomputing their sin/cos features per origin (see
+     `methods.ml`). One consequence for Theta: its decompose decision, and its
+     multiplicative-vs-additive choice, can differ between origins.
+   - The initial state stays pinned to the fit window's start (ETS's `init_state`, Theta's
+     `initial_smoothed`) while `predict` filters a history beginning earlier. Exponential
+     smoothing forgets initial conditions geometrically, so this washes out; it is a
+     caveat, not a defect.
 
 2. Non-seasonal by default. AutoARIMA with a seasonal period m fits SARIMA models whose
    cost explodes with m; seasonal ARIMA at sub-daily frequency (m=96 for 15-min, even
@@ -19,10 +35,20 @@ Three tractability choices, all standard practice:
    which deseasonalizes cheaply. Pass season_length explicitly to force a seasonal
    AutoARIMA/AutoETS fit on a low-period case.
 
-3. Capped training window. Order/spec-search cost grows with length, so we search on the
-   most recent max_train_steps observations. Truncating from the front does not move the
-   forecast origin, so test alignment is preserved; `predict`'s fixed-parameter roll-forward
-   is not capped this way -- it conditions on the real, uncapped history it is handed.
+3. Capped *search* window, uncapped roll-forward. Order/spec-search cost grows with length,
+   so we search on the most recent max_train_steps observations. Truncating from the front
+   does not move the forecast origin, so test alignment is preserved. `predict` is
+   deliberately *not* capped: it forwards over the whole history it is handed, because that
+   is what the fitted model's state at the origin actually implies, and truncating would
+   substitute an arbitrary re-initialization for it.
+
+   That costs real time, unevenly, and the benchmark reports it rather than engineering
+   around it -- `predict_seconds` is one of the numbers on display. On a 200,000-point
+   history: AutoARIMA ~0.03s and AutoETS ~0.01s per origin, but AutoTheta ~110s (superlinear
+   -- 0.02s at 5,000, 2.5s at 50,000) and MSTL ~28s for periods [24, 168], since STL cost
+   grows with n x period. A rolling run over a long record is therefore slow for Theta and
+   MSTL. That is a true fact about those methods at that history length, and capping their
+   context to hide it would also change their forecasts.
 """
 
 from __future__ import annotations
@@ -48,97 +74,26 @@ def _prepare_train(train: pd.DataFrame, max_train_steps: int) -> pd.DataFrame:
     return df
 
 
-def _record_is_strictly_positive(train: pd.DataFrame) -> bool:
-    """Whether the *whole* training record is strictly positive.
+class _ForwardForecaster(Forecaster):
+    """Shared fit/predict for the classical methods that roll forward via statsforecast's
+    `forward(y, h)` (see choice 1 in the module docstring).
 
-    Deliberately reads `train`, not `_prepare_train`'s capped window. A method that fits
-    once and rolls forward is handed a history reaching back before that window, so any
-    spec choice conditional on positivity (Box-Cox, multiplicative ETS components) has to
-    be made against the full record -- the recent tail can look strictly positive while an
-    earlier stretch dips to zero, and a spec chosen from the tail alone then fails on the
-    history `predict` receives.
-    """
-    y = pd.to_numeric(train["y"], errors="coerce").to_numpy(dtype=float)
-    return bool(np.all(y[np.isfinite(y)] > 0))
-
-
-class AutoARIMAForecaster(Forecaster):
-    """Order-search-once ARIMA: statsforecast picks the (S)ARIMA spec, statsmodels holds
-    the fixed-parameter Kalman filter that conditions on each origin's growing history.
-
-    statsforecast's own AutoARIMA is a from-scratch reimplementation, not a statsmodels
-    wrapper, so its fitted coefficients don't translate into statsmodels' parameterization
-    directly. Instead, `fit` uses statsforecast only for what it's good at — stepwise
-    order search — then fits `statsmodels.tsa.statespace.sarimax.SARIMAX` once on the same
-    window to get params in a form `.filter()` can hold fixed. `predict` rebuilds a SARIMAX
-    of that same order on the (longer) history it's handed and calls `.filter(params)` — a
-    Kalman recursion with no optimizer call — so the forecast genuinely reflects the new
-    observations without ever re-estimating order or coefficients.
+    Subclasses supply `_make_model`, returning an unfitted statsforecast model configured
+    for the case; everything else -- capping the search window, fitting on its values once,
+    and forwarding each origin's full history through the fitted model -- is identical across
+    them, so it lives here rather than being copied four times.
     """
 
-    name = "AutoARIMA"
     family = "classical"
     is_global = True
-    library = "statsforecast (Nixtla) for order search + statsmodels for fixed-param roll-forward"
-    compute_profile = (
-        "CPU only; a stepwise order search and one statsmodels fit at fit time (capped "
-        "at the most recent 5,000 points by default); each origin after that is a single "
-        "Kalman filter pass over the fixed order/parameters, no re-optimization."
-    )
-    limitations = (
-        "Non-seasonal by default (season_length=1) — a large seasonal period would "
-        "explode SARIMA's search cost, so seasonal structure isn't modeled unless you "
-        "pass season_length explicitly. Univariate: ignores exogenous inputs. Order and "
-        "coefficients are fixed at fit time; a structural change in the series after fit "
-        "is tracked through the Kalman state, not through re-estimation."
-    )
-    code_snippet = (
-        "from statsforecast import StatsForecast\n"
-        "from statsforecast.models import AutoARIMA\n"
-        "from statsmodels.tsa.statespace.sarimax import SARIMAX\n\n"
-        "sf = StatsForecast(models=[AutoARIMA(season_length=1)], freq=case.freq)\n"
-        "sf.fit(train_df)                     # train_df: unique_id, ds, y -- order search only\n"
-        "order, seasonal_order, trend = ...   # read off sf.fitted_[0, 0].model_\n"
-        "params = SARIMAX(train_y, order=order, seasonal_order=seasonal_order, trend=trend)\\\n"
-        "    .fit().params                    # one statsmodels fit for fixed params\n\n"
-        "# each origin: rebuild on the growing history, hold params fixed\n"
-        "y_hat = SARIMAX(history_y, order=order, seasonal_order=seasonal_order, trend=trend)\\\n"
-        "    .filter(params).forecast(horizon)"
-    )
 
-    def __init__(self, season_length: int = 1, max_train_steps: int = 5000):
-        self.season_length = season_length
-        self.max_train_steps = max_train_steps
+    def _make_model(self, case: Case, df: pd.DataFrame):
+        raise NotImplementedError
 
     def fit(self, case: Case, train: pd.DataFrame) -> None:
-        from statsforecast import StatsForecast
-        from statsforecast.models import AutoARIMA
-
         df = _prepare_train(train, self.max_train_steps)
-
-        sf = StatsForecast(
-            models=[AutoARIMA(season_length=self.season_length)],
-            freq=case.freq,
-            n_jobs=1,
-        )
-        sf.fit(df)
-        fitted = sf.fitted_[0, 0]
-        p, q, ar_p, ar_q, m, d, seasonal_d = (int(v) for v in fitted.model_["arma"])
-        self._order = (p, d, q)
-        self._seasonal_order = (ar_p, seasonal_d, ar_q, m) if m > 1 else (0, 0, 0, 0)
-        coef = fitted.model_["coef"]
-        self._trend = "t" if "drift" in coef else ("c" if "intercept" in coef else "n")
-
-        y = df["y"].to_numpy(dtype=float)
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            model = self._build_model(y)
-            self._params = model.fit(disp=False).params
-
-    def _build_model(self, y: np.ndarray):
-        from statsmodels.tsa.statespace.sarimax import SARIMAX
-
-        return SARIMAX(y, order=self._order, seasonal_order=self._seasonal_order, trend=self._trend)
+        self._model = self._make_model(case, df)
+        self._model.fit(df["y"].to_numpy(dtype=float))
 
     def predict(
         self,
@@ -148,237 +103,144 @@ class AutoARIMAForecaster(Forecaster):
         future_exog: pd.DataFrame | None = None,
     ) -> pd.DataFrame:
         y = pd.to_numeric(history["y"], errors="coerce").ffill().bfill().to_numpy(dtype=float)
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            res = self._build_model(y).filter(self._params)
-        y_hat = np.asarray(res.forecast(horizon), dtype=np.float64)
+        y_hat = np.asarray(self._model.forward(y, horizon)["mean"], dtype=np.float64)
         future = self._future_index(case, history["ds"].max(), horizon)
         return pd.DataFrame({"ds": future, "y_hat": y_hat})
 
 
-_ETS_LETTER = {"A": "add", "M": "mul", "N": None}
+class AutoARIMAForecaster(_ForwardForecaster):
+    """Stepwise-order-search ARIMA via statsforecast, fit once and rolled forward.
+
+    `fit` runs the stepwise order search once; each origin then calls `forward`, which
+    rebuilds the ARIMA recursion over that origin's history with the fitted order and
+    coefficients held fixed. That is statsforecast's own supported path (`Arima(x=y,
+    model=fitted)`), not a reimplementation, so the forecast is exactly what statsforecast
+    would produce for this model on this history.
+    """
+
+    name = "AutoARIMA"
+    library = "statsforecast (Nixtla)"
+    compute_profile = (
+        "CPU only; a stepwise order search at fit time, typically seconds per case (searched "
+        "on the most recent 5,000 points by default); each origin after that is one "
+        "fixed-parameter `forward` pass over that origin's whole history — ~0.03s even on a "
+        "200,000-point one, the cheapest roll-forward of the classical methods here."
+    )
+    limitations = (
+        "Non-seasonal by default (season_length=1) — a large seasonal period would "
+        "explode SARIMA's search cost, so seasonal structure isn't modeled unless you "
+        "pass season_length explicitly. Univariate: ignores exogenous inputs. Order and "
+        "coefficients are fixed at fit time, so a structural change in the series after "
+        "fit is tracked through the recursion's state, not through re-estimation."
+    )
+    code_snippet = (
+        "from statsforecast.models import AutoARIMA\n\n"
+        "model = AutoARIMA(season_length=1)\n"
+        "model.fit(train_y)                   # train_y: 1D array -- order search once\n\n"
+        "# each origin: fixed-parameter recursion over the growing history, no re-fit\n"
+        "y_hat = model.forward(history_y, horizon)['mean']"
+    )
+
+    def __init__(self, season_length: int = 1, max_train_steps: int = 5000):
+        self.season_length = season_length
+        self.max_train_steps = max_train_steps
+
+    def _make_model(self, case: Case, df: pd.DataFrame):
+        from statsforecast.models import AutoARIMA
+
+        return AutoARIMA(season_length=self.season_length)
 
 
-class AutoETSForecaster(Forecaster):
-    """Order-search-once ETS: statsforecast picks the error/trend/season spec,
-    statsmodels holds the fixed-parameter state that conditions on each origin's growing
-    history.
+class AutoETSForecaster(_ForwardForecaster):
+    """Exponential smoothing state space (auto-selected) via statsforecast, fit once and
+    rolled forward.
 
-    `fit` runs statsforecast's AutoETS once to choose the spec (error/trend/season type
-    letters + damped flag), then fits `statsmodels.tsa.exponential_smoothing.ets.ETSModel`
-    once on the same window for params in a form `.smooth()` can hold fixed. Unlike
-    AutoARIMA/SARIMAX, ETSModel has no incremental `.append()`/`.extend()`, so `predict`
-    rebuilds the model on the longer history and re-runs the full filter each origin
-    (still no optimizer call) — cheap relative to re-optimizing, but a real O(n) cost per
-    origin worth knowing about for very long histories.
+    `fit` searches the error/trend/season combinations once; each origin then calls
+    `forward`, which re-runs the smoothing recursion over that origin's history with the
+    selected spec and its smoothing parameters held fixed.
 
     Like AutoARIMA, season_length defaults to 1 (non-seasonal); set explicitly for
     cases where a small seasonal period is appropriate. max_train_steps caps fit cost.
     """
 
     name = "AutoETS"
-    family = "classical"
-    is_global = True
-    library = "statsforecast (Nixtla) for spec search + statsmodels for fixed-param roll-forward"
+    library = "statsforecast (Nixtla)"
     compute_profile = (
-        "CPU only; searches over error/trend/season state combinations plus one "
-        "statsmodels fit at fit time (capped at the most recent 5,000 points by "
-        "default); each origin after that re-filters the fixed spec/parameters over the "
-        "growing history — no re-optimization, but a full O(n) refilter (ETSModel has no "
-        "incremental update), unlike AutoARIMA's cheaper Kalman-filter roll-forward."
+        "CPU only; searches over error/trend/season state combinations at fit time, "
+        "typically seconds per case (searched on the most recent 5,000 points by default); "
+        "each origin after that is one fixed-parameter `forward` pass over that origin's "
+        "whole history — ~0.01s even on a 200,000-point one."
     )
     limitations = (
         "Non-seasonal by default (season_length=1), like AutoARIMA — its seasonal "
         "state grows with the period, so a large seasonal period is impractical unless "
         "you pass season_length explicitly. Univariate: ignores exogenous inputs. Spec "
-        "and coefficients are fixed at fit time, so on a series that is not strictly "
-        "positive anywhere in its record the spec is restricted to additive components — "
-        "a multiplicative one could not be filtered over the full history."
+        "and smoothing parameters are fixed at fit time."
     )
     code_snippet = (
-        "from statsforecast import StatsForecast\n"
-        "from statsforecast.models import AutoETS\n"
-        "from statsmodels.tsa.exponential_smoothing.ets import ETSModel\n\n"
-        "sf = StatsForecast(models=[AutoETS(season_length=1)], freq=case.freq)\n"
-        "sf.fit(train_df)                     # train_df: unique_id, ds, y -- spec search only\n"
-        "spec = ...                           # read off sf.fitted_[0, 0].model_['components']\n"
-        "params = ETSModel(train_y, **spec).fit().params   # one statsmodels fit for fixed params\n\n"
-        "# each origin: rebuild on the growing history, hold params fixed\n"
-        "y_hat = ETSModel(history_y, **spec).smooth(params).forecast(horizon)"
+        "from statsforecast.models import AutoETS\n\n"
+        "model = AutoETS(season_length=1)\n"
+        "model.fit(train_y)                   # train_y: 1D array -- spec search once\n\n"
+        "# each origin: fixed-parameter smoothing over the growing history, no re-fit\n"
+        "y_hat = model.forward(history_y, horizon)['mean']"
     )
 
     def __init__(self, season_length: int = 1, max_train_steps: int = 5000):
         self.season_length = season_length
         self.max_train_steps = max_train_steps
 
-    def fit(self, case: Case, train: pd.DataFrame) -> None:
-        from statsforecast import StatsForecast
+    def _make_model(self, case: Case, df: pd.DataFrame):
         from statsforecast.models import AutoETS
 
-        df = _prepare_train(train, self.max_train_steps)
-
-        sf = StatsForecast(
-            models=[AutoETS(season_length=self.season_length)],
-            freq=case.freq,
-            n_jobs=1,
-        )
-        sf.fit(df)
-        fitted = sf.fitted_[0, 0]
-        error, trend, season, damped_flag = fitted.model_["components"]
-        # statsforecast only offers multiplicative components when the series it searched
-        # on is strictly positive, and ETSModel refuses to filter a multiplicative spec
-        # over non-positive data at all. The search saw only the capped window, so re-apply
-        # that admissibility rule against the full record and fall back to the additive
-        # form of any component the record rules out.
-        if not _record_is_strictly_positive(train):
-            error, trend, season = ("A" if c == "M" else c for c in (error, trend, season))
-        self._error = _ETS_LETTER[error]
-        self._trend = _ETS_LETTER[trend]
-        self._seasonal = _ETS_LETTER[season]
-        self._damped = damped_flag == "D"
-        self._season_periods = self.season_length if self._seasonal is not None else None
-
-        y = df["y"].to_numpy(dtype=float)
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            model = self._build_model(y)
-            self._params = model.fit(disp=False).params
-
-    def _build_model(self, y: np.ndarray):
-        from statsmodels.tsa.exponential_smoothing.ets import ETSModel
-
-        return ETSModel(
-            y,
-            error=self._error,
-            trend=self._trend,
-            damped_trend=self._damped,
-            seasonal=self._seasonal,
-            seasonal_periods=self._season_periods,
-        )
-
-    def predict(
-        self,
-        case: Case,
-        history: pd.DataFrame,
-        horizon: int,
-        future_exog: pd.DataFrame | None = None,
-    ) -> pd.DataFrame:
-        y = pd.to_numeric(history["y"], errors="coerce").ffill().bfill().to_numpy(dtype=float)
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            res = self._build_model(y).smooth(self._params)
-        y_hat = np.asarray(res.forecast(horizon), dtype=np.float64)
-        future = self._future_index(case, history["ds"].max(), horizon)
-        return pd.DataFrame({"ds": future, "y_hat": y_hat})
-
-
-def _select_tbats_spec(
-    y: np.ndarray, periods: list[int]
-) -> tuple[list[int], int, np.ndarray, float]:
-    """Harmonics-per-period and AR-error order for `TBATSForecaster`, chosen once by AIC
-    over a couple of candidates each — affordable now that this fit runs once per case
-    rather than once per rolling origin, unlike TBATS's own automatic component search.
-
-    Returns `(harmonics, ar_order, params, aic)` for the winning spec so `fit` doesn't
-    need to refit it a second time.
-    """
-    import itertools
-
-    from statsmodels.tsa.statespace.structural import UnobservedComponents
-
-    harmonics_candidates = [sorted({1, min(3, p // 2)}) for p in periods]
-    ar_candidates = (0, 1)
-
-    best_aic = np.inf
-    best: tuple[list[int], int, np.ndarray, float] | None = None
-    for harmonics in itertools.product(*harmonics_candidates):
-        freq_seasonal = [
-            {"period": p, "harmonics": h} for p, h in zip(periods, harmonics, strict=True)
-        ]
-        for ar_order in ar_candidates:
-            try:
-                with warnings.catch_warnings():
-                    warnings.simplefilter("ignore")
-                    res = UnobservedComponents(
-                        y,
-                        level="local linear trend",
-                        freq_seasonal=freq_seasonal or None,
-                        autoregressive=ar_order or None,
-                    ).fit(disp=False)
-            except Exception:
-                continue
-            if res.aic < best_aic:
-                best_aic = res.aic
-                best = (list(harmonics), ar_order, res.params, res.aic)
-    if best is None:
-        raise ValueError("TBATS: no candidate spec converged")
-    return best
+        return AutoETS(season_length=self.season_length)
 
 
 class TBATSForecaster(Forecaster):
-    """Custom Box-Cox/Yeo-Johnson + trigonometric-seasonal + AR-errors state-space model,
-    inspired by TBATS but fit once rather than reimplementing statsforecast's per-origin
-    TBATS (which couples its own automatic component search to every fit call).
+    """TBATS (Trigonometric, Box-Cox, ARMA, Trend, Seasonal) via statsforecast.
 
-    Built directly on `statsmodels.tsa.statespace.structural.UnobservedComponents`: a
-    local linear trend, one harmonic (trigonometric) seasonal block per declared period,
-    and AR errors in place of TBATS's full ARMA errors. `fit` picks the transform, the
-    harmonics per period, and the AR order once (see `_select_tbats_spec`), then fits the
-    model once for parameters `predict` holds fixed while rebuilding on each origin's
-    growing history — the same fixed-parameter roll-forward as AutoARIMA/AutoETS above.
-    This is a documented simplification relative to the published TBATS estimator (AR
-    errors instead of full ARMA, no automatic component-inclusion search), not
-    statsforecast's implementation; `name` stays "TBATS" for continuity of existing
-    result columns.
-
+    Handles complex and multiple seasonal patterns via trigonometric terms.
     season_length accepts an int, a list of ints (e.g. [24, 168] for
     daily+weekly in hourly data), or None to use the case's declared
-    dominant period (1, non-seasonal, when seasonalities = []). Periods without at least
-    2 full cycles in the training window are dropped, same as MSTL below.
+    dominant period (1, non-seasonal, when seasonalities = []).
     max_train_steps is set lower than other classicals because TBATS fit
     cost is substantially higher.
 
+    The one classical method here that is *not* `is_global`. statsforecast couples TBATS's
+    automatic component search to every `.fit()` call and exposes no `forward`, so there is
+    no way to hold its parameters fixed while conditioning on new history -- the only
+    fit-once option would be to substitute a different, simplified model under the TBATS
+    name, which would stop the column meaning what it says. So it is refit at each rolling
+    origin instead, and its numbers carry the caveat in `limitations` below.
+
     When the training data contains non-positive values, a Yeo-Johnson
-    power transform is used in place of Box-Cox before fitting and inverted on the
-    forecasts, since Box-Cox requires strictly positive data. The transform (and its
-    fitted parameter) is chosen once from the fit-time window and reused unchanged at
-    every origin.
+    power transform is applied before fitting and inverted on the forecasts,
+    since TBATS's internal Box-Cox transform requires strictly positive data.
     """
 
     name = "TBATS"
     family = "classical"
-    is_global = True
-    library = (
-        "statsmodels (custom Box-Cox/Yeo-Johnson + trigonometric-seasonal + AR-errors "
-        "state-space model, inspired by TBATS)"
-    )
+    library = "statsforecast (Nixtla)"
     compute_profile = (
-        "CPU only; the heaviest of the classical methods here at fit time — a small "
-        "one-time AIC comparison over harmonics/AR-order candidates, fit on a smaller "
-        "window (3,000 points) than its siblings; each origin after that is a single "
-        "Kalman filter pass over the fixed spec/parameters, no re-optimization."
+        "CPU only; the heaviest of the classical methods here, so it's fit on a "
+        "smaller window (3,000 points) than its siblings — still typically seconds "
+        "per case, but noticeably slower than AutoARIMA/AutoETS/Theta. Refit at every "
+        "rolling origin, so `fit_seconds` is the cost of one such refit."
     )
     limitations = (
-        "Univariate: ignores exogenous inputs. A custom simplification of the published "
-        "TBATS estimator, not statsforecast's implementation: AR errors instead of full "
-        "ARMA, and harmonics/AR order chosen by a small one-time AIC comparison rather "
-        "than TBATS's exhaustive automatic component search. Its Box-Cox transform "
-        "assumes strictly positive data; a Yeo-Johnson fallback (see below) handles "
-        "series that dip to zero or negative. Transform and spec/parameters are fixed "
-        "at fit time."
+        "Univariate: ignores exogenous inputs. Its internal Box-Cox transform assumes "
+        "strictly positive data; a Yeo-Johnson fallback (see below) handles series "
+        "that dip to zero or negative. Unlike the other classical methods, this one is "
+        "refit from scratch at every rolling origin — statsforecast ties its component "
+        "search to each fit and offers no way to roll a fitted TBATS forward — so it "
+        "re-estimates on more recent data than the fit-once methods do, and its accuracy "
+        "is not measured under quite the same protocol as theirs."
     )
     code_snippet = (
-        "from statsmodels.tsa.statespace.structural import UnobservedComponents\n\n"
-        "spec = dict(\n"
-        "    level='local linear trend',\n"
-        "    freq_seasonal=[{'period': p, 'harmonics': k_p} for p in periods],\n"
-        "    autoregressive=ar_order,          # k_p, ar_order chosen once by AIC\n"
-        ")\n"
-        "params = UnobservedComponents(train_y_transformed, **spec).fit().params\n\n"
-        "# each origin: rebuild on the growing history, hold params fixed\n"
-        "y_hat_t = UnobservedComponents(history_y_transformed, **spec)\\\n"
-        "    .smooth(params).forecast(horizon)\n"
-        "y_hat = power_transformer.inverse_transform(y_hat_t)"
+        "from statsforecast import StatsForecast\n"
+        "from statsforecast.models import TBATS\n\n"
+        "sf = StatsForecast(models=[TBATS(season_length=season_length)], freq=case.freq)\n"
+        "sf.fit(train_df)                     # train_df: unique_id, ds, y\n"
+        'y_hat = sf.predict(h=horizon)["TBATS"]'
     )
 
     def __init__(self, season_length: int | list[int] | None = None, max_train_steps: int = 3000):
@@ -387,42 +249,43 @@ class TBATSForecaster(Forecaster):
 
     def fit(self, case: Case, train: pd.DataFrame) -> None:
         from sklearn.preprocessing import PowerTransformer
+        from statsforecast import StatsForecast
+        from statsforecast.models import TBATS
 
         from tsforecastbench.data.seasonality import dominant_period
 
         df = _prepare_train(train, self.max_train_steps)
-        resolved = (
+        season_length = (
             self.season_length
             if self.season_length is not None
             else dominant_period(case.seasonalities, df["y"].to_numpy())
         )
-        periods = resolved if isinstance(resolved, list) else ([resolved] if resolved > 1 else [])
-        self._periods = sorted(p for p in periods if len(df) >= 2 * p)
 
-        # Box-Cox needs strictly positive data; Yeo-Johnson handles the rest. Chosen once
-        # here (statsforecast's TBATS used to redo this check on every per-origin refit), so
-        # it is decided against the full record rather than the capped window `predict` never
-        # sees the start of. The transform itself is still *fitted* on the window.
+        # Apply Yeo-Johnson when Box-Cox would be disabled (non-positive data).
         y_vals = df["y"].to_numpy(dtype=float)
-        method = "box-cox" if _record_is_strictly_positive(train) else "yeo-johnson"
-        self._pt = PowerTransformer(method=method, standardize=False)
-        y_t = self._pt.fit_transform(y_vals.reshape(-1, 1)).ravel()
+        if np.any(y_vals <= 0):
+            self._pt = PowerTransformer(method="yeo-johnson", standardize=False)
+            df["y"] = self._pt.fit_transform(y_vals.reshape(-1, 1)).ravel()
+        else:
+            self._pt = None
 
-        self._harmonics, self._ar_order, self._params, _aic = _select_tbats_spec(y_t, self._periods)
-
-    def _build_model(self, y: np.ndarray):
-        from statsmodels.tsa.statespace.structural import UnobservedComponents
-
-        freq_seasonal = [
-            {"period": p, "harmonics": h}
-            for p, h in zip(self._periods, self._harmonics, strict=True)
-        ]
-        return UnobservedComponents(
-            y,
-            level="local linear trend",
-            freq_seasonal=freq_seasonal or None,
-            autoregressive=self._ar_order or None,
+        # Yeo-Johnson output isn't guaranteed strictly positive (unlike Box-Cox), so
+        # TBATS's own positivity check can still trip and re-disable its Box-Cox with a
+        # UserWarning even though we've already handled the transform. Pass
+        # use_boxcox=False explicitly in that case to get the same outcome silently.
+        use_boxcox = not (self._pt is not None)
+        self._sf = StatsForecast(
+            models=[TBATS(season_length=season_length, use_boxcox=use_boxcox)],
+            freq=case.freq,
+            n_jobs=1,
         )
+        # TBATS's internal optimizer transiently overflows float64 while probing
+        # inadmissible parameter candidates it goes on to reject; harmless noise.
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore", message="overflow encountered in square", category=RuntimeWarning
+            )
+            self._sf.fit(df)
 
     def predict(
         self,
@@ -431,26 +294,23 @@ class TBATSForecaster(Forecaster):
         horizon: int,
         future_exog: pd.DataFrame | None = None,
     ) -> pd.DataFrame:
-        y_vals = pd.to_numeric(history["y"], errors="coerce").ffill().bfill().to_numpy(dtype=float)
-        y_t = self._pt.transform(y_vals.reshape(-1, 1)).ravel()
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            res = self._build_model(y_t).smooth(self._params)
-        y_hat_t = np.asarray(res.forecast(horizon), dtype=np.float64)
-        y_hat = self._pt.inverse_transform(y_hat_t.reshape(-1, 1)).ravel()
+        fcst = self._sf.predict(h=horizon)
+        y_hat = fcst["TBATS"].to_numpy().astype(np.float64)
+        if self._pt is not None:
+            y_hat = self._pt.inverse_transform(y_hat.reshape(-1, 1)).ravel()
         future = self._future_index(case, history["ds"].max(), horizon)
         return pd.DataFrame({"ds": future, "y_hat": y_hat})
 
 
-class ThetaForecaster(Forecaster):
+class ThetaForecaster(_ForwardForecaster):
     """Theta method (auto-optimized) via statsforecast — a strong, cheap classical
     benchmark, often the one to beat among non-ML methods.
 
-    Fit-once: AutoTheta's own `forward(y, h)` re-runs its fixed-parameter recursive
-    filter over a new series without touching the optimizer, so `fit` picks the
-    deseasonalization/parameters once and `predict` just calls `forward` on each origin's
-    growing history — no re-instantiation or re-fitting needed, unlike AutoARIMA/AutoETS
-    which needed a second statsmodels fit to get a form that could hold parameters fixed.
+    Fit once: `fit` optimizes the Theta parameters, and each origin calls `forward`, which
+    re-runs the recursive filter over that origin's history without touching the optimizer.
+    Note that `forward` also re-runs AutoTheta's seasonality test and seasonal
+    decomposition on that history, so the deseasonalization -- unlike the parameters -- is
+    re-derived per origin (see choice 1 in the module docstring).
 
     Seasonal by default: AutoTheta handles seasonality with a cheap classical
     decomposition (deseasonalize, fit, re-seasonalize) rather than a costly seasonal
@@ -463,18 +323,20 @@ class ThetaForecaster(Forecaster):
     """
 
     name = "Theta"
-    family = "classical"
-    is_global = True
     library = "statsforecast (Nixtla)"
     compute_profile = (
         "CPU only; a cheap deseasonalize/fit/re-seasonalize decomposition at fit time "
-        "(capped at 8,000 points); each origin after that is a cheap fixed-parameter "
-        "`forward` pass, no re-fitting."
+        "(searched on the most recent 8,000 points). Cheap to fit, but the most expensive "
+        "roll-forward here: each origin re-derives the decomposition and re-runs the "
+        "fixed-parameter filter over that origin's whole history, at a cost superlinear in "
+        "its length — 0.02s at 5,000 points, ~2.5s at 50,000, ~110s at 200,000."
     )
     limitations = (
-        "Univariate: ignores exogenous inputs. Deseasonalization is a fixed classical "
-        "decomposition rather than a learned model, so it can lag a genuinely "
-        "shifting seasonal shape. Parameters are fixed at fit time."
+        "Univariate: ignores exogenous inputs. Parameters are fixed at fit time, but the "
+        "deseasonalization is a fixed classical decomposition re-derived from each "
+        "origin's history rather than a learned model, so it can lag a genuinely shifting "
+        "seasonal shape and its multiplicative-vs-additive choice can differ between "
+        "origins."
     )
     code_snippet = (
         "from statsforecast.models import AutoTheta\n\n"
@@ -488,101 +350,75 @@ class ThetaForecaster(Forecaster):
         self.season_length = season_length
         self.max_train_steps = max_train_steps
 
-    def fit(self, case: Case, train: pd.DataFrame) -> None:
+    def _make_model(self, case: Case, df: pd.DataFrame):
         from statsforecast.models import AutoTheta
 
         from tsforecastbench.data.seasonality import dominant_period
 
-        df = _prepare_train(train, self.max_train_steps)
         season_length = (
             self.season_length
             if self.season_length is not None
             else dominant_period(case.seasonalities, df["y"].to_numpy())
         )
-        self._model = AutoTheta(season_length=season_length)
-        self._model.fit(df["y"].to_numpy(dtype=float))
-
-    def predict(
-        self,
-        case: Case,
-        history: pd.DataFrame,
-        horizon: int,
-        future_exog: pd.DataFrame | None = None,
-    ) -> pd.DataFrame:
-        y = pd.to_numeric(history["y"], errors="coerce").ffill().bfill().to_numpy(dtype=float)
-        y_hat = self._model.forward(y, horizon)["mean"].astype(np.float64)
-        future = self._future_index(case, history["ds"].max(), horizon)
-        return pd.DataFrame({"ds": future, "y_hat": y_hat})
+        return AutoTheta(season_length=season_length)
 
 
-class _MSTLBase(Forecaster):
-    """MSTL decomposition, frozen once, plus a fit-once classical trend-cycle/residual
-    forecaster from this module.
+class _MSTLBase(_ForwardForecaster):
+    """MSTL decomposition + a classical trend-cycle/residual forecaster (statsforecast),
+    fit once and rolled forward.
 
-    Decouples decomposition (frozen at fit time) from the trend forecaster (itself
-    fit-once, see `AutoETSForecaster`/`AutoARIMAForecaster` above): `fit` runs
-    `statsmodels.tsa.seasonal.MSTL` once on the training window, freezes each seasonal
-    component's shape as a position-in-cycle lookup (the same convention the Climatology
-    baseline and the sin/cos ML features use — see `data.seasonality.position_in_cycle`),
-    and fits the subclass's trend forecaster once on the seasonally-adjusted series.
-    `predict` looks up the frozen seasonal value at each timestamp of the growing
-    `history` and the forecast horizon, subtracts it from `history` before handing that to
-    the (already fit-once) trend forecaster, and adds it back to the trend forecaster's
-    output — so the seasonal shape is genuinely fixed at fit time, while the trend
-    forecaster still conditions on new observations exactly as it does standalone. This
-    is the seasonal classical counterpart to the non-seasonal AutoARIMA/AutoETS
-    baselines, and works uniformly across frequencies with large or multiple seasonal
-    periods (168h weekly, 365d yearly) that native seasonal ARIMA/ETS cannot afford.
+    MSTL removes one or more seasonal components with a fast STL-based decomposition,
+    fits the subclass's `trend_forecaster` on the seasonally-adjusted series, and
+    re-applies the seasonal pattern to the forecast. This is the seasonal classical
+    counterpart to the non-seasonal AutoARIMA/AutoETS baselines, and works uniformly
+    across frequencies with large or multiple seasonal periods (168h weekly, 365d yearly)
+    that native seasonal ARIMA/ETS cannot afford.
+
+    `fit` runs the decomposition and the trend fit once. Each origin then calls MSTL's
+    `forward`, which re-derives STL over that origin's history, forwards the
+    seasonally-adjusted series through the trend forecaster's own fixed-parameter
+    `forward`, and re-seasonalizes -- so the seasonal shape stays current while no
+    parameter is re-estimated.
 
     Periods come from the case's declared `seasonalities`, filtered to those the training
-    series is long enough to support (MSTL needs >=2 full cycles). If the case is declared
+    series is long enough to support (STL needs >=2 full cycles). If the case is declared
     non-seasonal or none survive, MSTL is genuinely inapplicable and fit raises rather than
     silently degenerating into the plain non-seasonal trend forecaster (which would just
     duplicate the AutoARIMA/AutoETS column).
     """
 
     name = "MSTL"
-    family = "classical"
-    is_global = True
     max_train_steps = 8000
-    library = "statsmodels (MSTL decomposition, frozen once)"
+    library = "statsforecast (Nixtla)"
     compute_profile = (
-        "CPU only; a fast STL-based decomposition plus the subclass's trend forecaster's "
-        "own fit cost, at fit time (capped at 8,000 points); each origin after that looks "
-        "up the frozen seasonal shape and calls the (already fit-once) trend forecaster's "
-        "predict — no decomposition or trend re-fitting."
+        "CPU only; a fast STL-based decomposition plus the subclass's trend forecaster, on "
+        "the most recent 8,000 points — typically seconds per case. Each origin after that "
+        "re-derives STL over that origin's whole history and forwards the trend model with "
+        "its parameters fixed; STL cost grows with history x period, so a long record is "
+        "slow — ~0.7s at 5,000 points up to ~28s at 200,000 for periods [24, 168]."
     )
     limitations = (
         "Univariate: ignores exogenous inputs. Needs at least 2 full cycles of each "
         "declared seasonal period in the training window to fit at all; raises rather "
         "than degenerating into a duplicate non-seasonal forecast when a case has no "
-        "seasonality it can use. The seasonal shape is a fixed lookup frozen at fit "
-        "time, not re-estimated as history grows."
+        "seasonality it can use. The trend model's parameters are fixed at fit time; the "
+        "STL decomposition around them is re-derived from each origin's full history, "
+        "which keeps the seasonal shape current but makes predict the expensive half on a "
+        "long record."
     )
     code_snippet = (
-        "from statsmodels.tsa.seasonal import MSTL\n"
-        "from tsforecastbench.data.seasonality import position_in_cycle\n\n"
-        "decomposition = MSTL(train_y, periods=periods).fit()   # once, at fit time\n"
-        "seasonal_lookup = {\n"
-        "    p: pd.Series(decomposition.seasonal[..., i]).groupby(\n"
-        "        position_in_cycle(case.freq, p, train_ds)).mean()\n"
-        "    for i, p in enumerate(periods)\n"
-        "}\n"
-        "trend_forecaster.fit(case, train_deseasonalized)       # once, e.g. AutoETS/AutoARIMA\n\n"
-        "# each origin: look up the frozen seasonal shape, add to the trend forecast\n"
-        "seasonal = sum(seasonal_lookup[p][position_in_cycle(case.freq, p, ds)] for p in periods)\n"
-        "y_hat = trend_forecaster.predict(case, history_deseasonalized, horizon)['y_hat'] + seasonal"
+        "from statsforecast.models import MSTL\n\n"
+        "model = MSTL(season_length=periods, trend_forecaster=<trend_forecaster>)\n"
+        "model.fit(train_y)                   # train_y: 1D array -- decompose + fit once\n\n"
+        "# each origin: re-derive STL, forward the fixed-parameter trend model, reseasonalize\n"
+        "y_hat = model.forward(history_y, horizon)['mean']"
     )
 
-    def _make_trend_forecaster(self) -> Forecaster:
+    def _make_trend_forecaster(self):
         raise NotImplementedError
 
-    def fit(self, case: Case, train: pd.DataFrame) -> None:
-        from statsmodels.tsa.seasonal import MSTL
-
-        from tsforecastbench.data.seasonality import position_in_cycle
-
-        df = _prepare_train(train, self.max_train_steps)
+    def _make_model(self, case: Case, df: pd.DataFrame):
+        from statsforecast.models import MSTL
 
         if not case.seasonalities:
             raise ValueError(f"MSTL inapplicable: case {case.id} is declared non-seasonal")
@@ -592,74 +428,35 @@ class _MSTLBase(Forecaster):
                 f"MSTL inapplicable: no declared period with >=2 cycles in {len(df)} train "
                 f"points (declared {case.seasonalities})"
             )
-        self._freq = case.freq
-        self._periods = periods
+        # MSTL takes an int for a single period or a list for multiple.
+        season_length = periods[0] if len(periods) == 1 else periods
 
-        y = df["y"].to_numpy(dtype=float)
-        decomposition = MSTL(y, periods=periods).fit()
-        seasonal = np.asarray(decomposition.seasonal)
-        if seasonal.ndim == 1:
-            seasonal = seasonal[:, None]
-
-        ds = pd.DatetimeIndex(df["ds"])
-        self._seasonal_lookup = [
-            pd.Series(seasonal[:, i]).groupby(position_in_cycle(case.freq, p, ds)).mean()
-            for i, p in enumerate(periods)
-        ]
-
-        train_adj = df[["unique_id", "ds"]].copy()
-        train_adj["y"] = y - seasonal.sum(axis=1)
-        self._trend_forecaster = self._make_trend_forecaster()
-        self._trend_forecaster.fit(case, train_adj)
-
-    def _seasonal_component(self, ds: pd.DatetimeIndex) -> np.ndarray:
-        from tsforecastbench.data.seasonality import position_in_cycle
-
-        total = np.zeros(len(ds))
-        for p, lookup in zip(self._periods, self._seasonal_lookup, strict=True):
-            keys = position_in_cycle(self._freq, p, ds)
-            total += np.array([lookup.get(k, 0.0) for k in keys], dtype=np.float64)
-        return total
-
-    def predict(
-        self,
-        case: Case,
-        history: pd.DataFrame,
-        horizon: int,
-        future_exog: pd.DataFrame | None = None,
-    ) -> pd.DataFrame:
-        hist_ds = pd.DatetimeIndex(pd.to_datetime(history["ds"]))
-        history_adj = history.copy()
-        history_adj["y"] = pd.to_numeric(history["y"], errors="coerce").to_numpy(
-            dtype=float
-        ) - self._seasonal_component(hist_ds)
-        trend_preds = self._trend_forecaster.predict(
-            case, history_adj, horizon, future_exog=future_exog
-        )
-        future = pd.DatetimeIndex(trend_preds["ds"])
-        y_hat = trend_preds["y_hat"].to_numpy(dtype=float) + self._seasonal_component(future)
-        return pd.DataFrame({"ds": future, "y_hat": y_hat})
+        return MSTL(season_length=season_length, trend_forecaster=self._make_trend_forecaster())
 
 
 class MSTLAutoETSForecaster(_MSTLBase):
-    """MSTL with a fit-once AutoETS trend-cycle/residual forecaster."""
+    """MSTL with an AutoETS trend-cycle/residual forecaster (statsforecast's default)."""
 
     name = "MSTL-ETS"
-    library = "statsmodels (MSTL, frozen once) — trend forecaster: AutoETS"
+    library = "statsforecast (Nixtla) — trend forecaster: AutoETS"
 
-    def _make_trend_forecaster(self) -> Forecaster:
-        # Non-seasonal (season_length=1): MSTL already removed seasonality, and the
-        # trend forecaster should not re-fit a seasonal component of its own.
-        return AutoETSForecaster()
+    def _make_trend_forecaster(self):
+        from statsforecast.models import AutoETS
+
+        # model="ZZN": auto error/trend, no seasonal component — MSTL already removed
+        # seasonality, and it rejects a seasonally-adjusting trend forecaster.
+        return AutoETS(model="ZZN")
 
 
 class MSTLAutoARIMAForecaster(_MSTLBase):
-    """MSTL with a fit-once AutoARIMA trend-cycle/residual forecaster. Capped tighter
-    than MSTL-ETS because the ARIMA stepwise search is the more expensive fit."""
+    """MSTL with an AutoARIMA trend-cycle/residual forecaster. Capped tighter than
+    MSTL-ETS because the ARIMA stepwise search is the more expensive fit."""
 
     name = "MSTL-ARIMA"
     max_train_steps = 5000
-    library = "statsmodels (MSTL, frozen once) — trend forecaster: AutoARIMA"
+    library = "statsforecast (Nixtla) — trend forecaster: AutoARIMA"
 
-    def _make_trend_forecaster(self) -> Forecaster:
-        return AutoARIMAForecaster()
+    def _make_trend_forecaster(self):
+        from statsforecast.models import AutoARIMA
+
+        return AutoARIMA()

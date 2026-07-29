@@ -1,15 +1,21 @@
-"""Unit tests for the classical methods' fit-once (`is_global`) conversion.
+"""Unit tests for the classical methods' fit-once (`is_global`) behaviour.
 
-Each converted forecaster (AutoARIMA, AutoETS, Theta, TBATS, MSTL-ETS, MSTL-ARIMA) must:
+The four global classical forecasters (AutoARIMA, AutoETS, Theta, MSTL-ETS/MSTL-ARIMA) roll
+forward through statsforecast's own `forward(y, h)`. Each must:
   1. Genuinely condition its forecast on the history `predict` is handed, not just on
      state captured at `fit` -- proven by forecasting from two different-length histories
      and checking the results differ.
   2. Never re-run its order/spec search or numerical optimizer inside `predict` -- proven
-     by spying on the relevant library entry point and checking it is called exactly once
-     across several `predict` calls, all triggered by the single `fit` call.
-  3. Choose a spec that stays valid for the whole history `predict` will be handed, not
-     just for the capped window the search ran on -- the fixture below plants a zero
-     before that window, which is what `sewerlevel_bellinge` does in practice.
+     by spying on the statsforecast model's own `fit` and checking it is called exactly
+     once across several `predict` calls.
+  3. Reproduce statsforecast's own forecast for the same fitted model, so the wrapper is
+     the library's estimator and not a reimplementation of it.
+  4. Stay finite when `predict` is handed history the capped search window never saw --
+     including a non-positive value, which `sewerlevel_bellinge` has in practice.
+
+TBATS is deliberately excluded: statsforecast couples its component search to every `.fit()`
+and exposes no `forward`, so it stays local. `test_tbats_stays_local` pins that, since the
+timing semantics and the app's local-method banner both key on the flag.
 """
 
 from __future__ import annotations
@@ -81,29 +87,61 @@ def _multi_origin_predict(method, case, train) -> None:
         method.predict(case, train.iloc[:cutoff], 6)
 
 
+def _assert_survives_history_the_search_window_never_saw(method, case) -> None:
+    """`fit` on a strictly positive tail, `predict` over the whole record including a zero
+    -- the shape of the real rolling loop, and the one that used to break the methods that
+    chose a positive-only spec (Box-Cox, multiplicative ETS) from the capped window alone.
+    """
+    train = _series_with_zero_before_the_search_window()
+    method.fit(case, train)
+    y_hat = method.predict(case, train, 6)["y_hat"].to_numpy()
+    assert np.isfinite(y_hat).all()
+
+
 def test_auto_arima_conditions_on_growing_history():
     case = _case([24])
     train = _synthetic_series()
     _assert_conditions_on_growing_history(AutoARIMAForecaster(season_length=24), case, train)
 
 
-def test_auto_arima_fits_order_search_and_optimizer_exactly_once():
+def test_auto_arima_fits_order_search_exactly_once():
     from statsforecast.models import AutoARIMA
-    from statsmodels.tsa.statespace.sarimax import SARIMAX
 
     case = _case([24])
     train = _synthetic_series()
     method = AutoARIMAForecaster(season_length=24)
 
-    with (
-        patch.object(AutoARIMA, "fit", autospec=True, wraps=AutoARIMA.fit) as order_search,
-        patch.object(SARIMAX, "fit", autospec=True, wraps=SARIMAX.fit) as optimizer,
-    ):
+    with patch.object(AutoARIMA, "fit", autospec=True, wraps=AutoARIMA.fit) as order_search:
         method.fit(case, train)
         _multi_origin_predict(method, case, train)
 
     assert order_search.call_count == 1
-    assert optimizer.call_count == 1
+
+
+def test_auto_arima_matches_statsforecasts_own_forecast():
+    """The wrapper must BE statsforecast's AutoARIMA, not an approximation of it. A private
+    reimplementation once drifted from the library here, so pin it.
+    """
+    from statsforecast.models import AutoARIMA
+
+    case = _case([24])
+    train = _synthetic_series()
+    method = AutoARIMAForecaster(season_length=24)
+    method.fit(case, train)
+
+    y = train["y"].to_numpy(dtype=float)
+    reference = AutoARIMA(season_length=24)
+    reference.fit(y)
+
+    ours = method.predict(case, train, 6)["y_hat"].to_numpy()
+    theirs = np.asarray(reference.predict(6)["mean"], dtype=float)
+    np.testing.assert_allclose(ours, theirs, rtol=1e-9, atol=1e-9)
+
+
+def test_auto_arima_survives_history_the_search_window_never_saw():
+    _assert_survives_history_the_search_window_never_saw(
+        AutoARIMAForecaster(season_length=24, max_train_steps=200), _case([24])
+    )
 
 
 def test_auto_ets_conditions_on_growing_history():
@@ -112,23 +150,40 @@ def test_auto_ets_conditions_on_growing_history():
     _assert_conditions_on_growing_history(AutoETSForecaster(season_length=24), case, train)
 
 
-def test_auto_ets_fits_spec_search_and_optimizer_exactly_once():
+def test_auto_ets_fits_spec_search_exactly_once():
     from statsforecast.models import AutoETS
-    from statsmodels.tsa.exponential_smoothing.ets import ETSModel
 
     case = _case([24])
     train = _synthetic_series()
     method = AutoETSForecaster(season_length=24)
 
-    with (
-        patch.object(AutoETS, "fit", autospec=True, wraps=AutoETS.fit) as spec_search,
-        patch.object(ETSModel, "fit", autospec=True, wraps=ETSModel.fit) as optimizer,
-    ):
+    with patch.object(AutoETS, "fit", autospec=True, wraps=AutoETS.fit) as spec_search:
         method.fit(case, train)
         _multi_origin_predict(method, case, train)
 
     assert spec_search.call_count == 1
-    assert optimizer.call_count == 1
+
+
+def test_auto_ets_matches_statsforecasts_own_forecast():
+    from statsforecast.models import AutoETS
+
+    case = _case([24])
+    train = _synthetic_series()
+    method = AutoETSForecaster(season_length=24)
+    method.fit(case, train)
+
+    reference = AutoETS(season_length=24)
+    reference.fit(train["y"].to_numpy(dtype=float))
+
+    ours = method.predict(case, train, 6)["y_hat"].to_numpy()
+    theirs = np.asarray(reference.predict(6)["mean"], dtype=float)
+    np.testing.assert_allclose(ours, theirs, rtol=1e-9, atol=1e-9)
+
+
+def test_auto_ets_survives_history_the_search_window_never_saw():
+    _assert_survives_history_the_search_window_never_saw(
+        AutoETSForecaster(season_length=24, max_train_steps=200), _case([24])
+    )
 
 
 def test_theta_conditions_on_growing_history():
@@ -151,66 +206,10 @@ def test_theta_fits_exactly_once():
     assert fit.call_count == 1
 
 
-def test_tbats_conditions_on_growing_history():
-    case = _case([24])
-    train = _synthetic_series()
-    _assert_conditions_on_growing_history(TBATSForecaster(season_length=24), case, train)
-
-
-def test_tbats_never_reoptimizes_in_predict():
-    from statsmodels.tsa.statespace.structural import UnobservedComponents
-
-    case = _case([24])
-    train = _synthetic_series()
-    method = TBATSForecaster(season_length=24)
-    method.fit(case, train)
-
-    with patch.object(
-        UnobservedComponents, "fit", autospec=True, wraps=UnobservedComponents.fit
-    ) as optimizer:
-        _multi_origin_predict(method, case, train)
-
-    assert optimizer.call_count == 0
-
-
-def test_tbats_transform_stays_valid_for_history_before_the_search_window():
-    case = _case([24])
-    train = _series_with_zero_before_the_search_window()
-    method = TBATSForecaster(season_length=24, max_train_steps=200)
-    method.fit(case, train)
-
-    assert method._pt.method == "yeo-johnson"
-    y_hat = method.predict(case, train, 6)["y_hat"].to_numpy()
-    assert np.isfinite(y_hat).all()
-
-
-def test_tbats_keeps_box_cox_when_the_whole_record_is_positive():
-    case = _case([24])
-    method = TBATSForecaster(season_length=24, max_train_steps=200)
-    method.fit(case, _synthetic_series())
-
-    assert method._pt.method == "box-cox"
-
-
-def test_auto_ets_spec_stays_valid_for_history_before_the_search_window():
-    case = _case([24])
-    train = _series_with_zero_before_the_search_window()
-    method = AutoETSForecaster(season_length=24, max_train_steps=200)
-    method.fit(case, train)
-
-    assert "mul" not in (method._error, method._trend, method._seasonal)
-    y_hat = method.predict(case, train, 6)["y_hat"].to_numpy()
-    assert np.isfinite(y_hat).all()
-
-
-def test_auto_ets_keeps_a_multiplicative_spec_when_the_whole_record_is_positive():
-    case = _case([24])
-    method = AutoETSForecaster(season_length=24, max_train_steps=200)
-    method.fit(case, _synthetic_series())
-
-    # The downgrade above is driven by the record's sign, not applied unconditionally: on
-    # this series statsforecast picks a multiplicative error, and it must survive.
-    assert method._error == "mul"
+def test_theta_survives_history_the_search_window_never_saw():
+    _assert_survives_history_the_search_window_never_saw(
+        ThetaForecaster(season_length=24, max_train_steps=200), _case([24])
+    )
 
 
 def test_mstl_ets_conditions_on_growing_history():
@@ -226,8 +225,7 @@ def test_mstl_arima_conditions_on_growing_history():
 
 
 def test_mstl_ets_decomposes_and_fits_trend_exactly_once():
-    from statsforecast.models import AutoETS
-    from statsmodels.tsa.seasonal import MSTL
+    from statsforecast.models import MSTL, AutoETS
 
     case = _case([24])
     train = _synthetic_series()
@@ -245,8 +243,7 @@ def test_mstl_ets_decomposes_and_fits_trend_exactly_once():
 
 
 def test_mstl_arima_decomposes_and_fits_trend_exactly_once():
-    from statsforecast.models import AutoARIMA
-    from statsmodels.tsa.seasonal import MSTL
+    from statsforecast.models import MSTL, AutoARIMA
 
     case = _case([24])
     train = _synthetic_series()
@@ -263,6 +260,41 @@ def test_mstl_arima_decomposes_and_fits_trend_exactly_once():
     assert trend_order_search.call_count == 1
 
 
+def test_forward_reads_the_whole_history_not_the_capped_search_window():
+    """`max_train_steps` bounds the order/spec *search*, not the roll-forward: predict
+    conditions on everything it is handed. Some of these are slow over a long history
+    (Theta's forward is superlinear), and that cost is reported rather than capped away --
+    capping would substitute an arbitrary re-initialization for the state the fitted model
+    actually implies. Proven by forwarding histories longer than the search window and
+    checking the forecast still moves when data older than that window changes. Compared
+    bitwise rather than approximately, because how *much* it moves varies enormously: an
+    ARIMA/ETS filter carries an old level shift forward visibly, while MSTL's STL trend is
+    local enough that the same shift 600 points back moves the forecast only in the 8th
+    decimal. Either way a truncating predict would return identical numbers.
+    """
+    case = _case([24])
+    train = _synthetic_series(n=900)
+    # Identical over the last 600 points — so identical over any capped window — and shifted
+    # over the first 300. A capped predict cannot tell these apart; an uncapped one can.
+    altered = train.copy()
+    altered.loc[:299, "y"] = altered.loc[:299, "y"] + 20.0
+
+    for method in (
+        AutoARIMAForecaster(season_length=24, max_train_steps=200),
+        AutoETSForecaster(season_length=24, max_train_steps=200),
+        ThetaForecaster(season_length=24, max_train_steps=200),
+        MSTLAutoETSForecaster(),
+    ):
+        method.max_train_steps = 200
+        method.fit(case, train)
+        as_is = method.predict(case, train, 6)["y_hat"].to_numpy()
+        shifted = method.predict(case, altered, 6)["y_hat"].to_numpy()
+        assert np.isfinite(as_is).all() and np.isfinite(shifted).all()
+        assert not np.array_equal(as_is, shifted), (
+            f"{method.name} ignored history older than its search window"
+        )
+
+
 def test_mstl_is_still_honestly_inapplicable_on_declared_nonseasonal_case():
     case = _case([])
     train = _synthetic_series()
@@ -271,3 +303,11 @@ def test_mstl_is_still_honestly_inapplicable_on_declared_nonseasonal_case():
         raise AssertionError("expected MSTL to raise on a non-seasonal case")
     except ValueError as exc:
         assert "non-seasonal" in str(exc)
+
+
+def test_tbats_stays_local():
+    """statsforecast offers no `forward` for TBATS, so it is refit per origin. The eval
+    loop's fit/predict timing and the app's local-method banner both key on this flag, so a
+    silent flip would misreport the protocol rather than fail loudly.
+    """
+    assert not TBATSForecaster.is_global
