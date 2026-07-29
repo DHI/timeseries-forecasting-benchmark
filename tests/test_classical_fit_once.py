@@ -1,21 +1,27 @@
 """Unit tests for the classical methods' fit-once (`is_global`) behaviour.
 
-The four global classical forecasters (AutoARIMA, AutoETS, Theta, MSTL-ETS/MSTL-ARIMA) roll
-forward through statsforecast's own `forward(y, h)`. Each must:
+The five global classical forecasters (AutoARIMA, AutoETS, Theta, MSTL-ETS/MSTL-ARIMA,
+TBATS) roll forward via a fixed, already-estimated model. Each must:
   1. Genuinely condition its forecast on the history `predict` is handed, not just on
      state captured at `fit` -- proven by forecasting from two different-length histories
      and checking the results differ.
-  2. Never re-run its order/spec search or numerical optimizer inside `predict` -- proven
-     by spying on the statsforecast model's own `fit` and checking it is called exactly
-     once across several `predict` calls.
+  2. Never re-run its order/spec/component search or numerical optimizer inside `predict`
+     -- proven by spying on the statsforecast model's own `fit` (or, for TBATS, on
+     `tbats_selection`, the function its component search actually runs through) and
+     checking it is called exactly once across several `predict` calls.
   3. Reproduce statsforecast's own forecast for the same fitted model, so the wrapper is
      the library's estimator and not a reimplementation of it.
   4. Stay finite when `predict` is handed history the capped search window never saw --
      including a non-positive value, which `sewerlevel_bellinge` has in practice.
 
-TBATS is deliberately excluded: statsforecast couples its component search to every `.fit()`
-and exposes no `forward`, so it stays local. `test_tbats_stays_local` pins that, since the
-timing semantics and the app's local-method banner both key on the flag.
+AutoARIMA/AutoETS/Theta/MSTL roll forward through statsforecast's own `forward(y, h)`.
+TBATS has no such public method -- statsforecast couples its component search to every
+`.fit()` on the class API -- so it instead calls `tbats_selection` directly at fit time and
+replicates `forward` by hand at predict time with two more of statsforecast's own internals,
+`calcTBATSFaster`/`tbats_forecast`. `test_tbats_matches_statsforecasts_own_forecast` is what
+proves point 3 for TBATS specifically: that this hand-rolled roll-forward reproduces
+`AutoTBATS`'s own output bit-for-bit rather than approximating it (see
+`TBATSForecaster`'s docstring for why that distinction matters here).
 """
 
 from __future__ import annotations
@@ -284,6 +290,7 @@ def test_forward_reads_the_whole_history_not_the_capped_search_window():
         AutoETSForecaster(season_length=24, max_train_steps=200),
         ThetaForecaster(season_length=24, max_train_steps=200),
         MSTLAutoETSForecaster(),
+        TBATSForecaster(season_length=24, max_train_steps=200),
     ):
         method.max_train_steps = 200
         method.fit(case, train)
@@ -305,9 +312,56 @@ def test_mstl_is_still_honestly_inapplicable_on_declared_nonseasonal_case():
         assert "non-seasonal" in str(exc)
 
 
-def test_tbats_stays_local():
-    """statsforecast offers no `forward` for TBATS, so it is refit per origin. The eval
-    loop's fit/predict timing and the app's local-method banner both key on this flag, so a
-    silent flip would misreport the protocol rather than fail loudly.
+def test_tbats_conditions_on_growing_history():
+    case = _case([24])
+    train = _synthetic_series()
+    _assert_conditions_on_growing_history(TBATSForecaster(season_length=24), case, train)
+
+
+def test_tbats_component_search_runs_exactly_once():
+    """TBATS has no statsforecast *class* to patch `.fit()` on -- its component search runs
+    through the module-level `tbats_selection` function instead, called once from `fit` and
+    never again from `predict`.
     """
-    assert not TBATSForecaster.is_global
+    import statsforecast.tbats as tbats_module
+
+    case = _case([24])
+    train = _synthetic_series()
+    method = TBATSForecaster(season_length=24)
+
+    with patch.object(
+        tbats_module, "tbats_selection", autospec=True, wraps=tbats_module.tbats_selection
+    ) as component_search:
+        method.fit(case, train)
+        _multi_origin_predict(method, case, train)
+
+    assert component_search.call_count == 1
+
+
+def test_tbats_matches_statsforecasts_own_forecast():
+    """The wrapper must reproduce `AutoTBATS`'s own fitted model, not a reimplementation of
+    it -- the exact concern a fit-once TBATS was previously rejected over (see
+    `TBATSForecaster`'s docstring). Forecasting over the same window the model was fit on
+    must equal `AutoTBATS(...).fit(y).predict(h)` bit-for-bit, since both paths run the
+    identical `tbats_selection` -> `calcTBATSFaster`/`tbats_forecast` internals.
+    """
+    from statsforecast.models import AutoTBATS
+
+    case = _case([24])
+    train = _synthetic_series()
+    method = TBATSForecaster(season_length=24)
+    method.fit(case, train)
+
+    y = train["y"].to_numpy(dtype=float)
+    reference = AutoTBATS(season_length=24)
+    reference.fit(y)
+
+    ours = method.predict(case, train, 6)["y_hat"].to_numpy()
+    theirs = np.asarray(reference.predict(6)["mean"], dtype=float)
+    np.testing.assert_allclose(ours, theirs, rtol=1e-9, atol=1e-9)
+
+
+def test_tbats_survives_history_the_search_window_never_saw():
+    _assert_survives_history_the_search_window_never_saw(
+        TBATSForecaster(season_length=24, max_train_steps=200), _case([24])
+    )
