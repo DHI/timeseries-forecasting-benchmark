@@ -138,7 +138,7 @@ export const TRAINING_TIME_CONFIG: MetricConfig = {
   center: null,
   label:
     'Time to produce one forecast (fit, if the method needs it, plus predict — hover a cell for the fit/predict split)',
-  format: '.0f',
+  format: '.1f',
   unit: 's',
   lowerIsBetter: true,
 };
