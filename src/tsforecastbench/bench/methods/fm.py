@@ -32,6 +32,7 @@ import pandas as pd
 
 from tsforecastbench.bench.methods.base import Forecaster
 from tsforecastbench.bench.methods.ml import _exo_cols, _fit_len, _naive_ds
+from tsforecastbench.bench.methods.scorecard import Capabilities, Level, Scorecard
 from tsforecastbench.data.schema import Case
 
 _PIPELINE_CACHE: dict = {}
@@ -204,6 +205,21 @@ class ChronosForecaster(Forecaster):
         "y_hat = quantiles[..., 1]            # median"
     )
 
+    # No covariate mechanism at all, unlike the other three — Chronos-Bolt stays univariate.
+    capabilities = Capabilities(
+        trend=True, seasonality=True, multiple_seasonality=True, exogenous=False
+    )
+    # The zero-shot trade: nothing to fit and nothing to tune, so history need, fit cost
+    # and tuning effort are all Low — paid for by an opaque forward pass at every origin.
+    scorecard = Scorecard(
+        history_requirements=Level.LOW,
+        interpretability=Level.LOW,
+        fit_cost=Level.LOW,
+        inference_cost=Level.MEDIUM,
+        tuning_effort=Level.LOW,
+        robustness_to_noise=Level.MEDIUM,
+    )
+
     def __init__(self, model_name: str = "amazon/chronos-bolt-small", context_length: int = 2048):
         self.model_name = model_name
         # Chronos-Bolt's real context_length -- unlike Chronos-2/TimesFM/Moirai it isn't read
@@ -284,6 +300,21 @@ class Chronos2Forecaster(Forecaster):
         '    target="target",\n'
         ")\n"
         'y_hat = pred["predictions"]          # median'
+    )
+
+    # Supports covariates natively; the +exo variant switches them on.
+    capabilities = Capabilities(
+        trend=True, seasonality=True, multiple_seasonality=True, exogenous=True
+    )
+    # The zero-shot trade: nothing to fit and nothing to tune, so history need, fit cost
+    # and tuning effort are all Low — paid for by an opaque forward pass at every origin.
+    scorecard = Scorecard(
+        history_requirements=Level.LOW,
+        interpretability=Level.LOW,
+        fit_cost=Level.LOW,
+        inference_cost=Level.HIGH,
+        tuning_effort=Level.LOW,
+        robustness_to_noise=Level.MEDIUM,
     )
 
     use_exogenous: bool = False
@@ -383,6 +414,21 @@ class TimesFMForecaster(Forecaster):
         "y_hat = point_forecast[0]\n"
         "# +exo: model.forecast_with_covariates(inputs=[context],\n"
         "#     dynamic_numerical_covariates={name: [context_and_horizon_values]})"
+    )
+
+    # Supports covariates natively; the +exo variant switches them on.
+    capabilities = Capabilities(
+        trend=True, seasonality=True, multiple_seasonality=True, exogenous=True
+    )
+    # The zero-shot trade: nothing to fit and nothing to tune, so history need, fit cost
+    # and tuning effort are all Low — paid for by an opaque forward pass at every origin.
+    scorecard = Scorecard(
+        history_requirements=Level.LOW,
+        interpretability=Level.LOW,
+        fit_cost=Level.LOW,
+        inference_cost=Level.HIGH,
+        tuning_effort=Level.LOW,
+        robustness_to_noise=Level.MEDIUM,
     )
 
     use_exogenous: bool = False
@@ -497,6 +543,21 @@ class Moirai2Forecaster(Forecaster):
         "predictor = forecaster.create_predictor(batch_size=1)\n"
         "forecast = next(iter(predictor.predict(dataset)))\n"
         "y_hat = forecast.median"
+    )
+
+    # Supports covariates natively; the +exo variant switches them on.
+    capabilities = Capabilities(
+        trend=True, seasonality=True, multiple_seasonality=True, exogenous=True
+    )
+    # The zero-shot trade: nothing to fit and nothing to tune, so history need, fit cost
+    # and tuning effort are all Low — paid for by an opaque forward pass at every origin.
+    scorecard = Scorecard(
+        history_requirements=Level.LOW,
+        interpretability=Level.LOW,
+        fit_cost=Level.LOW,
+        inference_cost=Level.HIGH,
+        tuning_effort=Level.LOW,
+        robustness_to_noise=Level.MEDIUM,
     )
 
     use_exogenous: bool = False
