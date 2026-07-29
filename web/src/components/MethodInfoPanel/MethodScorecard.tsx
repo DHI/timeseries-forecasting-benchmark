@@ -57,15 +57,17 @@ function CapabilityRowComponent({ capabilities }: { capabilities: Capabilities }
   );
 }
 
-/** One row per rating: label, a three-segment bar, the level in words. Bar length is the
- * rating's magnitude and bar colour is whether that magnitude is good for this field (see
- * `levelTone`), so a Low fit cost is a short green bar. */
+/** One row per rating: label, then a three-segment bar. Bar length is the rating's magnitude
+ * and bar colour is whether that magnitude is good for this field (see `levelTone`), so a Low
+ * fit cost is a short green bar. The level isn't spelled out — length already distinguishes
+ * the three values on its own, so it stays legible without colour, and each bar carries the
+ * level in its `aria-label` for screen readers. */
 function ScorecardMetersComponent({ scorecard }: { scorecard: Scorecard }) {
   return (
     <div
       style={{
         display: 'grid',
-        gridTemplateColumns: 'auto 1fr auto',
+        gridTemplateColumns: 'auto 1fr',
         alignItems: 'center',
         columnGap: 8,
         rowGap: 3,
@@ -76,8 +78,8 @@ function ScorecardMetersComponent({ scorecard }: { scorecard: Scorecard }) {
         const level = scorecard[key];
         const filled = LEVEL_SEGMENTS[level];
         const color = TONE_VAR[levelTone(level, lowerIsBetter)];
-        // Cells are siblings of the grid rather than wrapped per row, so the three columns
-        // stay aligned across every field without needing subgrid.
+        // Cells are siblings of the grid rather than wrapped per row, so the two columns stay
+        // aligned across every field without needing subgrid.
         return (
           <Fragment key={key}>
             <span title={help} style={ROW_LABEL_STYLE}>
@@ -86,6 +88,7 @@ function ScorecardMetersComponent({ scorecard }: { scorecard: Scorecard }) {
             <span
               role="img"
               aria-label={`${label}: ${level}`}
+              title={level}
               style={{ display: 'inline-flex', gap: 2 }}
             >
               {Array.from({ length: SEGMENT_COUNT }, (_, i) => (
@@ -100,7 +103,6 @@ function ScorecardMetersComponent({ scorecard }: { scorecard: Scorecard }) {
                 />
               ))}
             </span>
-            <span style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{level}</span>
           </Fragment>
         );
       })}

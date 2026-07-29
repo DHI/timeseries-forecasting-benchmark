@@ -59,6 +59,14 @@ describe('ScorecardMeters', () => {
     expect(toneOf('robustness_to_noise')).toBe('var(--level-good)');
   });
 
+  it('does not spell the level out as text — the bar carries it', () => {
+    render(<ScorecardMeters scorecard={scorecard} />);
+
+    for (const level of ['Low', 'Medium', 'High']) {
+      expect(screen.queryByText(level)).not.toBeInTheDocument();
+    }
+  });
+
   it('labels each meter with its field and level for screen readers', () => {
     render(<ScorecardMeters scorecard={scorecard} />);
 
