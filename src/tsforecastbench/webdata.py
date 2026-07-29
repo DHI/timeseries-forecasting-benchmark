@@ -83,7 +83,13 @@ def _method_registry() -> dict[str, dict]:
     get a placeholder instead. The rest are ordinary class attributes (see `Forecaster` in
     bench/methods/base.py), so plain attribute lookup already inherits them through the
     MRO with no special-casing needed — which is how a `+exo` variant picks up the same
-    capabilities and scorecard as the method it configures."""
+    capabilities and scorecard as the method it configures.
+
+    `capabilities["gaps"]` is not one of the hand-authored `Capabilities` model fields —
+    it's `pools_segments` re-exposed under the card's naming, computed here rather than
+    declared per method so a subclass that overrides `pools_segments` alone (e.g.
+    `ITransformerForecaster`) can't drift from a stale `gaps` literal copied onto its base's
+    `capabilities`."""
     registry: dict[str, dict] = {}
     for attr_name in _methods.__all__:
         obj = getattr(_methods, attr_name)
@@ -108,7 +114,10 @@ def _method_registry() -> dict[str, dict]:
             "compute_profile": instance.compute_profile,
             "limitations": instance.limitations,
             "code_snippet": instance.code_snippet,
-            "capabilities": instance.capabilities.model_dump(mode="json"),
+            "capabilities": {
+                **instance.capabilities.model_dump(mode="json"),
+                "gaps": instance.pools_segments,
+            },
             "scorecard": instance.scorecard.model_dump(mode="json"),
         }
     return registry
