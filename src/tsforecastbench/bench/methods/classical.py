@@ -9,9 +9,13 @@ Three tractability choices, all standard practice:
    model=fitted)` is the same apply-without-re-estimating path R's `forecast::Arima(x,
    model=fit)` uses) and never calls an optimizer. So those four are `is_global`: the
    order/spec search runs once in `fit`, and `predict` conditions on each rolling origin's
-   growing `history` through `forward`. TBATS is the exception -- statsforecast couples its
-   automatic component search to every `.fit()` and offers no `forward` -- so it stays
-   local, refit per origin; see its docstring.
+   growing `history` through `forward`. TBATS joins them, but has no public `forward()` to
+   call -- statsforecast couples its automatic component search to every `.fit()` on the
+   class API and never wired up a fixed-parameter roll-forward path for it. Its `fit`
+   instead calls `tbats_selection` directly (the same function the class API uses
+   internally) and `predict` replicates `forward` by hand with two more of statsforecast's
+   own internals, `calcTBATSFaster`/`tbats_forecast` -- see its docstring for why this is
+   the library's own fitted model rather than a reimplementation of it.
 
    Two things `forward` deliberately does *not* freeze, both fine and worth knowing:
 
@@ -226,64 +230,97 @@ class AutoETSForecaster(_ForwardForecaster):
 
 
 class TBATSForecaster(Forecaster):
-    """TBATS (Trigonometric, Box-Cox, ARMA, Trend, Seasonal) via statsforecast.
+    """TBATS (Trigonometric, Box-Cox, ARMA, Trend, Seasonal) via statsforecast, fit once
+    and rolled forward.
 
     Handles complex and multiple seasonal patterns via trigonometric terms.
     season_length accepts an int, a list of ints (e.g. [24, 168] for
     daily+weekly in hourly data), or None to use the case's declared
     dominant period (1, non-seasonal, when seasonalities = []).
-    max_train_steps is set lower than other classicals because TBATS fit
-    cost is substantially higher.
 
-    The one classical method here that is *not* `is_global`. statsforecast couples TBATS's
-    automatic component search to every `.fit()` call and exposes no `forward`, so there is
-    no way to hold its parameters fixed while conditioning on new history -- the only
-    fit-once option would be to substitute a different, simplified model under the TBATS
-    name, which would stop the column meaning what it says. So it is refit at each rolling
-    origin instead, and its numbers carry the caveat in `limitations` below.
+    `fit` calls statsforecast's `tbats_selection` -- the same function `AutoTBATS.fit()`
+    calls internally -- to genuinely search Box-Cox/trend/damped-trend/ARMA-error
+    combinations by AIC (De Livera et al. 2011's actual published algorithm), rather than
+    the fixed configuration `statsforecast.models.TBATS` hardcodes (`use_trend=True,
+    use_damped_trend=False, use_arma_errors=False`, no search at all). That fixed
+    configuration is what previously blew up this case's numbers: forcing an undamped
+    trend in whatever scale Box-Cox picks -- almost always a log transform for
+    heavy-tailed series -- means any origin with a steep recent rise (a flood's rising
+    limb) gets that trend extrapolated indefinitely in log-space, and exponentiating a
+    runaway linear log-trend is exponential growth. One `discharge_saugeen` origin
+    (1973-03-09) forecast up to 16,761 against an actual peak of ~210; the genuine AIC
+    search doesn't force that trend and the same origin now tops out at 229.
 
-    When the training data contains non-positive values, a Yeo-Johnson
-    power transform is applied before fitting and inverted on the forecasts,
-    since TBATS's internal Box-Cox transform requires strictly positive data.
+    Each origin then rolls the fitted (frozen) coefficients forward via
+    `calcTBATSFaster`/`tbats_forecast` -- the same internal state-space recursion
+    `AutoTBATS.predict()` itself calls to compute fitted values and forecasts. This is not
+    an approximation of TBATS: fitting via `AutoTBATS`'s class API and via
+    `tbats_selection`+`calcTBATSFaster`+`tbats_forecast` on the same series produces
+    bit-for-bit identical forecasts (pinned by
+    `test_tbats_matches_statsforecasts_own_forecast`), so this wrapper is the library's own
+    fitted model, just rolled across new history the way `forward()` does for
+    AutoARIMA/AutoETS/Theta/MSTL -- statsforecast's TBATS classes just never wired up a
+    `forward()` method themselves, even though the primitives it needs already exist and
+    run internally at fit time. `calcTBATSFaster` isn't in `statsforecast.tbats.__all__`
+    (unlike `tbats_selection`/`tbats_forecast`), so this leans on one non-public-but-stable
+    internal; the bit-exact test above is the canary if a future statsforecast version
+    changes its signature or behaviour.
+
+    Like AutoETS/Theta (see the module docstring, choice 1), the initial state stays
+    pinned to the fit window's start while predict filters a history beginning earlier;
+    exponential smoothing forgets initial conditions geometrically, so this washes out.
+
+    When the training data contains non-positive values, a Yeo-Johnson power transform is
+    applied before fitting and inverted on the forecasts, since TBATS's own Box-Cox
+    requires strictly positive data; `use_boxcox` is then pinned to False rather than
+    searched, since the pre-transform already did that job.
     """
 
     name = "TBATS"
     family = "classical"
+    is_global = True
     library = "statsforecast (Nixtla)"
     compute_profile = (
-        "CPU only; the heaviest of the classical methods here, so it's fit on a "
-        "smaller window (3,000 points) than its siblings — still typically seconds "
-        "per case, but noticeably slower than AutoARIMA/AutoETS/Theta. Refit at every "
-        "rolling origin, so `fit_seconds` is the cost of one such refit."
+        "CPU only; a genuine AIC search over Box-Cox/trend/damped-trend/ARMA-error "
+        "combinations at fit time (up to 12 candidate models) -- the heaviest single fit "
+        "of the classical methods here, on the order of a minute at 3,000 points with an "
+        "annual (365) season. Paid once, though: each origin after that is a fixed-"
+        "coefficient state-space filter pass (`calcTBATSFaster`) over that origin's whole "
+        "history, on the order of milliseconds even on long records."
     )
     limitations = (
         "Univariate: ignores exogenous inputs. Its internal Box-Cox transform assumes "
-        "strictly positive data; a Yeo-Johnson fallback (see below) handles series "
-        "that dip to zero or negative. Unlike the other classical methods, this one is "
-        "refit from scratch at every rolling origin — statsforecast ties its component "
-        "search to each fit and offers no way to roll a fitted TBATS forward — so it "
-        "re-estimates on more recent data than the fit-once methods do, and its accuracy "
-        "is not measured under quite the same protocol as theirs."
+        "strictly positive data; a Yeo-Johnson fallback (see below) handles series that "
+        "dip to zero or negative. The roll-forward calls two statsforecast internals "
+        "(`calcTBATSFaster`, `tbats_forecast`) directly rather than a public `forward()` "
+        "method, since none exists for TBATS -- pinned bit-exact against `AutoTBATS`'s own "
+        "output (see the class docstring), but a soft dependency on library internals that "
+        "could break on a future statsforecast version bump."
     )
     code_snippet = (
-        "from statsforecast import StatsForecast\n"
-        "from statsforecast.models import TBATS\n\n"
-        "sf = StatsForecast(models=[TBATS(season_length=season_length)], freq=case.freq)\n"
-        "sf.fit(train_df)                     # train_df: unique_id, ds, y\n"
-        'y_hat = sf.predict(h=horizon)["TBATS"]'
+        "from statsforecast.tbats import tbats_selection, calcTBATSFaster, tbats_forecast\n\n"
+        "# fit once: genuine AIC search over Box-Cox/trend/damped-trend/ARMA-errors\n"
+        "mod = tbats_selection(train_y, [season_length], use_boxcox=None, use_trend=None,\n"
+        "                      use_damped_trend=None, use_arma_errors=True, ...)\n\n"
+        "# each origin: roll the frozen coefficients forward over the growing history\n"
+        "_, _, x = calcTBATSFaster(history_y, mod['w_transpose'], mod['g'], mod['F'],\n"
+        "                          mod['seed_states'])\n"
+        "y_hat = tbats_forecast({'x': x, 'w_transpose': mod['w_transpose'], 'F': mod['F']},\n"
+        "                       horizon)['mean']"
     )
     # Trigonometric seasonal terms, and season_length takes a list — the classical method
     # built for several periods at once.
     capabilities = Capabilities(
         trend=True, seasonality=True, multiple_seasonality=True, exogenous=False
     )
-    # The inverse profile of Theta and MSTL below: predict is a plain lookup off an already
-    # fitted model, but there is no `forward`, so the component search reruns at every
-    # origin and the whole cost sits in fit_cost.
+    # Now the same profile as AutoARIMA/AutoETS: an expensive one-time search, then a
+    # cheap fixed-coefficient roll-forward -- fit_cost is the heaviest of the classicals
+    # (a genuine multi-model AIC search, not just a stepwise/spec search), inference_cost
+    # is the cheapest (a plain linear recursion, no decomposition or filter re-derivation).
     scorecard = Scorecard(
         history_requirements=Level.MEDIUM,
         interpretability=Level.MEDIUM,
-        fit_cost=Level.MEDIUM,
+        fit_cost=Level.HIGH,
         inference_cost=Level.LOW,
         tuning_effort=Level.LOW,
         robustness_to_noise=Level.MEDIUM,
@@ -295,8 +332,7 @@ class TBATSForecaster(Forecaster):
 
     def fit(self, case: Case, train: pd.DataFrame) -> None:
         from sklearn.preprocessing import PowerTransformer
-        from statsforecast import StatsForecast
-        from statsforecast.models import TBATS
+        from statsforecast.tbats import tbats_selection
 
         from tsforecastbench.data.seasonality import dominant_period
 
@@ -306,32 +342,51 @@ class TBATSForecaster(Forecaster):
             if self.season_length is not None
             else dominant_period(case.seasonalities, df["y"].to_numpy())
         )
+        seasonal_periods = (
+            [season_length] if isinstance(season_length, int) else list(season_length)
+        )
 
-        # Apply Yeo-Johnson when Box-Cox would be disabled (non-positive data).
+        # Apply Yeo-Johnson when Box-Cox would be disabled (non-positive data). Checked on
+        # the *full* train frame, not the capped search window `df`: predict later
+        # conditions on history the search window never saw (that's the point of
+        # is_global), and Box-Cox with a near-zero lambda maps y=0 to -inf, which then
+        # corrupts every subsequent state in calcTBATSFaster's recursion. A value that
+        # first appears during the test period itself is a separate, unavoidable boundary
+        # -- this can only act on what fit is actually handed.
         y_vals = df["y"].to_numpy(dtype=float)
-        if np.any(y_vals <= 0):
+        if np.any(train["y"].to_numpy(dtype=float) <= 0):
             self._pt = PowerTransformer(method="yeo-johnson", standardize=False)
-            df["y"] = self._pt.fit_transform(y_vals.reshape(-1, 1)).ravel()
+            y_vals = self._pt.fit_transform(y_vals.reshape(-1, 1)).ravel()
         else:
             self._pt = None
 
         # Yeo-Johnson output isn't guaranteed strictly positive (unlike Box-Cox), so
-        # TBATS's own positivity check can still trip and re-disable its Box-Cox with a
-        # UserWarning even though we've already handled the transform. Pass
-        # use_boxcox=False explicitly in that case to get the same outcome silently.
-        use_boxcox = not (self._pt is not None)
-        self._sf = StatsForecast(
-            models=[TBATS(season_length=season_length, use_boxcox=use_boxcox)],
-            freq=case.freq,
-            n_jobs=1,
-        )
+        # letting tbats_selection search use_boxcox itself could still re-trip its own
+        # positivity check. Pin it to False in that case, since the pre-transform above
+        # already did that job; None elsewhere lets AIC pick genuinely, matching
+        # AutoTBATS's own defaults (use_trend/use_damped_trend/use_arma_errors likewise).
+        use_boxcox = None if self._pt is None else False
         # TBATS's internal optimizer transiently overflows float64 while probing
         # inadmissible parameter candidates it goes on to reject; harmless noise.
         with warnings.catch_warnings():
             warnings.filterwarnings(
                 "ignore", message="overflow encountered in square", category=RuntimeWarning
             )
-            self._sf.fit(df)
+            mod = tbats_selection(
+                y_vals,
+                seasonal_periods,
+                use_boxcox=use_boxcox,
+                bc_lower_bound=0.0,
+                bc_upper_bound=1.0,
+                use_trend=None,
+                use_damped_trend=None,
+                use_arma_errors=True,
+            )
+        self._w_transpose = mod["w_transpose"]
+        self._g = mod["g"]
+        self._F = mod["F"]
+        self._seed_states = mod["seed_states"]
+        self._lambda = mod["BoxCox_lambda"]
 
     def predict(
         self,
@@ -340,12 +395,24 @@ class TBATSForecaster(Forecaster):
         horizon: int,
         future_exog: pd.DataFrame | None = None,
     ) -> pd.DataFrame:
-        fcst = self._sf.predict(h=horizon)
-        y_hat = fcst["TBATS"].to_numpy().astype(np.float64)
+        from coreforecast.scalers import boxcox, inv_boxcox
+        from statsforecast.tbats import calcTBATSFaster, tbats_forecast
+
+        y = pd.to_numeric(history["y"], errors="coerce").ffill().bfill().to_numpy(dtype=float)
+        if self._pt is not None:
+            y = self._pt.transform(y.reshape(-1, 1)).ravel()
+        y_trans = boxcox(y, self._lambda) if self._lambda is not None else y
+
+        _, _, x = calcTBATSFaster(y_trans, self._w_transpose, self._g, self._F, self._seed_states)
+        fc = tbats_forecast({"x": x, "w_transpose": self._w_transpose, "F": self._F}, horizon)
+        y_hat = fc["mean"]
+        if self._lambda is not None:
+            y_hat = inv_boxcox(y_hat, self._lambda)
         if self._pt is not None:
             y_hat = self._pt.inverse_transform(y_hat.reshape(-1, 1)).ravel()
+
         future = self._future_index(case, history["ds"].max(), horizon)
-        return pd.DataFrame({"ds": future, "y_hat": y_hat})
+        return pd.DataFrame({"ds": future, "y_hat": y_hat.astype(np.float64)})
 
 
 class ThetaForecaster(_ForwardForecaster):
