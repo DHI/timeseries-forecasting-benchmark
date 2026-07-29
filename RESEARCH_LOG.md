@@ -8,6 +8,25 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-29 — TBATS now fits once too, via genuine AIC selection instead of a fixed config
+
+TBATS's scores on `discharge_saugeen` were far worse than every other classical method
+(MASE 8.76, RMSE 1105.9) — traced to the fixed-config `statsforecast.models.TBATS` class
+this benchmark used, which hardcodes an undamped trend and never searches Box-Cox/trend/
+damped-trend/ARMA-error combinations. On a log-space fit (near-universal for heavy-tailed
+discharge data), that forced undamped trend extrapolates a rising origin's local trend
+indefinitely; one origin (1973-03-09) forecast up to 16,761 against an actual peak of ~210.
+Switched TBATS to genuine AIC-based selection via `tbats_selection` (what `AutoTBATS.fit()`
+calls internally), fit once per the `is_global` protocol and rolled forward via
+`calcTBATSFaster`/`tbats_forecast` — the same internal recursion `AutoTBATS.predict()` uses
+— verified bit-exact against `AutoTBATS`'s own output over the same window. This differs
+from the fit-once TBATS rejected in the entry below: that attempt substituted a simplified
+model under the TBATS name, while this one runs the library's own genuinely selected model,
+just rolled forward by hand since statsforecast never wired up a `forward()` for it.
+Re-running `discharge_saugeen`'s 40-origin backtest: MASE 8.76 → 1.09, RMSE 1105.9 → 44.3,
+no more per-origin blowups. TBATS's existing results across every case are now stale and
+need a pilot re-run.
+
 ## 2026-07-29 — Method cards now carry a capability set and an operational scorecard
 
 The method cards described each method in prose only, so nothing on them let you compare two
