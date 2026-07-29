@@ -321,6 +321,29 @@
       "robustness_to_noise": "Medium"
     }
   },
+  "MLP+exo": {
+    "family": "ml",
+    "description": "Shared lag-feature pipeline; subclasses provide the sklearn regressor.",
+    "uses_exogenous": true,
+    "library": "mlforecast + scikit-learn (MLPRegressor)",
+    "compute_profile": "CPU only; a lag+calendar feature table is built once, then the regressor fits on it directly \u2014 fast for the linear/tree models here, slower for the MLP (which also cross-validates an early-stopping split).",
+    "limitations": "Needs enough history to fill its lag windows (shortest lag 1, longest tied to the case's declared seasonal periods). The univariate variant ignores exogenous inputs entirely; the +exo variant sees only the future covariate values supplied at predict time (a perfect-forecast proxy in this benchmark, not a real forecast of those covariates).",
+    "code_snippet": "from mlforecast import MLForecast\n\nfcst = MLForecast(\n    models=[<regressor>],           # e.g. LGBMRegressor, Ridge, MLPRegressor\n    freq=case.freq,\n    lags=[1, 2, 4, 8, 16, 32, *case.seasonalities],\n    date_features=[\"dayofweek\", \"month\", ...],\n)\nfcst.fit(train_df, static_features=[])\ny_hat = fcst.predict(h=horizon, ids=[target_uid])",
+    "capabilities": {
+      "trend": false,
+      "seasonality": true,
+      "multiple_seasonality": true,
+      "exogenous": true
+    },
+    "scorecard": {
+      "history_requirements": "High",
+      "interpretability": "Low",
+      "fit_cost": "Medium",
+      "inference_cost": "Low",
+      "tuning_effort": "High",
+      "robustness_to_noise": "Low"
+    }
+  },
   "MLP": {
     "family": "ml",
     "description": "Shared lag-feature pipeline; subclasses provide the sklearn regressor.",
@@ -553,12 +576,12 @@
   },
   "TBATS": {
     "family": "classical",
-    "description": "TBATS (Trigonometric, Box-Cox, ARMA, Trend, Seasonal) via statsforecast.",
+    "description": "TBATS (Trigonometric, Box-Cox, ARMA, Trend, Seasonal) via statsforecast, fit once\n    and rolled forward.",
     "uses_exogenous": false,
     "library": "statsforecast (Nixtla)",
-    "compute_profile": "CPU only; the heaviest of the classical methods here, so it's fit on a smaller window (3,000 points) than its siblings \u2014 still typically seconds per case, but noticeably slower than AutoARIMA/AutoETS/Theta. Refit at every rolling origin, so `fit_seconds` is the cost of one such refit.",
-    "limitations": "Univariate: ignores exogenous inputs. Its internal Box-Cox transform assumes strictly positive data; a Yeo-Johnson fallback (see below) handles series that dip to zero or negative. Unlike the other classical methods, this one is refit from scratch at every rolling origin \u2014 statsforecast ties its component search to each fit and offers no way to roll a fitted TBATS forward \u2014 so it re-estimates on more recent data than the fit-once methods do, and its accuracy is not measured under quite the same protocol as theirs.",
-    "code_snippet": "from statsforecast import StatsForecast\nfrom statsforecast.models import TBATS\n\nsf = StatsForecast(models=[TBATS(season_length=season_length)], freq=case.freq)\nsf.fit(train_df)                     # train_df: unique_id, ds, y\ny_hat = sf.predict(h=horizon)[\"TBATS\"]",
+    "compute_profile": "CPU only; a genuine AIC search over Box-Cox/trend/damped-trend/ARMA-error combinations at fit time (up to 12 candidate models) -- the heaviest single fit of the classical methods here, on the order of a minute at 3,000 points with an annual (365) season. Paid once, though: each origin after that is a fixed-coefficient state-space filter pass (`calcTBATSFaster`) over that origin's whole history, on the order of milliseconds even on long records.",
+    "limitations": "Univariate: ignores exogenous inputs. Its internal Box-Cox transform assumes strictly positive data; a Yeo-Johnson fallback (see below) handles series that dip to zero or negative. The roll-forward calls two statsforecast internals (`calcTBATSFaster`, `tbats_forecast`) directly rather than a public `forward()` method, since none exists for TBATS -- pinned bit-exact against `AutoTBATS`'s own output (see the class docstring), but a soft dependency on library internals that could break on a future statsforecast version bump.",
+    "code_snippet": "from statsforecast.tbats import tbats_selection, calcTBATSFaster, tbats_forecast\n\n# fit once: genuine AIC search over Box-Cox/trend/damped-trend/ARMA-errors\nmod = tbats_selection(train_y, [season_length], use_boxcox=None, use_trend=None,\n                      use_damped_trend=None, use_arma_errors=True, ...)\n\n# each origin: roll the frozen coefficients forward over the growing history\n_, _, x = calcTBATSFaster(history_y, mod['w_transpose'], mod['g'], mod['F'],\n                          mod['seed_states'])\ny_hat = tbats_forecast({'x': x, 'w_transpose': mod['w_transpose'], 'F': mod['F']},\n                       horizon)['mean']",
     "capabilities": {
       "trend": true,
       "seasonality": true,
@@ -568,7 +591,7 @@
     "scorecard": {
       "history_requirements": "Medium",
       "interpretability": "Medium",
-      "fit_cost": "Medium",
+      "fit_cost": "High",
       "inference_cost": "Low",
       "tuning_effort": "Low",
       "robustness_to_noise": "Medium"
