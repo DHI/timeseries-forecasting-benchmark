@@ -8,6 +8,16 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-29 — Gave MLP a `+exo` variant
+
+MLP already had the full covariate pipeline through `_WindowedMLBase` (the same lag +
+calendar feature machinery LightGBM/LinearLags/CatBoost use), but no `+exo` subclass had
+been registered — an oversight from when those three got theirs. Added
+`MLPExoForecaster`, following the same one-line pattern (flip `use_exogenous = True`,
+inherit everything else). This was Tier 1 of a larger plan to extend covariate support to
+DLinear, N-HiTS, and PatchTST, which are standalone implementations and need real wiring
+work rather than a flag flip — those stay univariate for now.
+
 ## 2026-07-29 — TBATS now fits once too, via genuine AIC selection instead of a fixed config
 
 TBATS's scores on `discharge_saugeen` were far worse than every other classical method

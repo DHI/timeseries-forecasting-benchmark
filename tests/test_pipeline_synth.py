@@ -23,6 +23,7 @@ from tsforecastbench.bench.methods import (  # noqa: E402
     LightGBMForecaster,
     LinearLagsExoForecaster,
     MeanBaseline,
+    MLPExoForecaster,
     MLPForecaster,
     Persistence,
     SeasonalNaive,
@@ -242,7 +243,12 @@ def test_rolling_matrix_runs():
 def test_exogenous_methods_run(cid):
     """Exogenous-aware windowed ML runs on every case that declares covariates."""
     case = get_case(cid)
-    methods = [LinearLagsExoForecaster(), LightGBMExoForecaster(), CatBoostExoForecaster()]
+    methods = [
+        LinearLagsExoForecaster(),
+        LightGBMExoForecaster(),
+        CatBoostExoForecaster(),
+        MLPExoForecaster(),
+    ]
     res = run_case(case, methods, prefer_synth=True)
     assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
     assert all(m.uses_exogenous for m in methods)

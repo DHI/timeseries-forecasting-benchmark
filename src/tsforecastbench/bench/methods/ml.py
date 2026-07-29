@@ -380,6 +380,11 @@ class MLPForecaster(_WindowedMLBase):
         )
 
 
+class MLPExoForecaster(MLPForecaster):
+    name = "MLP+exo"
+    use_exogenous = True
+
+
 class LightGBMExoForecaster(LightGBMForecaster):
     name = "LightGBM+exo"
     use_exogenous = True

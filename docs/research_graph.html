@@ -342,6 +342,19 @@
 {
   "nodes": [
     {
+      "id": "2026-07-29-mlp-exo-variant",
+      "date": "2026-07-29",
+      "title": "Gave MLP a +exo variant",
+      "category": "methodology",
+      "summary": "MLP already had the full covariate pipeline through _WindowedMLBase, shared with LightGBM/LinearLags/CatBoost, but no +exo subclass had been registered. Added MLPExoForecaster, the same one-line flip used by its siblings. Tier 1 of a larger plan to extend covariate support to DLinear, N-HiTS and PatchTST, which need real wiring rather than a flag flip.",
+      "detail": "MLP shares `_WindowedMLBase` with LightGBM, LinearLags and CatBoost, so it already had the full lag + calendar covariate pipeline (column extraction, last-value fallback, the `X_df` future-covariate builder) — but only the other three had ever gotten a `+exo` subclass registered, leaving MLP as the one method in that family without a covariate-aware sibling. Added `MLPExoForecaster` following the exact pattern those three already use: flip `use_exogenous = True`, inherit everything else. `test_exo_variants_inherit_their_base_declarations` already asserts a `+exo` class and its base share `capabilities`/`scorecard`, so this needed no further changes to pass.\n\nThis was Tier 1 of a three-tier plan to close the remaining covariate gaps: DLinear, N-HiTS and PatchTST are standalone implementations (not built on `_WindowedMLBase`) and stay univariate for now — extending them means wiring covariates into DLinear's ridge feature vector and reshaping N-HiTS/PatchTST's first layers, real work rather than a flag flip. Those are planned but not yet done.",
+      "tags": [
+        "mlp",
+        "exogenous",
+        "windowed-ml"
+      ]
+    },
+    {
       "id": "2026-07-29-method-scorecards",
       "date": "2026-07-29",
       "title": "Method cards now carry a capability set and an operational scorecard",
@@ -1456,6 +1469,11 @@
     }
   ],
   "edges": [
+    {
+      "source": "2026-07-29-mlp-exo-variant",
+      "target": "2026-07-27-mlp-recursive-divergence-bounded",
+      "type": "relates-to"
+    },
     {
       "source": "2026-07-29-tbats-fit-once",
       "target": "2026-07-29-classical-fit-once",
