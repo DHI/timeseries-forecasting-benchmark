@@ -1,10 +1,9 @@
 import type { CaseMeta, MethodMeta } from '../types/data';
 
-/** Markdown blurb for the method-info panel: family, a brief description drawn from the
- * Forecaster subclass's docstring, and which of the case's exogenous inputs (if any) this
- * method actually consumes. Port of app/data.py's `method_info`. */
+/** Markdown blurb for the method-info panel: a brief description drawn from the Forecaster
+ * subclass's docstring, and which of the case's exogenous inputs (if any) this method
+ * actually consumes. Port of app/data.py's `method_info`. */
 export function methodInfo(caseMeta: CaseMeta, methodMeta: MethodMeta | undefined): string {
-  const family = methodMeta?.family ?? 'unclassified';
   const description = methodMeta?.description ?? 'No description yet.';
 
   let exoLine = 'none';
@@ -16,11 +15,7 @@ export function methodInfo(caseMeta: CaseMeta, methodMeta: MethodMeta | undefine
     }
   }
 
-  return [
-    `**Family**: ${family.replace(/_/g, ' ')}`,
-    description,
-    `**Exogenous inputs used**: ${exoLine}`,
-  ].join('\n\n');
+  return [description, `**Exogenous inputs used**: ${exoLine}`].join('\n\n');
 }
 
 /** Markdown for the method-info panel's collapsed "Implementation detail" section:

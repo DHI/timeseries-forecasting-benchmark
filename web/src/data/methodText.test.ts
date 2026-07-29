@@ -68,10 +68,10 @@ describe('methodInfo', () => {
     expect(info).toContain('rain (necessary), temp');
   });
 
-  it('falls back to "unclassified" and a placeholder description when unknown', () => {
+  it('falls back to a placeholder description when unknown', () => {
     const info = methodInfo(caseMeta(), undefined);
-    expect(info).toContain('**Family**: unclassified');
     expect(info).toContain('No description yet.');
+    expect(info).not.toContain('Family');
   });
 });
 
