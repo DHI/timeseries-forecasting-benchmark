@@ -7,6 +7,7 @@ from abc import ABC, abstractmethod
 import numpy as np
 import pandas as pd
 
+from tsforecastbench.bench.methods.scorecard import Capabilities, Scorecard
 from tsforecastbench.data.schema import Case
 
 
@@ -79,7 +80,7 @@ class Forecaster(ABC):
     # bridge a gap, so extended history leaves their forecast unchanged. The eval loop
     # runs the second (extended) fit only for `is_global and pools_segments` methods.
     pools_segments: bool = False
-    # The next four are documentation only, read by the results viewer's method-info
+    # The rest are documentation only, read by the results viewer's method-info
     # panel (tsforecastbench.webdata) — they have no effect on fit/predict. Kept as class attributes
     # (not a separate metadata file) so a method's implementation and its description of
     # itself can't drift apart.
@@ -87,6 +88,11 @@ class Forecaster(ABC):
     compute_profile: str = ""  # rough CPU/GPU + speed expectations, one sentence
     limitations: str = ""  # plain-language failure modes / assumptions
     code_snippet: str = ""  # short, truthful excerpt of the real fit/predict calls
+    # The card's at-a-glance blocks (see bench/methods/scorecard.py for the rubric).
+    # Annotated but deliberately unassigned: there is no sensible generic answer for either,
+    # so every concrete method states its own and forgetting one is an error, not a default.
+    capabilities: Capabilities
+    scorecard: Scorecard
 
     @abstractmethod
     def fit(self, case: Case, train: pd.DataFrame) -> None:
