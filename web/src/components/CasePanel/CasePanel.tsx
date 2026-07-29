@@ -18,7 +18,6 @@ const SUBCAPTION_STYLE = {
   margin: '10px 0 2px 0',
 };
 const SUMMARY_STYLE = { cursor: 'pointer', fontWeight: 'bold' as const, fontSize: '1em' };
-const LOCAL_FAMILIES = new Set(['baseline', 'ensemble']);
 const FOUNDATION_NOTE_STYLE = {
   display: 'flex',
   alignItems: 'flex-start',
@@ -62,6 +61,18 @@ function CasePanelComponent({ caseId, caseMeta, scores, showGlobal, selectedMeth
     return map;
   }, [scores, caseId]);
 
+  // Local vs global is a per-method property, not a per-family one: the classical family
+  // is split, with AutoARIMA/AutoETS/Theta/MSTL fitting once while TBATS is refit per
+  // origin. So read the flag the eval loop actually acted on rather than inferring it
+  // from `family`.
+  const isGlobalByMethod = useMemo(() => {
+    const map = new Map<string, boolean>();
+    for (const row of scores) {
+      if (row.case_id === caseId) map.set(row.method, row.is_global);
+    }
+    return map;
+  }, [scores, caseId]);
+
   // Foundation models forecast zero-shot, from recent context, so the train/val/test
   // split below doesn't describe how they were fit the way it does for other methods.
   const foundationMethods = useMemo(
@@ -73,17 +84,18 @@ function CasePanelComponent({ caseId, caseMeta, scores, showGlobal, selectedMeth
       ? "is a zero-shot foundation model: it forecasts from recent context only and never fits on this case's train/val split."
       : "are zero-shot foundation models: they forecast from recent context only and never fit on this case's train/val split.";
 
-  // Local (baseline/ensemble) methods have no single trained model — unlike the global
-  // methods (ML/DL, and classical now that AutoARIMA/AutoETS/Theta/TBATS/MSTL fit once
-  // and roll forward), these refit from scratch at every forecast origin.
+  // Local methods have no single reusable trained model, so they're refit from scratch at
+  // every forecast origin. That's the naive baselines and the ensembles built on them, plus
+  // TBATS — statsforecast ties its component search to each fit and offers no way to roll a
+  // fitted TBATS forward.
   const localMethods = useMemo(
-    () => selectedMethods.filter((m) => LOCAL_FAMILIES.has(familyByMethod.get(m) ?? '')),
-    [familyByMethod, selectedMethods],
+    () => selectedMethods.filter((m) => isGlobalByMethod.get(m) === false),
+    [isGlobalByMethod, selectedMethods],
   );
   const localNote =
     localMethods.length === 1
-      ? "is a local method: it's refit from scratch at every forecast origin, using all history up to that point, rather than being fit once on the train/val split like the global (ML/DL/classical) methods."
-      : "are local methods: they're refit from scratch at every forecast origin, using all history up to that point, rather than being fit once on the train/val split like the global (ML/DL/classical) methods.";
+      ? "is a local method: it's refit from scratch at every forecast origin, using all history up to that point, rather than being fit once on the train/val split like the global methods. It therefore re-estimates on more recent data than they do."
+      : "are local methods: they're refit from scratch at every forecast origin, using all history up to that point, rather than being fit once on the train/val split like the global methods. They therefore re-estimate on more recent data than the global methods do.";
 
   return (
     <div>

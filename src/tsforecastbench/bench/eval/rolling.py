@@ -5,19 +5,25 @@ errors are pooled per lead time and averaged over all origins, giving the canoni
 "skill degrades with lead time" curve used to compare methods. How the model behind each
 forecast is obtained depends on the method's `is_global` flag (see `methods.base`):
 
-- Local methods (the naive baselines and the baseline ensembles) have no separable
-  trained model, so they are refit on the curated history up to each cutoff -- that refit
-  is simply how they fold in the newer data.
-- Global methods (AutoARIMA, AutoETS, Theta, TBATS, MSTL, LightGBM, CatBoost, MLP,
-  LinearLags, DLinear, Chronos, and the optional torch/neuralforecast models) estimate a
-  reusable model once, on data strictly before the test period, then evaluate every
-  cutoff by inference alone -- each origin's predict conditions on the real observed
-  history up to that origin without re-estimating any parameters. This stays leak-free
-  and makes raising `n_origins` cheap for the methods that otherwise dominate runtime.
-  The classical methods (AutoARIMA/AutoETS/Theta/TBATS/MSTL) hold their order/spec and
-  parameters fixed from fit time, same as any other global method -- see
-  `methods.classical` for how each one's roll-forward genuinely conditions on new history
-  without re-estimating anything.
+- Local methods (the naive baselines, the baseline ensembles, and TBATS) have no separable
+  trained model to carry forward, so they are refit on the curated history up to each
+  cutoff -- that refit is simply how they fold in the newer data. They therefore
+  re-estimate on more recent data than the global methods do, which is a real confound
+  when comparing them; the benchmark keeps the local set as small as the libraries allow
+  for that reason. TBATS is local only because statsforecast couples its component search
+  to every `.fit()` and exposes no way to roll a fitted TBATS forward (see
+  `methods.classical`).
+- Global methods (AutoARIMA, AutoETS, Theta, MSTL-ETS, MSTL-ARIMA, LightGBM, CatBoost,
+  MLP, LinearLags, DLinear, Chronos, and the optional torch/neuralforecast models)
+  estimate a reusable model once, on data strictly before the test period, then evaluate
+  every cutoff by inference alone -- each origin's predict conditions on the real observed
+  history up to that origin without re-estimating any parameters. This stays leak-free, and
+  it means only the fit cost is paid once; predict cost still scales with `n_origins`, and
+  for some methods predict is the expensive half (Theta and MSTL, below). The classical ones
+  roll forward through statsforecast's own `forward(y, h)`, which applies the fitted model to
+  a new series without calling an optimizer; two deterministic pieces (Theta's and MSTL's
+  seasonal decomposition) are re-derived per origin, no differently from the ML methods
+  recomputing their calendar features -- see `methods.classical`.
 
 `fit_seconds`/`predict_seconds` in the output are each averaged per origin, not summed:
 for a local method that's the mean over its `n_origins` refits; for a global method

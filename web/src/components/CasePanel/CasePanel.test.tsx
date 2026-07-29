@@ -35,7 +35,7 @@ const caseMeta: CaseMeta = {
   notes: '',
 };
 
-function scoreRow(method: string, family: string): ScoreRow {
+function scoreRow(method: string, family: string, isGlobal = family === 'fm'): ScoreRow {
   return {
     case_id: 'demand_ltown',
     domain: 'water_distribution',
@@ -43,7 +43,7 @@ function scoreRow(method: string, family: string): ScoreRow {
     method,
     family,
     uses_exogenous: false,
-    is_global: family === 'fm',
+    is_global: isGlobal,
     used_extended_history: false,
     horizon: '24h',
     metric: 'MASE',
@@ -56,7 +56,15 @@ function scoreRow(method: string, family: string): ScoreRow {
   };
 }
 
-const scores: ScoreRow[] = [scoreRow('Persistence', 'baseline'), scoreRow('TimesFM-2.5', 'fm')];
+// The classical family is deliberately split: AutoARIMA fits once, TBATS is refit per
+// origin, so local-vs-global has to be read off `is_global` rather than inferred from
+// `family`.
+const scores: ScoreRow[] = [
+  scoreRow('Persistence', 'baseline'),
+  scoreRow('TimesFM-2.5', 'fm'),
+  scoreRow('AutoARIMA', 'classical', true),
+  scoreRow('TBATS', 'classical', false),
+];
 
 describe('CasePanel', () => {
   it('shows no foundation-model note when the selection has none', () => {
@@ -107,6 +115,40 @@ describe('CasePanel', () => {
 
     expect(screen.getByText(/is a local method/)).toBeInTheDocument();
     expect(screen.getByText('Persistence')).toBeInTheDocument();
+  });
+
+  it('does not call a fit-once classical method local', () => {
+    render(
+      <ThemeProvider>
+        <CasePanel
+          caseId="demand_ltown"
+          caseMeta={caseMeta}
+          scores={scores}
+          showGlobal={false}
+          selectedMethods={['AutoARIMA']}
+        />
+      </ThemeProvider>,
+    );
+
+    expect(screen.queryByText(/is a local method/)).not.toBeInTheDocument();
+  });
+
+  it('calls a refit-per-origin classical method local even though its family is mixed', () => {
+    render(
+      <ThemeProvider>
+        <CasePanel
+          caseId="demand_ltown"
+          caseMeta={caseMeta}
+          scores={scores}
+          showGlobal={false}
+          selectedMethods={['AutoARIMA', 'TBATS']}
+        />
+      </ThemeProvider>,
+    );
+
+    expect(screen.getByText(/is a local method/)).toBeInTheDocument();
+    expect(screen.getByText('TBATS')).toBeInTheDocument();
+    expect(screen.queryByText('AutoARIMA')).not.toBeInTheDocument();
   });
 
   it('shows both notes when local and foundation methods are selected together', () => {
