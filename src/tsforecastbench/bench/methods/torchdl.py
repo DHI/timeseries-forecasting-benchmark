@@ -253,6 +253,10 @@ class _TorchDLBase(Forecaster):
 
 
 class NHITSForecaster(_TorchDLBase):
+    """Stack of MLP blocks at increasingly coarse pooling rates; each block predicts a
+    backcast (subtracted from the residual passed to the next block) and a forecast
+    contribution, and the stack's contributions sum to the final forecast."""
+
     name = "N-HiTS"
     # Each block's _interp produces its H-length contribution directly; forward() sums
     # them in one pass — no step's output feeds into computing another step.
@@ -264,6 +268,10 @@ class NHITSForecaster(_TorchDLBase):
 
 
 class PatchTSTForecaster(_TorchDLBase):
+    """Splits the lookback window into overlapping patches, embeds and positionally
+    encodes them, and runs them through a transformer encoder before a linear head
+    projects to the full horizon."""
+
     name = "PatchTST"
     # The head is a single Linear projecting straight to the full H-length output —
     # no step's output feeds into computing another step.

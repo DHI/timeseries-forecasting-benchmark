@@ -51,7 +51,7 @@
   },
   "CatBoost+exo": {
     "family": "ml",
-    "description": "Shared lag-feature pipeline; subclasses provide the sklearn regressor.",
+    "description": "Gradient-boosted decision trees (CatBoost) over lag and calendar features.",
     "uses_exogenous": true,
     "library": "mlforecast + catboost",
     "compute_profile": "CPU only; a lag+calendar feature table is built once, then the regressor fits on it directly \u2014 fast for the linear/tree models here, slower for the MLP (which also cross-validates an early-stopping split).",
@@ -76,7 +76,7 @@
   },
   "CatBoost": {
     "family": "ml",
-    "description": "Shared lag-feature pipeline; subclasses provide the sklearn regressor.",
+    "description": "Gradient-boosted decision trees (CatBoost) over lag and calendar features.",
     "uses_exogenous": false,
     "library": "mlforecast + catboost",
     "compute_profile": "CPU only; a lag+calendar feature table is built once, then the regressor fits on it directly \u2014 fast for the linear/tree models here, slower for the MLP (which also cross-validates an early-stopping split).",
@@ -226,7 +226,7 @@
   },
   "iTransformer": {
     "family": "dl",
-    "description": "Shared neuralforecast wrapper; subclasses name the model class + extra kwargs.",
+    "description": "Inverted transformer: embeds each variate's whole series as one token and attends\n    across variates rather than across time steps.",
     "uses_exogenous": false,
     "library": "neuralforecast + pytorch_lightning",
     "compute_profile": "Uses a GPU automatically if one is available (accelerator='auto'), otherwise falls back to CPU; a heavier training loop (up to 500 steps, full pytorch_lightning trainer overhead) than the custom torch models in torchdl.py. Only available on Linux with Python <3.13 (the `nf` extra), since neuralforecast depends on `ray`.",
@@ -251,7 +251,7 @@
   },
   "LightGBM+exo": {
     "family": "ml",
-    "description": "Shared lag-feature pipeline; subclasses provide the sklearn regressor.",
+    "description": "Gradient-boosted decision trees (LightGBM) over lag and calendar features.",
     "uses_exogenous": true,
     "library": "mlforecast + lightgbm",
     "compute_profile": "CPU only; a lag+calendar feature table is built once, then the regressor fits on it directly \u2014 fast for the linear/tree models here, slower for the MLP (which also cross-validates an early-stopping split).",
@@ -276,7 +276,7 @@
   },
   "LightGBM": {
     "family": "ml",
-    "description": "Shared lag-feature pipeline; subclasses provide the sklearn regressor.",
+    "description": "Gradient-boosted decision trees (LightGBM) over lag and calendar features.",
     "uses_exogenous": false,
     "library": "mlforecast + lightgbm",
     "compute_profile": "CPU only; a lag+calendar feature table is built once, then the regressor fits on it directly \u2014 fast for the linear/tree models here, slower for the MLP (which also cross-validates an early-stopping split).",
@@ -301,7 +301,7 @@
   },
   "LinearLags+exo": {
     "family": "ml",
-    "description": "Shared lag-feature pipeline; subclasses provide the sklearn regressor.",
+    "description": "Ridge regression over lag and calendar features.",
     "uses_exogenous": true,
     "library": "mlforecast + scikit-learn (Ridge)",
     "compute_profile": "CPU only; a lag+calendar feature table is built once, then the regressor fits on it directly \u2014 fast for the linear/tree models here, slower for the MLP (which also cross-validates an early-stopping split).",
@@ -326,7 +326,7 @@
   },
   "LinearLags": {
     "family": "ml",
-    "description": "Shared lag-feature pipeline; subclasses provide the sklearn regressor.",
+    "description": "Ridge regression over lag and calendar features.",
     "uses_exogenous": false,
     "library": "mlforecast + scikit-learn (Ridge)",
     "compute_profile": "CPU only; a lag+calendar feature table is built once, then the regressor fits on it directly \u2014 fast for the linear/tree models here, slower for the MLP (which also cross-validates an early-stopping split).",
@@ -351,7 +351,7 @@
   },
   "MLP+exo": {
     "family": "ml",
-    "description": "Shared lag-feature pipeline; subclasses provide the sklearn regressor.",
+    "description": "Multi-layer perceptron (scikit-learn MLPRegressor) over lag and calendar features.",
     "uses_exogenous": true,
     "library": "mlforecast + scikit-learn (MLPRegressor)",
     "compute_profile": "CPU only; a lag+calendar feature table is built once, then the regressor fits on it directly \u2014 fast for the linear/tree models here, slower for the MLP (which also cross-validates an early-stopping split).",
@@ -376,7 +376,7 @@
   },
   "MLP": {
     "family": "ml",
-    "description": "Shared lag-feature pipeline; subclasses provide the sklearn regressor.",
+    "description": "Multi-layer perceptron (scikit-learn MLPRegressor) over lag and calendar features.",
     "uses_exogenous": false,
     "library": "mlforecast + scikit-learn (MLPRegressor)",
     "compute_profile": "CPU only; a lag+calendar feature table is built once, then the regressor fits on it directly \u2014 fast for the linear/tree models here, slower for the MLP (which also cross-validates an early-stopping split).",
@@ -451,7 +451,7 @@
   },
   "Mean": {
     "family": "baseline",
-    "description": "No description yet.",
+    "description": "Repeats the training-window mean for every step of the horizon.",
     "uses_exogenous": false,
     "library": "pandas/numpy only",
     "compute_profile": "CPU, negligible \u2014 one mean over the training split.",
@@ -526,7 +526,7 @@
   },
   "N-HiTS": {
     "family": "dl",
-    "description": "No description yet.",
+    "description": "Stack of MLP blocks at increasingly coarse pooling rates; each block predicts a\n    backcast (subtracted from the residual passed to the next block) and a forecast\n    contribution, and the stack's contributions sum to the final forecast.",
     "uses_exogenous": false,
     "library": "torch (custom implementation, no ray/lightning)",
     "compute_profile": "CPU (no GPU dependency); trains a small network from scratch per case \u2014 600 gradient steps over randomly sampled windows \u2014 making these the heaviest CPU methods in the benchmark. Keep rolling-origin counts modest when including them.",
@@ -551,7 +551,7 @@
   },
   "PatchTST": {
     "family": "dl",
-    "description": "No description yet.",
+    "description": "Splits the lookback window into overlapping patches, embeds and positionally\n    encodes them, and runs them through a transformer encoder before a linear head\n    projects to the full horizon.",
     "uses_exogenous": false,
     "library": "torch (custom implementation, no ray/lightning)",
     "compute_profile": "CPU (no GPU dependency); trains a small network from scratch per case \u2014 600 gradient steps over randomly sampled windows \u2014 making these the heaviest CPU methods in the benchmark. Keep rolling-origin counts modest when including them.",
@@ -576,7 +576,7 @@
   },
   "Persistence": {
     "family": "baseline",
-    "description": "No description yet.",
+    "description": "Repeats the last observed value for every step of the horizon (the naive forecast).",
     "uses_exogenous": false,
     "library": "pandas/numpy only",
     "compute_profile": "CPU, negligible \u2014 no fitting at all.",
@@ -601,7 +601,7 @@
   },
   "SeasonalNaive": {
     "family": "baseline",
-    "description": "No description yet.",
+    "description": "Tiles the most recently observed full seasonal cycle forward across the horizon.",
     "uses_exogenous": false,
     "library": "pandas/numpy only",
     "compute_profile": "CPU, negligible \u2014 tiles the last observed seasonal cycle.",
@@ -651,7 +651,7 @@
   },
   "TFT": {
     "family": "dl",
-    "description": "Shared neuralforecast wrapper; subclasses name the model class + extra kwargs.",
+    "description": "Temporal Fusion Transformer: an LSTM encoder-decoder combined with multi-head\n    attention over the lookback window.",
     "uses_exogenous": false,
     "library": "neuralforecast + pytorch_lightning",
     "compute_profile": "Uses a GPU automatically if one is available (accelerator='auto'), otherwise falls back to CPU; a heavier training loop (up to 500 steps, full pytorch_lightning trainer overhead) than the custom torch models in torchdl.py. Only available on Linux with Python <3.13 (the `nf` extra), since neuralforecast depends on `ray`.",
@@ -751,7 +751,7 @@
   },
   "TimesNet": {
     "family": "dl",
-    "description": "Shared neuralforecast wrapper; subclasses name the model class + extra kwargs.",
+    "description": "Reshapes the series into 2D tensors by its dominant periods and applies\n    convolutional blocks to capture both within-period and across-period patterns.",
     "uses_exogenous": false,
     "library": "neuralforecast + pytorch_lightning",
     "compute_profile": "Uses a GPU automatically if one is available (accelerator='auto'), otherwise falls back to CPU; a heavier training loop (up to 500 steps, full pytorch_lightning trainer overhead) than the custom torch models in torchdl.py. Only available on Linux with Python <3.13 (the `nf` extra), since neuralforecast depends on `ray`.",
@@ -776,7 +776,7 @@
   },
   "EnsembleBaselines": {
     "family": "ensemble",
-    "description": "Combine several member forecasters into one via a per-step median (or mean).",
+    "description": "Median of the naive baselines (Mean, Persistence, SeasonalNaive, Climatology).",
     "uses_exogenous": false,
     "library": "no additional library \u2014 combines member forecasters' own outputs",
     "compute_profile": "Sum of its members' costs; cheap in practice since the members are the naive baselines (and optionally the fast classical Theta method).",
@@ -801,7 +801,7 @@
   },
   "EnsembleBaselinesTheta": {
     "family": "ensemble",
-    "description": "Combine several member forecasters into one via a per-step median (or mean).",
+    "description": "Median of the naive baselines plus the fast classical Theta method.",
     "uses_exogenous": false,
     "library": "no additional library \u2014 combines member forecasters' own outputs",
     "compute_profile": "Sum of its members' costs; cheap in practice since the members are the naive baselines (and optionally the fast classical Theta method).",

@@ -242,6 +242,8 @@ class _WindowedMLBase(Forecaster):
 
 
 class LightGBMForecaster(_WindowedMLBase):
+    """Gradient-boosted decision trees (LightGBM) over lag and calendar features."""
+
     name = "LightGBM"
     library = "mlforecast + lightgbm"
     # A tree's prediction is an average of training targets, so it cannot output a value
@@ -268,6 +270,8 @@ class LightGBMForecaster(_WindowedMLBase):
 
 
 class CatBoostForecaster(_WindowedMLBase):
+    """Gradient-boosted decision trees (CatBoost) over lag and calendar features."""
+
     name = "CatBoost"
     library = "mlforecast + catboost"
     # Bounded by the training target range for the same reason LightGBM is.
@@ -292,6 +296,8 @@ class CatBoostForecaster(_WindowedMLBase):
 
 
 class LinearLagsForecaster(_WindowedMLBase):
+    """Ridge regression over lag and calendar features."""
+
     name = "LinearLags"
     library = "mlforecast + scikit-learn (Ridge)"
     # Keeps the base's trend=True: linear in its lag features, so unlike the tree models it
@@ -318,6 +324,8 @@ class LinearLagsForecaster(_WindowedMLBase):
 
 
 class MLPForecaster(_WindowedMLBase):
+    """Multi-layer perceptron (scikit-learn MLPRegressor) over lag and calendar features."""
+
     name = "MLP"
     max_train_steps = 20000
     # Trains one model per horizon step from the origin's lag features instead of one

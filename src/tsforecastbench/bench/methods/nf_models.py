@@ -142,6 +142,9 @@ class _NFBase(Forecaster):
 
 
 class TFTForecaster(_NFBase):
+    """Temporal Fusion Transformer: an LSTM encoder-decoder combined with multi-head
+    attention over the lookback window."""
+
     name = "TFT"
     model_name = "TFT"
     # A single neuralforecast predict() call returns the full horizon at once — TFT's
@@ -150,6 +153,9 @@ class TFTForecaster(_NFBase):
 
 
 class ITransformerForecaster(_NFBase):
+    """Inverted transformer: embeds each variate's whole series as one token and attends
+    across variates rather than across time steps."""
+
     name = "iTransformer"
     model_name = "iTransformer"
     # iTransformer is multivariate and fixed to n_series=1 here, so it cannot absorb the
@@ -166,6 +172,9 @@ class ITransformerForecaster(_NFBase):
 
 
 class TimesNetForecaster(_NFBase):
+    """Reshapes the series into 2D tensors by its dominant periods and applies
+    convolutional blocks to capture both within-period and across-period patterns."""
+
     name = "TimesNet"
     model_name = "TimesNet"
     # Same one-call, full-horizon-at-once prediction as its siblings — see TFTForecaster.
