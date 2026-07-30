@@ -1,6 +1,6 @@
 /** Markdown shown in the instructions modal opened from the info icon next to the page title.
- * Benchmark methodology: splits, curation, model parameters, case description, and
- * exogenous-input handling. */
+ * Benchmark methodology: splits, curation, fitting protocol, model parameters, case
+ * description, and exogenous-input handling. */
 export const BENCHMARK_DESIGN = `
 ## Splits
 
@@ -13,9 +13,23 @@ no shuffling.
 
 Curation enforces minimum lengths: train must cover at least two full seasonal cycles, and
 val+test together must cover at least one forecast horizon. Evaluation is rolling-origin
-by default (errors pooled across many refit points in the test window), with a --fast
+by default (errors pooled across many forecast origins in the test window), with a --fast
 single-holdout mode for quick checks. Missing data is kept as explicit NaN: imputed for
 training, masked out during scoring so only real observations count.
+
+## Fitting protocol
+
+Methods split into two groups by how often they re-estimate. Global methods — every ML, DL,
+and foundation-model family, plus all of the classical ones (AutoARIMA, AutoETS, Theta, MSTL,
+TBATS) — fit once on data strictly before the test period, then roll forward across every
+origin by inference alone, with no further re-estimation. Baseline and ensemble methods refit
+from scratch at each origin instead, since for them the fit is the forecast. This split keeps
+a method's score from depending on how often it happens to be allowed to re-estimate, and the
+train/val/test boundary already keeps the fit-once methods leak-free without repeated
+retraining. Predict cost isn't uniformly small for the fit-once methods either — Theta and
+MSTL, for instance, re-derive a seasonal decomposition over the whole history at every origin
+— so the benchmark records fit time and predict time separately rather than folding them into
+one number.
 
 ## Model parameters
 
