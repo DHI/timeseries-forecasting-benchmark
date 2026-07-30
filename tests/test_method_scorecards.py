@@ -1,4 +1,4 @@
-"""Guards on the per-method Capabilities/Scorecard declarations.
+"""Guards on the per-method Capabilities/Scorecard/ForecastStrategy declarations.
 
 These are hand-authored, so nothing in the code can check whether a rating is *right*.
 What can be checked is that every method has one, that the field names the web app's
@@ -19,6 +19,7 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 from tsforecastbench.bench import methods as _methods  # noqa: E402
 from tsforecastbench.bench.methods.scorecard import (  # noqa: E402
     Capabilities,
+    ForecastStrategy,
     Level,
     Scorecard,
 )
@@ -92,6 +93,39 @@ def test_every_registered_method_declares_both():
         assert set(meta["scorecard"]) == set(EXPECTED_SCORECARD_FIELDS), name
         assert all(isinstance(v, bool) for v in meta["capabilities"].values()), name
         assert all(v in set(Level) for v in meta["scorecard"].values()), name
+        assert meta["forecast_strategy"] in set(ForecastStrategy), name
+
+
+def test_forecast_strategy_classifications():
+    """Locks in the specific classification decisions made for ForecastStrategy: Recursive
+    covers both mlforecast's lag-feedback strategy and classical state-space recursions (the
+    same own-forecast-feeds-forward mechanism), Direct covers mlforecast's direct
+    multi-horizon strategy and every architecture producing the whole horizon in one call,
+    and N/A covers the baselines and the ensemble, where the distinction is meaningless."""
+    registry = _method_registry()
+    expected = {
+        "LightGBM": "Recursive",
+        "CatBoost": "Recursive",
+        "LinearLags": "Recursive",
+        "AutoARIMA": "Recursive",
+        "AutoETS": "Recursive",
+        "TBATS": "Recursive",
+        "Theta": "Recursive",
+        "MSTL-ETS": "Recursive",
+        "MSTL-ARIMA": "Recursive",
+        "MLP": "Direct",
+        "DLinear": "Direct",
+        "N-HiTS": "Direct",
+        "PatchTST": "Direct",
+        "Chronos-Bolt": "Direct",
+        "Mean": "N/A",
+        "Persistence": "N/A",
+        "SeasonalNaive": "N/A",
+        "Climatology": "N/A",
+        "EnsembleBaselines": "N/A",
+    }
+    for name, strategy in expected.items():
+        assert registry[name]["forecast_strategy"] == strategy, name
 
 
 def test_multiple_seasonality_requires_seasonality():
@@ -107,6 +141,7 @@ def test_exo_variants_inherit_their_base_declarations():
     for exo_cls, base_cls in pairs:
         assert exo_cls.capabilities == base_cls.capabilities, exo_cls.__name__
         assert exo_cls.scorecard == base_cls.scorecard, exo_cls.__name__
+        assert exo_cls.forecast_strategy == base_cls.forecast_strategy, exo_cls.__name__
 
 
 def test_gaps_capability_matches_pools_segments():
