@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 import numpy as np
 import pandas as pd
 
-from tsforecastbench.bench.methods.scorecard import Capabilities, Scorecard
+from tsforecastbench.bench.methods.scorecard import Capabilities, ForecastStrategy, Scorecard
 from tsforecastbench.data.schema import Case
 
 
@@ -89,10 +89,12 @@ class Forecaster(ABC):
     limitations: str = ""  # plain-language failure modes / assumptions
     code_snippet: str = ""  # short, truthful excerpt of the real fit/predict calls
     # The card's at-a-glance blocks (see bench/methods/scorecard.py for the rubric).
-    # Annotated but deliberately unassigned: there is no sensible generic answer for either,
-    # so every concrete method states its own and forgetting one is an error, not a default.
+    # Annotated but deliberately unassigned: there is no sensible generic answer for any of
+    # the three, so every concrete method states its own and forgetting one is an error, not
+    # a default.
     capabilities: Capabilities
     scorecard: Scorecard
+    forecast_strategy: ForecastStrategy
 
     @abstractmethod
     def fit(self, case: Case, train: pd.DataFrame) -> None:

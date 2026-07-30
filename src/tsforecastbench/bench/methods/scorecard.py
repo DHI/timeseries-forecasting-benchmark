@@ -1,14 +1,15 @@
 """What each forecasting method says about itself, beyond its prose description.
 
-Two small models, both assigned as class attributes on a `Forecaster` subclass and read only
-by the results viewer's method-info panel (via `tsforecastbench.webdata`). Neither has any
-effect on fit/predict.
+Three small pieces of metadata, all assigned as class attributes on a `Forecaster` subclass
+and read only by the results viewer's method-info panel (via `tsforecastbench.webdata`).
+None has any effect on fit/predict.
 
 `Capabilities` is a set of booleans: what structure the method can represent *at all*.
-`Scorecard` is six ordinal ratings: what the method costs to use. The split is deliberate — a
-graded rating answers "how much", a boolean answers "can it", and a capability forced onto a
-Low/Medium/High scale reads as precision that isn't there ("Medium seasonality" is not a
-thing).
+`Scorecard` is six ordinal ratings: what the method costs to use. `ForecastStrategy` is a
+one-of-three category: how the method turns one fit into a multi-step forecast. The split
+is deliberate — a graded rating answers "how much", a boolean answers "can it", a category
+answers "which", and forcing one of these into another's shape reads as precision that
+isn't there ("Medium seasonality" is not a thing, and neither is "70% recursive").
 
 **These ratings are the benchmark authors' judgement, not measurements.** They are meant to
 narrow a shortlist before you read the matrix, not to stand in for it. The one place judgement
@@ -65,6 +66,32 @@ Scorecard (Low/Medium/High; the direction that is *better* is noted for each):
                           High: an aggregate or robust statistic that barely moves for one bad
                           point. Medium: a parametric fit that absorbs some of it. Low: fits
                           the noise, or lets a single outlier propagate through the horizon.
+
+ForecastStrategy (Recursive / Direct / N/A):
+
+    Recursive   The method's own forecast feeds forward into computing a later part of the
+                horizon: mlforecast's default lag-feedback strategy (LightGBM, CatBoost,
+                LinearLags), where a predicted value is fed back in as the next step's lag
+                input, and classical state-space/ARIMA-family recursions (AutoARIMA, AutoETS,
+                TBATS, Theta, the MSTL variants) alike, where an h-step forecast for h>1
+                substitutes the model's own prior forecast for the unobserved future
+                observation and reapplies the fitted recursion. These are the same mechanism,
+                not two different ones — whether a given method's recursion is well-behaved is
+                a separate question already covered by `robustness_to_noise`, not this field.
+
+    Direct      One model call produces the whole horizon at once; nothing computed for one
+                step feeds into computing another. Covers mlforecast's direct multi-horizon
+                strategy (MLP), the DL methods (DLinear, N-HiTS, PatchTST, TFT, iTransformer,
+                TimesNet), and the foundation models (Chronos, Chronos2, TimesFM, Moirai2).
+                For the foundation models this describes only this benchmark's calling
+                interface — one call, full horizon requested — not whether the pretrained
+                decoder itself generates internally autoregressively, which this repo doesn't
+                control and hasn't verified against the pinned library versions.
+
+    N/A         The distinction carries no information: the naive baselines (MeanBaseline,
+                Persistence, SeasonalNaive, Climatology), which look up or repeat a value per
+                future timestamp independently of any other step, and EnsembleForecaster,
+                whose own strategy is just whatever mix of members it combines.
 """
 
 from __future__ import annotations
@@ -80,6 +107,14 @@ class Level(StrEnum):
     LOW = "Low"
     MEDIUM = "Medium"
     HIGH = "High"
+
+
+class ForecastStrategy(StrEnum):
+    """How a method produces a multi-step forecast — see the module rubric."""
+
+    RECURSIVE = "Recursive"
+    DIRECT = "Direct"
+    NOT_APPLICABLE = "N/A"
 
 
 class Capabilities(BaseModel):
