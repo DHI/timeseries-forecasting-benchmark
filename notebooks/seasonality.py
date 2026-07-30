@@ -22,6 +22,8 @@ def _():
     from scipy.signal import periodogram
     from scipy.stats import binned_statistic
 
+    from tsforecastbench.data.curate import ACF_THRESHOLD
+    from tsforecastbench.data.curate import _fill_small_gaps as fill_small_gaps
     from tsforecastbench.data.curate import _nan_runs as contiguous_runs
     from tsforecastbench.data.seasonality import (
         CANDIDATE_MENU,
@@ -42,12 +44,14 @@ def _():
     )
 
     return (
+        ACF_THRESHOLD,
         CANDIDATE_MENU,
         acf_at,
         binned_statistic,
         contiguous_runs,
         detect_candidates,
         fill_and_detrend,
+        fill_small_gaps,
         go,
         io,
         make_subplots,
@@ -230,12 +234,58 @@ def _(freq_input, mo, pd, raw_df, ts_picker, value_picker):
 
 
 @app.cell
-def _(contiguous_runs, full_series, gap_note, mo, observed):
-    _runs = sorted(contiguous_runs(observed), key=lambda r: r[1] - r[0], reverse=True)
+def _(contiguous_runs, mo, observed):
+    _runs = list(contiguous_runs(observed))
+    mo.stop(not _runs, mo.md("No gapless stretch found in the uploaded series."))
+    longest_run = max(_runs, key=lambda r: r[1] - r[0])
+    return (longest_run,)
+
+
+@app.cell
+def _(ACF_THRESHOLD, acf_at, full_series, longest_run, mo, np):
+    # n is the lag at which the longest gapless span's own ACF first drops below
+    # ACF_THRESHOLD — the same "still informative" cutoff the production curation
+    # pipeline uses (gap_cap() in data/curate.py), computed here on this slice instead
+    # of the whole raw series.
+    _start, _stop = longest_run
+    mo.stop(
+        _stop - _start < 3,
+        mo.md("Longest gapless span is too short to estimate an ACF-based gap cap."),
+    )
+    _y = full_series.to_numpy()[_start:_stop]
+    _max_lag = len(_y) - 2
+    gap_cap_n = _max_lag
+    for _lag in range(1, _max_lag + 1):
+        _r = acf_at(_y, _lag)
+        if not np.isfinite(_r) or _r < ACF_THRESHOLD:
+            gap_cap_n = _lag
+            break
+    return (gap_cap_n,)
+
+
+@app.cell
+def _(ACF_THRESHOLD, fill_small_gaps, full_series, gap_cap_n, mo, observed):
+    filled_series = fill_small_gaps(full_series, gap_cap_n)
+    filled_observed = filled_series.notna().to_numpy()
+    _n_missing = int((~observed).sum())
+    _n_filled = int(filled_observed.sum() - observed.sum())
+    fill_note = mo.md(
+        f"Filled {_n_filled} of {_n_missing} missing steps by linear interpolation "
+        f"(gaps ≤ {gap_cap_n} steps, the lag where the longest gapless span's ACF first "
+        f"drops below {ACF_THRESHOLD:.1f}); longer gaps remain missing."
+        if _n_missing
+        else "No gaps to fill."
+    )
+    return filled_observed, filled_series, fill_note
+
+
+@app.cell
+def _(contiguous_runs, fill_note, filled_observed, filled_series, gap_note, mo):
+    _runs = sorted(contiguous_runs(filled_observed), key=lambda r: r[1] - r[0], reverse=True)
     mo.stop(not _runs, mo.md("No gapless stretch found in the uploaded series."))
     _shown = _runs[:15]
     run_options = {
-        f"{_b - _a} steps  ({full_series.index[_a]} → {full_series.index[_b - 1]})": (_a, _b)
+        f"{_b - _a} steps  ({filled_series.index[_a]} → {filled_series.index[_b - 1]})": (_a, _b)
         for _a, _b in _shown
     }
     _more = f"  \n_{len(_runs) - 15} shorter run(s) not shown._" if len(_runs) > 15 else ""
@@ -244,22 +294,27 @@ def _(contiguous_runs, full_series, gap_note, mo, observed):
         value=next(iter(run_options)),
         label="Gapless slice to study (default: longest)",
     )
-    mo.vstack([gap_note, mo.md(f"{len(_runs)} gapless run(s) found.{_more}"), slice_picker])
+    mo.vstack(
+        [gap_note, fill_note, mo.md(f"{len(_runs)} gapless run(s) found.{_more}"), slice_picker]
+    )
     return run_options, slice_picker
 
 
 @app.cell
-def _(full_series, go, mo, plot_template, run_options, slice_picker):
+def _(filled_series, go, mo, plot_template, run_options, slice_picker):
     _start, _stop = run_options[slice_picker.value]
     _fig = go.Figure()
     _fig.add_trace(
         go.Scattergl(
-            x=full_series.index, y=full_series.to_numpy(), mode="lines", name="uploaded series"
+            x=filled_series.index,
+            y=filled_series.to_numpy(),
+            mode="lines",
+            name="uploaded series",
         )
     )
     _fig.add_vrect(
-        x0=full_series.index[_start],
-        x1=full_series.index[_stop - 1],
+        x0=filled_series.index[_start],
+        x1=filled_series.index[_stop - 1],
         fillcolor="crimson",
         opacity=0.15,
         line_width=0,
@@ -268,7 +323,8 @@ def _(full_series, go, mo, plot_template, run_options, slice_picker):
     )
     _fig.update_layout(
         template=plot_template,
-        title="Uploaded series (gaps break the line; shaded = selected slice)",
+        title="Uploaded series, small gaps filled (remaining gaps break the line; shaded = "
+        "selected slice)",
         height=320,
     )
     mo.vstack([_fig])
@@ -276,13 +332,13 @@ def _(full_series, go, mo, plot_template, run_options, slice_picker):
 
 
 @app.cell
-def _(freq_input, full_series, mo, run_options, slice_picker):
+def _(filled_series, freq_input, mo, run_options, slice_picker):
     _start, _stop = run_options[slice_picker.value]
     mo.stop(
         _stop - _start < 3, mo.md("Selected slice is too short to study (need at least 3 points).")
     )
-    y = full_series.to_numpy()[_start:_stop]
-    slice_index = full_series.index[_start:_stop]
+    y = filled_series.to_numpy()[_start:_stop]
+    slice_index = filled_series.index[_start:_stop]
     freq = freq_input.value
     return freq, slice_index, y
 
