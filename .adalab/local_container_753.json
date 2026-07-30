@@ -1,0 +1,30 @@
+{
+  "uid": 753,
+  "container_image_name": "seasonality-notebook-container",
+  "image_version": {
+    "current_image_version": "0.1.0",
+    "next_image_version": "0.1.1"
+  },
+  "container_description": "Container for seasonality notebook app.",
+  "container_file": "./Dockerfile.seasonality",
+  "build_context": "./",
+  "metadata_id": 328,
+  "primary_container": true,
+  "port": 2718,
+  "test_serving_port": 2718,
+  "max_cpu": 1,
+  "min_cpu": 0,
+  "max_ram": 500,
+  "min_ram": 20,
+  "command": null,
+  "environment_variables": [],
+  "is_locked": false,
+  "volume_mounts": [
+    {
+      "volume_id": null,
+      "mount_path": null,
+      "read_only": false,
+      "direct": false
+    }
+  ]
+}

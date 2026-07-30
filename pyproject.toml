@@ -45,6 +45,21 @@ data = ["requests>=2.31", "xarray>=2024.1", "netcdf4>=1.6", "utide>=0.3", "cdsap
 dev = ["pytest>=8.0", "pytest-cov>=5.0", "ruff>=0.4", "ipykernel>=6.29"]
 notebooks = ["marimo>=0.9", "plotly>=5.20"]
 
+[dependency-groups]
+# Minimum deps to run notebooks/seasonality.py in isolation — no ML stack needed.
+# tsforecastbench.data.* only uses numpy/pandas/scipy/statsmodels/pydantic/pyarrow;
+# the package is installed with --no-deps to skip lightgbm, catboost, statsforecast, etc.
+seasonality = [
+    "marimo>=0.9",
+    "plotly>=5.20",
+    "numpy>=1.26",
+    "pandas>=2.2",
+    "pyarrow>=15.0",
+    "pydantic>=2.6",
+    "scipy>=1.11",
+    "statsmodels>=0.14",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
