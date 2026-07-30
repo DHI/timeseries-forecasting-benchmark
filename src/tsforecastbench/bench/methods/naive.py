@@ -6,7 +6,12 @@ import numpy as np
 import pandas as pd
 
 from tsforecastbench.bench.methods.base import Forecaster
-from tsforecastbench.bench.methods.scorecard import Capabilities, Level, Scorecard
+from tsforecastbench.bench.methods.scorecard import (
+    Capabilities,
+    ForecastStrategy,
+    Level,
+    Scorecard,
+)
 from tsforecastbench.data.schema import Case
 from tsforecastbench.data.seasonality import dominant_period, position_in_cycle
 
@@ -24,6 +29,9 @@ class MeanBaseline(Forecaster):
     capabilities = Capabilities(
         trend=False, seasonality=False, multiple_seasonality=False, exogenous=False
     )
+    # Every future timestamp gets the same constant, looked up independently — there's no
+    # step-by-step mechanism for "recursive vs direct" to describe.
+    forecast_strategy = ForecastStrategy.NOT_APPLICABLE
     # Averaging the whole split makes one bad point negligible, hence robust; the flip side
     # is that it has no mechanism for anything at all.
     scorecard = Scorecard(
@@ -63,6 +71,9 @@ class Persistence(Forecaster):
     capabilities = Capabilities(
         trend=False, seasonality=False, multiple_seasonality=False, exogenous=False
     )
+    # Every future timestamp repeats the same last value, looked up independently — no
+    # step-by-step mechanism this field could describe.
+    forecast_strategy = ForecastStrategy.NOT_APPLICABLE
     # The whole forecast rests on one observation, so an outlier at the origin propagates
     # across the entire horizon — the least robust method here despite being the simplest.
     scorecard = Scorecard(
@@ -106,6 +117,9 @@ class SeasonalNaive(Forecaster):
     capabilities = Capabilities(
         trend=False, seasonality=True, multiple_seasonality=False, exogenous=False
     )
+    # Tiles the last observed cycle verbatim, position by position — no step-by-step
+    # mechanism this field could describe.
+    forecast_strategy = ForecastStrategy.NOT_APPLICABLE
     # Needs a full cycle before it can run at all, and tiles that one cycle verbatim, so a
     # noisy last period is reproduced rather than averaged away.
     scorecard = Scorecard(
@@ -177,6 +191,9 @@ class Climatology(Forecaster):
     capabilities = Capabilities(
         trend=False, seasonality=True, multiple_seasonality=False, exogenous=False
     )
+    # Each future timestamp is an independent lookup by position in the cycle — no
+    # step-by-step mechanism this field could describe.
+    forecast_strategy = ForecastStrategy.NOT_APPLICABLE
     # Wants several cycles so each within-cycle position has something to average, and that
     # averaging is what makes it the robust seasonal baseline where SeasonalNaive isn't.
     scorecard = Scorecard(

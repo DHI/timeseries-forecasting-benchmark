@@ -14,7 +14,12 @@ import numpy as np
 import pandas as pd
 
 from tsforecastbench.bench.methods.base import Forecaster, lookback_for, segment_arrays
-from tsforecastbench.bench.methods.scorecard import Capabilities, Level, Scorecard
+from tsforecastbench.bench.methods.scorecard import (
+    Capabilities,
+    ForecastStrategy,
+    Level,
+    Scorecard,
+)
 from tsforecastbench.data.schema import Case
 
 
@@ -57,6 +62,9 @@ class DLinearForecaster(Forecaster):
     capabilities = Capabilities(
         trend=True, seasonality=True, multiple_seasonality=True, exogenous=False
     )
+    # Both linear maps predict the whole horizon from the lookback window in one closed-form
+    # fit — no step's output feeds into computing another step.
+    forecast_strategy = ForecastStrategy.DIRECT
     # The cheapest thing in the `dl` family by a wide margin: both linear maps collapse into
     # one closed-form ridge fit, so there is no training loop and nothing to tune. Needs many
     # windows though — under 10 it gives up and falls back to persistence.

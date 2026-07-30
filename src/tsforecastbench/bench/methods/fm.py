@@ -32,7 +32,12 @@ import pandas as pd
 
 from tsforecastbench.bench.methods.base import Forecaster
 from tsforecastbench.bench.methods.ml import _exo_cols, _fit_len, _naive_ds
-from tsforecastbench.bench.methods.scorecard import Capabilities, Level, Scorecard
+from tsforecastbench.bench.methods.scorecard import (
+    Capabilities,
+    ForecastStrategy,
+    Level,
+    Scorecard,
+)
 from tsforecastbench.data.schema import Case
 
 _PIPELINE_CACHE: dict = {}
@@ -192,7 +197,11 @@ class ChronosForecaster(Forecaster):
         "Zero-shot: never learns anything case-specific, only what it picked up "
         "from pretraining on other series. Univariate — ignores exogenous inputs. "
         "Conditions on a fixed window sized to the case's pre-test history, capped at the "
-        "most recent 2,048 points (context_length)."
+        "most recent 2,048 points (context_length). Labeled Direct below because this "
+        "benchmark issues one predict_quantiles() call for the full horizon — that "
+        "describes this calling interface only, not whether the pretrained decoder "
+        "generates internally autoregressively, which isn't verified against the pinned "
+        "chronos-forecasting version."
     )
     code_snippet = (
         "from chronos import BaseChronosPipeline\n\n"
@@ -209,6 +218,8 @@ class ChronosForecaster(Forecaster):
     capabilities = Capabilities(
         trend=True, seasonality=True, multiple_seasonality=True, exogenous=False
     )
+    # See the limitations note: this describes this benchmark's one-call interface only.
+    forecast_strategy = ForecastStrategy.DIRECT
     # The zero-shot trade: nothing to fit and nothing to tune, so history need, fit cost
     # and tuning effort are all Low — paid for by an opaque forward pass at every origin.
     scorecard = Scorecard(
@@ -285,7 +296,10 @@ class Chronos2Forecaster(Forecaster):
         "to `predict_df` as past+future covariate columns, using a perfect-forecast "
         "proxy (not a real forecast of those covariates) for the future values. "
         "Conditions on a fixed window sized to the case's pre-test history, capped at "
-        "`context_length` points."
+        "`context_length` points. Labeled Direct below because this benchmark issues one "
+        "predict_df() call for the full horizon — that describes this calling interface "
+        "only, not whether the pretrained decoder generates internally autoregressively, "
+        "which isn't verified against the pinned chronos-forecasting version."
     )
     code_snippet = (
         "from chronos import Chronos2Pipeline\n\n"
@@ -306,6 +320,8 @@ class Chronos2Forecaster(Forecaster):
     capabilities = Capabilities(
         trend=True, seasonality=True, multiple_seasonality=True, exogenous=True
     )
+    # See the limitations note: this describes this benchmark's one-call interface only.
+    forecast_strategy = ForecastStrategy.DIRECT
     # The zero-shot trade: nothing to fit and nothing to tune, so history need, fit cost
     # and tuning effort are all Low — paid for by an opaque forward pass at every origin.
     scorecard = Scorecard(
@@ -400,7 +416,10 @@ class TimesFMForecaster(Forecaster):
         "TimesFM forecast, using a perfect-forecast proxy (not a real forecast of those "
         "covariates) for the future values. Conditions on a fixed window sized to the case's "
         "pre-test history, capped at the checkpoint's `context_limit`; horizons beyond "
-        "`max_horizon` are not supported."
+        "`max_horizon` are not supported. Labeled Direct below because this benchmark "
+        "requests the full horizon from one forecast() call — that describes this calling "
+        "interface only, not whether the pretrained decoder generates internally "
+        "autoregressively, which isn't verified against the pinned timesfm version."
     )
     code_snippet = (
         "import timesfm\n\n"
@@ -420,6 +439,8 @@ class TimesFMForecaster(Forecaster):
     capabilities = Capabilities(
         trend=True, seasonality=True, multiple_seasonality=True, exogenous=True
     )
+    # See the limitations note: this describes this benchmark's one-call interface only.
+    forecast_strategy = ForecastStrategy.DIRECT
     # The zero-shot trade: nothing to fit and nothing to tune, so history need, fit cost
     # and tuning effort are all Low — paid for by an opaque forward pass at every origin.
     scorecard = Scorecard(
@@ -528,7 +549,10 @@ class Moirai2Forecaster(Forecaster):
         "covariates) for the future values. Conditions on a fixed window sized to the "
         "case's pre-test history, capped at the model's position-embedding cache size "
         "(max_seq_len * patch_size) — Salesforce hasn't published a trained max context "
-        "length for this model."
+        "length for this model. Labeled Direct below because this benchmark requests the "
+        "full horizon from one predictor.predict() call — that describes this calling "
+        "interface only, not whether the pretrained decoder generates internally "
+        "autoregressively, which isn't verified against the pinned uni2ts version."
     )
     code_snippet = (
         "from gluonts.dataset.pandas import PandasDataset\n"
@@ -549,6 +573,8 @@ class Moirai2Forecaster(Forecaster):
     capabilities = Capabilities(
         trend=True, seasonality=True, multiple_seasonality=True, exogenous=True
     )
+    # See the limitations note: this describes this benchmark's one-call interface only.
+    forecast_strategy = ForecastStrategy.DIRECT
     # The zero-shot trade: nothing to fit and nothing to tune, so history need, fit cost
     # and tuning effort are all Low — paid for by an opaque forward pass at every origin.
     scorecard = Scorecard(

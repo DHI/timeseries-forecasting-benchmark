@@ -18,7 +18,12 @@ import numpy as np
 import pandas as pd
 
 from tsforecastbench.bench.methods.base import Forecaster, lookback_for
-from tsforecastbench.bench.methods.scorecard import Capabilities, Level, Scorecard
+from tsforecastbench.bench.methods.scorecard import (
+    Capabilities,
+    ForecastStrategy,
+    Level,
+    Scorecard,
+)
 from tsforecastbench.data.schema import Case
 
 _MAX_STEPS = 500
@@ -139,6 +144,9 @@ class _NFBase(Forecaster):
 class TFTForecaster(_NFBase):
     name = "TFT"
     model_name = "TFT"
+    # A single neuralforecast predict() call returns the full horizon at once — TFT's
+    # decoder produces multi-horizon predictions in parallel, not step-by-step.
+    forecast_strategy = ForecastStrategy.DIRECT
 
 
 class ITransformerForecaster(_NFBase):
@@ -153,8 +161,12 @@ class ITransformerForecaster(_NFBase):
         + " Architecturally multivariate but fixed to a single series here (n_series=1), "
         "so unlike its siblings it can't pool the extra segments of an extended-history fit."
     )
+    # Same one-call, full-horizon-at-once prediction as its siblings — see TFTForecaster.
+    forecast_strategy = ForecastStrategy.DIRECT
 
 
 class TimesNetForecaster(_NFBase):
     name = "TimesNet"
     model_name = "TimesNet"
+    # Same one-call, full-horizon-at-once prediction as its siblings — see TFTForecaster.
+    forecast_strategy = ForecastStrategy.DIRECT

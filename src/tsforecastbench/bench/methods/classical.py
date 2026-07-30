@@ -63,7 +63,12 @@ import numpy as np
 import pandas as pd
 
 from tsforecastbench.bench.methods.base import Forecaster
-from tsforecastbench.bench.methods.scorecard import Capabilities, Level, Scorecard
+from tsforecastbench.bench.methods.scorecard import (
+    Capabilities,
+    ForecastStrategy,
+    Level,
+    Scorecard,
+)
 from tsforecastbench.data.schema import Case
 
 
@@ -149,6 +154,11 @@ class AutoARIMAForecaster(_ForwardForecaster):
     capabilities = Capabilities(
         trend=True, seasonality=False, multiple_seasonality=False, exogenous=False
     )
+    # forward() substitutes the model's own prior forecast for the unobserved future
+    # observation at each step and reapplies the fitted ARIMA recursion — the same
+    # feed-forward mechanism as mlforecast's recursive strategy, kept stable by fitted
+    # coefficients constrained to a stationary region rather than a leaf bound or linearity.
+    forecast_strategy = ForecastStrategy.RECURSIVE
     # Both costs Low on measured numbers: seconds for the one order search, ~0.03s per
     # origin even on a 200,000-point history — the cheapest roll-forward of the classicals.
     scorecard = Scorecard(
@@ -208,6 +218,9 @@ class AutoETSForecaster(_ForwardForecaster):
     capabilities = Capabilities(
         trend=True, seasonality=False, multiple_seasonality=False, exogenous=False
     )
+    # Same feed-forward recursion as AutoARIMA, just re-running the smoothing filter
+    # instead of the ARIMA recursion — see AutoARIMAForecaster's comment.
+    forecast_strategy = ForecastStrategy.RECURSIVE
     # Named level/trend components make it the more readable of the two, and ~0.01s per
     # origin makes it the cheapest to roll forward.
     scorecard = Scorecard(
@@ -314,6 +327,11 @@ class TBATSForecaster(Forecaster):
     capabilities = Capabilities(
         trend=True, seasonality=True, multiple_seasonality=True, exogenous=False
     )
+    # calcTBATSFaster rolls the frozen state-space coefficients forward over each origin's
+    # history the same way forward() does for AutoARIMA/AutoETS/Theta/MSTL — a feed-forward
+    # recursion, kept stable by the fitted (damped-trend-eligible) coefficients rather than
+    # a leaf bound or linearity.
+    forecast_strategy = ForecastStrategy.RECURSIVE
     # Now the same profile as AutoARIMA/AutoETS: an expensive one-time search, then a
     # cheap fixed-coefficient roll-forward -- fit_cost is the heaviest of the classicals
     # (a genuine multi-model AIC search, not just a stepwise/spec search), inference_cost
@@ -465,6 +483,8 @@ class ThetaForecaster(_ForwardForecaster):
     capabilities = Capabilities(
         trend=True, seasonality=True, multiple_seasonality=False, exogenous=False
     )
+    # Same feed-forward recursion as AutoARIMA/AutoETS — see AutoARIMAForecaster's comment.
+    forecast_strategy = ForecastStrategy.RECURSIVE
     # Cheap to fit, but the most expensive roll-forward here: the per-origin cost is
     # superlinear in history length — 0.02s at 5,000 points, ~110s at 200,000.
     scorecard = Scorecard(
@@ -586,6 +606,9 @@ class MSTLAutoETSForecaster(_MSTLBase):
 
     name = "MSTL-ETS"
     library = "statsforecast (Nixtla) — trend forecaster: AutoETS"
+    # Same feed-forward recursion as the other classical methods, on the deseasonalized
+    # series — see AutoARIMAForecaster's comment.
+    forecast_strategy = ForecastStrategy.RECURSIVE
 
     def _make_trend_forecaster(self):
         from statsforecast.models import AutoETS
@@ -602,6 +625,9 @@ class MSTLAutoARIMAForecaster(_MSTLBase):
     name = "MSTL-ARIMA"
     max_train_steps = 5000
     library = "statsforecast (Nixtla) — trend forecaster: AutoARIMA"
+    # Same feed-forward recursion as the other classical methods, on the deseasonalized
+    # series — see AutoARIMAForecaster's comment.
+    forecast_strategy = ForecastStrategy.RECURSIVE
 
     def _make_trend_forecaster(self):
         from statsforecast.models import AutoARIMA

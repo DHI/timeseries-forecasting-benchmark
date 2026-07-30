@@ -18,7 +18,12 @@ from tsforecastbench.bench.methods.naive import (
     Persistence,
     SeasonalNaive,
 )
-from tsforecastbench.bench.methods.scorecard import Capabilities, Level, Scorecard
+from tsforecastbench.bench.methods.scorecard import (
+    Capabilities,
+    ForecastStrategy,
+    Level,
+    Scorecard,
+)
 from tsforecastbench.data.schema import Case
 
 
@@ -66,6 +71,10 @@ class EnsembleForecaster(Forecaster):
         self.capabilities = capabilities
         self.scorecard = scorecard
         self.combine = combine
+        # Always N/A, unlike capabilities/scorecard: a composite's own strategy is just
+        # whatever mix of members it combines, and there is only ever one EnsembleForecaster
+        # class, not several sibling subclasses that could disagree.
+        self.forecast_strategy = ForecastStrategy.NOT_APPLICABLE
 
     def fit(self, case: Case, train: pd.DataFrame) -> None:
         for member in self.members:

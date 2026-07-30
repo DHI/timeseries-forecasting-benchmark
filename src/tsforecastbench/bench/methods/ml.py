@@ -18,7 +18,12 @@ import numpy as np
 import pandas as pd
 
 from tsforecastbench.bench.methods.base import Forecaster
-from tsforecastbench.bench.methods.scorecard import Capabilities, Level, Scorecard
+from tsforecastbench.bench.methods.scorecard import (
+    Capabilities,
+    ForecastStrategy,
+    Level,
+    Scorecard,
+)
 from tsforecastbench.data.schema import Case
 from tsforecastbench.data.seasonality import dominant_period, position_in_cycle
 
@@ -242,6 +247,9 @@ class LightGBMForecaster(_WindowedMLBase):
     # A tree's prediction is an average of training targets, so it cannot output a value
     # outside the range it was fit on — no trend extrapolation, by construction.
     capabilities = _WindowedMLBase.capabilities.model_copy(update={"trend": False})
+    # mlforecast's default lag-feedback strategy: each step's prediction is fed back in as
+    # the next step's lag input. A tree's leaf-bound output keeps this well-behaved.
+    forecast_strategy = ForecastStrategy.RECURSIVE
     # Feature importances make it inspectable but not readable; needs a lot of rows before
     # the lag table is worth fitting, and n_estimators/learning_rate are real choices.
     scorecard = Scorecard(
@@ -264,6 +272,8 @@ class CatBoostForecaster(_WindowedMLBase):
     library = "mlforecast + catboost"
     # Bounded by the training target range for the same reason LightGBM is.
     capabilities = _WindowedMLBase.capabilities.model_copy(update={"trend": False})
+    # Same recursive lag-feedback strategy as LightGBM, same leaf-bound stability.
+    forecast_strategy = ForecastStrategy.RECURSIVE
     scorecard = Scorecard(
         history_requirements=Level.HIGH,
         interpretability=Level.MEDIUM,
@@ -286,6 +296,9 @@ class LinearLagsForecaster(_WindowedMLBase):
     library = "mlforecast + scikit-learn (Ridge)"
     # Keeps the base's trend=True: linear in its lag features, so unlike the tree models it
     # can extrapolate past the range it was fit on.
+    # Same recursive lag-feedback strategy as LightGBM/CatBoost; Ridge's linearity keeps it
+    # well-behaved instead of a leaf bound.
+    forecast_strategy = ForecastStrategy.RECURSIVE
     # Cheapest of the windowed models to fit, with one meaningful knob (alpha), and readable
     # coefficients — though dozens of them, so inspectable rather than at-a-glance.
     scorecard = Scorecard(
@@ -314,6 +327,8 @@ class MLPForecaster(_WindowedMLBase):
     # windowed model here uses (mlforecast's default), the way a tree's leaf-bound
     # output or Ridge's linearity keeps those well-behaved under it.
     direct_horizon = True
+    # direct_horizon above is exactly this: mlforecast's direct multi-horizon strategy.
+    forecast_strategy = ForecastStrategy.DIRECT
     library = "mlforecast + scikit-learn (MLPRegressor)"
     # No override needed: an MLP's linear output layer can extrapolate past the training
     # range like the base's trend=True already claims, now that nothing clips it back.

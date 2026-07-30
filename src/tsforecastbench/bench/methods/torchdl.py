@@ -19,7 +19,12 @@ import numpy as np
 import pandas as pd
 
 from tsforecastbench.bench.methods.base import Forecaster, lookback_for, segment_arrays
-from tsforecastbench.bench.methods.scorecard import Capabilities, Level, Scorecard
+from tsforecastbench.bench.methods.scorecard import (
+    Capabilities,
+    ForecastStrategy,
+    Level,
+    Scorecard,
+)
 from tsforecastbench.data.schema import Case
 
 _MAX_TRAIN = 20000
@@ -249,6 +254,9 @@ class _TorchDLBase(Forecaster):
 
 class NHITSForecaster(_TorchDLBase):
     name = "N-HiTS"
+    # Each block's _interp produces its H-length contribution directly; forward() sums
+    # them in one pass — no step's output feeds into computing another step.
+    forecast_strategy = ForecastStrategy.DIRECT
 
     def _net(self, mods, L, H):
         _, _, _, NHiTSNet = mods
@@ -257,6 +265,9 @@ class NHITSForecaster(_TorchDLBase):
 
 class PatchTSTForecaster(_TorchDLBase):
     name = "PatchTST"
+    # The head is a single Linear projecting straight to the full H-length output —
+    # no step's output feeds into computing another step.
+    forecast_strategy = ForecastStrategy.DIRECT
 
     def _net(self, mods, L, H):
         _, _, PatchTSTNet, _ = mods
