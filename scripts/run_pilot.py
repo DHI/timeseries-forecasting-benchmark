@@ -34,6 +34,7 @@ from tsforecastbench.bench.methods import (
     LinearLagsExoForecaster,
     LinearLagsForecaster,
     MeanBaseline,
+    MLPExoForecaster,
     MLPForecaster,
     MSTLAutoARIMAForecaster,
     MSTLAutoETSForecaster,
@@ -78,6 +79,7 @@ def build_methods():
         LinearLagsExoForecaster(),
         LightGBMExoForecaster(),
         CatBoostExoForecaster(),
+        MLPExoForecaster(),
     ]
 
 

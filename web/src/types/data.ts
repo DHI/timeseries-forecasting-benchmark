@@ -10,10 +10,45 @@ export type ScoreRow = {
   horizon: string;
   metric: string;
   value: number | null;
-  seconds: number | null;
+  fit_seconds: number | null;
+  predict_seconds: number | null;
   frac_finite_test: number | null;
   status: string;
   n_origins: number;
+};
+
+export type ScorecardLevel = 'Low' | 'Medium' | 'High';
+
+/** How a method turns one fit into a multi-step forecast. Mirrors the Python
+ * `ForecastStrategy` enum in src/tsforecastbench/bench/methods/scorecard.py — see that
+ * module's rubric for what each value means. */
+export type ForecastStrategy = 'Recursive' | 'Direct' | 'N/A';
+
+/** What structure a method can represent at all. Mirrors the Python `Capabilities` model in
+ * src/tsforecastbench/bench/methods/scorecard.py; `exogenous` describes the method, not the
+ * column, so plain LightGBM is true even though its column feeds no covariates.
+ *
+ * `gaps` is the one field with no counterpart in that Python model — it's re-exposed from
+ * `Forecaster.pools_segments` at export time (see `webdata.py`'s `_method_registry()`)
+ * rather than hand-declared per method, since it's mechanically derivable rather than a
+ * judgment call. */
+export type Capabilities = {
+  trend: boolean;
+  seasonality: boolean;
+  multiple_seasonality: boolean;
+  exogenous: boolean;
+  gaps: boolean;
+};
+
+/** What a method costs to use. Mirrors the Python `Scorecard` model; hand-authored
+ * judgement, not measured from the results. Field order here matches the model's. */
+export type Scorecard = {
+  history_requirements: ScorecardLevel;
+  interpretability: ScorecardLevel;
+  fit_cost: ScorecardLevel;
+  inference_cost: ScorecardLevel;
+  tuning_effort: ScorecardLevel;
+  robustness_to_noise: ScorecardLevel;
 };
 
 export type MethodMeta = {
@@ -24,6 +59,9 @@ export type MethodMeta = {
   compute_profile: string;
   limitations: string;
   code_snippet: string;
+  capabilities: Capabilities;
+  scorecard: Scorecard;
+  forecast_strategy: ForecastStrategy;
 };
 
 export type MethodRegistry = Record<string, MethodMeta>;

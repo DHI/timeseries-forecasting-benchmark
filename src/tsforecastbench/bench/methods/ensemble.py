@@ -18,6 +18,12 @@ from tsforecastbench.bench.methods.naive import (
     Persistence,
     SeasonalNaive,
 )
+from tsforecastbench.bench.methods.scorecard import (
+    Capabilities,
+    ForecastStrategy,
+    Level,
+    Scorecard,
+)
 from tsforecastbench.data.schema import Case
 
 
@@ -47,17 +53,28 @@ class EnsembleForecaster(Forecaster):
         "y_hat = np.nanmedian(stacked, axis=0)   # or np.nanmean if combine='mean'"
     )
 
+    # `capabilities` and `scorecard` are per-instance for the same reason `name` is: what an
+    # ensemble can model and what it costs are properties of its member list, which the
+    # factories below choose.
     def __init__(
         self,
         members: list[Forecaster],
         name: str,
+        capabilities: Capabilities,
+        scorecard: Scorecard,
         combine: str = "median",
     ):
         if combine not in {"median", "mean"}:
             raise ValueError(f"combine must be 'median' or 'mean', got {combine!r}")
         self.members = members
         self.name = name
+        self.capabilities = capabilities
+        self.scorecard = scorecard
         self.combine = combine
+        # Always N/A, unlike capabilities/scorecard: a composite's own strategy is just
+        # whatever mix of members it combines, and there is only ever one EnsembleForecaster
+        # class, not several sibling subclasses that could disagree.
+        self.forecast_strategy = ForecastStrategy.NOT_APPLICABLE
 
     def fit(self, case: Case, train: pd.DataFrame) -> None:
         for member in self.members:
@@ -98,9 +115,43 @@ def _naive_members() -> list[Forecaster]:
 
 def ensemble_baselines() -> EnsembleForecaster:
     """Median of the naive baselines (Mean, Persistence, SeasonalNaive, Climatology)."""
-    return EnsembleForecaster(_naive_members(), name="EnsembleBaselines")
+    return EnsembleForecaster(
+        _naive_members(),
+        name="EnsembleBaselines",
+        # No member extrapolates level drift, so neither does the median of them.
+        capabilities=Capabilities(
+            trend=False, seasonality=True, multiple_seasonality=False, exogenous=False
+        ),
+        # A per-step median across four members is what buys the robustness: an outlier has
+        # to fool most of them to move the forecast.
+        scorecard=Scorecard(
+            history_requirements=Level.MEDIUM,
+            interpretability=Level.MEDIUM,
+            fit_cost=Level.LOW,
+            inference_cost=Level.LOW,
+            tuning_effort=Level.LOW,
+            robustness_to_noise=Level.HIGH,
+        ),
+    )
 
 
 def ensemble_baselines_theta() -> EnsembleForecaster:
     """Median of the naive baselines plus the fast classical Theta method."""
-    return EnsembleForecaster([*_naive_members(), ThetaForecaster()], name="EnsembleBaselinesTheta")
+    return EnsembleForecaster(
+        [*_naive_members(), ThetaForecaster()],
+        name="EnsembleBaselinesTheta",
+        # Theta brings the trend mechanism the naive members lack.
+        capabilities=Capabilities(
+            trend=True, seasonality=True, multiple_seasonality=False, exogenous=False
+        ),
+        # Theta is the only member with a real fit, and it's a cheap one; the combination
+        # stays under a second either way.
+        scorecard=Scorecard(
+            history_requirements=Level.MEDIUM,
+            interpretability=Level.MEDIUM,
+            fit_cost=Level.LOW,
+            inference_cost=Level.LOW,
+            tuning_effort=Level.LOW,
+            robustness_to_noise=Level.HIGH,
+        ),
+    )

@@ -1,13 +1,51 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import type { CSSProperties } from 'react';
 import type { Config } from 'plotly.js';
 import Plot from '../../plotly';
 import { computeHoverOverlay } from './hoverGeometry';
 import type { HoverOverlay, PlotlyGraphDiv } from './hoverGeometry';
-import { HoverTooltips } from './HoverTooltips';
+import { HoverTooltips, tooltipBoxStyle } from './HoverTooltips';
 import { useMatrixFigure } from './useMatrixFigure';
+import type { TrainingTimeBreakdown } from './useMatrixFigure';
 import { useTheme } from '../../theme/ThemeContext';
 import type { SelectionState } from '../../state/selectionReducer';
 import type { ScoreRow } from '../../types/data';
+
+function formatBreakdownSeconds(v: number | null): string {
+  return v === null || !Number.isFinite(v) ? '—' : `${v.toFixed(2)}s`;
+}
+
+/** Shown only while the training-time overlay is held (see `showTrainingTime`): the
+ * combined fit+predict number a cell displays doesn't say which of the two dominates, so
+ * hovering breaks it back out. Positioned at the hovered cell's own center, reusing the
+ * pixel geometry `HoverTooltips` already computes for the row/column callouts. */
+function TrainingTimeBreakdownTooltip({
+  breakdown,
+  left,
+  top,
+}: {
+  breakdown: TrainingTimeBreakdown;
+  left: number;
+  top: number;
+}) {
+  const style: CSSProperties = {
+    position: 'absolute',
+    pointerEvents: 'none',
+    zIndex: 10,
+    left,
+    top,
+    transform: 'translate(-50%, -140%)',
+    padding: '12px 16px',
+    lineHeight: 1.6,
+    ...tooltipBoxStyle,
+  };
+  return (
+    <div style={style}>
+      <div>Fit: {formatBreakdownSeconds(breakdown.fitSeconds)}</div>
+      <div>Predict: {formatBreakdownSeconds(breakdown.predictSeconds)}</div>
+    </div>
+  );
+}
 
 // Locks the heatmap down to a read-only view: keeps hover, but strips every pan/zoom/
 // select tool from the mode bar so the grid can't be dragged, scaled, or rearranged.
@@ -68,6 +106,7 @@ function MatrixGraphComponent({
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const graphRef = useRef<HTMLDivElement | null>(null);
   const [overlay, setOverlay] = useState<HoverOverlay | null>(null);
+  const [breakdown, setBreakdown] = useState<TrainingTimeBreakdown | null>(null);
 
   useEffect(() => {
     if (figure?.layout.width) onWidthChange?.(figure.layout.width);
@@ -79,21 +118,22 @@ function MatrixGraphComponent({
       const wrapper = wrapperRef.current;
       const gd = graphRef.current as PlotlyGraphDiv | null;
       if (!pt || !wrapper || !gd || !figure) return;
+      const x = String(pt.x);
+      const y = String(pt.y);
       setOverlay(
-        computeHoverOverlay(
-          String(pt.x),
-          String(pt.y),
-          figure.colOrder.length,
-          figure.rowOrder.length,
-          wrapper,
-          gd,
-        ),
+        computeHoverOverlay(x, y, figure.colOrder.length, figure.rowOrder.length, wrapper, gd),
       );
+      // The fit/predict breakdown only ever makes sense while the combined number is on
+      // screen — otherwise a stale value could hang around into a normal metric hover.
+      setBreakdown(showTrainingTime ? (figure.trainingBreakdownOf.get(`${y}|${x}`) ?? null) : null);
     },
-    [figure],
+    [figure, showTrainingTime],
   );
 
-  const handleUnhover = useCallback(() => setOverlay(null), []);
+  const handleUnhover = useCallback(() => {
+    setOverlay(null);
+    setBreakdown(null);
+  }, []);
 
   const handleClick = useCallback(
     (event: PlotMouseEvent) => {
@@ -125,6 +165,13 @@ function MatrixGraphComponent({
         onClick={handleClick}
       />
       <HoverTooltips overlay={overlay} />
+      {showTrainingTime && breakdown && overlay && (
+        <TrainingTimeBreakdownTooltip
+          breakdown={breakdown}
+          left={overlay.col.left}
+          top={overlay.row.top}
+        />
+      )}
     </div>
   );
 }

@@ -18,6 +18,10 @@ training data the model sees differs. Each method thus emits a local result row
 (`used_extended_history=False`) and, when the case has history beyond the curated span,
 a second extended row (`=True`); a gap-free record has no extra history and produces the
 local row only.
+
+Each row also carries `fit_seconds`/`predict_seconds`, timed separately (this path has
+no rolling origins, so each is a single measurement, not an average — see
+`eval.rolling` for the rolling-origin case).
 """
 
 from __future__ import annotations
@@ -206,10 +210,15 @@ def run_case(case: Case, methods: list[Forecaster], prefer_synth: bool = False) 
         if method.is_global and method.pools_segments and train_fit_ext is not None:
             variants.append((train_fit_ext, True))
         for m_train_fit, used_extended in variants:
-            t0 = time.perf_counter()
+            fit_seconds = float("nan")
+            predict_seconds = float("nan")
             try:
+                t_fit0 = time.perf_counter()
                 method.fit(case, m_train_fit)
+                fit_seconds = time.perf_counter() - t_fit0
+                t_pred0 = time.perf_counter()
                 preds = method.predict(case, m_train_fit, horizon_steps, future_exog=future_exog)
+                predict_seconds = time.perf_counter() - t_pred0
                 y_hat = preds["y_hat"].to_numpy(dtype=float)
                 assert len(y_hat) == horizon_steps, (
                     f"{method.name} returned {len(y_hat)} predictions, expected {horizon_steps}"
@@ -232,7 +241,6 @@ def run_case(case: Case, methods: list[Forecaster], prefer_synth: bool = False) 
             except Exception as exc:
                 metrics = {k: float("nan") for k in metric_names}
                 status = f"error: {type(exc).__name__}: {str(exc)[:70]}"
-            seconds = time.perf_counter() - t0
             for metric_name, value in metrics.items():
                 records.append(
                     {
@@ -246,13 +254,17 @@ def run_case(case: Case, methods: list[Forecaster], prefer_synth: bool = False) 
                         "horizon": case.horizon_primary,
                         "metric": metric_name,
                         "value": value,
-                        "seconds": seconds,
+                        "fit_seconds": fit_seconds,
+                        "predict_seconds": predict_seconds,
                         "frac_finite_test": frac_finite,
                         "status": status,
                     }
                 )
             tag = " [ext]" if used_extended else ""
-            print(f"  {method.name:>18s}{tag:>6s}: {status[:54]:<54s}  ({seconds:.2f}s)")
+            print(
+                f"  {method.name:>18s}{tag:>6s}: {status[:54]:<54s}  "
+                f"(fit {fit_seconds:.2f}s, predict {predict_seconds:.2f}s)"
+            )
 
     if frac_finite < 1.0:
         print(

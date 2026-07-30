@@ -76,13 +76,20 @@ def _own_doc(cls: type) -> str | None:
 @cache
 def _method_registry() -> dict[str, dict]:
     """method name -> {family, description, uses_exogenous, library, compute_profile,
-    limitations, code_snippet}, derived from the Forecaster classes. `description` is
-    the class's own docstring (first paragraph only), via `_own_doc` so a subclass
-    without one (e.g. LightGBM, which only adds a `_make_model`) inherits its base's;
-    methods with no docstring anywhere in their Forecaster ancestry get a placeholder
-    instead. The other four fields are ordinary class attributes (see `Forecaster` in
+    limitations, code_snippet, capabilities, scorecard, forecast_strategy}, derived from
+    the Forecaster classes. `description` is the class's own docstring (first paragraph only), via
+    `_own_doc` so a subclass without one (e.g. LightGBM, which only adds a `_make_model`)
+    inherits its base's; methods with no docstring anywhere in their Forecaster ancestry
+    get a placeholder instead. The rest are ordinary class attributes (see `Forecaster` in
     bench/methods/base.py), so plain attribute lookup already inherits them through the
-    MRO with no special-casing needed."""
+    MRO with no special-casing needed — which is how a `+exo` variant picks up the same
+    capabilities and scorecard as the method it configures.
+
+    `capabilities["gaps"]` is not one of the hand-authored `Capabilities` model fields —
+    it's `pools_segments` re-exposed under the card's naming, computed here rather than
+    declared per method so a subclass that overrides `pools_segments` alone (e.g.
+    `ITransformerForecaster`) can't drift from a stale `gaps` literal copied onto its base's
+    `capabilities`."""
     registry: dict[str, dict] = {}
     for attr_name in _methods.__all__:
         obj = getattr(_methods, attr_name)
@@ -107,6 +114,12 @@ def _method_registry() -> dict[str, dict]:
             "compute_profile": instance.compute_profile,
             "limitations": instance.limitations,
             "code_snippet": instance.code_snippet,
+            "capabilities": {
+                **instance.capabilities.model_dump(mode="json"),
+                "gaps": instance.pools_segments,
+            },
+            "scorecard": instance.scorecard.model_dump(mode="json"),
+            "forecast_strategy": instance.forecast_strategy,
         }
     return registry
 

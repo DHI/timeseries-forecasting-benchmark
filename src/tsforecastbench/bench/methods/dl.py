@@ -14,6 +14,12 @@ import numpy as np
 import pandas as pd
 
 from tsforecastbench.bench.methods.base import Forecaster, lookback_for, segment_arrays
+from tsforecastbench.bench.methods.scorecard import (
+    Capabilities,
+    ForecastStrategy,
+    Level,
+    Scorecard,
+)
 from tsforecastbench.data.schema import Case
 
 
@@ -49,6 +55,26 @@ class DLinearForecaster(Forecaster):
         "remainder = window - trend\n"
         "model = Ridge(alpha=alpha).fit(concat([trend, remainder]), target_window)\n"
         "y_hat = model.predict(concat([trend, remainder]))"
+    )
+    # An explicit trend branch, and a learned map from the whole lookback window to the whole
+    # horizon, which can represent several interacting periods at once rather than one
+    # declared period. No covariate pathway in this implementation.
+    capabilities = Capabilities(
+        trend=True, seasonality=True, multiple_seasonality=True, exogenous=False
+    )
+    # Both linear maps predict the whole horizon from the lookback window in one closed-form
+    # fit — no step's output feeds into computing another step.
+    forecast_strategy = ForecastStrategy.DIRECT
+    # The cheapest thing in the `dl` family by a wide margin: both linear maps collapse into
+    # one closed-form ridge fit, so there is no training loop and nothing to tune. Needs many
+    # windows though — under 10 it gives up and falls back to persistence.
+    scorecard = Scorecard(
+        history_requirements=Level.HIGH,
+        interpretability=Level.MEDIUM,
+        fit_cost=Level.LOW,
+        inference_cost=Level.LOW,
+        tuning_effort=Level.LOW,
+        robustness_to_noise=Level.MEDIUM,
     )
 
     def __init__(self, lookback: int | None = None, kernel: int = 25, alpha: float = 1.0):

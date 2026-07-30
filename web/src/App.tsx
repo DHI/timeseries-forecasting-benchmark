@@ -13,6 +13,7 @@ import { SelectionHint } from './components/Matrix/SelectionHint';
 import { AppInstructions } from './components/AppInstructions/AppInstructions';
 import { InstructionsModal } from './components/InstructionsModal/InstructionsModal';
 import { useEdgeResize } from './hooks/useEdgeResize';
+import { useHoldButton } from './hooks/useHoldButton';
 import { DOMAIN_RESTRICTED_METRICS } from './data/metricConfig';
 import { TEXT_WIDTH_OVERHANG, TITLE_BAR_HEIGHT, TRAINING_TIME_MIN_ROWS } from './data/constants';
 import {
@@ -237,6 +238,9 @@ function MainLayout({
     },
     [trainingTimeDisabled, dispatch],
   );
+  // Registered here rather than inside HoldTrainingTimeButton so the space-bar listener
+  // stays live even while the Controls panel (and thus the button) is unmounted.
+  const trainingTimeHold = useHoldButton(handleTrainingTimeChange);
 
   const { theme, toggle: toggleTheme } = useTheme();
 
@@ -338,7 +342,7 @@ function MainLayout({
                 Training time
               </label>
               <HoldTrainingTimeButton
-                onChange={handleTrainingTimeChange}
+                onMouseDown={trainingTimeHold.onMouseDown}
                 disabled={trainingTimeDisabled}
                 title={
                   trainingTimeDisabled
@@ -347,9 +351,10 @@ function MainLayout({
                 }
               />
               <p style={{ color: 'var(--text-muted)', fontSize: '0.8em', marginTop: 4 }}>
-                Press and hold to show each cell's measured training time instead of its score. You
-                can still hover around matrix cells while holding the button. You can also hold the
-                space bar to do the same thing without clicking.
+                Press and hold to show each cell's cost to produce one forecast (fit, if the method
+                needs it, plus predict) instead of its score. Hover a cell while holding to see the
+                fit/predict split. You can still hover around matrix cells while holding the button.
+                You can also hold the space bar to do the same thing without clicking.
               </p>
               {trainingTimeDisabled && (
                 <p style={{ color: 'var(--warning-text)', fontSize: '0.8em', marginTop: 4 }}>
@@ -499,6 +504,7 @@ function MainLayout({
                 caseMeta={selectedCase}
                 scores={scores}
                 showGlobal={state.showGlobal}
+                selectedMethods={state.selection.methods}
               />
               <SnapshotPanel
                 caseId={state.selection.case_id!}

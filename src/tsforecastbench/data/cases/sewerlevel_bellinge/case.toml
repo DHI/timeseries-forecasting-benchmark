@@ -9,7 +9,6 @@ freq = "15min"
 seasonalities = [16,96]
 horizon_primary = "6h"
 horizons_eval = ["1h", "6h", "24h"]
-input_window = "7D"
 
 exogenous = ["rain_gauge", "temp_air"]
 exogenous_known_future = ["rain_radar_nowcast"]

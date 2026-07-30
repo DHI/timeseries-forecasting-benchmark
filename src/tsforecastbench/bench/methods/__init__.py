@@ -31,6 +31,7 @@ from tsforecastbench.bench.methods.ml import (
     LightGBMForecaster,
     LinearLagsExoForecaster,
     LinearLagsForecaster,
+    MLPExoForecaster,
     MLPForecaster,
 )
 from tsforecastbench.bench.methods.naive import (
@@ -63,6 +64,7 @@ __all__ = [
     "LightGBMForecaster",
     "LinearLagsExoForecaster",
     "LinearLagsForecaster",
+    "MLPExoForecaster",
     "MLPForecaster",
     "MSTLAutoARIMAForecaster",
     "MSTLAutoETSForecaster",

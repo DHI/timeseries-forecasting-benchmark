@@ -38,6 +38,22 @@ function methodMeta(overrides: Partial<MethodMeta> = {}): MethodMeta {
     compute_profile: '',
     limitations: '',
     code_snippet: '',
+    capabilities: {
+      trend: false,
+      seasonality: false,
+      multiple_seasonality: false,
+      exogenous: false,
+      gaps: false,
+    },
+    scorecard: {
+      history_requirements: 'Low',
+      interpretability: 'High',
+      fit_cost: 'Low',
+      inference_cost: 'Low',
+      tuning_effort: 'Low',
+      robustness_to_noise: 'Medium',
+    },
+    forecast_strategy: 'Recursive',
     ...overrides,
   };
 }
@@ -54,10 +70,10 @@ describe('methodInfo', () => {
     expect(info).toContain('rain (necessary), temp');
   });
 
-  it('falls back to "unclassified" and a placeholder description when unknown', () => {
+  it('falls back to a placeholder description when unknown', () => {
     const info = methodInfo(caseMeta(), undefined);
-    expect(info).toContain('**Family**: unclassified');
     expect(info).toContain('No description yet.');
+    expect(info).not.toContain('Family');
   });
 });
 

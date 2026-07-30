@@ -23,13 +23,13 @@ from tsforecastbench.bench.methods import (  # noqa: E402
     LightGBMForecaster,
     LinearLagsExoForecaster,
     MeanBaseline,
+    MLPExoForecaster,
     MLPForecaster,
     Persistence,
     SeasonalNaive,
     ensemble_baselines,
     ensemble_baselines_theta,
 )
-from tsforecastbench.bench.methods.ml import _BoundedRegressor  # noqa: E402
 from tsforecastbench.bench.viz import plot_leadtime_curve, render_matrix  # noqa: E402
 from tsforecastbench.data.registry import discover_cases, get_case  # noqa: E402
 from tsforecastbench.data.seasonality import dominant_period  # noqa: E402
@@ -113,7 +113,6 @@ def test_climatology_on_nonseasonal_case_is_global_mean():
         freq="1h",
         seasonalities=[],
         horizon_primary="6h",
-        input_window="24h",
         splits={"train_end": "2020-01-01", "val_end": "2021-01-01", "test_end": "2022-01-01"},
         source={"name": "test"},
     )
@@ -169,30 +168,10 @@ def test_mlp_runs_on_one_case():
     assert (res["status"] == "ok").all()
 
 
-def test_bounded_regressor_clips_predict_output():
-    """_BoundedRegressor must clip every call, since mlforecast's recursive predict
-    loop calls predict() once per horizon step and feeds the raw output straight back
-    in as the next step's lag input (see its docstring in ml.py)."""
-
-    class _WildStub:
-        def fit(self, X, y):
-            return self
-
-        def predict(self, X):
-            return np.full(len(X), 1e6)
-
-    y_train = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
-    reg = _BoundedRegressor(_WildStub(), margin_k=1.0)
-    reg.fit(np.zeros((5, 1)), y_train)
-
-    preds = reg.predict(np.zeros((3, 1)))
-    assert np.all(preds <= reg.hi_)
-    assert reg.hi_ < 1e6
-
-
-def test_mlp_recursive_forecast_stays_bounded_on_smooth_case():
-    """Regression test for the groundwater_yorktown blow-up: MLP's recursive forecast
-    must not diverge far outside the training window's own range."""
+def test_mlp_direct_horizon_forecast_stays_bounded_on_smooth_case():
+    """Regression test for the groundwater_yorktown blow-up: MLP's direct multi-horizon
+    strategy (one model per horizon step, no feedback loop) must not diverge far outside
+    the training window's own range."""
     case = get_case("groundwater_yorktown")
     from tsforecastbench.bench.eval.loop import _horizon_to_steps
 
@@ -205,11 +184,12 @@ def test_mlp_recursive_forecast_stays_bounded_on_smooth_case():
 
     y_train = train["y"].to_numpy()
     span = y_train.max() - y_train.min()
-    # A generous multiple of the observed range: tight enough to catch a recurrence of
-    # the original ~1000x blow-up, loose enough not to be brittle to legitimate model
-    # variance.
-    assert y_hat.max() <= y_train.max() + 10 * span
-    assert y_hat.min() >= y_train.min() - 10 * span
+    # Direct-horizon forecasting has no compounding mechanism left to guard against, so
+    # this is a tighter bound than the old recursive-strategy's ±10x allowance — loose
+    # enough not to be brittle to legitimate model variance, tight enough to catch a
+    # regression back to unbounded drift.
+    assert y_hat.max() <= y_train.max() + 3 * span
+    assert y_hat.min() >= y_train.min() - 3 * span
 
 
 def test_rolling_matrix_runs():
@@ -243,7 +223,12 @@ def test_rolling_matrix_runs():
 def test_exogenous_methods_run(cid):
     """Exogenous-aware windowed ML runs on every case that declares covariates."""
     case = get_case(cid)
-    methods = [LinearLagsExoForecaster(), LightGBMExoForecaster(), CatBoostExoForecaster()]
+    methods = [
+        LinearLagsExoForecaster(),
+        LightGBMExoForecaster(),
+        CatBoostExoForecaster(),
+        MLPExoForecaster(),
+    ]
     res = run_case(case, methods, prefer_synth=True)
     assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
     assert all(m.uses_exogenous for m in methods)

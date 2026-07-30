@@ -18,6 +18,12 @@ import numpy as np
 import pandas as pd
 
 from tsforecastbench.bench.methods.base import Forecaster
+from tsforecastbench.bench.methods.scorecard import (
+    Capabilities,
+    ForecastStrategy,
+    Level,
+    Scorecard,
+)
 from tsforecastbench.data.schema import Case
 from tsforecastbench.data.seasonality import dominant_period, position_in_cycle
 
@@ -101,6 +107,7 @@ class _WindowedMLBase(Forecaster):
     pools_segments = True
     max_train_steps: int | None = None
     use_exogenous: bool = False
+    direct_horizon: bool = False
     compute_profile = (
         "CPU only; a lag+calendar feature table is built once, then the regressor "
         "fits on it directly — fast for the linear/tree models here, slower for the "
@@ -124,6 +131,15 @@ class _WindowedMLBase(Forecaster):
         "fcst.fit(train_df, static_features=[])\n"
         "y_hat = fcst.predict(h=horizon, ids=[target_uid])"
     )
+    # Shared by every regressor in this pipeline, since these follow from the feature table
+    # rather than from the estimator. Lags cover all of the case's declared periods and the
+    # date features span several cycles at once, so multiple seasonality is handled. The
+    # pipeline can feed covariates for any of these regressors (that is all `use_exogenous`
+    # switches), whether or not a +exo column happens to be registered for it — but subclasses
+    # whose estimator cannot leave the training target's range override `trend` to False.
+    capabilities = Capabilities(
+        trend=True, seasonality=True, multiple_seasonality=True, exogenous=True
+    )
 
     def __init__(self):
         self.uses_exogenous = self.use_exogenous
@@ -134,6 +150,8 @@ class _WindowedMLBase(Forecaster):
 
     def fit(self, case: Case, train: pd.DataFrame) -> None:
         from mlforecast import MLForecast
+
+        from tsforecastbench.bench.eval.loop import _horizon_to_steps
 
         self._exo = _exo_cols(case) if self.use_exogenous else []
         cols = ["unique_id", "ds", "y", *self._exo]
@@ -166,7 +184,13 @@ class _WindowedMLBase(Forecaster):
             lags=_lags_for(case),
             date_features=date_feats,
         )
-        self._fcst.fit(df, static_features=[])
+        # direct_horizon trains one model per horizon step from the origin's lag features
+        # instead of one recursive model whose own predictions feed back in as later lag
+        # inputs (see MLPForecaster's docstring for why it needs this).
+        max_horizon = (
+            _horizon_to_steps(case.horizon_primary, case.freq) if self.direct_horizon else None
+        )
+        self._fcst.fit(df, static_features=[], max_horizon=max_horizon)
         # mlforecast names prediction columns after its own alias for each model (the
         # underlying estimator's class name, unwrapped from any Pipeline) — read that
         # alias directly rather than re-deriving it from the fitted object's type, which
@@ -220,6 +244,22 @@ class _WindowedMLBase(Forecaster):
 class LightGBMForecaster(_WindowedMLBase):
     name = "LightGBM"
     library = "mlforecast + lightgbm"
+    # A tree's prediction is an average of training targets, so it cannot output a value
+    # outside the range it was fit on — no trend extrapolation, by construction.
+    capabilities = _WindowedMLBase.capabilities.model_copy(update={"trend": False})
+    # mlforecast's default lag-feedback strategy: each step's prediction is fed back in as
+    # the next step's lag input. A tree's leaf-bound output keeps this well-behaved.
+    forecast_strategy = ForecastStrategy.RECURSIVE
+    # Feature importances make it inspectable but not readable; needs a lot of rows before
+    # the lag table is worth fitting, and n_estimators/learning_rate are real choices.
+    scorecard = Scorecard(
+        history_requirements=Level.HIGH,
+        interpretability=Level.MEDIUM,
+        fit_cost=Level.LOW,
+        inference_cost=Level.LOW,
+        tuning_effort=Level.MEDIUM,
+        robustness_to_noise=Level.MEDIUM,
+    )
 
     def _make_model(self):
         from lightgbm import LGBMRegressor
@@ -230,6 +270,18 @@ class LightGBMForecaster(_WindowedMLBase):
 class CatBoostForecaster(_WindowedMLBase):
     name = "CatBoost"
     library = "mlforecast + catboost"
+    # Bounded by the training target range for the same reason LightGBM is.
+    capabilities = _WindowedMLBase.capabilities.model_copy(update={"trend": False})
+    # Same recursive lag-feedback strategy as LightGBM, same leaf-bound stability.
+    forecast_strategy = ForecastStrategy.RECURSIVE
+    scorecard = Scorecard(
+        history_requirements=Level.HIGH,
+        interpretability=Level.MEDIUM,
+        fit_cost=Level.LOW,
+        inference_cost=Level.LOW,
+        tuning_effort=Level.MEDIUM,
+        robustness_to_noise=Level.MEDIUM,
+    )
 
     def _make_model(self):
         from catboost import CatBoostRegressor
@@ -242,6 +294,21 @@ class CatBoostForecaster(_WindowedMLBase):
 class LinearLagsForecaster(_WindowedMLBase):
     name = "LinearLags"
     library = "mlforecast + scikit-learn (Ridge)"
+    # Keeps the base's trend=True: linear in its lag features, so unlike the tree models it
+    # can extrapolate past the range it was fit on.
+    # Same recursive lag-feedback strategy as LightGBM/CatBoost; Ridge's linearity keeps it
+    # well-behaved instead of a leaf bound.
+    forecast_strategy = ForecastStrategy.RECURSIVE
+    # Cheapest of the windowed models to fit, with one meaningful knob (alpha), and readable
+    # coefficients — though dozens of them, so inspectable rather than at-a-glance.
+    scorecard = Scorecard(
+        history_requirements=Level.MEDIUM,
+        interpretability=Level.MEDIUM,
+        fit_cost=Level.LOW,
+        inference_cost=Level.LOW,
+        tuning_effort=Level.LOW,
+        robustness_to_noise=Level.MEDIUM,
+    )
 
     def _make_model(self):
         from sklearn.linear_model import Ridge
@@ -250,52 +317,33 @@ class LinearLagsForecaster(_WindowedMLBase):
         return Ridge(alpha=1.0)
 
 
-class _BoundedRegressor:
-    """Clips predict() output to the fit-window target's own range, expanded by a
-    margin. mlforecast's recursive predict loop (`_predict_recursive` in
-    mlforecast/core.py) calls a fitted model's predict() once per horizon step and
-    feeds the raw output straight back in as the next step's lag input; tree models
-    can't leave their training leaf values and Ridge stays well-behaved, but
-    MLPRegressor's linear output layer is unbounded, so one miscalibrated step can
-    drift outside the training distribution and compound across the rest of the
-    horizon. Clipping every step's output before it's fed back in breaks that
-    compounding. Duck-types the get_params/set_params surface sklearn's `clone()`
-    needs rather than inheriting BaseEstimator, so no sklearn import is required here.
-    __sklearn_tags__ delegates to the wrapped estimator so Pipeline's fitted-check
-    (which calls it on its last step) works without that inheritance.
-    """
-
-    def __init__(self, estimator, margin_k: float = 4.0):
-        self.estimator = estimator
-        self.margin_k = margin_k
-
-    def get_params(self, deep=True):
-        return {"estimator": self.estimator, "margin_k": self.margin_k}
-
-    def set_params(self, **params):
-        for k, v in params.items():
-            setattr(self, k, v)
-        return self
-
-    def __sklearn_tags__(self):
-        return self.estimator.__sklearn_tags__()
-
-    def fit(self, X, y, **fit_kwargs):
-        self.estimator.fit(X, y, **fit_kwargs)
-        y = np.asarray(y, dtype=float)
-        pad = self.margin_k * y.std()
-        self.lo_ = float(y.min() - pad)
-        self.hi_ = float(y.max() + pad)
-        return self
-
-    def predict(self, X):
-        return np.clip(self.estimator.predict(X), self.lo_, self.hi_)
-
-
 class MLPForecaster(_WindowedMLBase):
     name = "MLP"
     max_train_steps = 20000
+    # Trains one model per horizon step from the origin's lag features instead of one
+    # recursive model whose own predictions feed back in as later lag inputs — an
+    # MLPRegressor's unbounded linear output layer had no guarantee against drifting
+    # outside the training distribution under the recursive strategy every other
+    # windowed model here uses (mlforecast's default), the way a tree's leaf-bound
+    # output or Ridge's linearity keeps those well-behaved under it.
+    direct_horizon = True
+    # direct_horizon above is exactly this: mlforecast's direct multi-horizon strategy.
+    forecast_strategy = ForecastStrategy.DIRECT
     library = "mlforecast + scikit-learn (MLPRegressor)"
+    # No override needed: an MLP's linear output layer can extrapolate past the training
+    # range like the base's trend=True already claims, now that nothing clips it back.
+    # Several interacting knobs (layer sizes, iterations, early stopping, feature
+    # scaling), and the slowest of the four to fit — direct_horizon means training H
+    # independent models instead of one, and it's capped to the most recent 20,000
+    # points for the same reason.
+    scorecard = Scorecard(
+        history_requirements=Level.HIGH,
+        interpretability=Level.LOW,
+        fit_cost=Level.HIGH,
+        inference_cost=Level.LOW,
+        tuning_effort=Level.HIGH,
+        robustness_to_noise=Level.LOW,
+    )
 
     def _make_model(self):
         from sklearn.neural_network import MLPRegressor
@@ -303,21 +351,22 @@ class MLPForecaster(_WindowedMLBase):
         from sklearn.preprocessing import StandardScaler
 
         # MLPRegressor is scale-sensitive; lags and calendar features (e.g. dayofyear up
-        # to 366) span very different ranges, so scale them first. _BoundedRegressor
-        # guards against the recursive forecast diverging (see its docstring).
+        # to 366) span very different ranges, so scale them first.
         return make_pipeline(
             StandardScaler(),
-            _BoundedRegressor(
-                MLPRegressor(
-                    hidden_layer_sizes=(64, 32),
-                    activation="relu",
-                    max_iter=300,
-                    early_stopping=True,
-                    random_state=0,
-                ),
-                margin_k=4.0,
+            MLPRegressor(
+                hidden_layer_sizes=(64, 32),
+                activation="relu",
+                max_iter=300,
+                early_stopping=True,
+                random_state=0,
             ),
         )
+
+
+class MLPExoForecaster(MLPForecaster):
+    name = "MLP+exo"
+    use_exogenous = True
 
 
 class LightGBMExoForecaster(LightGBMForecaster):

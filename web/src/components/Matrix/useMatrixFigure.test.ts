@@ -17,7 +17,8 @@ function row(overrides: Partial<ScoreRow>): ScoreRow {
     horizon: '24h',
     metric: 'MAE',
     value: 1.0,
-    seconds: 0.1,
+    fit_seconds: 0.08,
+    predict_seconds: 0.02,
     frac_finite_test: 1.0,
     status: 'ok',
     n_origins: 40,
@@ -281,11 +282,23 @@ describe('useMatrixFigure — colour range adapts to the filtered/visible cells'
 
 describe('useMatrixFigure — training-time overlay', () => {
   const rows = [
-    row({ case_id: 'case_a', method: 'LightGBM', value: 1.0, seconds: 4.32 }),
-    row({ case_id: 'case_a', method: 'CatBoost', value: 2.0, seconds: 0.5 }),
+    row({
+      case_id: 'case_a',
+      method: 'LightGBM',
+      value: 1.0,
+      fit_seconds: 4.32,
+      predict_seconds: 0,
+    }),
+    row({
+      case_id: 'case_a',
+      method: 'CatBoost',
+      value: 2.0,
+      fit_seconds: 0.5,
+      predict_seconds: 0,
+    }),
   ];
 
-  it('colors cells by log10(seconds + 1), not the raw seconds', () => {
+  it('colors cells by log10(fit_seconds + predict_seconds + 1), not the raw value', () => {
     const { result } = renderHook(() =>
       useMatrixFigure(rows, 'MAE', EMPTY_SELECTION, false, false, true),
     );
@@ -294,15 +307,15 @@ describe('useMatrixFigure — training-time overlay', () => {
     expect(heatmap.z).toEqual([[Math.log10(1.5), Math.log10(5.32)]]);
   });
 
-  it('formats cell text as a plain whole number and skips fastest-method bolding', () => {
+  it('formats cell text as a plain one-decimal number and skips fastest-method bolding', () => {
     const { result } = renderHook(() =>
       useMatrixFigure(rows, 'MAE', EMPTY_SELECTION, false, false, true),
     );
     const texts = result.current!.layout.annotations!.map((a) => String(a.text));
-    expect(texts).toContain('4');
-    expect(texts).toContain('1');
-    expect(texts).not.toContain('<b>4</b>');
-    expect(texts).not.toContain('<b>1</b>');
+    expect(texts).toContain('4.3');
+    expect(texts).toContain('0.5');
+    expect(texts).not.toContain('<b>4.3</b>');
+    expect(texts).not.toContain('<b>0.5</b>');
   });
 
   it('shows a short training-time colorbar title', () => {
@@ -312,13 +325,13 @@ describe('useMatrixFigure — training-time overlay', () => {
     const heatmap = result.current!.data[0] as {
       colorbar: { title: { text: string } };
     };
-    expect(heatmap.colorbar.title.text).toBe('Train<br>time<br>[seconds]');
+    expect(heatmap.colorbar.title.text).toBe('Time per<br>forecast<br>[s]');
   });
 
   it('labels the colorbar with round-number seconds ticks in log space', () => {
     const heavyTail = [
-      row({ case_id: 'case_a', method: 'LightGBM', seconds: 1 }),
-      row({ case_id: 'case_a', method: 'CatBoost', seconds: 900 }),
+      row({ case_id: 'case_a', method: 'LightGBM', fit_seconds: 1, predict_seconds: 0 }),
+      row({ case_id: 'case_a', method: 'CatBoost', fit_seconds: 900, predict_seconds: 0 }),
     ];
     const { result } = renderHook(() =>
       useMatrixFigure(heavyTail, 'MAE', EMPTY_SELECTION, false, false, true),
@@ -337,7 +350,7 @@ describe('useMatrixFigure — training-time overlay', () => {
     ]);
   });
 
-  it('pivots the showGlobal swap-in cell on seconds too, still log-colored', () => {
+  it('pivots the showGlobal swap-in cell on training time too, still log-colored', () => {
     const globalRows = [
       row({
         case_id: 'case_a',
@@ -345,7 +358,8 @@ describe('useMatrixFigure — training-time overlay', () => {
         used_extended_history: false,
         is_global: true,
         value: 1.0,
-        seconds: 4.32,
+        fit_seconds: 4.32,
+        predict_seconds: 0,
       }),
       row({
         case_id: 'case_a',
@@ -353,7 +367,8 @@ describe('useMatrixFigure — training-time overlay', () => {
         used_extended_history: true,
         is_global: true,
         value: 9.0,
-        seconds: 8.64,
+        fit_seconds: 8.64,
+        predict_seconds: 0,
       }),
     ];
     const { result } = renderHook(() =>
@@ -374,6 +389,21 @@ describe('useMatrixFigure — training-time overlay', () => {
     expect(overlayResult.current!.layout.height).toBe(metricResult.current!.layout.height);
     expect(overlayResult.current!.layout.margin).toEqual(metricResult.current!.layout.margin);
   });
+
+  it('exposes the fit/predict split per case+method for the hover breakdown', () => {
+    const { result } = renderHook(() =>
+      useMatrixFigure(rows, 'MAE', EMPTY_SELECTION, false, false, true),
+    );
+    expect(result.current!.trainingBreakdownOf.get('case_a|LightGBM')).toEqual({
+      fitSeconds: 4.32,
+      predictSeconds: 0,
+    });
+    expect(result.current!.trainingBreakdownOf.get('case_a|CatBoost')).toEqual({
+      fitSeconds: 0.5,
+      predictSeconds: 0,
+    });
+    expect(result.current!.trainingBreakdownOf.get('case_a|Nonexistent')).toBeUndefined();
+  });
 });
 
 describe('useMatrixFigure — training-time overlay cell text color', () => {
@@ -387,14 +417,26 @@ describe('useMatrixFigure — training-time overlay cell text color', () => {
 
   it('switches to light text on the darkest (slowest) cell but not the lightest (fastest) one', () => {
     const rows = [
-      row({ case_id: 'case_a', method: 'CatBoost', value: 1.0, seconds: 0.01 }),
-      row({ case_id: 'case_a', method: 'LightGBM', value: 1.0, seconds: 10000 }),
+      row({
+        case_id: 'case_a',
+        method: 'CatBoost',
+        value: 1.0,
+        fit_seconds: 0.01,
+        predict_seconds: 0,
+      }),
+      row({
+        case_id: 'case_a',
+        method: 'LightGBM',
+        value: 1.0,
+        fit_seconds: 10000,
+        predict_seconds: 0,
+      }),
     ];
     const { result } = renderHook(() =>
       useMatrixFigure(rows, 'MAE', EMPTY_SELECTION, false, false, true),
     );
-    expect(annotationFontColor(result.current!, '0')).toBe('#000000');
-    expect(annotationFontColor(result.current!, '10000')).toBe('#f5f5f5');
+    expect(annotationFontColor(result.current!, '0.0')).toBe('#000000');
+    expect(annotationFontColor(result.current!, '10000.0')).toBe('#f5f5f5');
   });
 
   it('does not override text color for non-greyscale metric views', () => {

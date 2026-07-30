@@ -118,7 +118,6 @@ def _seasonality_case(seasonalities):
         freq="1h",
         seasonalities=seasonalities,
         horizon_primary="24h",
-        input_window="7D",
         splits={"train_end": "2019-04-01", "val_end": "2019-04-15", "test_end": "2019-05-01"},
         source={"name": "test"},
     )

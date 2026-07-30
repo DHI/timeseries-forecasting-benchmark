@@ -8,6 +8,231 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-30 — Fixed MLP's divergence at the source, and added a Forecast strategy card to every method
+
+Switched `MLPForecaster` from mlforecast's recursive strategy to its direct multi-horizon
+strategy (one model per horizon step, no feedback loop) — the `_BoundedRegressor` output clip
+added on 2026-07-27 treated the symptom (a miscalibrated step compounding through recursion),
+not the cause, and cost MLP the ability to extrapolate a trend. With the feedback loop gone,
+the clip is removed entirely and `capabilities.trend` reverts to `True`; fit cost moves to
+High, since this now trains `H` independent `MLPRegressor`s instead of one. Working through
+*why* this fixes it corrected a mental model: a classical ARIMA/ETS/TBATS forecast is
+recursive in the exact same sense as mlforecast's lag-feedback strategy (both substitute the
+model's own prior forecast for an unobserved future value) — they just don't diverge because
+their fitted coefficients are constrained to a stable region, the way a tree's leaf bound or
+Ridge's linearity does for those regressors under the same recursive strategy. That correction
+became a new `ForecastStrategy` field (Recursive/Direct/N-A), hand-declared per concrete
+method rather than hoisted onto shared base classes, and surfaced as a new block on every
+method's info card; foundation models are labeled Direct per this benchmark's one-call
+interface only, since their pretrained decoders' internal generation mechanism isn't verified
+against the pinned library versions. Existing MLP pilot results are stale pending a re-run.
+
+## 2026-07-29 — MLP+exo existed but was never in the pilot run
+
+`MLPExoForecaster` was added earlier today (see below) but `scripts/run_pilot.py`'s
+`build_methods()` never picked it up — the other three Tier 2 exo siblings
+(LinearLags, LightGBM, CatBoost) were added to that list, MLP was not. `methods.json`
+still showed an MLP+exo card because that generator reads the method class registry, not
+the results, so the card looked live even with zero backing scores. Added
+`MLPExoForecaster()` to `build_methods()`; a pilot re-run is needed before MLP+exo scores
+show up anywhere.
+
+## 2026-07-29 — Method cards get a Gaps capability, derived rather than hand-authored
+
+Added a fifth Handles chip answering whether a method can use history from before a gap in
+the record. Tracing how gaps actually get handled showed it's centralized infrastructure
+(`curate.py` fills small ones, `_segment_extended`/`segment_arrays` split the record at big
+ones before any `fit` call), not something each method implements — the one place a real
+per-method distinction already exists is the existing `pools_segments` flag. Rather than
+hand-copying that value into each of the ~19 `Capabilities(...)` declarations (risking drift
+the moment a subclass overrides `pools_segments` without touching `capabilities`, as
+`ITransformerForecaster` already does), `gaps` is computed from `pools_segments` once in
+`webdata.py`'s export step, guarded by a new test that would catch exactly that drift.
+
+## 2026-07-29 — Gave MLP a `+exo` variant
+
+MLP already had the full covariate pipeline through `_WindowedMLBase` (the same lag +
+calendar feature machinery LightGBM/LinearLags/CatBoost use), but no `+exo` subclass had
+been registered — an oversight from when those three got theirs. Added
+`MLPExoForecaster`, following the same one-line pattern (flip `use_exogenous = True`,
+inherit everything else). This was Tier 1 of a larger plan to extend covariate support to
+DLinear, N-HiTS, and PatchTST, which are standalone implementations and need real wiring
+work rather than a flag flip — those stay univariate for now.
+
+## 2026-07-29 — TBATS now fits once too, via genuine AIC selection instead of a fixed config
+
+TBATS's scores on `discharge_saugeen` were far worse than every other classical method
+(MASE 8.76, RMSE 1105.9) — traced to the fixed-config `statsforecast.models.TBATS` class
+this benchmark used, which hardcodes an undamped trend and never searches Box-Cox/trend/
+damped-trend/ARMA-error combinations. On a log-space fit (near-universal for heavy-tailed
+discharge data), that forced undamped trend extrapolates a rising origin's local trend
+indefinitely; one origin (1973-03-09) forecast up to 16,761 against an actual peak of ~210.
+Switched TBATS to genuine AIC-based selection via `tbats_selection` (what `AutoTBATS.fit()`
+calls internally), fit once per the `is_global` protocol and rolled forward via
+`calcTBATSFaster`/`tbats_forecast` — the same internal recursion `AutoTBATS.predict()` uses
+— verified bit-exact against `AutoTBATS`'s own output over the same window. This differs
+from the fit-once TBATS rejected in the entry below: that attempt substituted a simplified
+model under the TBATS name, while this one runs the library's own genuinely selected model,
+just rolled forward by hand since statsforecast never wired up a `forward()` for it.
+Re-running `discharge_saugeen`'s 40-origin backtest through the real eval pipeline: MASE
+8.76 → 0.97, RMSE 1105.9 → 46.75, no more per-origin blowups. TBATS's existing results
+across every case are now stale and need a pilot re-run.
+
+## 2026-07-29 — Method cards now carry a capability set and an operational scorecard
+
+The method cards described each method in prose only, so nothing on them let you compare two
+methods at a glance. Every method now declares two Pydantic objects beside its existing
+metadata: `Capabilities`, four booleans for what structure it can represent (trend,
+seasonality, multiple seasonality, exogenous support), and `Scorecard`, six Low/Medium/High
+ratings for what it costs to use (history needed, interpretability, fit cost, inference cost,
+tuning effort, robustness to noise). Splitting them matters: a graded rating answers "how
+much" and a boolean answers "can it at all", and "Medium seasonality" is not a real thing.
+
+Three fields from the first sketch were reshaped for the same reason. Implementation effort
+was dropped — all 32 methods are thin library wrappers, so the rating would have been
+fiction — and replaced with tuning effort, which genuinely varies. A single computational
+cost hid the fit-once versus refit-per-origin distinction, so it was split into fit cost and
+inference cost, both anchored to the `fit_seconds`/`predict_seconds` the eval loop already
+records; that immediately separates Theta and MSTL (cheap to fit, expensive per origin) from
+TBATS (the mirror image). Small/large dataset support collapsed into one history-need field,
+since whether a method can exploit a long record is already *measured* by the
+extended-history matrix.
+
+The ratings are hand-authored judgement, not derived from results, and the app says so in an
+info modal on each card. A method and its `+exo` variant share one declaration, since `+exo`
+records which configuration a column ran rather than a different estimator.
+
+## 2026-07-29 — Converted the classical methods to fit once and roll forward, except TBATS
+
+The classical methods used to refit from scratch at every rolling origin while the ML, DL and
+foundation models were fit once and rolled forward, which confounds method quality with how
+often a method is allowed to re-estimate. AutoARIMA, AutoETS, Theta and MSTL-ETS/MSTL-ARIMA are
+now `is_global=True` via statsforecast's own `forward(y, h)`, which applies an already-fitted
+model to a new series without calling an optimizer — `AutoARIMA.forward` reproduces
+statsforecast's native forecast exactly, so these are still the library's estimators rather than
+reimplementations of them. Two deterministic pieces are re-derived per origin (Theta's
+seasonality test and decomposition, MSTL's STL), which is no different from the ML methods
+recomputing their calendar features and leaves the seasonal shape current.
+
+TBATS stays local: statsforecast couples its automatic component search to every `.fit()` and
+exposes no `forward`, so the only fit-once option was to substitute a simplified custom
+state-space model under the TBATS name — which was tried, and rejected as making the column stop
+meaning what it says. Its protocol difference is now flagged in the app and in the method's own
+`limitations`. The roll-forward is deliberately **not** capped to the fit window: `predict`
+conditions on the whole history it is handed, since truncating would substitute an arbitrary
+re-initialization for the state the fitted model implies. That has a real cost, which the
+benchmark reports rather than engineers around — on a 200,000-point history one origin costs
+~0.03s for AutoARIMA but ~110s for Theta (superlinear) and ~28s for MSTL, so a rolling run over
+the longest records is dominated by their `predict_seconds`, not their fit. Existing classical
+results are stale and need a pilot re-run, and that re-run will be substantially slower than the
+last one for `surge_cuxhaven` in particular.
+
+## 2026-07-28 — Flagged local methods in the case panel as refit at every origin
+
+The case panel already warned when a selected method is a zero-shot foundation model, since it
+never fits the train/val split shown in the split bar — but gave no equivalent warning for local
+methods (baseline, classical, ensemble), whose training routine is just as different from what a
+user familiar with global-model workflows would expect: they have no single trained model at all,
+refitting from scratch at every rolling forecast origin instead of fitting once on train/val like
+the ML/DL families. Added a second inline note, styled and worded to match the existing
+foundation-model one, that appears whenever a selected method's family is baseline, classical, or
+ensemble. Kept it as a separate banner rather than merging with the foundation-model note, since
+the two families fail the "trained once on train/val" assumption for different reasons.
+
+## 2026-07-28 — Fixed FM context to a single pre-test window, no longer growing per origin
+
+The revert earlier today put the FMs back on full history capped at the model max, but because
+the rolling-origin history grows at each origin, that context grew with it — harmless for the
+three eager models, but it forced TimesFM (whose `compile()` bakes a static input shape) to
+recompile a variant at every origin for any case with less pre-test history than its cap.
+Fixed all four to a single window whose width is set once from the pre-test history (train+val)
+at fit time and capped per model; predict still slices the most recent points, so the window
+slides forward to each origin without growing. This is safe because the eval loop fits global
+methods once on train+val and the first origin conditions on exactly that block, so the fixed
+width never exceeds any origin's available history — TimesFM stays NaN-free and compiles once
+per case. Only short series (train+val below the cap) change from the revert; long series
+already sat at the cap. FM results are stale and need a re-run.
+
+## 2026-07-28 — Reverted foundation-model context to full history, capped at model max
+
+The seasonal-period context rule from earlier today (2 x the case's longest declared seasonal
+cycle) drastically hurt foundation-model accuracy: `2 x max(seasonalities)` is only tens to a
+few hundred points for most cases, far below the 1024–2048 of history these models were built
+to use. "Two cycles" is a rule of thumb for detecting a period, not for how much history a
+pretrained model should condition on, so it threw away the FMs' main strength. Switched all
+four zero-shot models (Chronos-Bolt, Chronos-2, TimesFM-2.5, Moirai-2.0) back to the full
+available history capped at each model's real limit, and deleted the seasonal-sizing helpers
+rather than leave a dead fallback. This is safe for TimesFM now: it sizes its per-origin
+compiled shape to the available history, so the all-NaN bug that motivated the seasonal rule
+can't recur — which also means that earlier "model max hurt 21 of 28 comparisons" verdict was
+contaminated by the NaN bug and is no longer trustworthy. Prior FM results are stale; re-run
+the pilot for a clean comparison against the original moderate caps.
+
+## 2026-07-28 — Split training-time measurement into fit and predict, averaged per rolling origin
+
+Audited why the web app's training-time heatmap showed classical methods (AutoARIMA, Theta,
+TBATS) as far more expensive than zero-shot foundation models, which read as counterintuitive.
+The single `seconds` field turned out to conflate fit and predict time, and — because
+classical/naive methods refit at every rolling origin while global methods (including zero-shot
+FMs, whose fit is a no-op) fit once — implicitly multiplied only the classical numbers by
+`n_origins`. Split the eval loop's timing into `fit_seconds`/`predict_seconds`, each averaged per
+origin so the number reads as "cost of one origin's cycle" regardless of how many origins a run
+used; the heatmap now shows their sum (cost to produce one forecast) by default, with the split
+available on hover. TimesFM-2.5's current ~149s average is entirely predict time despite
+`fit=pass` — likely the known TimesFM slowness noted in the fixed-fm commits — so a fit-only
+metric would have hidden it as free, which is why both numbers are kept rather than fit alone.
+`results/pilot_metrics.parquet`/`docs/results/scores.parquet` need a re-run before the new fields
+are populated; the old `seconds` column no longer exists.
+
+## 2026-07-28 — Foundation-model context length now tracks seasonal periods, not model max
+
+Re-scored the merged pilot results from yesterday's context-length fix and found it wasn't
+clearly better: of 28 case/method comparisons across Chronos-2, TimesFM-2.5, and Moirai-2.0,
+only 7 improved and 21 got worse. Worse, TimesFM-2.5 came back all-NaN on 8 of 12 cases — its
+`compile()` step bakes in a fixed input shape, and the `timesfm` library returns NaN whenever
+the actual input is shorter than that shape by a full patch (32 steps) or more, confirmed by
+bisection and independent of the data itself; yesterday's fix made this reachable by pushing
+the compiled shape up to the model's full 16,128-step capacity, well past what most cases'
+early rolling origins have available. Switched all four zero-shot models (Chronos-Bolt,
+Chronos-2, TimesFM-2.5, Moirai-2.0) from "as much history as the model can take" to "2 periods
+of the case's longest declared seasonal cycle, capped at the model's real limit" — a standard
+rule of thumb rather than a tuned value, and it also clears the TimesFM bug since every case's
+seasonal window now sits well below its available history at every rolling origin. Also removed
+the `input_window` field from the `Case` schema and every `case.toml`: it turned out to be dead,
+never read anywhere outside the schema declaration itself. Prior fm results (including
+yesterday's) are stale and need re-running.
+
+## 2026-07-27 — Stopped hardcoding foundation-model context lengths; read them from the models instead
+
+Chronos-2 and TimesFM-2.5's context caps in `fm.py` turned out to be far below what the
+checkpoints actually support: Chronos-2 was capped at 2048 when `amazon/chronos-2` supports
+8192, and TimesFM-2.5 was capped at 1024 when `google/timesfm-2.5-200m-pytorch` supports 16384.
+Both wrappers now read the real value off the loaded model (`pipe.model_context_length`,
+`model.model.config.context_limit`) instead of a guessed constant, so a checkpoint swap can't
+silently go stale again. Moirai-2.0's old cap (1680) turned out to have no basis at all — it
+was just the length of an unrelated demo dataset in Salesforce's example notebook — and
+Moirai-2.0 has no published trained max context length to read instead, so it now uses the full
+available history capped at the loaded module's position-embedding cache size (`max_seq_len *
+patch_size` = 8192), the one real architectural limit that exists for this checkpoint.
+Chronos-Bolt was already correct (2048) and untouched. Verified with a pilot spot-check on
+`discharge_saugeen` (23,741 rows, well over the old caps) — all seven fm methods, including the
+`+exo` variants, ran and returned finite forecasts; scores are expected to shift for Chronos-2,
+TimesFM-2.5, and Moirai-2.0 since they now condition on meaningfully more history, so prior fm
+results are stale and worth re-running.
+
+## 2026-07-27 — Flagged foundation models in the case panel as not using the train/val split
+
+The case panel's train/val/test split bar and training-tail plot assume every method fits on
+the train split, which is false for foundation models (Chronos-Bolt, Chronos-2, TimesFM,
+Moirai-2): they forecast zero-shot from recent context, with no case-specific fit at all.
+That caveat already existed as prose in each method's collapsed "Limitations" card, but
+nothing tied it to the split visualization itself, so selecting a foundation model and
+looking at the split bar was misleading. Added an inline note to `CasePanel` that appears
+only when a selected method's `family` is `fm`, reusing that existing classification rather
+than adding a new flag. If a fine-tuned FM variant is added later (per the plan's "fine-tuning
+round"), this note's `family === 'fm'` check will need revisiting, since it would then be
+wrong to say that variant skips the train split.
+
 ## 2026-07-27 — Bounded MLP's recursive forecast to stop it diverging on smooth series
 
 MLP's MASE on `groundwater_yorktown` had blown up to 314.65 (RMSE 1383 m against a target

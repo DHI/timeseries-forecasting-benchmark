@@ -18,19 +18,26 @@ import { getPlotTheme } from '../../theme/plotTheme';
 import type { SelectionState } from '../../state/selectionReducer';
 import type { ScoreRow } from '../../types/data';
 
+export type TrainingTimeBreakdown = { fitSeconds: number | null; predictSeconds: number | null };
+
 export type MatrixFigure = {
   data: Data[];
   layout: Partial<Layout>;
   rowOrder: string[];
   colOrder: string[];
+  /** `${case_id}|${method}` -> fit/predict split, for the training-time overlay's hover
+   * tooltip (see MatrixGraph). One entry per method's local (`!used_extended_history`)
+   * row — fit_seconds/predict_seconds are duplicated identically across a row's metric
+   * rows, so any one of them gives the same value. */
+  trainingBreakdownOf: Map<string, TrainingTimeBreakdown>;
 };
 
 /** Round-number seconds ticks (0, 1, 10, 100, ...) up to the first one at or past
  * `maxSeconds`, positioned in the same log10(seconds + 1) space the training-time
  * overlay colors cells in — so the colorbar reads in real seconds despite the
  * underlying color mapping being log-scaled to cope with training time's heavy tail.
- * Unitless (no "s" suffix): the colorbar's "Train<br>time<br>[seconds]" title already carries
- * the unit. */
+ * Unitless (no "s" suffix): the colorbar's "Time per<br>forecast<br>[s]" title already
+ * carries the unit. */
 function trainingTimeColorTicks(maxSeconds: number): { tickvals: number[]; ticktext: string[] } {
   const candidates = [0, 1, 10, 100, 1000, 10000, 100000];
   const ticks: number[] = [];
@@ -102,10 +109,14 @@ export function useMatrixFigure(
     if (!metric || rows.length === 0) return null;
     const pt = getPlotTheme(isDark);
 
-    // When the training-time overlay is held, every cell pivots on `seconds` instead of
-    // `value` — including the showGlobal/showExo swap-in cells below — so the whole
-    // matrix temporarily shows timing instead of the selected metric's score.
-    const valueOf = showTrainingTime ? (r: ScoreRow) => r.seconds : (r: ScoreRow) => r.value;
+    // When the training-time overlay is held, every cell pivots on fit_seconds +
+    // predict_seconds instead of `value` — including the showGlobal/showExo swap-in cells
+    // below — so the whole matrix temporarily shows the cost to produce one forecast
+    // instead of the selected metric's score. See TRAINING_TIME_CONFIG's doc comment for
+    // why this is a sum of two already-per-origin-averaged fields, not a raw total.
+    const valueOf = showTrainingTime
+      ? (r: ScoreRow) => (r.fit_seconds ?? 0) + (r.predict_seconds ?? 0)
+      : (r: ScoreRow) => r.value;
 
     const dfLocal = rows.filter((r) => !r.used_extended_history);
     const rowOrder = orderedCases(dfLocal);
@@ -118,9 +129,14 @@ export function useMatrixFigure(
 
     const domainOf = new Map<string, string>();
     const familyOf = new Map<string, string>();
+    const trainingBreakdownOf = new Map<string, TrainingTimeBreakdown>();
     for (const row of dfLocal) {
       domainOf.set(row.case_id, row.domain);
       familyOf.set(row.method, row.family);
+      trainingBreakdownOf.set(`${row.case_id}|${row.method}`, {
+        fitSeconds: row.fit_seconds,
+        predictSeconds: row.predict_seconds,
+      });
     }
 
     // Every method has a `used_extended_history=false` ("local") row on the shared
@@ -336,11 +352,11 @@ export function useMatrixFigure(
       // overlay instead (see HoverTooltips), matching app/app.py's clientside callback.
       hoverinfo: 'none',
       colorbar: {
-        // "Train<br>time<br>[seconds]" is no wider than colorbarTitle()'s longest line
+        // "Time per<br>forecast<br>[s]" is no wider than colorbarTitle()'s longest line
         // ("[target unit]"), so it still fits within margin.r below (see the
         // margin.autoexpand note further down for why that matters).
         title: {
-          text: showTrainingTime ? 'Train<br>time<br>[seconds]' : colorbarTitle(metric, cfg),
+          text: showTrainingTime ? 'Time per<br>forecast<br>[s]' : colorbarTitle(metric, cfg),
         },
         len: 0.6,
         thickness: 16,
@@ -436,6 +452,6 @@ export function useMatrixFigure(
       },
     };
 
-    return { data: [heatmap as Data], layout, rowOrder, colOrder };
+    return { data: [heatmap as Data], layout, rowOrder, colOrder, trainingBreakdownOf };
   }, [rows, metric, selection, showGlobal, showExo, showTrainingTime, isDark]);
 }

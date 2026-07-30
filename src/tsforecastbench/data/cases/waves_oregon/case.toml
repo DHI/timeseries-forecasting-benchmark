@@ -9,7 +9,6 @@ freq = "1h"
 seasonalities = [14]
 horizon_primary = "24h"
 horizons_eval = ["6h", "24h", "48h"]
-input_window = "14D"
 
 exogenous = ["wspd", "pres", "atmp", "wtmp"]
 exogenous_known_future = []

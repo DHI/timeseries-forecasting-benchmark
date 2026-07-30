@@ -79,18 +79,21 @@ export function AppInstructions({ maxWidth }: { maxWidth: number }) {
       <p>
         This toggle applies only to <strong>global methods</strong>: methods that fit one model and
         reuse it for every forecast origin, rather than refitting at each origin. That covers the
-        ML, DL, and foundation-model families. Baseline, classical, and ensemble methods are refit
-        at every origin, so there&apos;s no separate &quot;trained model&quot; to extend, and this
-        checkbox has no effect on them.
+        ML, DL, and foundation-model families, plus all of the classical ones (AutoARIMA, AutoETS,
+        Theta, MSTL, TBATS). Baseline and ensemble methods are refit at every origin, so
+        there&apos;s no separate &quot;trained model&quot; to extend, and this checkbox has no
+        effect on them.
       </p>
       <p>
-        Among global methods, only those that actually learn from training data (ML and DL) can make
-        use of more history — turning the checkbox on refits them on the case&apos;s full available
-        history instead of just the shared curated span everyone is scored on, and swaps in that
-        score. Foundation models are also &quot;global&quot; in the sense of reusing one fit, but
-        they work zero-shot from recent context rather than learning from a training window, so
-        extra history doesn&apos;t change their forecasts — the checkbox doesn&apos;t affect them
-        either, even though they sit in the same family group.
+        Among global methods, this benchmark currently only scores the full-history fit for those
+        that actually learn from training data (ML and DL) — turning the checkbox on refits them on
+        the case&apos;s full available history instead of just the shared curated span everyone is
+        scored on, and swaps in that score. The fit-once classical methods roll forward like ML/DL,
+        but a full-history variant isn&apos;t wired up for them yet, so the checkbox has no effect
+        on them either. Foundation models are also &quot;global&quot; in the sense of reusing one
+        fit, but they work zero-shot from recent context rather than learning from a training
+        window, so extra history doesn&apos;t change their forecasts — the checkbox doesn&apos;t
+        affect them either, even though they sit in the same family group.
       </p>
       <p>
         When a cell&apos;s value has been swapped to the full-history version, it&apos;s marked with
@@ -119,11 +122,22 @@ export function AppInstructions({ maxWidth }: { maxWidth: number }) {
       </p>
       <h4>&quot;Show training time&quot; button</h4>
       <p>
-        Press and hold this button, or hold the space bar, to see each cell&apos;s measured training
-        time instead of its score. The whole matrix — including any cells already swapped by the two
-        checkboxes above — switches to timing for as long as you hold it down; release to go back to
-        normal. The row/column hover highlight described above still works while holding, so you can
-        hold with one hand (so to speak) and hover to identify cells with the other.
+        Press and hold this button, or hold the space bar, to see each cell&apos;s cost to produce
+        one forecast with that method, instead of its score. The whole matrix — including any cells
+        already swapped by the two checkboxes above — switches to timing for as long as you hold it
+        down; release to go back to normal. The row/column hover highlight described above still
+        works while holding, so you can hold with one hand (so to speak) and hover to identify cells
+        with the other.
+      </p>
+      <p>
+        The number shown is fit time (if the method needs fitting) plus predict time. Baseline and
+        ensemble methods are refit at every rolling origin, so their fit time reflects one such
+        refit; the fit-once methods (ML, DL, and the classical ones) report that single fit;
+        zero-shot foundation models have no case-specific training at all, so their number is
+        essentially inference time. Predict time is not uniformly small either — Theta and MSTL
+        re-derive a seasonal decomposition over the whole history at every origin, so on the longest
+        records their predict cost dominates their fit cost by a wide margin. Hover a cell while
+        holding to see the fit/predict split.
       </p>
     </div>
   );

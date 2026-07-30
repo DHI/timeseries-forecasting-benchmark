@@ -120,12 +120,25 @@ export const METRIC_CONFIG: Record<string, MetricConfig> = {
  * apart from the Reds/RdYlGn metric views) /no-center/lower-is-better. Kept separate from
  * METRIC_CONFIG since training time isn't a selectable metric and must not appear in
  * metricOptions(). `unit` is unused: the training-time colorbar title is a hardcoded
- * 'Train<br>time<br>[seconds]' string in useMatrixFigure.ts. */
+ * string in useMatrixFigure.ts.
+ *
+ * The cell value is `fit_seconds + predict_seconds`, each already averaged per rolling
+ * origin (see ScoreRow / eval.rolling) — for a method that refits at every origin
+ * (baseline/ensemble), `fit_seconds` is the mean cost of one such refit; for a method that
+ * fits once (ML/DL, the classical ones, zero-shot foundation models), it's that single
+ * fit's cost, and for zero-shot methods specifically it's ~0 since they
+ * have no case-specific training. `predict_seconds` is not always the small half: Theta and
+ * MSTL re-derive a seasonal decomposition over the whole history at every origin, so on a
+ * long record their predict cost far exceeds their fit cost. So this reads as "cost to
+ * produce one forecast with this method", not a training-time-only number and not something
+ * that scales with how many origins a run used. Hovering a cell while this overlay is held
+ * shows the fit/predict split (see MatrixGraph's breakdown tooltip). */
 export const TRAINING_TIME_CONFIG: MetricConfig = {
   cmap: 'Greys',
   center: null,
-  label: 'Training time (fit + predict, pooled across rolling origins)',
-  format: '.0f',
+  label:
+    'Time to produce one forecast (fit, if the method needs it, plus predict — hover a cell for the fit/predict split)',
+  format: '.1f',
   unit: 's',
   lowerIsBetter: true,
 };

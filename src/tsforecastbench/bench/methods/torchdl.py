@@ -19,6 +19,12 @@ import numpy as np
 import pandas as pd
 
 from tsforecastbench.bench.methods.base import Forecaster, lookback_for, segment_arrays
+from tsforecastbench.bench.methods.scorecard import (
+    Capabilities,
+    ForecastStrategy,
+    Level,
+    Scorecard,
+)
 from tsforecastbench.data.schema import Case
 
 _MAX_TRAIN = 20000
@@ -162,6 +168,23 @@ class _TorchDLBase(Forecaster):
         "    loss = mse_loss(pred, yb)\n"
         "    loss.backward(); opt.step()"
     )
+    # Shared by N-HiTS and PatchTST: both learn a map from the whole lookback window to the
+    # whole horizon, so trend and several interacting periods are representable, and neither
+    # has a covariate pathway here (that story lives in the windowed-ML +exo columns).
+    capabilities = Capabilities(
+        trend=True, seasonality=True, multiple_seasonality=True, exogenous=False
+    )
+    # The heaviest CPU fits in the benchmark — 600 gradient steps over sampled windows —
+    # against a single forward pass at predict. Per-window instance normalisation is what
+    # keeps robustness at Medium rather than Low despite the training loop.
+    scorecard = Scorecard(
+        history_requirements=Level.HIGH,
+        interpretability=Level.LOW,
+        fit_cost=Level.HIGH,
+        inference_cost=Level.LOW,
+        tuning_effort=Level.HIGH,
+        robustness_to_noise=Level.MEDIUM,
+    )
 
     def _net(self, mods, L, H):
         raise NotImplementedError
@@ -231,6 +254,9 @@ class _TorchDLBase(Forecaster):
 
 class NHITSForecaster(_TorchDLBase):
     name = "N-HiTS"
+    # Each block's _interp produces its H-length contribution directly; forward() sums
+    # them in one pass — no step's output feeds into computing another step.
+    forecast_strategy = ForecastStrategy.DIRECT
 
     def _net(self, mods, L, H):
         _, _, _, NHiTSNet = mods
@@ -239,6 +265,9 @@ class NHITSForecaster(_TorchDLBase):
 
 class PatchTSTForecaster(_TorchDLBase):
     name = "PatchTST"
+    # The head is a single Linear projecting straight to the full H-length output —
+    # no step's output feeds into computing another step.
+    forecast_strategy = ForecastStrategy.DIRECT
 
     def _net(self, mods, L, H):
         _, _, PatchTSTNet, _ = mods

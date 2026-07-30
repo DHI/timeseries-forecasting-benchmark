@@ -36,6 +36,22 @@ const methodMeta: MethodMeta = {
   compute_profile: 'cpu',
   limitations: 'None.',
   code_snippet: 'fit(x, y)',
+  capabilities: {
+    trend: true,
+    seasonality: true,
+    multiple_seasonality: false,
+    exogenous: true,
+    gaps: false,
+  },
+  scorecard: {
+    history_requirements: 'High',
+    interpretability: 'Medium',
+    fit_cost: 'Low',
+    inference_cost: 'Low',
+    tuning_effort: 'Medium',
+    robustness_to_noise: 'Medium',
+  },
+  forecast_strategy: 'Recursive',
 };
 
 describe('MethodInfoCard', () => {
@@ -56,5 +72,27 @@ describe('MethodInfoCard', () => {
 
     await user.click(screen.getByTitle('Expand'));
     expect(screen.getByText('A test method.')).toBeInTheDocument();
+  });
+
+  it('shows the capability row and the scorecard meters', () => {
+    render(
+      <MethodInfoCard method="LightGBM" index={0} caseMeta={caseMeta} methodMeta={methodMeta} />,
+    );
+
+    expect(screen.getByText('Handles')).toBeInTheDocument();
+    expect(screen.getByLabelText('Exogenous: yes')).toBeInTheDocument();
+    expect(screen.getByText('Scorecard')).toBeInTheDocument();
+    expect(screen.getByLabelText('History needed: High')).toBeInTheDocument();
+    expect(screen.getByTitle('How to read the scorecard')).toBeInTheDocument();
+  });
+
+  it('shows the forecast strategy badge', () => {
+    render(
+      <MethodInfoCard method="LightGBM" index={0} caseMeta={caseMeta} methodMeta={methodMeta} />,
+    );
+
+    expect(screen.getByText('Forecast strategy')).toBeInTheDocument();
+    expect(screen.getByLabelText('Forecast strategy: Recursive')).toBeInTheDocument();
+    expect(screen.getByTitle('How to read forecast strategy')).toBeInTheDocument();
   });
 });
