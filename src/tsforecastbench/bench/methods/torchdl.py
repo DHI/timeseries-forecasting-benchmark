@@ -158,16 +158,6 @@ class _TorchDLBase(Forecaster):
         "(RevIN-style) before the model and de-normalised after, which is what makes "
         "the same architecture usable across very different series scales."
     )
-    code_snippet = (
-        "net = <NHiTSNet or PatchTSTNet>(lookback, horizon)\n"
-        "opt = torch.optim.Adam(net.parameters(), lr=1e-3)\n"
-        "for step in range(600):\n"
-        "    xb, yb = sample_batch(windows, batch_size=256)\n"
-        "    mu, sd = xb.mean(1), xb.std(1)          # per-window instance norm\n"
-        "    pred = net((xb - mu) / sd) * sd + mu\n"
-        "    loss = mse_loss(pred, yb)\n"
-        "    loss.backward(); opt.step()"
-    )
     # Shared by N-HiTS and PatchTST: both learn a map from the whole lookback window to the
     # whole horizon, so trend and several interacting periods are representable, and neither
     # has a covariate pathway here (that story lives in the windowed-ML +exo columns).
@@ -258,6 +248,31 @@ class NHITSForecaster(_TorchDLBase):
     contribution, and the stack's contributions sum to the final forecast."""
 
     name = "N-HiTS"
+    code_snippet = (
+        "class NHiTSBlock(nn.Module):        # one block at a given pooling rate\n"
+        "    def __init__(self, L, H, pool_k, hidden, down):\n"
+        "        self.pool = nn.AvgPool1d(pool_k, ceil_mode=True)     # coarsen the input\n"
+        "        self.mlp = nn.Sequential(nn.Linear(L // pool_k, hidden), nn.ReLU(),\n"
+        "                                  nn.Linear(hidden, hidden), nn.ReLU())\n"
+        "        self.b_lin = nn.Linear(hidden, L // down)            # backcast basis\n"
+        "        self.f_lin = nn.Linear(hidden, H // down)            # forecast basis\n\n"
+        "    def forward(self, x):\n"
+        "        h = self.mlp(self.pool(x))\n"
+        "        back = interpolate(self.b_lin(h), size=L)  # upsample basis to input length\n"
+        "        fore = interpolate(self.f_lin(h), size=H)  # upsample basis to horizon length\n"
+        "        return back, fore\n\n"
+        "# stack of blocks, coarse to fine (pool_k=8, 4, 1): each subtracts its backcast\n"
+        "# from the residual the next block sees; forecasts from every block sum\n"
+        "residual, forecast = window, 0.0\n"
+        "for block in blocks:\n"
+        "    back, fore = block(residual)\n"
+        "    residual = residual - back\n"
+        "    forecast = forecast + fore\n\n"
+        "# training: per-window instance norm (RevIN-style), plain MSE + Adam\n"
+        "mu, sd = window.mean(1), window.std(1)\n"
+        "pred = net((window - mu) / sd) * sd + mu\n"
+        "loss = mse_loss(pred, target)"
+    )
     # Each block's _interp produces its H-length contribution directly; forward() sums
     # them in one pass — no step's output feeds into computing another step.
     forecast_strategy = ForecastStrategy.DIRECT
@@ -273,6 +288,24 @@ class PatchTSTForecaster(_TorchDLBase):
     projects to the full horizon."""
 
     name = "PatchTST"
+    code_snippet = (
+        "class PatchTSTNet(nn.Module):\n"
+        "    def __init__(self, L, H, patch_len=16, stride=8, d_model=64, n_heads=4,\n"
+        "                 n_layers=2):\n"
+        "        self.embed = nn.Linear(patch_len, d_model)\n"
+        "        self.pos = nn.Parameter(torch.randn(n_patches, d_model) * 0.02)\n"
+        "        layer = nn.TransformerEncoderLayer(d_model, n_heads, dim_feedforward=128)\n"
+        "        self.encoder = nn.TransformerEncoder(layer, n_layers)\n"
+        "        self.head = nn.Sequential(nn.Flatten(), nn.Linear(n_patches * d_model, H))\n\n"
+        "    def forward(self, x):                        # x: (B, L), already normalised\n"
+        "        patches = x.unfold(1, self.patch_len, self.stride)  # (B, n_patches, patch_len)\n"
+        "        z = self.encoder(self.embed(patches) + self.pos)\n"
+        "        return self.head(z)                      # (B, H)\n\n"
+        "# training: per-window instance norm (RevIN-style), plain MSE + Adam\n"
+        "mu, sd = window.mean(1), window.std(1)\n"
+        "pred = net((window - mu) / sd) * sd + mu\n"
+        "loss = mse_loss(pred, target)"
+    )
     # The head is a single Linear projecting straight to the full H-length output —
     # no step's output feeds into computing another step.
     forecast_strategy = ForecastStrategy.DIRECT
