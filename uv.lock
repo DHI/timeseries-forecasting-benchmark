@@ -3487,6 +3487,18 @@ notebooks = [
     { name = "plotly" },
 ]
 
+[package.dev-dependencies]
+seasonality = [
+    { name = "marimo" },
+    { name = "numpy" },
+    { name = "pandas" },
+    { name = "plotly" },
+    { name = "pyarrow" },
+    { name = "pydantic" },
+    { name = "scipy" },
+    { name = "statsmodels" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "catboost", specifier = ">=1.2" },
@@ -3526,6 +3538,18 @@ requires-dist = [
     { name = "xarray", marker = "extra == 'data'", specifier = ">=2024.1" },
 ]
 provides-extras = ["dl", "nf", "fm", "ms", "data", "dev", "notebooks"]
+
+[package.metadata.requires-dev]
+seasonality = [
+    { name = "marimo", specifier = ">=0.9" },
+    { name = "numpy", specifier = ">=1.26" },
+    { name = "pandas", specifier = ">=2.2" },
+    { name = "plotly", specifier = ">=5.20" },
+    { name = "pyarrow", specifier = ">=15.0" },
+    { name = "pydantic", specifier = ">=2.6" },
+    { name = "scipy", specifier = ">=1.11" },
+    { name = "statsmodels", specifier = ">=0.14" },
+]
 
 [[package]]
 name = "typing-extensions"

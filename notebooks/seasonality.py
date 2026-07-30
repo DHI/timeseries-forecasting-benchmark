@@ -13,6 +13,8 @@ def _():
 
 @app.cell
 def _():
+    import io
+
     import numpy as np
     import pandas as pd
     import plotly.graph_objects as go
@@ -20,8 +22,7 @@ def _():
     from scipy.signal import periodogram
     from scipy.stats import binned_statistic
 
-    from tsforecastbench.data.registry import discover_cases, get_case
-    from tsforecastbench.data.schema import _observed_mask as observed_mask
+    from tsforecastbench.data.curate import _nan_runs as contiguous_runs
     from tsforecastbench.data.seasonality import (
         CANDIDATE_MENU,
         detect_candidates,
@@ -44,16 +45,15 @@ def _():
         CANDIDATE_MENU,
         acf_at,
         binned_statistic,
+        contiguous_runs,
         detect_candidates,
-        discover_cases,
         fill_and_detrend,
-        get_case,
         go,
+        io,
         make_subplots,
         mstl_decompose,
         normalize_freq,
         np,
-        observed_mask,
         pacf_at_lags,
         pd,
         periodogram,
@@ -84,31 +84,225 @@ def _(go):
 @app.cell
 def _(mo):
     mo.md("""
-    # Seasonality curation
+    # Seasonality exploration
 
-    One-time tooling for the `seasonalities` field in each case.toml — the **single
-    source of truth** for seasonal periods during the benchmark train/predict cycle
-    (periods in steps, dominant first, `[]` = non-seasonal).
-
-    Candidates come from a fixed physically motivated menu per frequency; the evidence
-    below (periodogram prominence, corroborated by ACF at lag and/or MSTL seasonal
-    strength, computed on the **train split only**) accepts or rejects each. Review
-    the evidence, then commit the proposed line — or deviate from it with a written
-    justification in the case notes.
+    Upload a timeseries and find its seasonal periods. Candidates come from a fixed
+    physically motivated menu per sampling frequency; the evidence below (periodogram
+    prominence, corroborated by ACF at lag and/or MSTL seasonal strength) accepts or
+    rejects each — computed on a **gapless slice** you select just below the upload.
+    Review the evidence, then read off the proposed periods, or add extras you spot
+    yourself.
     """)
     return
 
 
 @app.cell
-def _(discover_cases, mo):
-    cases = list(discover_cases())
-    case_picker = mo.ui.dropdown(cases, value=cases[0], label="Case")
+def _(mo):
+    mo.md("""
+    ## 1. Upload a series
+
+    Upload a CSV or Parquet file with a timestamp column and a numeric column to study
+    (a file with several numeric columns is fine — you'll pick which one below). Every
+    other section of this notebook waits until a gapless slice is selected here.
+    """)
+    return
+
+
+@app.cell
+def _(mo):
+    file_uploader = mo.ui.file(
+        filetypes=[".csv", ".parquet"],
+        kind="area",
+        label="Upload a timeseries (CSV or Parquet)",
+    )
+    file_uploader
+    return (file_uploader,)
+
+
+@app.cell
+def _(file_uploader, io, mo, pd):
+    mo.stop(not file_uploader.value, mo.md("Upload a CSV or Parquet file above to begin."))
+    _upload = file_uploader.value[0]
+    series_label = _upload.name
+
+    def _read_csv_bytes(contents):
+        # Mirrors the encoding/separator sniff in data/cases/_io.py's read_table, adapted
+        # to bytes: try common encodings and separators, keep the first parse that yields
+        # more than one column, and fall back to latin-1 (decodes any byte) as a last resort.
+        for enc in ("utf-8", "utf-8-sig", "cp1252", "latin-1"):
+            for sep in (",", ";", "\t"):
+                try:
+                    _df = pd.read_csv(io.BytesIO(contents), sep=sep, encoding=enc)
+                    if _df.shape[1] > 1:
+                        return _df
+                except Exception:
+                    continue
+        return pd.read_csv(io.BytesIO(contents), encoding="latin-1")
+
+    if series_label.lower().endswith(".parquet"):
+        raw_df = pd.read_parquet(io.BytesIO(_upload.contents))
+    else:
+        raw_df = _read_csv_bytes(_upload.contents)
+
+    if isinstance(raw_df.index, pd.DatetimeIndex):
+        if raw_df.index.name is None:
+            raw_df.index.name = "index"
+        raw_df = raw_df.reset_index()
+    return raw_df, series_label
+
+
+@app.cell
+def _(mo, pd, raw_df):
+    _cols = list(raw_df.columns)
+
+    def _guess_ts_column():
+        for _c in _cols:
+            if pd.api.types.is_datetime64_any_dtype(raw_df[_c]):
+                return _c
+        _common_names = {"ds", "date", "time", "timestamp", "datetime"}
+        for _c in _cols:
+            if str(_c).lower() in _common_names:
+                return _c
+        _best, _best_rate = _cols[0], 0.0
+        for _c in _cols:
+            _rate = pd.to_datetime(raw_df[_c], errors="coerce").notna().mean()
+            if _rate > _best_rate:
+                _best, _best_rate = _c, _rate
+        return _best
+
+    ts_picker = mo.ui.dropdown(_cols, value=_guess_ts_column(), label="Timestamp column")
+    ts_picker
+    return (ts_picker,)
+
+
+@app.cell
+def _(mo, pd, raw_df, ts_picker):
+    _candidates = [
+        c
+        for c in raw_df.columns
+        if c != ts_picker.value and pd.api.types.is_numeric_dtype(raw_df[c])
+    ] or [c for c in raw_df.columns if c != ts_picker.value]
+    value_picker = mo.ui.dropdown(
+        _candidates, value=_candidates[0] if _candidates else None, label="Variable of interest"
+    )
+    value_picker
+    return (value_picker,)
+
+
+@app.cell
+def _(mo, pd, raw_df, ts_picker):
+    mo.stop(ts_picker.value is None, mo.md("Select a timestamp column above."))
+    _ts = pd.to_datetime(raw_df[ts_picker.value], errors="coerce").dropna().sort_values()
+    _ts = _ts[~_ts.duplicated(keep="first")]
+    _diffs = _ts.diff().dropna()
+    mo.stop(len(_diffs) < 2, mo.md("Not enough distinct timestamps to infer a sampling frequency."))
+    _step = _diffs.mode().iloc[0]
+    _freq_guess = pd.tseries.frequencies.to_offset(_step).freqstr
+    freq_input = mo.ui.text(
+        value=_freq_guess,
+        label=(
+            "Sampling frequency (pandas offset alias, e.g. '1h', '15min', '1D') — "
+            "edit if the guess looks wrong"
+        ),
+    )
+    freq_input
+    return (freq_input,)
+
+
+@app.cell
+def _(freq_input, mo, pd, raw_df, ts_picker, value_picker):
+    mo.stop(not freq_input.value, mo.md("Enter a sampling frequency above."))
+    _ts = pd.to_datetime(raw_df[ts_picker.value], errors="coerce")
+    _series = pd.Series(raw_df[value_picker.value].to_numpy(dtype=float), index=_ts)
+    _series = _series[_series.index.notna()].sort_index()
+    _series = _series[~_series.index.duplicated(keep="first")]
+    _grid = pd.date_range(_series.index.min(), _series.index.max(), freq=freq_input.value)
+    full_series = _series.reindex(_grid)
+    observed = full_series.notna().to_numpy()
+    _n_missing = int((~observed).sum())
+    gap_note = mo.md(
+        f"⚠️ {_n_missing} of {len(full_series)} steps ({_n_missing / len(full_series):.1%}) "
+        "are missing on the inferred grid — some stretches have gaps."
+        if _n_missing
+        else f"No gaps on the inferred grid ({len(full_series)} steps)."
+    )
+    return full_series, gap_note, observed
+
+
+@app.cell
+def _(contiguous_runs, full_series, gap_note, mo, observed):
+    _runs = sorted(contiguous_runs(observed), key=lambda r: r[1] - r[0], reverse=True)
+    mo.stop(not _runs, mo.md("No gapless stretch found in the uploaded series."))
+    _shown = _runs[:15]
+    run_options = {
+        f"{_b - _a} steps  ({full_series.index[_a]} → {full_series.index[_b - 1]})": (_a, _b)
+        for _a, _b in _shown
+    }
+    _more = f"  \n_{len(_runs) - 15} shorter run(s) not shown._" if len(_runs) > 15 else ""
+    slice_picker = mo.ui.dropdown(
+        list(run_options.keys()),
+        value=next(iter(run_options)),
+        label="Gapless slice to study (default: longest)",
+    )
+    mo.vstack([gap_note, mo.md(f"{len(_runs)} gapless run(s) found.{_more}"), slice_picker])
+    return run_options, slice_picker
+
+
+@app.cell
+def _(full_series, go, mo, plot_template, run_options, slice_picker):
+    _start, _stop = run_options[slice_picker.value]
+    _fig = go.Figure()
+    _fig.add_trace(
+        go.Scattergl(
+            x=full_series.index, y=full_series.to_numpy(), mode="lines", name="uploaded series"
+        )
+    )
+    _fig.add_vrect(
+        x0=full_series.index[_start],
+        x1=full_series.index[_stop - 1],
+        fillcolor="crimson",
+        opacity=0.15,
+        line_width=0,
+        annotation_text="selected slice",
+        annotation_position="top left",
+    )
+    _fig.update_layout(
+        template=plot_template,
+        title="Uploaded series (gaps break the line; shaded = selected slice)",
+        height=320,
+    )
+    mo.vstack([_fig])
+    return
+
+
+@app.cell
+def _(freq_input, full_series, mo, run_options, slice_picker):
+    _start, _stop = run_options[slice_picker.value]
+    mo.stop(
+        _stop - _start < 3, mo.md("Selected slice is too short to study (need at least 3 points).")
+    )
+    y = full_series.to_numpy()[_start:_stop]
+    slice_index = full_series.index[_start:_stop]
+    freq = freq_input.value
+    return freq, slice_index, y
+
+
+@app.cell
+def _(mo):
     extra_input = mo.ui.text(
-        label="Extra candidate periods (steps, comma-separated; justify in case notes)",
+        label="Extra candidate periods (steps, comma-separated)",
         value="",
     )
-    case_picker
-    return case_picker, extra_input
+    extra_input
+    return (extra_input,)
+
+
+@app.cell
+def _(extra_input):
+    extra_candidates = tuple(
+        int(tok) for tok in extra_input.value.replace(" ", "").split(",") if tok
+    )
+    return (extra_candidates,)
 
 
 @app.cell
@@ -117,7 +311,7 @@ def _(mo):
     ## RobustPeriod discovery (data-driven)
 
     Before the menu-based evidence below, this reads the seasonal structure **straight from the
-    train split**, assuming nothing about the case — a robust, multi-period detector
+    selected slice**, assuming nothing about the series — a robust, multi-period detector
     ([RobustPeriod](https://arxiv.org/abs/2002.09535), Wen et al. 2021). The series is
     detrended and Huber-cleaned (so a trend or a few spikes can't mislead it), split into dyadic
     frequency bands by a wavelet transform (so coexisting cycles separate), and each band's
@@ -138,13 +332,13 @@ def _(mo):
 
 
 @app.cell
-def _(case, mo, pd, robust_period_candidates, extra_input, train):
-    robust_result = robust_period_candidates(train["y"].to_numpy(), case.freq)
+def _(extra_input, freq, mo, pd, robust_period_candidates, y):
+    robust_result = robust_period_candidates(y, freq)
     _candidates = robust_result["candidates"]
     if not _candidates:
         _discovery = mo.vstack(
             [
-                mo.md("No periodic structure discovered (train split too short or flat)."),
+                mo.md("No periodic structure discovered (selected slice too short or flat)."),
                 extra_input,
             ]
         )
@@ -199,9 +393,9 @@ def _(mo):
 def _(
     CANDIDATE_MENU,
     binned_statistic,
-    case,
     extra_candidates,
     fill_and_detrend,
+    freq,
     go,
     grid_resolution,
     mo,
@@ -211,9 +405,9 @@ def _(
     periodogram,
     plot_template,
     robust_result,
-    train,
+    y,
 ):
-    _yd = fill_and_detrend(train["y"].to_numpy())
+    _yd = fill_and_detrend(y)
     _freqs, _power = periodogram(_yd, fs=1.0)
     _f, _p = _freqs[1:], _power[1:]  # drop the DC bin (frequency 0)
 
@@ -237,7 +431,7 @@ def _(
         _binned[_empty] = np.interp(_centers[_empty], _lf, _logp)
     _grid_f = 10.0**_centers  # log-spaced frequency grid, used only for the smoothed curve
 
-    _menu = sorted(CANDIDATE_MENU.get(normalize_freq(case.freq), ()))
+    _menu = sorted(CANDIDATE_MENU.get(normalize_freq(freq), ()))
 
     _fig = go.Figure()
     _fig.add_trace(go.Scattergl(x=_f, y=_p, mode="lines", name="periodogram", opacity=0.35))
@@ -260,7 +454,7 @@ def _(
     def _vline(_freq, _period, _color, _dash, _pos):
 
         _hover_tooltip_value = np.round(
-            (pd.Timedelta(case.freq) * _period).total_seconds() / 3600 / 24, 1
+            (pd.Timedelta(freq) * _period).total_seconds() / 3600 / 24, 1
         )
         _fig.add_trace(
             go.Scattergl(
@@ -293,7 +487,7 @@ def _(
     _fig.update_xaxes(type="log", title="frequency (1/steps)")
     _fig.update_yaxes(type="log", title="power")
     _fig.update_layout(
-        template=plot_template, title="Train-split periodogram", height=400, showlegend=True
+        template=plot_template, title="Selected-slice periodogram", height=400, showlegend=True
     )
 
     _info = mo.callout(
@@ -301,9 +495,9 @@ def _(
             "**Grey lines — the fixed candidate menu.** These are physically-motivated "
             "seasonal periods for this sampling frequency (semi-diurnal / diurnal / weekly "
             "for sub-daily data; weekly / annual for daily data). Detection only ever "
-            "accepts periods from this fixed menu (plus justified per-case extras), so "
-            "ordinary spectral noise can never mint a meaningless period into the benchmark "
-            "metadata.  \n"
+            "accepts periods from this fixed menu (plus justified extras), so "
+            "ordinary spectral noise can never mint a meaningless period into the evidence "
+            "table below.  \n"
             "**Yellow lines** are periods the RobustPeriod discovery cell above found (solid = "
             "clears its prominence bar, dotted = does not); "
             "**orange lines** are the extra candidates typed above. A yellow line sitting on "
@@ -326,34 +520,15 @@ def _(
 
 
 @app.cell
-def _(case_picker, extra_input, get_case):
-    case = get_case(case_picker.value)
-    extra_candidates = tuple(
-        int(tok) for tok in extra_input.value.replace(" ", "").split(",") if tok
-    )
-    return case, extra_candidates
-
-
-@app.cell
-def _(case, observed_mask):
-    _df = case.load(curated=True)
-    train = case.split_frame(_df)["train"]
-    filled_frac = 1.0 - float(observed_mask(train).mean())
-    return filled_frac, train
-
-
-@app.cell
 def _(
-    case,
     detect_candidates,
     extra_candidates,
     final_candidates,
+    freq,
     proposed_seasonalities,
-    train,
+    y,
 ):
-    evidence = detect_candidates(
-        train["y"].to_numpy(), case.freq, tuple(set(extra_candidates) | set(final_candidates))
-    )
+    evidence = detect_candidates(y, freq, tuple(set(extra_candidates) | set(final_candidates)))
     if final_candidates:
         evidence = [e for e in evidence if e["period"] in final_candidates]
     proposed = proposed_seasonalities(evidence)
@@ -386,26 +561,18 @@ def _(final_input):
 
 
 @app.cell
-def _(case, evidence, filled_frac, mo, pd, proposed):
-    declared = getattr(case, "seasonalities", None)
+def _(evidence, freq, mo, pd, proposed, series_label, slice_index):
     _table = pd.DataFrame(evidence)[
         ["period", "n_cycles", "power_ratio", "acf", "mstl_strength", "accepted"]
     ]
-
-    _fill_note = (
-        f"⚠️ {filled_frac:.1%} of the train split is gap-filled — filled stretches are "
-        "interpolations, so the evidence is correspondingly weaker."
-        if filled_frac > 0.01
-        else f"{filled_frac:.2%} of the train split is gap-filled."
-    )
     mo.vstack(
         [
-            mo.md(f"**{case.id}** ({case.freq}) — {_fill_note}"),
-            mo.ui.table(_table.round(3), selection=None, label="Candidate evidence"),
             mo.md(
-                f"Proposed (dominant first): `seasonalities = {proposed}`  \n"
-                f"Currently declared: `{declared if declared is not None else 'not declared yet'}`"
+                f"**{series_label}** ({freq}) — selected slice: {slice_index[0]} "
+                f"→ {slice_index[-1]} ({len(slice_index)} steps, no gaps)"
             ),
+            mo.ui.table(_table.round(3), selection=None, label="Candidate evidence"),
+            mo.md(f"Proposed (dominant first): `seasonalities = {proposed}`"),
         ]
     )
     return
@@ -419,9 +586,9 @@ def _(
     go,
     np,
     plot_template,
-    train,
+    y,
 ):
-    _yd = fill_and_detrend(train["y"].to_numpy())
+    _yd = fill_and_detrend(y)
     _menu = sorted(final_candidates)
     _max_lag = min(int(2.2 * max(_menu)) if _menu else 100, len(_yd) - 2)
     _lags = np.arange(1, _max_lag + 1)
@@ -443,7 +610,7 @@ def _(
             )
     _fig.update_layout(
         template=plot_template,
-        title="Train-split ACF (candidate lags marked)",
+        title="Selected-slice ACF (candidate lags marked)",
         xaxis_title="lag (steps)",
         yaxis_title="ACF",
         height=380,
@@ -453,8 +620,8 @@ def _(
 
 
 @app.cell
-def _(fill_and_detrend, final_candidates, go, mo, np, pacf_at_lags, plot_template, train):
-    _yd = fill_and_detrend(train["y"].to_numpy())
+def _(fill_and_detrend, final_candidates, go, mo, np, pacf_at_lags, plot_template, y):
+    _yd = fill_and_detrend(y)
     _menu = sorted(final_candidates)
     _max_lag = min(int(2.2 * max(_menu)) if _menu else 100, len(_yd) // 2 - 1)
     _lags = np.arange(1, _max_lag + 1)
@@ -476,7 +643,7 @@ def _(fill_and_detrend, final_candidates, go, mo, np, pacf_at_lags, plot_templat
             )
     _fig.update_layout(
         template=plot_template,
-        title="Train-split PACF (candidate lags marked)",
+        title="Selected-slice PACF (candidate lags marked)",
         xaxis_title="lag (steps)",
         yaxis_title="PACF",
         height=380,
@@ -494,9 +661,9 @@ def _(fill_and_detrend, final_candidates, go, mo, np, pacf_at_lags, plot_templat
 
 
 @app.cell
-def _(final_candidates, go, make_subplots, mo, mstl_decompose, np, plot_template, train):
+def _(final_candidates, go, make_subplots, mo, mstl_decompose, np, plot_template, y):
     _periods = sorted(final_candidates)
-    _fit = mstl_decompose(train["y"].to_numpy(), _periods) if _periods else None
+    _fit = mstl_decompose(y, _periods) if _periods else None
 
     if _fit is None:
         _out = mo.md(
@@ -529,7 +696,7 @@ def _(final_candidates, go, make_subplots, mo, mstl_decompose, np, plot_template
         _fig.update_xaxes(title_text="step (within sampled window)", row=len(_series), col=1)
         _fig.update_layout(
             template=plot_template,
-            title=f"MSTL decomposition (last {len(_series[0][1])} train steps, periods {_fitted})",
+            title=f"MSTL decomposition (last {len(_series[0][1])} slice steps, periods {_fitted})",
             height=160 * len(_series) + 100,
         )
         _out = _fig
