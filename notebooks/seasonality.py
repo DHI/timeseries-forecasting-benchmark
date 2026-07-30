@@ -454,7 +454,7 @@ def _(
     def _vline(_freq, _period, _color, _dash, _pos):
 
         _hover_tooltip_value = np.round(
-            (pd.Timedelta(freq) * _period).total_seconds() / 3600 / 24, 1
+            (pd.Timedelta(normalize_freq(freq)) * _period).total_seconds() / 3600 / 24, 1
         )
         _fig.add_trace(
             go.Scattergl(

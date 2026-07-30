@@ -2,13 +2,13 @@
   "uid": 753,
   "container_image_name": "seasonality-notebook-container",
   "image_version": {
-    "current_image_version": "0.1.0",
-    "next_image_version": "0.1.1"
+    "current_image_version": "0.1.2",
+    "next_image_version": "0.1.3"
   },
   "container_description": "Container for seasonality notebook app.",
   "container_file": "./Dockerfile.seasonality",
   "build_context": "./",
-  "metadata_id": 328,
+  "metadata_id": 332,
   "primary_container": true,
   "port": 2718,
   "test_serving_port": 2718,
