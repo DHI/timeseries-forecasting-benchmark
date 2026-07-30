@@ -1,0 +1,13 @@
+{
+  "app_id": null,
+  "app_name": "seasonality-notebook",
+  "app_description": "Notebook to study seasonalities of a given timeseries.",
+  "app_url": "seasonality-notebook",
+  "stripped_prefix": true,
+  "access_level": "public",
+  "acl_userlist": [],
+  "acl_group_names": [],
+  "idp_enabled": false,
+  "idp_scope": null,
+  "maintainers": []
+}

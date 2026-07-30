@@ -1,0 +1,22 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install uv for fast, reproducible installs
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+# Copy lockfile and project metadata first so dependency layer is cached
+COPY pyproject.toml uv.lock ./
+COPY src/ src/
+
+# Editable install is required: schema.py resolves REPO_ROOT via __file__, so the
+# package source must stay at /app/src/ rather than being copied into site-packages.
+RUN uv pip install --system --editable ".[notebooks]"
+
+# Copy the notebook and data needed at runtime
+COPY notebooks/seasonality.py notebooks/seasonality.py
+COPY data/curated/ data/curated/
+
+EXPOSE 2718
+
+CMD ["marimo", "run", "notebooks/seasonality.py", "--host", "0.0.0.0", "--port", "2718"]
