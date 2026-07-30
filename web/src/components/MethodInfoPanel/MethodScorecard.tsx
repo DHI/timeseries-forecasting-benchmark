@@ -1,13 +1,14 @@
 import { Fragment, memo } from 'react';
 import {
   CAPABILITY_FIELDS,
+  FORECAST_STRATEGY_HELP,
   LEVEL_SEGMENTS,
   SCORECARD_FIELDS,
   SEGMENT_COUNT,
   TONE_VAR,
   levelTone,
 } from '../../data/scorecardConfig';
-import type { Capabilities, Scorecard } from '../../types/data';
+import type { Capabilities, ForecastStrategy, Scorecard } from '../../types/data';
 
 const ROW_LABEL_STYLE = {
   color: 'var(--text-secondary)',
@@ -110,5 +111,28 @@ function ScorecardMetersComponent({ scorecard }: { scorecard: Scorecard }) {
   );
 }
 
+/** A single value, not a row of options — this is a one-of-three category, not a boolean
+ * (CapabilityRow) or a graded rating (ScorecardMeters), so it gets its own small badge rather
+ * than being forced into either of those shapes. */
+function ForecastStrategyBadgeComponent({ strategy }: { strategy: ForecastStrategy }) {
+  return (
+    <span
+      title={FORECAST_STRATEGY_HELP[strategy]}
+      aria-label={`Forecast strategy: ${strategy}`}
+      style={{
+        display: 'inline-block',
+        fontSize: '0.85em',
+        color: 'var(--text-secondary)',
+        border: '1px solid var(--border)',
+        borderRadius: 3,
+        padding: '0 6px',
+      }}
+    >
+      {strategy}
+    </span>
+  );
+}
+
 export const CapabilityRow = memo(CapabilityRowComponent);
 export const ScorecardMeters = memo(ScorecardMetersComponent);
+export const ForecastStrategyBadge = memo(ForecastStrategyBadgeComponent);

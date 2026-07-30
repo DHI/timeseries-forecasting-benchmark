@@ -4,7 +4,7 @@ import { METHOD_COLORS, TITLE_BAR_HEIGHT } from '../../data/constants';
 import { useEdgeResize } from '../../hooks/useEdgeResize';
 import { methodInfo, methodInfoDetail } from '../../data/methodText';
 import { InfoModal } from '../InfoModal/InfoModal';
-import { CapabilityRow, ScorecardMeters } from './MethodScorecard';
+import { CapabilityRow, ForecastStrategyBadge, ScorecardMeters } from './MethodScorecard';
 import type { CaseMeta, MethodMeta } from '../../types/data';
 
 const CARD_MIN_WIDTH = 220;
@@ -108,6 +108,44 @@ function MethodInfoCardComponent({ method, index, caseMeta, methodMeta }: Props)
             <>
               <div style={BLOCK_HEADING_STYLE}>Handles</div>
               <CapabilityRow capabilities={methodMeta.capabilities} />
+              <div
+                style={{ ...BLOCK_HEADING_STYLE, display: 'flex', alignItems: 'center', gap: 4 }}
+              >
+                Forecast strategy
+                <InfoModal
+                  buttonTitle="How to read forecast strategy"
+                  ariaLabel="How to read forecast strategy"
+                  heading="How to read forecast strategy"
+                  testId={`forecast-strategy-info-${method}`}
+                  size={16}
+                >
+                  <p>
+                    How this method turns one fit into a multi-step forecast — a different question
+                    from whether it&rsquo;s <em>well-behaved</em> doing so, which the
+                    Scorecard&rsquo;s robustness rating already covers.
+                  </p>
+                  <p>
+                    <strong>Recursive</strong>: each step&rsquo;s forecast feeds forward into
+                    computing a later step. mlforecast&rsquo;s default lag-feedback strategy and a
+                    classical ARIMA/ETS/TBATS-style state-space recursion both work this way — the
+                    model substitutes its own prior forecast for the unobserved future value at each
+                    step.
+                  </p>
+                  <p>
+                    <strong>Direct</strong>: one model call produces the whole horizon at once, with
+                    nothing feeding into a later step. For the foundation models this describes only
+                    this benchmark&rsquo;s calling interface (one call, full horizon requested) —
+                    not whether the pretrained decoder itself generates internally autoregressively,
+                    which isn&rsquo;t verified here.
+                  </p>
+                  <p>
+                    <strong>N/A</strong>: the distinction carries no information — a naive baseline
+                    that looks up or repeats a value independently per timestamp, or a composite of
+                    several methods.
+                  </p>
+                </InfoModal>
+              </div>
+              <ForecastStrategyBadge strategy={methodMeta.forecast_strategy} />
               <div
                 style={{ ...BLOCK_HEADING_STYLE, display: 'flex', alignItems: 'center', gap: 4 }}
               >

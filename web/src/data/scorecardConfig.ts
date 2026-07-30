@@ -1,4 +1,4 @@
-import type { Capabilities, Scorecard, ScorecardLevel } from '../types/data';
+import type { Capabilities, ForecastStrategy, Scorecard, ScorecardLevel } from '../types/data';
 
 /** Display config for the method card's Handles row and Scorecard meters: labels, order,
  * polarity, and the tooltip text explaining each field. Same split of concerns as
@@ -88,6 +88,17 @@ export const SCORECARD_FIELDS: readonly ScorecardField[] = [
     help: 'Tolerance to noise, outliers and gaps. High: barely moves for one bad point. Low: fits the noise, or lets a single outlier propagate across the horizon.',
   },
 ];
+
+/** Per-value help text for the Forecast strategy badge — see `ForecastStrategy` in
+ * types/data.ts and the Python rubric it mirrors (scorecard.py). */
+export const FORECAST_STRATEGY_HELP: Record<ForecastStrategy, string> = {
+  Recursive:
+    'Each step of the forecast feeds forward into computing a later step: mlforecast’s default lag-feedback strategy, or a classical state-space recursion substituting its own prior forecast for an unobserved future value.',
+  Direct:
+    'One model call produces the whole horizon at once — nothing computed for one step feeds into computing another.',
+  'N/A':
+    'The distinction carries no information for this method — a naive baseline that looks up or repeats a value independently per timestamp, or a composite of several methods.',
+};
 
 /** Bar length: the magnitude of the rating, independent of whether that magnitude is good. */
 export const LEVEL_SEGMENTS: Record<ScorecardLevel, number> = { Low: 1, Medium: 2, High: 3 };

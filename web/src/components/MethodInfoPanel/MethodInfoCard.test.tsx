@@ -51,6 +51,7 @@ const methodMeta: MethodMeta = {
     tuning_effort: 'Medium',
     robustness_to_noise: 'Medium',
   },
+  forecast_strategy: 'Recursive',
 };
 
 describe('MethodInfoCard', () => {
@@ -83,5 +84,15 @@ describe('MethodInfoCard', () => {
     expect(screen.getByText('Scorecard')).toBeInTheDocument();
     expect(screen.getByLabelText('History needed: High')).toBeInTheDocument();
     expect(screen.getByTitle('How to read the scorecard')).toBeInTheDocument();
+  });
+
+  it('shows the forecast strategy badge', () => {
+    render(
+      <MethodInfoCard method="LightGBM" index={0} caseMeta={caseMeta} methodMeta={methodMeta} />,
+    );
+
+    expect(screen.getByText('Forecast strategy')).toBeInTheDocument();
+    expect(screen.getByLabelText('Forecast strategy: Recursive')).toBeInTheDocument();
+    expect(screen.getByTitle('How to read forecast strategy')).toBeInTheDocument();
   });
 });

@@ -53,6 +53,7 @@ function methodMeta(overrides: Partial<MethodMeta> = {}): MethodMeta {
       tuning_effort: 'Low',
       robustness_to_noise: 'Medium',
     },
+    forecast_strategy: 'Recursive',
     ...overrides,
   };
 }

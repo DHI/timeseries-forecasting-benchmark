@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { CapabilityRow, ScorecardMeters } from './MethodScorecard';
+import { CapabilityRow, ForecastStrategyBadge, ScorecardMeters } from './MethodScorecard';
 import type { Capabilities, Scorecard } from '../../types/data';
 
 const capabilities: Capabilities = {
@@ -74,5 +74,14 @@ describe('ScorecardMeters', () => {
 
     expect(screen.getByLabelText('Inference cost: High')).toBeInTheDocument();
     expect(screen.getByLabelText('Tuning effort: Medium')).toBeInTheDocument();
+  });
+});
+
+describe('ForecastStrategyBadge', () => {
+  it('renders the strategy value and a help title per value', () => {
+    render(<ForecastStrategyBadge strategy="Direct" />);
+
+    expect(screen.getByText('Direct')).toBeInTheDocument();
+    expect(screen.getByLabelText('Forecast strategy: Direct')).toBeInTheDocument();
   });
 });
