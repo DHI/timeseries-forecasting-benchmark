@@ -19,6 +19,11 @@ export type ScoreRow = {
 
 export type ScorecardLevel = 'Low' | 'Medium' | 'High';
 
+/** How a method turns one fit into a multi-step forecast. Mirrors the Python
+ * `ForecastStrategy` enum in src/tsforecastbench/bench/methods/scorecard.py — see that
+ * module's rubric for what each value means. */
+export type ForecastStrategy = 'Recursive' | 'Direct' | 'N/A';
+
 /** What structure a method can represent at all. Mirrors the Python `Capabilities` model in
  * src/tsforecastbench/bench/methods/scorecard.py; `exogenous` describes the method, not the
  * column, so plain LightGBM is true even though its column feeds no covariates.
@@ -56,6 +61,7 @@ export type MethodMeta = {
   code_snippet: string;
   capabilities: Capabilities;
   scorecard: Scorecard;
+  forecast_strategy: ForecastStrategy;
 };
 
 export type MethodRegistry = Record<string, MethodMeta>;

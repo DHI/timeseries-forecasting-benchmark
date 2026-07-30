@@ -76,8 +76,8 @@ def _own_doc(cls: type) -> str | None:
 @cache
 def _method_registry() -> dict[str, dict]:
     """method name -> {family, description, uses_exogenous, library, compute_profile,
-    limitations, code_snippet, capabilities, scorecard}, derived from the Forecaster
-    classes. `description` is the class's own docstring (first paragraph only), via
+    limitations, code_snippet, capabilities, scorecard, forecast_strategy}, derived from
+    the Forecaster classes. `description` is the class's own docstring (first paragraph only), via
     `_own_doc` so a subclass without one (e.g. LightGBM, which only adds a `_make_model`)
     inherits its base's; methods with no docstring anywhere in their Forecaster ancestry
     get a placeholder instead. The rest are ordinary class attributes (see `Forecaster` in
@@ -119,6 +119,7 @@ def _method_registry() -> dict[str, dict]:
                 "gaps": instance.pools_segments,
             },
             "scorecard": instance.scorecard.model_dump(mode="json"),
+            "forecast_strategy": instance.forecast_strategy,
         }
     return registry
 
