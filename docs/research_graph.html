@@ -342,6 +342,22 @@
 {
   "nodes": [
     {
+      "id": "2026-07-30-mlp-direct-horizon-forecast-strategy",
+      "date": "2026-07-30",
+      "title": "Fixed MLP's divergence at the source, and added a Forecast strategy card to every method",
+      "category": "bug-fix",
+      "summary": "Switched MLPForecaster from mlforecast's recursive strategy to its direct multi-horizon strategy (one model per horizon step, no feedback loop), replacing the 2026-07-27 _BoundedRegressor clip. Working through why classical state-space models don't diverge under the same kind of recursion led to a new ForecastStrategy field (Recursive/Direct/N-A) on every method, surfaced as a new block on every method's info card.",
+      "detail": "The `_BoundedRegressor` clip added on 2026-07-27 treated the symptom, not the cause: it worked, but it also meant MLP could never extrapolate a trend. `MLForecast.fit(..., max_horizon=H)` trains one independent regressor per horizon step from the origin's lag features instead of one recursive model whose own predictions feed back in as later lag inputs (confirmed against installed `mlforecast==1.0.31`: `max_horizon` clones the estimator once per step, and `.predict(h=...)` only requires `h <= max_horizon`, so no other code changed). With the feedback loop gone, a miscalibrated step can no longer compound, so the clip is removed entirely, `capabilities.trend` reverts to `True`, and `scorecard.fit_cost` moves to High since this now trains `H` independent `MLPRegressor`s instead of one.\n\nWorking through *why* this fixes it corrected a mental model. A classical ARIMA/ETS/TBATS forecast for h>1 substitutes the model's own prior forecast for the unobserved future value and reapplies the fitted recursion — the same feed-forward mechanism as mlforecast's default lag-feedback strategy, not a separate one. Those methods don't diverge only because their fitted coefficients are constrained to a stable region, the same reason a tree's leaf bound or Ridge's linearity keeps mlforecast's own recursive strategy well-behaved for those regressors; it was specifically the unconstrained `MLPRegressor` that had no such guarantee. That correction became a new `ForecastStrategy` field (Recursive/Direct/N-A) on every method, hand-declared per concrete class rather than hoisted onto shared base classes (a deliberate per-method judgment call, like Capabilities/Scorecard, not a structural default), and surfaced as a new block between Handles and Scorecard on every method's info card. Foundation models are labeled Direct strictly per this benchmark's one-call interface — their pretrained decoders' internal generation mechanism isn't verified against the pinned library versions. Existing MLP pilot results are stale pending a re-run.",
+      "tags": [
+        "mlp",
+        "mlforecast",
+        "forecasting",
+        "method-cards",
+        "scorecard",
+        "method-metadata"
+      ]
+    },
+    {
       "id": "2026-07-29-gaps-capability",
       "date": "2026-07-29",
       "title": "Method cards get a Gaps capability, derived rather than hand-authored",
@@ -1498,6 +1514,16 @@
   ],
   "edges": [
     {
+      "source": "2026-07-30-mlp-direct-horizon-forecast-strategy",
+      "target": "2026-07-27-mlp-recursive-divergence-bounded",
+      "type": "supersedes"
+    },
+    {
+      "source": "2026-07-30-mlp-direct-horizon-forecast-strategy",
+      "target": "2026-07-29-method-scorecards",
+      "type": "relates-to"
+    },
+    {
       "source": "2026-07-29-gaps-capability",
       "target": "2026-07-29-method-scorecards",
       "type": "relates-to"
@@ -1924,7 +1950,8 @@
         "2026-07-29-tbats-fit-once",
         "2026-07-29-method-scorecards",
         "2026-07-29-classical-fit-once",
-        "2026-07-29-gaps-capability"
+        "2026-07-29-gaps-capability",
+        "2026-07-30-mlp-direct-horizon-forecast-strategy"
       ],
       "label": "The results-viewer app's whole arc"
     },
@@ -1954,7 +1981,8 @@
         "2026-07-10-dedupe-method-helpers",
         "2026-07-27-mlp-recursive-divergence-bounded",
         "2026-07-29-mlp-exo-variant",
-        "2026-07-29-mlp-exo-not-in-pilot"
+        "2026-07-29-mlp-exo-not-in-pilot",
+        "2026-07-30-mlp-direct-horizon-forecast-strategy"
       ],
       "label": "Auditing the method suite, then working through what it found — seasonal baselines, gap handling, ensembles, cleanup — and, later, MLP's own recurring rough edges: scaling, divergence, a missing +exo variant and pilot registration"
     },

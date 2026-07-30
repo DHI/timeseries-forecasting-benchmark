@@ -8,6 +8,25 @@ Entries are in reverse-chronological order (newest first).
 
 <!-- Add new entries below this line, newest first. -->
 
+## 2026-07-30 — Fixed MLP's divergence at the source, and added a Forecast strategy card to every method
+
+Switched `MLPForecaster` from mlforecast's recursive strategy to its direct multi-horizon
+strategy (one model per horizon step, no feedback loop) — the `_BoundedRegressor` output clip
+added on 2026-07-27 treated the symptom (a miscalibrated step compounding through recursion),
+not the cause, and cost MLP the ability to extrapolate a trend. With the feedback loop gone,
+the clip is removed entirely and `capabilities.trend` reverts to `True`; fit cost moves to
+High, since this now trains `H` independent `MLPRegressor`s instead of one. Working through
+*why* this fixes it corrected a mental model: a classical ARIMA/ETS/TBATS forecast is
+recursive in the exact same sense as mlforecast's lag-feedback strategy (both substitute the
+model's own prior forecast for an unobserved future value) — they just don't diverge because
+their fitted coefficients are constrained to a stable region, the way a tree's leaf bound or
+Ridge's linearity does for those regressors under the same recursive strategy. That correction
+became a new `ForecastStrategy` field (Recursive/Direct/N-A), hand-declared per concrete
+method rather than hoisted onto shared base classes, and surfaced as a new block on every
+method's info card; foundation models are labeled Direct per this benchmark's one-call
+interface only, since their pretrained decoders' internal generation mechanism isn't verified
+against the pinned library versions. Existing MLP pilot results are stale pending a re-run.
+
 ## 2026-07-29 — MLP+exo existed but was never in the pilot run
 
 `MLPExoForecaster` was added earlier today (see below) but `scripts/run_pilot.py`'s
