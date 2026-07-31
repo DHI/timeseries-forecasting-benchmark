@@ -77,10 +77,14 @@ def _own_doc(cls: type) -> str | None:
 def _method_registry() -> dict[str, dict]:
     """method name -> {family, description, uses_exogenous, library, compute_profile,
     limitations, code_snippet, capabilities, scorecard, forecast_strategy}, derived from
-    the Forecaster classes. `description` is the class's own docstring (first paragraph only), via
-    `_own_doc` so a subclass without one (e.g. LightGBM, which only adds a `_make_model`)
-    inherits its base's; methods with no docstring anywhere in their Forecaster ancestry
-    get a placeholder instead. The rest are ordinary class attributes (see `Forecaster` in
+    the Forecaster classes. `description` is the class's own docstring (first paragraph
+    only), via `_own_doc` so a subclass without one (e.g. LightGBMExoForecaster, which
+    only sets `use_exogenous`) inherits its base's; methods with no docstring anywhere in
+    their Forecaster ancestry get a placeholder instead. The ensemble factories
+    (`ensemble_baselines`, `ensemble_baselines_theta`) are the one exception: every
+    instance shares the single `EnsembleForecaster` class, so `_own_doc` would give them
+    all the same description — their own docstring, which names the actual members, is
+    used instead. The rest are ordinary class attributes (see `Forecaster` in
     bench/methods/base.py), so plain attribute lookup already inherits them through the
     MRO with no special-casing needed — which is how a `+exo` variant picks up the same
     capabilities and scorecard as the method it configures.
@@ -95,17 +99,20 @@ def _method_registry() -> dict[str, dict]:
         obj = getattr(_methods, attr_name)
         if attr_name in _ENSEMBLE_FACTORIES:
             instance = obj()
-            cls = type(instance)
+            # The factory's own docstring names its actual members (e.g. "plus Theta"),
+            # which EnsembleForecaster's shared class docstring can't -- every ensemble
+            # instance is that one class, so falling back to _own_doc here would give
+            # every ensemble the same description.
+            doc = obj.__doc__
         elif (
             inspect.isclass(obj)
             and issubclass(obj, _methods.Forecaster)
             and obj not in (_methods.Forecaster, _methods.EnsembleForecaster)
         ):
             instance = obj()
-            cls = obj
+            doc = _own_doc(obj)
         else:
             continue
-        doc = _own_doc(cls)
         registry[instance.name] = {
             "family": instance.family,
             "description": doc.split("\n\n")[0].strip() if doc else "No description yet.",

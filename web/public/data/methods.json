@@ -51,12 +51,12 @@
   },
   "CatBoost+exo": {
     "family": "ml",
-    "description": "Shared lag-feature pipeline; subclasses provide the sklearn regressor.",
+    "description": "Gradient-boosted decision trees (CatBoost) over lag and calendar features.",
     "uses_exogenous": true,
     "library": "mlforecast + catboost",
     "compute_profile": "CPU only; a lag+calendar feature table is built once, then the regressor fits on it directly \u2014 fast for the linear/tree models here, slower for the MLP (which also cross-validates an early-stopping split).",
     "limitations": "Needs enough history to fill its lag windows (shortest lag 1, longest tied to the case's declared seasonal periods). The univariate variant ignores exogenous inputs entirely; the +exo variant sees only the future covariate values supplied at predict time (a perfect-forecast proxy in this benchmark, not a real forecast of those covariates).",
-    "code_snippet": "from mlforecast import MLForecast\n\nfcst = MLForecast(\n    models=[<regressor>],           # e.g. LGBMRegressor, Ridge, MLPRegressor\n    freq=case.freq,\n    lags=[1, 2, 4, 8, 16, 32, *case.seasonalities],\n    date_features=[\"dayofweek\", \"month\", ...],\n)\nfcst.fit(train_df, static_features=[])\ny_hat = fcst.predict(h=horizon, ids=[target_uid])",
+    "code_snippet": "from catboost import CatBoostRegressor\nfrom mlforecast import MLForecast\n\nfcst = MLForecast(\n    models=[CatBoostRegressor(iterations=200, learning_rate=0.05, verbose=False)],\n    freq=case.freq,\n    lags=[1, 2, 4, 8, 16, 32, *case.seasonalities],\n    date_features=[\"dayofweek\", \"month\", ...],\n)\nfcst.fit(train_df, static_features=[])\n# +exo: train_df also carries the covariate columns; mlforecast picks them up\n#       automatically as dynamic features since they're not in static_features\n\ny_hat = fcst.predict(h=horizon, new_df=new_df)   # new_df: this origin's history so far\n# +exo: fcst.predict(h=horizon, new_df=new_df, X_df=future_exog) -- X_df supplies\n#       each future timestamp's covariate values (a perfect-forecast proxy here,\n#       not a real forecast of those covariates)",
     "capabilities": {
       "trend": false,
       "seasonality": true,
@@ -76,12 +76,12 @@
   },
   "CatBoost": {
     "family": "ml",
-    "description": "Shared lag-feature pipeline; subclasses provide the sklearn regressor.",
+    "description": "Gradient-boosted decision trees (CatBoost) over lag and calendar features.",
     "uses_exogenous": false,
     "library": "mlforecast + catboost",
     "compute_profile": "CPU only; a lag+calendar feature table is built once, then the regressor fits on it directly \u2014 fast for the linear/tree models here, slower for the MLP (which also cross-validates an early-stopping split).",
     "limitations": "Needs enough history to fill its lag windows (shortest lag 1, longest tied to the case's declared seasonal periods). The univariate variant ignores exogenous inputs entirely; the +exo variant sees only the future covariate values supplied at predict time (a perfect-forecast proxy in this benchmark, not a real forecast of those covariates).",
-    "code_snippet": "from mlforecast import MLForecast\n\nfcst = MLForecast(\n    models=[<regressor>],           # e.g. LGBMRegressor, Ridge, MLPRegressor\n    freq=case.freq,\n    lags=[1, 2, 4, 8, 16, 32, *case.seasonalities],\n    date_features=[\"dayofweek\", \"month\", ...],\n)\nfcst.fit(train_df, static_features=[])\ny_hat = fcst.predict(h=horizon, ids=[target_uid])",
+    "code_snippet": "from catboost import CatBoostRegressor\nfrom mlforecast import MLForecast\n\nfcst = MLForecast(\n    models=[CatBoostRegressor(iterations=200, learning_rate=0.05, verbose=False)],\n    freq=case.freq,\n    lags=[1, 2, 4, 8, 16, 32, *case.seasonalities],\n    date_features=[\"dayofweek\", \"month\", ...],\n)\nfcst.fit(train_df, static_features=[])\n# +exo: train_df also carries the covariate columns; mlforecast picks them up\n#       automatically as dynamic features since they're not in static_features\n\ny_hat = fcst.predict(h=horizon, new_df=new_df)   # new_df: this origin's history so far\n# +exo: fcst.predict(h=horizon, new_df=new_df, X_df=future_exog) -- X_df supplies\n#       each future timestamp's covariate values (a perfect-forecast proxy here,\n#       not a real forecast of those covariates)",
     "capabilities": {
       "trend": false,
       "seasonality": true,
@@ -201,7 +201,7 @@
   },
   "DLinear": {
     "family": "dl",
-    "description": "No description yet.",
+    "description": "Decomposes the lookback window into a moving-average trend and remainder, fits a\n    separate linear map from each to the full horizon, and sums them.",
     "uses_exogenous": false,
     "library": "scikit-learn (Ridge) \u2014 no deep-learning framework",
     "compute_profile": "CPU only, fast; both linear maps collapse into a single closed-form ridge fit on the decomposed window, so there's no gradient-descent training loop.",
@@ -226,12 +226,12 @@
   },
   "iTransformer": {
     "family": "dl",
-    "description": "Shared neuralforecast wrapper; subclasses name the model class + extra kwargs.",
+    "description": "Inverted transformer: embeds each variate's whole series as one token and attends\n    across variates rather than across time steps.",
     "uses_exogenous": false,
     "library": "neuralforecast + pytorch_lightning",
     "compute_profile": "Uses a GPU automatically if one is available (accelerator='auto'), otherwise falls back to CPU; a heavier training loop (up to 500 steps, full pytorch_lightning trainer overhead) than the custom torch models in torchdl.py. Only available on Linux with Python <3.13 (the `nf` extra), since neuralforecast depends on `ray`.",
     "limitations": "Univariate \u2014 ignores exogenous inputs. Trains a fresh model per case with no hyperparameter tuning, using the same architecture defaults regardless of the series' scale or frequency. Architecturally multivariate but fixed to a single series here (n_series=1), so unlike its siblings it can't pool the extra segments of an extended-history fit.",
-    "code_snippet": "import neuralforecast.models as nfm\nfrom neuralforecast import NeuralForecast\n\nmodel = getattr(nfm, model_name)(h=horizon, input_size=lookback, max_steps=500)\nnf = NeuralForecast(models=[model], freq=case.freq)\nnf.fit(train_df)                     # train_df: unique_id, ds, y\ny_hat = nf.predict()[model_name]",
+    "code_snippet": "from neuralforecast import NeuralForecast\nfrom neuralforecast.models import iTransformer\n\nmodel = iTransformer(h=horizon, input_size=lookback, n_series=1, max_steps=500)\nnf = NeuralForecast(models=[model], freq=case.freq)\nnf.fit(train_df)                     # train_df: unique_id, ds, y\ny_hat = nf.predict()[\"iTransformer\"]",
     "capabilities": {
       "trend": true,
       "seasonality": true,
@@ -251,12 +251,12 @@
   },
   "LightGBM+exo": {
     "family": "ml",
-    "description": "Shared lag-feature pipeline; subclasses provide the sklearn regressor.",
+    "description": "Gradient-boosted decision trees (LightGBM) over lag and calendar features.",
     "uses_exogenous": true,
     "library": "mlforecast + lightgbm",
     "compute_profile": "CPU only; a lag+calendar feature table is built once, then the regressor fits on it directly \u2014 fast for the linear/tree models here, slower for the MLP (which also cross-validates an early-stopping split).",
     "limitations": "Needs enough history to fill its lag windows (shortest lag 1, longest tied to the case's declared seasonal periods). The univariate variant ignores exogenous inputs entirely; the +exo variant sees only the future covariate values supplied at predict time (a perfect-forecast proxy in this benchmark, not a real forecast of those covariates).",
-    "code_snippet": "from mlforecast import MLForecast\n\nfcst = MLForecast(\n    models=[<regressor>],           # e.g. LGBMRegressor, Ridge, MLPRegressor\n    freq=case.freq,\n    lags=[1, 2, 4, 8, 16, 32, *case.seasonalities],\n    date_features=[\"dayofweek\", \"month\", ...],\n)\nfcst.fit(train_df, static_features=[])\ny_hat = fcst.predict(h=horizon, ids=[target_uid])",
+    "code_snippet": "from lightgbm import LGBMRegressor\nfrom mlforecast import MLForecast\n\nfcst = MLForecast(\n    models=[LGBMRegressor(n_estimators=200, learning_rate=0.05, verbosity=-1)],\n    freq=case.freq,\n    lags=[1, 2, 4, 8, 16, 32, *case.seasonalities],\n    date_features=[\"dayofweek\", \"month\", ...],\n)\nfcst.fit(train_df, static_features=[])\n# +exo: train_df also carries the covariate columns; mlforecast picks them up\n#       automatically as dynamic features since they're not in static_features\n\ny_hat = fcst.predict(h=horizon, new_df=new_df)   # new_df: this origin's history so far\n# +exo: fcst.predict(h=horizon, new_df=new_df, X_df=future_exog) -- X_df supplies\n#       each future timestamp's covariate values (a perfect-forecast proxy here,\n#       not a real forecast of those covariates)",
     "capabilities": {
       "trend": false,
       "seasonality": true,
@@ -276,12 +276,12 @@
   },
   "LightGBM": {
     "family": "ml",
-    "description": "Shared lag-feature pipeline; subclasses provide the sklearn regressor.",
+    "description": "Gradient-boosted decision trees (LightGBM) over lag and calendar features.",
     "uses_exogenous": false,
     "library": "mlforecast + lightgbm",
     "compute_profile": "CPU only; a lag+calendar feature table is built once, then the regressor fits on it directly \u2014 fast for the linear/tree models here, slower for the MLP (which also cross-validates an early-stopping split).",
     "limitations": "Needs enough history to fill its lag windows (shortest lag 1, longest tied to the case's declared seasonal periods). The univariate variant ignores exogenous inputs entirely; the +exo variant sees only the future covariate values supplied at predict time (a perfect-forecast proxy in this benchmark, not a real forecast of those covariates).",
-    "code_snippet": "from mlforecast import MLForecast\n\nfcst = MLForecast(\n    models=[<regressor>],           # e.g. LGBMRegressor, Ridge, MLPRegressor\n    freq=case.freq,\n    lags=[1, 2, 4, 8, 16, 32, *case.seasonalities],\n    date_features=[\"dayofweek\", \"month\", ...],\n)\nfcst.fit(train_df, static_features=[])\ny_hat = fcst.predict(h=horizon, ids=[target_uid])",
+    "code_snippet": "from lightgbm import LGBMRegressor\nfrom mlforecast import MLForecast\n\nfcst = MLForecast(\n    models=[LGBMRegressor(n_estimators=200, learning_rate=0.05, verbosity=-1)],\n    freq=case.freq,\n    lags=[1, 2, 4, 8, 16, 32, *case.seasonalities],\n    date_features=[\"dayofweek\", \"month\", ...],\n)\nfcst.fit(train_df, static_features=[])\n# +exo: train_df also carries the covariate columns; mlforecast picks them up\n#       automatically as dynamic features since they're not in static_features\n\ny_hat = fcst.predict(h=horizon, new_df=new_df)   # new_df: this origin's history so far\n# +exo: fcst.predict(h=horizon, new_df=new_df, X_df=future_exog) -- X_df supplies\n#       each future timestamp's covariate values (a perfect-forecast proxy here,\n#       not a real forecast of those covariates)",
     "capabilities": {
       "trend": false,
       "seasonality": true,
@@ -301,12 +301,12 @@
   },
   "LinearLags+exo": {
     "family": "ml",
-    "description": "Shared lag-feature pipeline; subclasses provide the sklearn regressor.",
+    "description": "Ridge regression over lag and calendar features.",
     "uses_exogenous": true,
     "library": "mlforecast + scikit-learn (Ridge)",
     "compute_profile": "CPU only; a lag+calendar feature table is built once, then the regressor fits on it directly \u2014 fast for the linear/tree models here, slower for the MLP (which also cross-validates an early-stopping split).",
     "limitations": "Needs enough history to fill its lag windows (shortest lag 1, longest tied to the case's declared seasonal periods). The univariate variant ignores exogenous inputs entirely; the +exo variant sees only the future covariate values supplied at predict time (a perfect-forecast proxy in this benchmark, not a real forecast of those covariates).",
-    "code_snippet": "from mlforecast import MLForecast\n\nfcst = MLForecast(\n    models=[<regressor>],           # e.g. LGBMRegressor, Ridge, MLPRegressor\n    freq=case.freq,\n    lags=[1, 2, 4, 8, 16, 32, *case.seasonalities],\n    date_features=[\"dayofweek\", \"month\", ...],\n)\nfcst.fit(train_df, static_features=[])\ny_hat = fcst.predict(h=horizon, ids=[target_uid])",
+    "code_snippet": "from mlforecast import MLForecast\nfrom sklearn.linear_model import Ridge\n\nfcst = MLForecast(\n    models=[Ridge(alpha=1.0)],\n    freq=case.freq,\n    lags=[1, 2, 4, 8, 16, 32, *case.seasonalities],\n    date_features=[\"dayofweek\", \"month\", ...],\n)\nfcst.fit(train_df, static_features=[])\n# +exo: train_df also carries the covariate columns; mlforecast picks them up\n#       automatically as dynamic features since they're not in static_features\n\ny_hat = fcst.predict(h=horizon, new_df=new_df)   # new_df: this origin's history so far\n# +exo: fcst.predict(h=horizon, new_df=new_df, X_df=future_exog) -- X_df supplies\n#       each future timestamp's covariate values (a perfect-forecast proxy here,\n#       not a real forecast of those covariates)",
     "capabilities": {
       "trend": true,
       "seasonality": true,
@@ -326,12 +326,12 @@
   },
   "LinearLags": {
     "family": "ml",
-    "description": "Shared lag-feature pipeline; subclasses provide the sklearn regressor.",
+    "description": "Ridge regression over lag and calendar features.",
     "uses_exogenous": false,
     "library": "mlforecast + scikit-learn (Ridge)",
     "compute_profile": "CPU only; a lag+calendar feature table is built once, then the regressor fits on it directly \u2014 fast for the linear/tree models here, slower for the MLP (which also cross-validates an early-stopping split).",
     "limitations": "Needs enough history to fill its lag windows (shortest lag 1, longest tied to the case's declared seasonal periods). The univariate variant ignores exogenous inputs entirely; the +exo variant sees only the future covariate values supplied at predict time (a perfect-forecast proxy in this benchmark, not a real forecast of those covariates).",
-    "code_snippet": "from mlforecast import MLForecast\n\nfcst = MLForecast(\n    models=[<regressor>],           # e.g. LGBMRegressor, Ridge, MLPRegressor\n    freq=case.freq,\n    lags=[1, 2, 4, 8, 16, 32, *case.seasonalities],\n    date_features=[\"dayofweek\", \"month\", ...],\n)\nfcst.fit(train_df, static_features=[])\ny_hat = fcst.predict(h=horizon, ids=[target_uid])",
+    "code_snippet": "from mlforecast import MLForecast\nfrom sklearn.linear_model import Ridge\n\nfcst = MLForecast(\n    models=[Ridge(alpha=1.0)],\n    freq=case.freq,\n    lags=[1, 2, 4, 8, 16, 32, *case.seasonalities],\n    date_features=[\"dayofweek\", \"month\", ...],\n)\nfcst.fit(train_df, static_features=[])\n# +exo: train_df also carries the covariate columns; mlforecast picks them up\n#       automatically as dynamic features since they're not in static_features\n\ny_hat = fcst.predict(h=horizon, new_df=new_df)   # new_df: this origin's history so far\n# +exo: fcst.predict(h=horizon, new_df=new_df, X_df=future_exog) -- X_df supplies\n#       each future timestamp's covariate values (a perfect-forecast proxy here,\n#       not a real forecast of those covariates)",
     "capabilities": {
       "trend": true,
       "seasonality": true,
@@ -351,12 +351,12 @@
   },
   "MLP+exo": {
     "family": "ml",
-    "description": "Shared lag-feature pipeline; subclasses provide the sklearn regressor.",
+    "description": "Multi-layer perceptron (scikit-learn MLPRegressor) over lag and calendar features.",
     "uses_exogenous": true,
     "library": "mlforecast + scikit-learn (MLPRegressor)",
     "compute_profile": "CPU only; a lag+calendar feature table is built once, then the regressor fits on it directly \u2014 fast for the linear/tree models here, slower for the MLP (which also cross-validates an early-stopping split).",
     "limitations": "Needs enough history to fill its lag windows (shortest lag 1, longest tied to the case's declared seasonal periods). The univariate variant ignores exogenous inputs entirely; the +exo variant sees only the future covariate values supplied at predict time (a perfect-forecast proxy in this benchmark, not a real forecast of those covariates).",
-    "code_snippet": "from mlforecast import MLForecast\n\nfcst = MLForecast(\n    models=[<regressor>],           # e.g. LGBMRegressor, Ridge, MLPRegressor\n    freq=case.freq,\n    lags=[1, 2, 4, 8, 16, 32, *case.seasonalities],\n    date_features=[\"dayofweek\", \"month\", ...],\n)\nfcst.fit(train_df, static_features=[])\ny_hat = fcst.predict(h=horizon, ids=[target_uid])",
+    "code_snippet": "from mlforecast import MLForecast\nfrom sklearn.neural_network import MLPRegressor\nfrom sklearn.pipeline import make_pipeline\nfrom sklearn.preprocessing import StandardScaler\n\nmodel = make_pipeline(\n    StandardScaler(),\n    MLPRegressor(hidden_layer_sizes=(64, 32), max_iter=300, early_stopping=True),\n)\nfcst = MLForecast(\n    models=[model],\n    freq=case.freq,\n    lags=[1, 2, 4, 8, 16, 32, *case.seasonalities],\n    date_features=[\"dayofweek\", \"month\", ...],\n)\n# one model per horizon step instead of one recursive model (see limitations)\nfcst.fit(train_df, static_features=[], max_horizon=horizon)\n# +exo: train_df also carries the covariate columns; mlforecast picks them up\n#       automatically as dynamic features since they're not in static_features\n\ny_hat = fcst.predict(h=horizon, new_df=new_df)   # new_df: this origin's history so far\n# +exo: fcst.predict(h=horizon, new_df=new_df, X_df=future_exog) -- X_df supplies\n#       each future timestamp's covariate values (a perfect-forecast proxy here,\n#       not a real forecast of those covariates)",
     "capabilities": {
       "trend": true,
       "seasonality": true,
@@ -376,12 +376,12 @@
   },
   "MLP": {
     "family": "ml",
-    "description": "Shared lag-feature pipeline; subclasses provide the sklearn regressor.",
+    "description": "Multi-layer perceptron (scikit-learn MLPRegressor) over lag and calendar features.",
     "uses_exogenous": false,
     "library": "mlforecast + scikit-learn (MLPRegressor)",
     "compute_profile": "CPU only; a lag+calendar feature table is built once, then the regressor fits on it directly \u2014 fast for the linear/tree models here, slower for the MLP (which also cross-validates an early-stopping split).",
     "limitations": "Needs enough history to fill its lag windows (shortest lag 1, longest tied to the case's declared seasonal periods). The univariate variant ignores exogenous inputs entirely; the +exo variant sees only the future covariate values supplied at predict time (a perfect-forecast proxy in this benchmark, not a real forecast of those covariates).",
-    "code_snippet": "from mlforecast import MLForecast\n\nfcst = MLForecast(\n    models=[<regressor>],           # e.g. LGBMRegressor, Ridge, MLPRegressor\n    freq=case.freq,\n    lags=[1, 2, 4, 8, 16, 32, *case.seasonalities],\n    date_features=[\"dayofweek\", \"month\", ...],\n)\nfcst.fit(train_df, static_features=[])\ny_hat = fcst.predict(h=horizon, ids=[target_uid])",
+    "code_snippet": "from mlforecast import MLForecast\nfrom sklearn.neural_network import MLPRegressor\nfrom sklearn.pipeline import make_pipeline\nfrom sklearn.preprocessing import StandardScaler\n\nmodel = make_pipeline(\n    StandardScaler(),\n    MLPRegressor(hidden_layer_sizes=(64, 32), max_iter=300, early_stopping=True),\n)\nfcst = MLForecast(\n    models=[model],\n    freq=case.freq,\n    lags=[1, 2, 4, 8, 16, 32, *case.seasonalities],\n    date_features=[\"dayofweek\", \"month\", ...],\n)\n# one model per horizon step instead of one recursive model (see limitations)\nfcst.fit(train_df, static_features=[], max_horizon=horizon)\n# +exo: train_df also carries the covariate columns; mlforecast picks them up\n#       automatically as dynamic features since they're not in static_features\n\ny_hat = fcst.predict(h=horizon, new_df=new_df)   # new_df: this origin's history so far\n# +exo: fcst.predict(h=horizon, new_df=new_df, X_df=future_exog) -- X_df supplies\n#       each future timestamp's covariate values (a perfect-forecast proxy here,\n#       not a real forecast of those covariates)",
     "capabilities": {
       "trend": true,
       "seasonality": true,
@@ -406,7 +406,7 @@
     "library": "statsforecast (Nixtla) \u2014 trend forecaster: AutoARIMA",
     "compute_profile": "CPU only; a fast STL-based decomposition plus the subclass's trend forecaster, on the most recent 8,000 points \u2014 typically seconds per case. Each origin after that re-derives STL over that origin's whole history and forwards the trend model with its parameters fixed; STL cost grows with history x period, so a long record is slow \u2014 ~0.7s at 5,000 points up to ~28s at 200,000 for periods [24, 168].",
     "limitations": "Univariate: ignores exogenous inputs. Needs at least 2 full cycles of each declared seasonal period in the training window to fit at all; raises rather than degenerating into a duplicate non-seasonal forecast when a case has no seasonality it can use. The trend model's parameters are fixed at fit time; the STL decomposition around them is re-derived from each origin's full history, which keeps the seasonal shape current but makes predict the expensive half on a long record.",
-    "code_snippet": "from statsforecast.models import MSTL\n\nmodel = MSTL(season_length=periods, trend_forecaster=<trend_forecaster>)\nmodel.fit(train_y)                   # train_y: 1D array -- decompose + fit once\n\n# each origin: re-derive STL, forward the fixed-parameter trend model, reseasonalize\ny_hat = model.forward(history_y, horizon)['mean']",
+    "code_snippet": "from statsforecast.models import MSTL, AutoARIMA\n\nmodel = MSTL(season_length=periods, trend_forecaster=AutoARIMA())\nmodel.fit(train_y)                   # train_y: 1D array -- decompose + fit once\n\n# each origin: re-derive STL, forward the fixed-parameter trend model, reseasonalize\ny_hat = model.forward(history_y, horizon)['mean']",
     "capabilities": {
       "trend": true,
       "seasonality": true,
@@ -431,7 +431,7 @@
     "library": "statsforecast (Nixtla) \u2014 trend forecaster: AutoETS",
     "compute_profile": "CPU only; a fast STL-based decomposition plus the subclass's trend forecaster, on the most recent 8,000 points \u2014 typically seconds per case. Each origin after that re-derives STL over that origin's whole history and forwards the trend model with its parameters fixed; STL cost grows with history x period, so a long record is slow \u2014 ~0.7s at 5,000 points up to ~28s at 200,000 for periods [24, 168].",
     "limitations": "Univariate: ignores exogenous inputs. Needs at least 2 full cycles of each declared seasonal period in the training window to fit at all; raises rather than degenerating into a duplicate non-seasonal forecast when a case has no seasonality it can use. The trend model's parameters are fixed at fit time; the STL decomposition around them is re-derived from each origin's full history, which keeps the seasonal shape current but makes predict the expensive half on a long record.",
-    "code_snippet": "from statsforecast.models import MSTL\n\nmodel = MSTL(season_length=periods, trend_forecaster=<trend_forecaster>)\nmodel.fit(train_y)                   # train_y: 1D array -- decompose + fit once\n\n# each origin: re-derive STL, forward the fixed-parameter trend model, reseasonalize\ny_hat = model.forward(history_y, horizon)['mean']",
+    "code_snippet": "from statsforecast.models import MSTL, AutoETS\n\nmodel = MSTL(season_length=periods, trend_forecaster=AutoETS(model='ZZN'))\nmodel.fit(train_y)                   # train_y: 1D array -- decompose + fit once\n\n# each origin: re-derive STL, forward the fixed-parameter trend model, reseasonalize\ny_hat = model.forward(history_y, horizon)['mean']",
     "capabilities": {
       "trend": true,
       "seasonality": true,
@@ -451,7 +451,7 @@
   },
   "Mean": {
     "family": "baseline",
-    "description": "No description yet.",
+    "description": "Repeats the training-window mean for every step of the horizon.",
     "uses_exogenous": false,
     "library": "pandas/numpy only",
     "compute_profile": "CPU, negligible \u2014 one mean over the training split.",
@@ -526,12 +526,12 @@
   },
   "N-HiTS": {
     "family": "dl",
-    "description": "No description yet.",
+    "description": "Stack of MLP blocks at increasingly coarse pooling rates; each block predicts a\n    backcast (subtracted from the residual passed to the next block) and a forecast\n    contribution, and the stack's contributions sum to the final forecast.",
     "uses_exogenous": false,
     "library": "torch (custom implementation, no ray/lightning)",
     "compute_profile": "CPU (no GPU dependency); trains a small network from scratch per case \u2014 600 gradient steps over randomly sampled windows \u2014 making these the heaviest CPU methods in the benchmark. Keep rolling-origin counts modest when including them.",
     "limitations": "Univariate \u2014 ignores exogenous inputs (the covariate story lives in the windowed-ML +exo columns instead). Each window is instance-normalised (RevIN-style) before the model and de-normalised after, which is what makes the same architecture usable across very different series scales.",
-    "code_snippet": "net = <NHiTSNet or PatchTSTNet>(lookback, horizon)\nopt = torch.optim.Adam(net.parameters(), lr=1e-3)\nfor step in range(600):\n    xb, yb = sample_batch(windows, batch_size=256)\n    mu, sd = xb.mean(1), xb.std(1)          # per-window instance norm\n    pred = net((xb - mu) / sd) * sd + mu\n    loss = mse_loss(pred, yb)\n    loss.backward(); opt.step()",
+    "code_snippet": "class NHiTSBlock(nn.Module):        # one block at a given pooling rate\n    def __init__(self, L, H, pool_k, hidden, down):\n        self.pool = nn.AvgPool1d(pool_k, ceil_mode=True)     # coarsen the input\n        self.mlp = nn.Sequential(nn.Linear(L // pool_k, hidden), nn.ReLU(),\n                                  nn.Linear(hidden, hidden), nn.ReLU())\n        self.b_lin = nn.Linear(hidden, L // down)            # backcast basis\n        self.f_lin = nn.Linear(hidden, H // down)            # forecast basis\n\n    def forward(self, x):\n        h = self.mlp(self.pool(x))\n        back = interpolate(self.b_lin(h), size=L)  # upsample basis to input length\n        fore = interpolate(self.f_lin(h), size=H)  # upsample basis to horizon length\n        return back, fore\n\n# stack of blocks, coarse to fine (pool_k=8, 4, 1): each subtracts its backcast\n# from the residual the next block sees; forecasts from every block sum\nresidual, forecast = window, 0.0\nfor block in blocks:\n    back, fore = block(residual)\n    residual = residual - back\n    forecast = forecast + fore\n\n# training: per-window instance norm (RevIN-style), plain MSE + Adam\nmu, sd = window.mean(1), window.std(1)\npred = net((window - mu) / sd) * sd + mu\nloss = mse_loss(pred, target)",
     "capabilities": {
       "trend": true,
       "seasonality": true,
@@ -551,12 +551,12 @@
   },
   "PatchTST": {
     "family": "dl",
-    "description": "No description yet.",
+    "description": "Splits the lookback window into overlapping patches, embeds and positionally\n    encodes them, and runs them through a transformer encoder before a linear head\n    projects to the full horizon.",
     "uses_exogenous": false,
     "library": "torch (custom implementation, no ray/lightning)",
     "compute_profile": "CPU (no GPU dependency); trains a small network from scratch per case \u2014 600 gradient steps over randomly sampled windows \u2014 making these the heaviest CPU methods in the benchmark. Keep rolling-origin counts modest when including them.",
     "limitations": "Univariate \u2014 ignores exogenous inputs (the covariate story lives in the windowed-ML +exo columns instead). Each window is instance-normalised (RevIN-style) before the model and de-normalised after, which is what makes the same architecture usable across very different series scales.",
-    "code_snippet": "net = <NHiTSNet or PatchTSTNet>(lookback, horizon)\nopt = torch.optim.Adam(net.parameters(), lr=1e-3)\nfor step in range(600):\n    xb, yb = sample_batch(windows, batch_size=256)\n    mu, sd = xb.mean(1), xb.std(1)          # per-window instance norm\n    pred = net((xb - mu) / sd) * sd + mu\n    loss = mse_loss(pred, yb)\n    loss.backward(); opt.step()",
+    "code_snippet": "class PatchTSTNet(nn.Module):\n    def __init__(self, L, H, patch_len=16, stride=8, d_model=64, n_heads=4,\n                 n_layers=2):\n        self.embed = nn.Linear(patch_len, d_model)\n        self.pos = nn.Parameter(torch.randn(n_patches, d_model) * 0.02)\n        layer = nn.TransformerEncoderLayer(d_model, n_heads, dim_feedforward=128)\n        self.encoder = nn.TransformerEncoder(layer, n_layers)\n        self.head = nn.Sequential(nn.Flatten(), nn.Linear(n_patches * d_model, H))\n\n    def forward(self, x):                        # x: (B, L), already normalised\n        patches = x.unfold(1, self.patch_len, self.stride)  # (B, n_patches, patch_len)\n        z = self.encoder(self.embed(patches) + self.pos)\n        return self.head(z)                      # (B, H)\n\n# training: per-window instance norm (RevIN-style), plain MSE + Adam\nmu, sd = window.mean(1), window.std(1)\npred = net((window - mu) / sd) * sd + mu\nloss = mse_loss(pred, target)",
     "capabilities": {
       "trend": true,
       "seasonality": true,
@@ -576,7 +576,7 @@
   },
   "Persistence": {
     "family": "baseline",
-    "description": "No description yet.",
+    "description": "Repeats the last observed value for every step of the horizon (the naive forecast).",
     "uses_exogenous": false,
     "library": "pandas/numpy only",
     "compute_profile": "CPU, negligible \u2014 no fitting at all.",
@@ -601,7 +601,7 @@
   },
   "SeasonalNaive": {
     "family": "baseline",
-    "description": "No description yet.",
+    "description": "Tiles the most recently observed full seasonal cycle forward across the horizon.",
     "uses_exogenous": false,
     "library": "pandas/numpy only",
     "compute_profile": "CPU, negligible \u2014 tiles the last observed seasonal cycle.",
@@ -651,12 +651,12 @@
   },
   "TFT": {
     "family": "dl",
-    "description": "Shared neuralforecast wrapper; subclasses name the model class + extra kwargs.",
+    "description": "Temporal Fusion Transformer: an LSTM encoder-decoder combined with multi-head\n    attention over the lookback window.",
     "uses_exogenous": false,
     "library": "neuralforecast + pytorch_lightning",
     "compute_profile": "Uses a GPU automatically if one is available (accelerator='auto'), otherwise falls back to CPU; a heavier training loop (up to 500 steps, full pytorch_lightning trainer overhead) than the custom torch models in torchdl.py. Only available on Linux with Python <3.13 (the `nf` extra), since neuralforecast depends on `ray`.",
     "limitations": "Univariate \u2014 ignores exogenous inputs. Trains a fresh model per case with no hyperparameter tuning, using the same architecture defaults regardless of the series' scale or frequency.",
-    "code_snippet": "import neuralforecast.models as nfm\nfrom neuralforecast import NeuralForecast\n\nmodel = getattr(nfm, model_name)(h=horizon, input_size=lookback, max_steps=500)\nnf = NeuralForecast(models=[model], freq=case.freq)\nnf.fit(train_df)                     # train_df: unique_id, ds, y\ny_hat = nf.predict()[model_name]",
+    "code_snippet": "from neuralforecast import NeuralForecast\nfrom neuralforecast.models import TFT\n\nmodel = TFT(h=horizon, input_size=lookback, max_steps=500)\nnf = NeuralForecast(models=[model], freq=case.freq)\nnf.fit(train_df)                     # train_df: unique_id, ds, y\ny_hat = nf.predict()[\"TFT\"]",
     "capabilities": {
       "trend": true,
       "seasonality": true,
@@ -751,12 +751,12 @@
   },
   "TimesNet": {
     "family": "dl",
-    "description": "Shared neuralforecast wrapper; subclasses name the model class + extra kwargs.",
+    "description": "Reshapes the series into 2D tensors by its dominant periods and applies\n    convolutional blocks to capture both within-period and across-period patterns.",
     "uses_exogenous": false,
     "library": "neuralforecast + pytorch_lightning",
     "compute_profile": "Uses a GPU automatically if one is available (accelerator='auto'), otherwise falls back to CPU; a heavier training loop (up to 500 steps, full pytorch_lightning trainer overhead) than the custom torch models in torchdl.py. Only available on Linux with Python <3.13 (the `nf` extra), since neuralforecast depends on `ray`.",
     "limitations": "Univariate \u2014 ignores exogenous inputs. Trains a fresh model per case with no hyperparameter tuning, using the same architecture defaults regardless of the series' scale or frequency.",
-    "code_snippet": "import neuralforecast.models as nfm\nfrom neuralforecast import NeuralForecast\n\nmodel = getattr(nfm, model_name)(h=horizon, input_size=lookback, max_steps=500)\nnf = NeuralForecast(models=[model], freq=case.freq)\nnf.fit(train_df)                     # train_df: unique_id, ds, y\ny_hat = nf.predict()[model_name]",
+    "code_snippet": "from neuralforecast import NeuralForecast\nfrom neuralforecast.models import TimesNet\n\nmodel = TimesNet(h=horizon, input_size=lookback, max_steps=500)\nnf = NeuralForecast(models=[model], freq=case.freq)\nnf.fit(train_df)                     # train_df: unique_id, ds, y\ny_hat = nf.predict()[\"TimesNet\"]",
     "capabilities": {
       "trend": true,
       "seasonality": true,
@@ -776,7 +776,7 @@
   },
   "EnsembleBaselines": {
     "family": "ensemble",
-    "description": "Combine several member forecasters into one via a per-step median (or mean).",
+    "description": "Median of the naive baselines (Mean, Persistence, SeasonalNaive, Climatology).",
     "uses_exogenous": false,
     "library": "no additional library \u2014 combines member forecasters' own outputs",
     "compute_profile": "Sum of its members' costs; cheap in practice since the members are the naive baselines (and optionally the fast classical Theta method).",
@@ -801,7 +801,7 @@
   },
   "EnsembleBaselinesTheta": {
     "family": "ensemble",
-    "description": "Combine several member forecasters into one via a per-step median (or mean).",
+    "description": "Median of the naive baselines plus the fast classical Theta method.",
     "uses_exogenous": false,
     "library": "no additional library \u2014 combines member forecasters' own outputs",
     "compute_profile": "Sum of its members' costs; cheap in practice since the members are the naive baselines (and optionally the fast classical Theta method).",

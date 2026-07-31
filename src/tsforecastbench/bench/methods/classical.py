@@ -556,13 +556,6 @@ class _MSTLBase(_ForwardForecaster):
         "which keeps the seasonal shape current but makes predict the expensive half on a "
         "long record."
     )
-    code_snippet = (
-        "from statsforecast.models import MSTL\n\n"
-        "model = MSTL(season_length=periods, trend_forecaster=<trend_forecaster>)\n"
-        "model.fit(train_y)                   # train_y: 1D array -- decompose + fit once\n\n"
-        "# each origin: re-derive STL, forward the fixed-parameter trend model, reseasonalize\n"
-        "y_hat = model.forward(history_y, horizon)['mean']"
-    )
     # Shared by both MSTL variants: the seasonal handling and the cost profile come from the
     # decomposition, not from which trend model sits inside it. Declared here rather than
     # twice below so the two can't drift apart.
@@ -606,6 +599,13 @@ class MSTLAutoETSForecaster(_MSTLBase):
 
     name = "MSTL-ETS"
     library = "statsforecast (Nixtla) — trend forecaster: AutoETS"
+    code_snippet = (
+        "from statsforecast.models import MSTL, AutoETS\n\n"
+        "model = MSTL(season_length=periods, trend_forecaster=AutoETS(model='ZZN'))\n"
+        "model.fit(train_y)                   # train_y: 1D array -- decompose + fit once\n\n"
+        "# each origin: re-derive STL, forward the fixed-parameter trend model, reseasonalize\n"
+        "y_hat = model.forward(history_y, horizon)['mean']"
+    )
     # Same feed-forward recursion as the other classical methods, on the deseasonalized
     # series — see AutoARIMAForecaster's comment.
     forecast_strategy = ForecastStrategy.RECURSIVE
@@ -625,6 +625,13 @@ class MSTLAutoARIMAForecaster(_MSTLBase):
     name = "MSTL-ARIMA"
     max_train_steps = 5000
     library = "statsforecast (Nixtla) — trend forecaster: AutoARIMA"
+    code_snippet = (
+        "from statsforecast.models import MSTL, AutoARIMA\n\n"
+        "model = MSTL(season_length=periods, trend_forecaster=AutoARIMA())\n"
+        "model.fit(train_y)                   # train_y: 1D array -- decompose + fit once\n\n"
+        "# each origin: re-derive STL, forward the fixed-parameter trend model, reseasonalize\n"
+        "y_hat = model.forward(history_y, horizon)['mean']"
+    )
     # Same feed-forward recursion as the other classical methods, on the deseasonalized
     # series — see AutoARIMAForecaster's comment.
     forecast_strategy = ForecastStrategy.RECURSIVE

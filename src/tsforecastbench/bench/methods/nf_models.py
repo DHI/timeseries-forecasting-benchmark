@@ -58,14 +58,6 @@ class _NFBase(Forecaster):
         "no hyperparameter tuning, using the same architecture defaults regardless "
         "of the series' scale or frequency."
     )
-    code_snippet = (
-        "import neuralforecast.models as nfm\n"
-        "from neuralforecast import NeuralForecast\n\n"
-        "model = getattr(nfm, model_name)(h=horizon, input_size=lookback, max_steps=500)\n"
-        "nf = NeuralForecast(models=[model], freq=case.freq)\n"
-        "nf.fit(train_df)                     # train_df: unique_id, ds, y\n"
-        "y_hat = nf.predict()[model_name]"
-    )
     # Shared by all three: window models that learn trend and several interacting periods
     # from the lookback. neuralforecast supports future covariates for some of these
     # architectures, but this wrapper wires none of them, so there is no pathway here.
@@ -142,16 +134,38 @@ class _NFBase(Forecaster):
 
 
 class TFTForecaster(_NFBase):
+    """Temporal Fusion Transformer: an LSTM encoder-decoder combined with multi-head
+    attention over the lookback window."""
+
     name = "TFT"
     model_name = "TFT"
+    code_snippet = (
+        "from neuralforecast import NeuralForecast\n"
+        "from neuralforecast.models import TFT\n\n"
+        "model = TFT(h=horizon, input_size=lookback, max_steps=500)\n"
+        "nf = NeuralForecast(models=[model], freq=case.freq)\n"
+        "nf.fit(train_df)                     # train_df: unique_id, ds, y\n"
+        'y_hat = nf.predict()["TFT"]'
+    )
     # A single neuralforecast predict() call returns the full horizon at once — TFT's
     # decoder produces multi-horizon predictions in parallel, not step-by-step.
     forecast_strategy = ForecastStrategy.DIRECT
 
 
 class ITransformerForecaster(_NFBase):
+    """Inverted transformer: embeds each variate's whole series as one token and attends
+    across variates rather than across time steps."""
+
     name = "iTransformer"
     model_name = "iTransformer"
+    code_snippet = (
+        "from neuralforecast import NeuralForecast\n"
+        "from neuralforecast.models import iTransformer\n\n"
+        "model = iTransformer(h=horizon, input_size=lookback, n_series=1, max_steps=500)\n"
+        "nf = NeuralForecast(models=[model], freq=case.freq)\n"
+        "nf.fit(train_df)                     # train_df: unique_id, ds, y\n"
+        'y_hat = nf.predict()["iTransformer"]'
+    )
     # iTransformer is multivariate and fixed to n_series=1 here, so it cannot absorb the
     # extra segments of an extended-history fit -- keep it on the local span only.
     pools_segments = False
@@ -166,7 +180,18 @@ class ITransformerForecaster(_NFBase):
 
 
 class TimesNetForecaster(_NFBase):
+    """Reshapes the series into 2D tensors by its dominant periods and applies
+    convolutional blocks to capture both within-period and across-period patterns."""
+
     name = "TimesNet"
     model_name = "TimesNet"
+    code_snippet = (
+        "from neuralforecast import NeuralForecast\n"
+        "from neuralforecast.models import TimesNet\n\n"
+        "model = TimesNet(h=horizon, input_size=lookback, max_steps=500)\n"
+        "nf = NeuralForecast(models=[model], freq=case.freq)\n"
+        "nf.fit(train_df)                     # train_df: unique_id, ds, y\n"
+        'y_hat = nf.predict()["TimesNet"]'
+    )
     # Same one-call, full-horizon-at-once prediction as its siblings — see TFTForecaster.
     forecast_strategy = ForecastStrategy.DIRECT

@@ -120,17 +120,6 @@ class _WindowedMLBase(Forecaster):
         "values supplied at predict time (a perfect-forecast proxy in this "
         "benchmark, not a real forecast of those covariates)."
     )
-    code_snippet = (
-        "from mlforecast import MLForecast\n\n"
-        "fcst = MLForecast(\n"
-        "    models=[<regressor>],           # e.g. LGBMRegressor, Ridge, MLPRegressor\n"
-        "    freq=case.freq,\n"
-        "    lags=[1, 2, 4, 8, 16, 32, *case.seasonalities],\n"
-        '    date_features=["dayofweek", "month", ...],\n'
-        ")\n"
-        "fcst.fit(train_df, static_features=[])\n"
-        "y_hat = fcst.predict(h=horizon, ids=[target_uid])"
-    )
     # Shared by every regressor in this pipeline, since these follow from the feature table
     # rather than from the estimator. Lags cover all of the case's declared periods and the
     # date features span several cycles at once, so multiple seasonality is handled. The
@@ -242,8 +231,27 @@ class _WindowedMLBase(Forecaster):
 
 
 class LightGBMForecaster(_WindowedMLBase):
+    """Gradient-boosted decision trees (LightGBM) over lag and calendar features."""
+
     name = "LightGBM"
     library = "mlforecast + lightgbm"
+    code_snippet = (
+        "from lightgbm import LGBMRegressor\n"
+        "from mlforecast import MLForecast\n\n"
+        "fcst = MLForecast(\n"
+        "    models=[LGBMRegressor(n_estimators=200, learning_rate=0.05, verbosity=-1)],\n"
+        "    freq=case.freq,\n"
+        "    lags=[1, 2, 4, 8, 16, 32, *case.seasonalities],\n"
+        '    date_features=["dayofweek", "month", ...],\n'
+        ")\n"
+        "fcst.fit(train_df, static_features=[])\n"
+        "# +exo: train_df also carries the covariate columns; mlforecast picks them up\n"
+        "#       automatically as dynamic features since they're not in static_features\n\n"
+        "y_hat = fcst.predict(h=horizon, new_df=new_df)   # new_df: this origin's history so far\n"
+        "# +exo: fcst.predict(h=horizon, new_df=new_df, X_df=future_exog) -- X_df supplies\n"
+        "#       each future timestamp's covariate values (a perfect-forecast proxy here,\n"
+        "#       not a real forecast of those covariates)"
+    )
     # A tree's prediction is an average of training targets, so it cannot output a value
     # outside the range it was fit on — no trend extrapolation, by construction.
     capabilities = _WindowedMLBase.capabilities.model_copy(update={"trend": False})
@@ -268,8 +276,27 @@ class LightGBMForecaster(_WindowedMLBase):
 
 
 class CatBoostForecaster(_WindowedMLBase):
+    """Gradient-boosted decision trees (CatBoost) over lag and calendar features."""
+
     name = "CatBoost"
     library = "mlforecast + catboost"
+    code_snippet = (
+        "from catboost import CatBoostRegressor\n"
+        "from mlforecast import MLForecast\n\n"
+        "fcst = MLForecast(\n"
+        "    models=[CatBoostRegressor(iterations=200, learning_rate=0.05, verbose=False)],\n"
+        "    freq=case.freq,\n"
+        "    lags=[1, 2, 4, 8, 16, 32, *case.seasonalities],\n"
+        '    date_features=["dayofweek", "month", ...],\n'
+        ")\n"
+        "fcst.fit(train_df, static_features=[])\n"
+        "# +exo: train_df also carries the covariate columns; mlforecast picks them up\n"
+        "#       automatically as dynamic features since they're not in static_features\n\n"
+        "y_hat = fcst.predict(h=horizon, new_df=new_df)   # new_df: this origin's history so far\n"
+        "# +exo: fcst.predict(h=horizon, new_df=new_df, X_df=future_exog) -- X_df supplies\n"
+        "#       each future timestamp's covariate values (a perfect-forecast proxy here,\n"
+        "#       not a real forecast of those covariates)"
+    )
     # Bounded by the training target range for the same reason LightGBM is.
     capabilities = _WindowedMLBase.capabilities.model_copy(update={"trend": False})
     # Same recursive lag-feedback strategy as LightGBM, same leaf-bound stability.
@@ -292,8 +319,27 @@ class CatBoostForecaster(_WindowedMLBase):
 
 
 class LinearLagsForecaster(_WindowedMLBase):
+    """Ridge regression over lag and calendar features."""
+
     name = "LinearLags"
     library = "mlforecast + scikit-learn (Ridge)"
+    code_snippet = (
+        "from mlforecast import MLForecast\n"
+        "from sklearn.linear_model import Ridge\n\n"
+        "fcst = MLForecast(\n"
+        "    models=[Ridge(alpha=1.0)],\n"
+        "    freq=case.freq,\n"
+        "    lags=[1, 2, 4, 8, 16, 32, *case.seasonalities],\n"
+        '    date_features=["dayofweek", "month", ...],\n'
+        ")\n"
+        "fcst.fit(train_df, static_features=[])\n"
+        "# +exo: train_df also carries the covariate columns; mlforecast picks them up\n"
+        "#       automatically as dynamic features since they're not in static_features\n\n"
+        "y_hat = fcst.predict(h=horizon, new_df=new_df)   # new_df: this origin's history so far\n"
+        "# +exo: fcst.predict(h=horizon, new_df=new_df, X_df=future_exog) -- X_df supplies\n"
+        "#       each future timestamp's covariate values (a perfect-forecast proxy here,\n"
+        "#       not a real forecast of those covariates)"
+    )
     # Keeps the base's trend=True: linear in its lag features, so unlike the tree models it
     # can extrapolate past the range it was fit on.
     # Same recursive lag-feedback strategy as LightGBM/CatBoost; Ridge's linearity keeps it
@@ -318,6 +364,8 @@ class LinearLagsForecaster(_WindowedMLBase):
 
 
 class MLPForecaster(_WindowedMLBase):
+    """Multi-layer perceptron (scikit-learn MLPRegressor) over lag and calendar features."""
+
     name = "MLP"
     max_train_steps = 20000
     # Trains one model per horizon step from the origin's lag features instead of one
@@ -330,6 +378,30 @@ class MLPForecaster(_WindowedMLBase):
     # direct_horizon above is exactly this: mlforecast's direct multi-horizon strategy.
     forecast_strategy = ForecastStrategy.DIRECT
     library = "mlforecast + scikit-learn (MLPRegressor)"
+    code_snippet = (
+        "from mlforecast import MLForecast\n"
+        "from sklearn.neural_network import MLPRegressor\n"
+        "from sklearn.pipeline import make_pipeline\n"
+        "from sklearn.preprocessing import StandardScaler\n\n"
+        "model = make_pipeline(\n"
+        "    StandardScaler(),\n"
+        "    MLPRegressor(hidden_layer_sizes=(64, 32), max_iter=300, early_stopping=True),\n"
+        ")\n"
+        "fcst = MLForecast(\n"
+        "    models=[model],\n"
+        "    freq=case.freq,\n"
+        "    lags=[1, 2, 4, 8, 16, 32, *case.seasonalities],\n"
+        '    date_features=["dayofweek", "month", ...],\n'
+        ")\n"
+        "# one model per horizon step instead of one recursive model (see limitations)\n"
+        "fcst.fit(train_df, static_features=[], max_horizon=horizon)\n"
+        "# +exo: train_df also carries the covariate columns; mlforecast picks them up\n"
+        "#       automatically as dynamic features since they're not in static_features\n\n"
+        "y_hat = fcst.predict(h=horizon, new_df=new_df)   # new_df: this origin's history so far\n"
+        "# +exo: fcst.predict(h=horizon, new_df=new_df, X_df=future_exog) -- X_df supplies\n"
+        "#       each future timestamp's covariate values (a perfect-forecast proxy here,\n"
+        "#       not a real forecast of those covariates)"
+    )
     # No override needed: an MLP's linear output layer can extrapolate past the training
     # range like the base's trend=True already claims, now that nothing clips it back.
     # Several interacting knobs (layer sizes, iterations, early stopping, feature

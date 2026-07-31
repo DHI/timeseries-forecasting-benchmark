@@ -17,6 +17,8 @@ from tsforecastbench.data.seasonality import dominant_period, position_in_cycle
 
 
 class MeanBaseline(Forecaster):
+    """Repeats the training-window mean for every step of the horizon."""
+
     name = "Mean"
     family = "baseline"
     library = "pandas/numpy only"
@@ -59,6 +61,8 @@ class MeanBaseline(Forecaster):
 
 
 class Persistence(Forecaster):
+    """Repeats the last observed value for every step of the horizon (the naive forecast)."""
+
     name = "Persistence"
     family = "baseline"
     library = "pandas/numpy only"
@@ -102,6 +106,8 @@ class Persistence(Forecaster):
 
 
 class SeasonalNaive(Forecaster):
+    """Tiles the most recently observed full seasonal cycle forward across the horizon."""
+
     name = "SeasonalNaive"
     family = "baseline"
     library = "pandas/numpy only"

@@ -34,6 +34,9 @@ def _moving_avg(x: np.ndarray, k: int) -> np.ndarray:
 
 
 class DLinearForecaster(Forecaster):
+    """Decomposes the lookback window into a moving-average trend and remainder, fits a
+    separate linear map from each to the full horizon, and sums them."""
+
     name = "DLinear"
     family = "dl"
     is_global = True
