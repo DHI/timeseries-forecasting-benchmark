@@ -299,7 +299,7 @@ function MainLayout({
 
   const { theme, toggle: toggleTheme } = useTheme();
 
-  const sidebarWidth = state.sidebarCollapsed ? 0 : 450;
+  const sidebarWidth = state.sidebarCollapsed ? 0 : 400;
   const selectedCase = state.selection.case_id ? cases[state.selection.case_id] : undefined;
   const casePanelWidth = selectedCase ? state.casePanelWidth : 0;
 
