@@ -22,7 +22,10 @@ export function DomainChecklist({ options, value, onChange, disabledOptions }: P
       {options.map((domain) => {
         const disabled = disabledOptions?.has(domain) ?? false;
         return (
-          <label key={domain} style={{ opacity: disabled ? 0.4 : 1 }}>
+          <label
+            key={domain}
+            style={{ opacity: disabled ? 0.4 : 1, whiteSpace: 'nowrap' }}
+          >
             <input
               type="checkbox"
               checked={!disabled && selected.has(domain)}
