@@ -13,12 +13,14 @@ function clientPos(event: { clientX: number; clientY: number }, axis: Axis): num
  * Drag handler for a panel resized by dragging one of its edges, where the opposite edge
  * stays anchored in place. Moving the mouse toward the anchored edge grows the panel — e.g.
  * a panel anchored to the right of the screen, resized by its left border, grows as the
- * mouse moves left.
+ * mouse moves left. Pass `invert: true` for the mirror-image case — a panel anchored to the
+ * left of the screen, resized by its right border, grows as the mouse moves right.
  */
 export function useEdgeResize(
   axis: Axis,
   size: number,
   onResize: (size: number) => void,
+  { invert = false }: { invert?: boolean } = {},
 ): { onMouseDown: (event: ReactMouseEvent) => void; moved: { current: boolean } } {
   const dragStart = useRef<{ pos: number; size: number } | null>(null);
   // Set on the first mousemove of a drag, so callers (e.g. a title bar that both toggles on
@@ -37,11 +39,10 @@ export function useEdgeResize(
     (event: MouseEvent) => {
       if (!dragStart.current) return;
       moved.current = true;
-      onResizeRef.current(
-        dragStart.current.size - (clientPos(event, axis) - dragStart.current.pos),
-      );
+      const delta = clientPos(event, axis) - dragStart.current.pos;
+      onResizeRef.current(dragStart.current.size + (invert ? delta : -delta));
     },
-    [axis],
+    [axis, invert],
   );
 
   const stopDragging = useCallback(() => {

@@ -26,6 +26,23 @@ describe('useEdgeResize', () => {
     expect(onResize).toHaveBeenCalledTimes(1);
   });
 
+  it('x axis, inverted: widens when the mouse moves right', () => {
+    const onResize = vi.fn();
+    const { result } = renderHook(() => useEdgeResize('x', 380, onResize, { invert: true }));
+
+    act(() => {
+      result.current.onMouseDown({
+        preventDefault: () => {},
+        clientX: 500,
+        clientY: 0,
+      } as React.MouseEvent);
+    });
+    act(() => {
+      window.dispatchEvent(new MouseEvent('mousemove', { clientX: 560 }));
+    });
+    expect(onResize).toHaveBeenCalledWith(440);
+  });
+
   it('y axis: grows when the mouse moves up', () => {
     const onResize = vi.fn();
     const { result } = renderHook(() => useEdgeResize('y', 220, onResize));
