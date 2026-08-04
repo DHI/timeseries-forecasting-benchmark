@@ -308,12 +308,11 @@ export function useMatrixFigure(
       });
     }
 
-    // Axis super-titles, anchored to the first (top-left) cell rather than the whole plot.
-    // "Methods" starts at that cell's left edge and grows right; "Cases" ends at the same
-    // cell's right edge and grows left — since each title is wider than one 42px cell, both
-    // spill outward past the cell they're anchored to, "Cases" out past the matrix's own
-    // left edge into the row-label margin. Stacked (Methods above Cases) so the two don't
-    // collide where their spans overlap.
+    // Axis super-titles, both anchored to the same point — the top-left cell's left edge —
+    // and growing in opposite directions from it. "Methods" is left-aligned there and flows
+    // right, into the matrix. "Cases" is right-aligned at that same point and flows left,
+    // landing directly above the domain row labels (which share this x position, see the
+    // group-labels loop above) rather than over the grid itself.
     annotations.push({
       x: -0.5,
       y: -0.5,
@@ -328,7 +327,7 @@ export function useMatrixFigure(
       font: { size: 16, color: pt.labelText },
     });
     annotations.push({
-      x: 0.5,
+      x: -0.5,
       y: -0.5,
       xref: 'x',
       yref: 'y',
