@@ -3,22 +3,9 @@
 // CELL.
 export const CELL = 42;
 
-/** Short row-label abbreviation per domain, so the vertical domain label column stays
- * narrow. Port of app/app.py's DOMAIN_KEY_DICT. */
-export const DOMAIN_KEY_DICT: Record<string, string> = {
-  groundwater: 'GrW',
-  hydrology: 'Hyd',
-  spectral_waves: 'SpW',
-  storm_surge: 'StS',
-  urban_drainage: 'UrD',
-  wastewater_treatment: 'WaT',
-  water_distribution: 'WaD',
-  water_quality: 'WaQ',
-};
-
-/** Full name for each method family, shown as a hover tooltip next to the "Ml"/"Dl"/"Fm"
- * abbreviations FAMILY_ORDER's own keys produce (see formatSnakeCaseLabel) — those keys don't
- * spell out what "ml"/"dl"/"fm" stand for the way DOMAIN_KEY_DICT's keys do. */
+/** Full name for each method family — FAMILY_ORDER's own keys don't spell out what
+ * "ml"/"dl"/"fm" stand for (see formatSnakeCaseLabel), so this supplies the readable form
+ * used both as the matrix's column-group headers and the sidebar's FamilyMultiSelect. */
 export const FAMILY_FULL_NAMES: Record<string, string> = {
   baseline: 'Baseline',
   ensemble: 'Ensemble',

@@ -1,7 +1,7 @@
 import { format as d3format } from 'd3-format';
 import { useMemo } from 'react';
 import type { Annotations, Data, Layout, Margin, PlotData, Shape } from 'plotly.js';
-import { CELL, DOMAIN_KEY_DICT } from '../../data/constants';
+import { CELL } from '../../data/constants';
 import { colorscaleFor } from '../../data/colorscale';
 import { metricConfig, TRAINING_TIME_CONFIG, type MetricConfig } from '../../data/metricConfig';
 import {
@@ -301,10 +301,10 @@ export function useMatrixFigure(
         yref: 'y',
         xanchor: 'right',
         xshift: -6,
-        text: `<b>${DOMAIN_KEY_DICT[label] ?? label}</b>`,
+        align: 'right',
+        text: `<b>${formatSnakeCaseLabel(label, '<br>')}</b>`,
         showarrow: false,
         font: { size: 13, color: pt.labelText },
-        textangle: '-90',
       });
     }
 
