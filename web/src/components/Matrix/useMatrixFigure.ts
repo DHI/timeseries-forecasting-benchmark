@@ -308,16 +308,16 @@ export function useMatrixFigure(
       });
     }
 
-    // Axis super-titles, stacked in the matrix's top-right corner. `paper` x=1/y=-0.5 land
-    // on the plot area's own top-right corner (same edges the group labels above are
+    // Axis super-titles, stacked in the matrix's top-left corner. `paper` x=0/y=-0.5 land
+    // on the plot area's own top-left corner (same edges the group labels above are
     // anchored to), not the outer margin, so both titles use the same yref: 'y' + yshift
     // scheme as the family labels above, offset further out to clear them.
     annotations.push({
-      x: 1,
+      x: 0,
       y: -0.5,
       xref: 'paper',
       yref: 'y',
-      xanchor: 'right',
+      xanchor: 'left',
       yanchor: 'bottom',
       yshift: 52,
       text: 'Methods',
@@ -326,11 +326,11 @@ export function useMatrixFigure(
       font: { size: 16, color: pt.labelText },
     });
     annotations.push({
-      x: 1,
+      x: 0,
       y: -0.5,
       xref: 'paper',
       yref: 'y',
-      xanchor: 'right',
+      xanchor: 'left',
       yanchor: 'bottom',
       yshift: 30,
       text: 'Cases',
@@ -408,7 +408,7 @@ export function useMatrixFigure(
     const margin: Partial<Margin> & { autoexpand?: boolean } = {
       // l fits the domain row labels (now horizontal, up to two lines). t includes room for
       // the "Methods"/"Cases" super-title annotations stacked above the family group labels,
-      // in the top-right corner.
+      // in the top-left corner.
       l: 100,
       t: 96,
       r: 120,
