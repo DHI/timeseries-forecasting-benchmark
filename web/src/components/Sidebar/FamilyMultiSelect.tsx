@@ -20,9 +20,9 @@ export function FamilyMultiSelect({ options, value, onChange }: Props) {
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
       {options.map((family) => (
-        <label key={family} title={FAMILY_FULL_NAMES[family] ?? family}>
+        <label key={family}>
           <input type="checkbox" checked={selected.has(family)} onChange={() => toggle(family)} />{' '}
-          {formatSnakeCaseLabel(family)}
+          {FAMILY_FULL_NAMES[family] ?? formatSnakeCaseLabel(family)}
         </label>
       ))}
     </div>

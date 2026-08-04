@@ -1,7 +1,7 @@
 import { format as d3format } from 'd3-format';
 import { useMemo } from 'react';
 import type { Annotations, Data, Layout, Margin, PlotData, Shape } from 'plotly.js';
-import { CELL } from '../../data/constants';
+import { CELL, FAMILY_FULL_NAMES } from '../../data/constants';
 import { colorscaleFor } from '../../data/colorscale';
 import { metricConfig, TRAINING_TIME_CONFIG, type MetricConfig } from '../../data/metricConfig';
 import {
@@ -288,7 +288,7 @@ export function useMatrixFigure(
         yref: 'y',
         yanchor: 'bottom',
         yshift: 6,
-        text: `<b>${formatSnakeCaseLabel(label, '<br>')}</b>`,
+        text: `<b>${(FAMILY_FULL_NAMES[label] ?? formatSnakeCaseLabel(label)).replace(' ', '<br>')}</b>`,
         showarrow: false,
         font: { size: 13, color: pt.labelText },
       });
