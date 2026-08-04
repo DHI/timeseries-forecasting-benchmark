@@ -308,36 +308,35 @@ export function useMatrixFigure(
       });
     }
 
-    // Axis super-titles, one level up from the family/domain group labels above. `paper`
-    // y=1/x=0 land at the plot area's own edge (same edge the group labels are anchored
-    // to), not the outer margin, so the x-axis title uses the same yref: 'y' + yshift
-    // scheme as the family labels above, with a bigger yshift to clear them.
+    // Axis super-titles, stacked in the matrix's top-right corner. `paper` x=1/y=-0.5 land
+    // on the plot area's own top-right corner (same edges the group labels above are
+    // anchored to), not the outer margin, so both titles use the same yref: 'y' + yshift
+    // scheme as the family labels above, offset further out to clear them.
     annotations.push({
-      x: 0.5,
+      x: 1,
       y: -0.5,
       xref: 'paper',
       yref: 'y',
-      xanchor: 'center',
+      xanchor: 'right',
       yanchor: 'bottom',
-      yshift: 46,
+      yshift: 52,
       text: 'Methods',
       showarrow: false,
       opacity: 0.85,
-      font: { size: 22, color: pt.labelText },
+      font: { size: 16, color: pt.labelText },
     });
     annotations.push({
-      x: 0,
-      y: 0.5,
+      x: 1,
+      y: -0.5,
       xref: 'paper',
-      yref: 'paper',
+      yref: 'y',
       xanchor: 'right',
-      yanchor: 'middle',
-      xshift: -2,
-      textangle: '-90',
+      yanchor: 'bottom',
+      yshift: 30,
       text: 'Cases',
       showarrow: false,
       opacity: 0.85,
-      font: { size: 22, color: pt.labelText },
+      font: { size: 16, color: pt.labelText },
     });
 
     // @types/plotly.js is missing `zmid` (a real, documented plotly.js heatmap option —
@@ -407,9 +406,10 @@ export function useMatrixFigure(
     // sized to fit the colorbar title's widest possible second line ("[target unit]"),
     // left-anchored at the colorbar's own x — a plain 80px clipped it mid-word.
     const margin: Partial<Margin> & { autoexpand?: boolean } = {
-      // l/t include room for the "Cases"/"Methods" super-title
-      // annotations above, on top of the space the family/domain group labels already need.
-      l: 114,
+      // l fits the domain row labels (now horizontal, up to two lines). t includes room for
+      // the "Methods"/"Cases" super-title annotations stacked above the family group labels,
+      // in the top-right corner.
+      l: 100,
       t: 96,
       r: 120,
       b: 80,
