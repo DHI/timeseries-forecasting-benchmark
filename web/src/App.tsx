@@ -165,6 +165,16 @@ function MainLayout({
     [dispatch],
   );
   const casePanelResize = useEdgeResize('x', state.casePanelWidth, handleCasePanelResize);
+  const handleGettingStartedResize = useCallback(
+    (width: number) => dispatch({ type: 'SET_GETTING_STARTED_WIDTH', width }),
+    [dispatch],
+  );
+  const gettingStartedResize = useEdgeResize(
+    'x',
+    state.gettingStartedWidth,
+    handleGettingStartedResize,
+    { invert: true },
+  );
 
   // Plotly's `useResizeHandler` only re-measures a plot's width on a native `window`
   // "resize" event; dragging the case panel's edge only changes React state, so nudge
@@ -250,6 +260,61 @@ function MainLayout({
 
   return (
     <div style={{ display: 'flex' }}>
+      {state.gettingStartedOpen && (
+        <div
+          style={{
+            flex: `0 0 ${state.gettingStartedWidth}px`,
+            position: 'sticky',
+            top: 0,
+            maxHeight: '100vh',
+            borderRight: '4px double var(--border)',
+            background: 'var(--bg)',
+          }}
+        >
+          <div
+            onMouseDown={gettingStartedResize.onMouseDown}
+            title="Drag to resize"
+            style={{
+              position: 'absolute',
+              right: 0,
+              top: 0,
+              bottom: 0,
+              width: 6,
+              cursor: 'col-resize',
+            }}
+          />
+          <div
+            style={{
+              boxSizing: 'border-box',
+              maxHeight: '100vh',
+              padding: 16,
+              overflowY: 'auto',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <button
+                type="button"
+                title="Close"
+                aria-label="Close getting started guide"
+                onClick={() => dispatch({ type: 'TOGGLE_GETTING_STARTED' })}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  font: 'inherit',
+                  fontSize: '1.2em',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  padding: 0,
+                }}
+              >
+                ✕
+              </button>
+              <h2 style={{ margin: 0 }}>Getting started</h2>
+            </div>
+            <AppInstructions />
+          </div>
+        </div>
+      )}
       <div
         style={{
           flex: `0 0 ${sidebarWidth}px`,
@@ -395,6 +460,22 @@ function MainLayout({
         >
           {theme === 'dark' ? '☀' : '🌙'}
         </button>
+        {!state.gettingStartedOpen && (
+          <button
+            type="button"
+            title="Show getting started guide"
+            onClick={() => dispatch({ type: 'TOGGLE_GETTING_STARTED' })}
+            style={{
+              position: 'absolute',
+              top: 16,
+              left: (state.sidebarCollapsed ? 4 : sidebarWidth) + 68,
+              background: 'var(--bg)',
+              cursor: 'pointer',
+            }}
+          >
+            Getting started
+          </button>
+        )}
         {state.sidebarCollapsed && <SidebarToggleHint />}
       </div>
       <main
