@@ -162,36 +162,35 @@ function MainLayout({
   );
   const casePanelResize = useEdgeResize('x', state.casePanelWidth, handleCasePanelResize);
 
-  // Position/size are tracked as independent x/y and width/height axes (each its own
-  // useEdgeResize instance) but committed together via one SET_GETTING_STARTED_* action per
-  // gesture, since the reducer models "where the window is" and "how big it is" as single
-  // {x,y}/{width,height} updates rather than four separate scalar fields to keep in sync.
+  // Position/size are tracked as four independent axes (each its own useEdgeResize instance,
+  // each its own action) rather than combined {x,y}/{width,height} updates: a diagonal drag
+  // fires both axes' handlers within the same mousemove tick, and a combined action would have
+  // each handler read the *other* axis from its own render-time closure, so whichever fired
+  // second would clobber the first's update with a stale value of the field it doesn't own.
   const handleGettingStartedMoveX = useCallback(
     (x: number) => {
       const clampedX = Math.min(
         Math.max(x, -(state.gettingStartedWidth - 100)),
         window.innerWidth - 100,
       );
-      dispatch({ type: 'SET_GETTING_STARTED_POSITION', x: clampedX, y: state.gettingStartedY });
+      dispatch({ type: 'SET_GETTING_STARTED_X', x: clampedX });
     },
-    [dispatch, state.gettingStartedY, state.gettingStartedWidth],
+    [dispatch, state.gettingStartedWidth],
   );
   const handleGettingStartedMoveY = useCallback(
     (y: number) => {
       const clampedY = Math.min(Math.max(y, 0), window.innerHeight - 40);
-      dispatch({ type: 'SET_GETTING_STARTED_POSITION', x: state.gettingStartedX, y: clampedY });
+      dispatch({ type: 'SET_GETTING_STARTED_Y', y: clampedY });
     },
-    [dispatch, state.gettingStartedX],
+    [dispatch],
   );
   const handleGettingStartedResizeWidth = useCallback(
-    (width: number) =>
-      dispatch({ type: 'SET_GETTING_STARTED_SIZE', width, height: state.gettingStartedHeight }),
-    [dispatch, state.gettingStartedHeight],
+    (width: number) => dispatch({ type: 'SET_GETTING_STARTED_WIDTH', width }),
+    [dispatch],
   );
   const handleGettingStartedResizeHeight = useCallback(
-    (height: number) =>
-      dispatch({ type: 'SET_GETTING_STARTED_SIZE', width: state.gettingStartedWidth, height }),
-    [dispatch, state.gettingStartedWidth],
+    (height: number) => dispatch({ type: 'SET_GETTING_STARTED_HEIGHT', height }),
+    [dispatch],
   );
   const gettingStartedMoveX = useEdgeResize('x', state.gettingStartedX, handleGettingStartedMoveX, {
     invert: true,
@@ -305,7 +304,7 @@ function MainLayout({
   const casePanelWidth = selectedCase ? state.casePanelWidth : 0;
 
   return (
-    <div style={{ display: 'flex' }}>
+    <div style={{ display: 'flex', minHeight: '100svh' }}>
       <div
         style={{
           flex: `0 0 ${sidebarWidth}px`,

@@ -55,8 +55,10 @@ export type AppAction =
   | { type: 'SET_TRAINING_TIME_OVERLAY'; active: boolean }
   | { type: 'SET_CASE_PANEL_WIDTH'; width: number }
   | { type: 'TOGGLE_GETTING_STARTED' }
-  | { type: 'SET_GETTING_STARTED_POSITION'; x: number; y: number }
-  | { type: 'SET_GETTING_STARTED_SIZE'; width: number; height: number }
+  | { type: 'SET_GETTING_STARTED_X'; x: number }
+  | { type: 'SET_GETTING_STARTED_Y'; y: number }
+  | { type: 'SET_GETTING_STARTED_WIDTH'; width: number }
+  | { type: 'SET_GETTING_STARTED_HEIGHT'; height: number }
   | SelectionAction;
 
 export function appReducer(state: AppState, action: AppAction): AppState {
@@ -79,14 +81,14 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, casePanelWidth: clampCasePanelWidth(action.width) };
     case 'TOGGLE_GETTING_STARTED':
       return { ...state, gettingStartedOpen: !state.gettingStartedOpen };
-    case 'SET_GETTING_STARTED_POSITION':
-      return { ...state, gettingStartedX: action.x, gettingStartedY: action.y };
-    case 'SET_GETTING_STARTED_SIZE':
-      return {
-        ...state,
-        gettingStartedWidth: clampGettingStartedWidth(action.width),
-        gettingStartedHeight: clampGettingStartedHeight(action.height),
-      };
+    case 'SET_GETTING_STARTED_X':
+      return { ...state, gettingStartedX: action.x };
+    case 'SET_GETTING_STARTED_Y':
+      return { ...state, gettingStartedY: action.y };
+    case 'SET_GETTING_STARTED_WIDTH':
+      return { ...state, gettingStartedWidth: clampGettingStartedWidth(action.width) };
+    case 'SET_GETTING_STARTED_HEIGHT':
+      return { ...state, gettingStartedHeight: clampGettingStartedHeight(action.height) };
     case 'CELL_CLICK':
     case 'REMOVE_CHIP':
     case 'CLEAR_SELECTION':

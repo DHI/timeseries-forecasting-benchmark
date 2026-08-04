@@ -77,39 +77,49 @@ describe('appReducer', () => {
     expect(closed.gettingStartedOpen).toBe(false);
   });
 
-  it('sets the getting-started position', () => {
-    const state = appReducer(initialAppState(), {
-      type: 'SET_GETTING_STARTED_POSITION',
-      x: 120,
-      y: 80,
-    });
+  it('sets the getting-started x and y independently', () => {
+    // Regression test: x and y must not clobber each other — a diagonal drag dispatches
+    // both in the same tick, each only carrying its own axis.
+    let state = appReducer(initialAppState(), { type: 'SET_GETTING_STARTED_X', x: 120 });
+    state = appReducer(state, { type: 'SET_GETTING_STARTED_Y', y: 80 });
     expect(state.gettingStartedX).toBe(120);
     expect(state.gettingStartedY).toBe(80);
   });
 
-  it('sets the getting-started size, clamped to the allowed range', () => {
+  it('sets the getting-started width, clamped to the allowed range', () => {
+    const state = appReducer(initialAppState(), { type: 'SET_GETTING_STARTED_WIDTH', width: 500 });
+    expect(state.gettingStartedWidth).toBe(500);
+
+    const clampedLow = appReducer(initialAppState(), {
+      type: 'SET_GETTING_STARTED_WIDTH',
+      width: GETTING_STARTED_MIN_WIDTH - 50,
+    });
+    expect(clampedLow.gettingStartedWidth).toBe(GETTING_STARTED_MIN_WIDTH);
+
+    const clampedHigh = appReducer(initialAppState(), {
+      type: 'SET_GETTING_STARTED_WIDTH',
+      width: GETTING_STARTED_MAX_WIDTH + 50,
+    });
+    expect(clampedHigh.gettingStartedWidth).toBe(GETTING_STARTED_MAX_WIDTH);
+  });
+
+  it('sets the getting-started height, clamped to the allowed range', () => {
     const state = appReducer(initialAppState(), {
-      type: 'SET_GETTING_STARTED_SIZE',
-      width: 500,
+      type: 'SET_GETTING_STARTED_HEIGHT',
       height: 600,
     });
-    expect(state.gettingStartedWidth).toBe(500);
     expect(state.gettingStartedHeight).toBe(600);
 
     const clampedLow = appReducer(initialAppState(), {
-      type: 'SET_GETTING_STARTED_SIZE',
-      width: GETTING_STARTED_MIN_WIDTH - 50,
+      type: 'SET_GETTING_STARTED_HEIGHT',
       height: GETTING_STARTED_MIN_HEIGHT - 50,
     });
-    expect(clampedLow.gettingStartedWidth).toBe(GETTING_STARTED_MIN_WIDTH);
     expect(clampedLow.gettingStartedHeight).toBe(GETTING_STARTED_MIN_HEIGHT);
 
     const clampedHigh = appReducer(initialAppState(), {
-      type: 'SET_GETTING_STARTED_SIZE',
-      width: GETTING_STARTED_MAX_WIDTH + 50,
+      type: 'SET_GETTING_STARTED_HEIGHT',
       height: GETTING_STARTED_MAX_HEIGHT + 50,
     });
-    expect(clampedHigh.gettingStartedWidth).toBe(GETTING_STARTED_MAX_WIDTH);
     expect(clampedHigh.gettingStartedHeight).toBe(GETTING_STARTED_MAX_HEIGHT);
   });
 
