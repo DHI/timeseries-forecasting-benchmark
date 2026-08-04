@@ -310,9 +310,9 @@ export function useMatrixFigure(
 
     // Axis super-titles, both anchored to the same point — the top-left cell's left edge —
     // and growing in opposite directions from it. "Methods" is left-aligned there and flows
-    // right, into the matrix. "Cases" is right-aligned at that same point and flows left,
-    // landing directly above the domain row labels (which share this x position, see the
-    // group-labels loop above) rather than over the grid itself.
+    // right, into the matrix. "Cases" is right-aligned at that same point (same xshift: -6 as
+    // the domain row labels above, so it lines up with them exactly) and flows left, landing
+    // directly above the domain row labels rather than over the grid itself.
     annotations.push({
       x: -0.5,
       y: -0.5,
@@ -332,6 +332,7 @@ export function useMatrixFigure(
       xref: 'x',
       yref: 'y',
       xanchor: 'right',
+      xshift: -6,
       yanchor: 'bottom',
       yshift: 30,
       text: 'Cases',
