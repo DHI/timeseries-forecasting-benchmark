@@ -3,6 +3,8 @@ import {
   appReducer,
   CASE_PANEL_MAX_WIDTH,
   CASE_PANEL_MIN_WIDTH,
+  GETTING_STARTED_MAX_WIDTH,
+  GETTING_STARTED_MIN_WIDTH,
   initialAppState,
 } from './AppStateContext';
 
@@ -64,6 +66,30 @@ describe('appReducer', () => {
       width: CASE_PANEL_MAX_WIDTH + 50,
     });
     expect(clampedHigh.casePanelWidth).toBe(CASE_PANEL_MAX_WIDTH);
+  });
+
+  it('toggles the getting-started column', () => {
+    const opened = appReducer(initialAppState(), { type: 'TOGGLE_GETTING_STARTED' });
+    expect(opened.gettingStartedOpen).toBe(true);
+    const closed = appReducer(opened, { type: 'TOGGLE_GETTING_STARTED' });
+    expect(closed.gettingStartedOpen).toBe(false);
+  });
+
+  it('sets the getting-started width, clamped to the allowed range', () => {
+    const state = appReducer(initialAppState(), { type: 'SET_GETTING_STARTED_WIDTH', width: 500 });
+    expect(state.gettingStartedWidth).toBe(500);
+
+    const clampedLow = appReducer(initialAppState(), {
+      type: 'SET_GETTING_STARTED_WIDTH',
+      width: GETTING_STARTED_MIN_WIDTH - 50,
+    });
+    expect(clampedLow.gettingStartedWidth).toBe(GETTING_STARTED_MIN_WIDTH);
+
+    const clampedHigh = appReducer(initialAppState(), {
+      type: 'SET_GETTING_STARTED_WIDTH',
+      width: GETTING_STARTED_MAX_WIDTH + 50,
+    });
+    expect(clampedHigh.gettingStartedWidth).toBe(GETTING_STARTED_MAX_WIDTH);
   });
 
   it('delegates selection actions to nextSelection', () => {
