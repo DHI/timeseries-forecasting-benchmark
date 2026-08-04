@@ -18,7 +18,7 @@ export function FamilyMultiSelect({ options, value, onChange }: Props) {
   }
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 1px' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 1px', fontSize: 12 }}>
       {options.map((family) => (
         <label key={family} style={{ whiteSpace: 'nowrap' }}>
           <input type="checkbox" checked={selected.has(family)} onChange={() => toggle(family)} />{' '}

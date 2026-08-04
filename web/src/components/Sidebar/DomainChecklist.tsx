@@ -18,7 +18,7 @@ export function DomainChecklist({ options, value, onChange, disabledOptions }: P
   }
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 1px' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 1px', fontSize: 12 }}>
       {options.map((domain) => {
         const disabled = disabledOptions?.has(domain) ?? false;
         return (
