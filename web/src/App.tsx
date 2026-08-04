@@ -450,22 +450,6 @@ function MainLayout({
         >
           {theme === 'dark' ? '☀' : '🌙'}
         </button>
-        {!state.gettingStartedOpen && (
-          <button
-            type="button"
-            title="Show getting started guide"
-            onClick={() => dispatch({ type: 'TOGGLE_GETTING_STARTED' })}
-            style={{
-              position: 'absolute',
-              top: 16,
-              left: (state.sidebarCollapsed ? 4 : sidebarWidth) + 68,
-              background: 'var(--bg)',
-              cursor: 'pointer',
-            }}
-          >
-            Getting started
-          </button>
-        )}
         {state.sidebarCollapsed && <SidebarToggleHint />}
       </div>
       <main
@@ -505,6 +489,31 @@ function MainLayout({
             {!selectedCase && <SelectionHint />}
           </div>
         </div>
+        {!state.gettingStartedOpen && (
+          <div
+            style={{
+              flex: 1,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <button
+              type="button"
+              title="Show getting started guide"
+              onClick={() => dispatch({ type: 'TOGGLE_GETTING_STARTED' })}
+              style={{
+                padding: '14px 28px',
+                fontSize: '1.15em',
+                whiteSpace: 'nowrap',
+                background: 'var(--bg)',
+                cursor: 'pointer',
+              }}
+            >
+              Getting started
+            </button>
+          </div>
+        )}
       </main>
       {state.gettingStartedOpen && (
         <div
