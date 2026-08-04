@@ -505,7 +505,9 @@ function MainLayout({
               style={{
                 padding: '14px 28px',
                 fontSize: '1.15em',
+                fontWeight: 'bold',
                 whiteSpace: 'nowrap',
+                marginBottom: 32,
                 background: 'var(--bg)',
                 cursor: 'pointer',
               }}
