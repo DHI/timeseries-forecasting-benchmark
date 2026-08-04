@@ -112,7 +112,7 @@ describe('App', () => {
     await user.click(screen.getByTitle('Collapse/expand controls'));
 
     expect(screen.getByRole('option', { name: 'MASE' })).toBeInTheDocument();
-    expect(screen.getByLabelText('WaD')).toBeInTheDocument();
+    expect(screen.getByLabelText('Water distribution')).toBeInTheDocument();
     expect(screen.getByLabelText('Baseline')).toBeInTheDocument();
   });
 
@@ -144,8 +144,8 @@ describe('App', () => {
     await waitFor(() => expect(screen.getByTestId('plot-stub')).toBeInTheDocument());
     await user.click(screen.getByTitle('Collapse/expand controls'));
 
-    const waterDistributionCheckbox = screen.getByLabelText('WaD') as HTMLInputElement;
-    const hydrologyCheckbox = screen.getByLabelText('Hyd') as HTMLInputElement;
+    const waterDistributionCheckbox = screen.getByLabelText('Water distribution') as HTMLInputElement;
+    const hydrologyCheckbox = screen.getByLabelText('Hydrology') as HTMLInputElement;
     expect(waterDistributionCheckbox.disabled).toBe(false);
     expect(hydrologyCheckbox.disabled).toBe(false);
 
