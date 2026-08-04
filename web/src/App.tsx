@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo } from 'react';
+import type { MouseEvent as ReactMouseEvent } from 'react';
 import { DomainChecklist } from './components/Sidebar/DomainChecklist';
 import { FamilyMultiSelect } from './components/Sidebar/FamilyMultiSelect';
 import { HoldTrainingTimeButton } from './components/Sidebar/HoldTrainingTimeButton';
@@ -160,16 +161,66 @@ function MainLayout({
     [dispatch],
   );
   const casePanelResize = useEdgeResize('x', state.casePanelWidth, handleCasePanelResize);
-  const handleGettingStartedResize = useCallback(
-    (width: number) => dispatch({ type: 'SET_GETTING_STARTED_WIDTH', width }),
-    [dispatch],
+
+  // Position/size are tracked as independent x/y and width/height axes (each its own
+  // useEdgeResize instance) but committed together via one SET_GETTING_STARTED_* action per
+  // gesture, since the reducer models "where the window is" and "how big it is" as single
+  // {x,y}/{width,height} updates rather than four separate scalar fields to keep in sync.
+  const handleGettingStartedMoveX = useCallback(
+    (x: number) => {
+      const clampedX = Math.min(
+        Math.max(x, -(state.gettingStartedWidth - 100)),
+        window.innerWidth - 100,
+      );
+      dispatch({ type: 'SET_GETTING_STARTED_POSITION', x: clampedX, y: state.gettingStartedY });
+    },
+    [dispatch, state.gettingStartedY, state.gettingStartedWidth],
   );
-  const gettingStartedResize = useEdgeResize(
+  const handleGettingStartedMoveY = useCallback(
+    (y: number) => {
+      const clampedY = Math.min(Math.max(y, 0), window.innerHeight - 40);
+      dispatch({ type: 'SET_GETTING_STARTED_POSITION', x: state.gettingStartedX, y: clampedY });
+    },
+    [dispatch, state.gettingStartedX],
+  );
+  const handleGettingStartedResizeWidth = useCallback(
+    (width: number) =>
+      dispatch({ type: 'SET_GETTING_STARTED_SIZE', width, height: state.gettingStartedHeight }),
+    [dispatch, state.gettingStartedHeight],
+  );
+  const handleGettingStartedResizeHeight = useCallback(
+    (height: number) =>
+      dispatch({ type: 'SET_GETTING_STARTED_SIZE', width: state.gettingStartedWidth, height }),
+    [dispatch, state.gettingStartedWidth],
+  );
+  const gettingStartedMoveX = useEdgeResize('x', state.gettingStartedX, handleGettingStartedMoveX, {
+    invert: true,
+  });
+  const gettingStartedMoveY = useEdgeResize('y', state.gettingStartedY, handleGettingStartedMoveY, {
+    invert: true,
+  });
+  const gettingStartedResizeWidth = useEdgeResize(
     'x',
     state.gettingStartedWidth,
-    handleGettingStartedResize,
+    handleGettingStartedResizeWidth,
     { invert: true },
   );
+  const gettingStartedResizeHeight = useEdgeResize(
+    'y',
+    state.gettingStartedHeight,
+    handleGettingStartedResizeHeight,
+    { invert: true },
+  );
+  const handleGettingStartedTitleBarMouseDown = (event: ReactMouseEvent) => {
+    gettingStartedMoveX.onMouseDown(event);
+    gettingStartedMoveY.onMouseDown(event);
+    document.body.style.cursor = 'move';
+  };
+  const handleGettingStartedCornerMouseDown = (event: ReactMouseEvent) => {
+    gettingStartedResizeWidth.onMouseDown(event);
+    gettingStartedResizeHeight.onMouseDown(event);
+    document.body.style.cursor = 'nwse-resize';
+  };
 
   // Plotly's `useResizeHandler` only re-measures a plot's width on a native `window`
   // "resize" event; dragging the case panel's edge only changes React state, so nudge
@@ -255,61 +306,6 @@ function MainLayout({
 
   return (
     <div style={{ display: 'flex' }}>
-      {state.gettingStartedOpen && (
-        <div
-          style={{
-            flex: `0 0 ${state.gettingStartedWidth}px`,
-            position: 'sticky',
-            top: 0,
-            maxHeight: '100vh',
-            borderRight: '4px double var(--border)',
-            background: 'var(--bg)',
-          }}
-        >
-          <div
-            onMouseDown={gettingStartedResize.onMouseDown}
-            title="Drag to resize"
-            style={{
-              position: 'absolute',
-              right: 0,
-              top: 0,
-              bottom: 0,
-              width: 6,
-              cursor: 'col-resize',
-            }}
-          />
-          <div
-            style={{
-              boxSizing: 'border-box',
-              maxHeight: '100vh',
-              padding: 16,
-              overflowY: 'auto',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <button
-                type="button"
-                title="Close"
-                aria-label="Close getting started guide"
-                onClick={() => dispatch({ type: 'TOGGLE_GETTING_STARTED' })}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  font: 'inherit',
-                  fontSize: '1.2em',
-                  fontWeight: 'bold',
-                  cursor: 'pointer',
-                  padding: 0,
-                }}
-              >
-                ✕
-              </button>
-              <h2 style={{ margin: 0 }}>Getting started</h2>
-            </div>
-            <AppInstructions />
-          </div>
-        </div>
-      )}
       <div
         style={{
           flex: `0 0 ${sidebarWidth}px`,
@@ -511,6 +507,73 @@ function MainLayout({
           </div>
         </div>
       </main>
+      {state.gettingStartedOpen && (
+        <div
+          style={{
+            position: 'fixed',
+            left: state.gettingStartedX,
+            top: state.gettingStartedY,
+            width: state.gettingStartedWidth,
+            height: state.gettingStartedHeight,
+            zIndex: 30,
+            display: 'flex',
+            flexDirection: 'column',
+            background: 'var(--bg)',
+            border: '2px solid var(--border)',
+            borderRadius: 6,
+            boxShadow: '0 4px 16px rgba(0, 0, 0, 0.3)',
+            overflow: 'hidden',
+          }}
+        >
+          <div
+            onMouseDown={handleGettingStartedTitleBarMouseDown}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              flexShrink: 0,
+              padding: '8px 12px',
+              cursor: 'move',
+              background: 'var(--panel-bg)',
+              borderBottom: '2px solid var(--border)',
+            }}
+          >
+            <button
+              type="button"
+              title="Close"
+              aria-label="Close getting started guide"
+              onClick={() => dispatch({ type: 'TOGGLE_GETTING_STARTED' })}
+              style={{
+                background: 'none',
+                border: 'none',
+                font: 'inherit',
+                fontSize: '1.2em',
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                padding: 0,
+              }}
+            >
+              ✕
+            </button>
+            <h2 style={{ margin: 0 }}>Getting started</h2>
+          </div>
+          <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 16 }}>
+            <AppInstructions />
+          </div>
+          <div
+            onMouseDown={handleGettingStartedCornerMouseDown}
+            title="Drag to resize"
+            style={{
+              position: 'absolute',
+              right: 0,
+              bottom: 0,
+              width: 16,
+              height: 16,
+              cursor: 'nwse-resize',
+            }}
+          />
+        </div>
+      )}
       <Suspense fallback={null}>
         <MethodInfoPanel
           caseId={state.selection.case_id}

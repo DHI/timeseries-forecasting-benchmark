@@ -3,7 +3,9 @@ import {
   appReducer,
   CASE_PANEL_MAX_WIDTH,
   CASE_PANEL_MIN_WIDTH,
+  GETTING_STARTED_MAX_HEIGHT,
   GETTING_STARTED_MAX_WIDTH,
+  GETTING_STARTED_MIN_HEIGHT,
   GETTING_STARTED_MIN_WIDTH,
   initialAppState,
 } from './AppStateContext';
@@ -68,28 +70,47 @@ describe('appReducer', () => {
     expect(clampedHigh.casePanelWidth).toBe(CASE_PANEL_MAX_WIDTH);
   });
 
-  it('toggles the getting-started column', () => {
+  it('toggles the getting-started window', () => {
     const opened = appReducer(initialAppState(), { type: 'TOGGLE_GETTING_STARTED' });
     expect(opened.gettingStartedOpen).toBe(true);
     const closed = appReducer(opened, { type: 'TOGGLE_GETTING_STARTED' });
     expect(closed.gettingStartedOpen).toBe(false);
   });
 
-  it('sets the getting-started width, clamped to the allowed range', () => {
-    const state = appReducer(initialAppState(), { type: 'SET_GETTING_STARTED_WIDTH', width: 500 });
+  it('sets the getting-started position', () => {
+    const state = appReducer(initialAppState(), {
+      type: 'SET_GETTING_STARTED_POSITION',
+      x: 120,
+      y: 80,
+    });
+    expect(state.gettingStartedX).toBe(120);
+    expect(state.gettingStartedY).toBe(80);
+  });
+
+  it('sets the getting-started size, clamped to the allowed range', () => {
+    const state = appReducer(initialAppState(), {
+      type: 'SET_GETTING_STARTED_SIZE',
+      width: 500,
+      height: 600,
+    });
     expect(state.gettingStartedWidth).toBe(500);
+    expect(state.gettingStartedHeight).toBe(600);
 
     const clampedLow = appReducer(initialAppState(), {
-      type: 'SET_GETTING_STARTED_WIDTH',
+      type: 'SET_GETTING_STARTED_SIZE',
       width: GETTING_STARTED_MIN_WIDTH - 50,
+      height: GETTING_STARTED_MIN_HEIGHT - 50,
     });
     expect(clampedLow.gettingStartedWidth).toBe(GETTING_STARTED_MIN_WIDTH);
+    expect(clampedLow.gettingStartedHeight).toBe(GETTING_STARTED_MIN_HEIGHT);
 
     const clampedHigh = appReducer(initialAppState(), {
-      type: 'SET_GETTING_STARTED_WIDTH',
+      type: 'SET_GETTING_STARTED_SIZE',
       width: GETTING_STARTED_MAX_WIDTH + 50,
+      height: GETTING_STARTED_MAX_HEIGHT + 50,
     });
     expect(clampedHigh.gettingStartedWidth).toBe(GETTING_STARTED_MAX_WIDTH);
+    expect(clampedHigh.gettingStartedHeight).toBe(GETTING_STARTED_MAX_HEIGHT);
   });
 
   it('delegates selection actions to nextSelection', () => {
