@@ -308,14 +308,16 @@ export function useMatrixFigure(
       });
     }
 
-    // Axis super-titles, stacked in the matrix's top-left corner. `paper` x=0/y=-0.5 land
-    // on the plot area's own top-left corner (same edges the group labels above are
-    // anchored to), not the outer margin, so both titles use the same yref: 'y' + yshift
-    // scheme as the family labels above, offset further out to clear them.
+    // Axis super-titles, anchored to the first (top-left) cell rather than the whole plot.
+    // "Methods" starts at that cell's left edge and grows right; "Cases" ends at the same
+    // cell's right edge and grows left — since each title is wider than one 42px cell, both
+    // spill outward past the cell they're anchored to, "Cases" out past the matrix's own
+    // left edge into the row-label margin. Stacked (Methods above Cases) so the two don't
+    // collide where their spans overlap.
     annotations.push({
-      x: 0,
+      x: -0.5,
       y: -0.5,
-      xref: 'paper',
+      xref: 'x',
       yref: 'y',
       xanchor: 'left',
       yanchor: 'bottom',
@@ -326,11 +328,11 @@ export function useMatrixFigure(
       font: { size: 16, color: pt.labelText },
     });
     annotations.push({
-      x: 0,
+      x: 0.5,
       y: -0.5,
-      xref: 'paper',
+      xref: 'x',
       yref: 'y',
-      xanchor: 'left',
+      xanchor: 'right',
       yanchor: 'bottom',
       yshift: 30,
       text: 'Cases',
@@ -406,9 +408,9 @@ export function useMatrixFigure(
     // sized to fit the colorbar title's widest possible second line ("[target unit]"),
     // left-anchored at the colorbar's own x — a plain 80px clipped it mid-word.
     const margin: Partial<Margin> & { autoexpand?: boolean } = {
-      // l fits the domain row labels (now horizontal, up to two lines). t includes room for
-      // the "Methods"/"Cases" super-title annotations stacked above the family group labels,
-      // in the top-left corner.
+      // l fits the domain row labels (now horizontal, up to two lines) and the "Cases"
+      // super-title, both of which spill left past the plot's own edge. t includes room for
+      // "Methods"/"Cases" stacked above the family group labels.
       l: 100,
       t: 96,
       r: 120,
