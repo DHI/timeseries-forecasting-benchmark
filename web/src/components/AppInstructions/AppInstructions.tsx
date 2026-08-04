@@ -4,9 +4,9 @@ import { ResizeHandleDiagram } from './ResizeHandleDiagram';
 
 /** Static usage writeup below the matrix: selecting methods, the case details panel, and the
  * control panel's filters, metric selection, and toggles. */
-export function AppInstructions({ maxWidth }: { maxWidth: number }) {
+export function AppInstructions({ maxWidth }: { maxWidth?: number }) {
   return (
-    <div style={{ color: 'var(--text-secondary)', maxWidth }}>
+    <div style={{ color: 'var(--text-secondary)', ...(maxWidth !== undefined && { maxWidth }) }}>
       <p>
         This page compares forecasting methods across cases in a heatmap. Click a cell to dig into a
         case, drag panels to resize them, and use the sidebar to filter the matrix down to what you
