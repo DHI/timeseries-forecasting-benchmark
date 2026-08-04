@@ -51,6 +51,11 @@ function MethodInfoPanelComponent({
         overflowX: 'auto',
         padding: '0 16px',
         boxSizing: 'border-box',
+        // This box has no background and is taller/wider than the cards it lays out (padding,
+        // gaps, and any leftover row space beyond the last card) — without this, it silently
+        // blocks clicks on whatever sits underneath (e.g. the Getting Started button) anywhere
+        // in that transparent area. Cards opt back in below.
+        pointerEvents: 'none',
       }}
     >
       {effectiveMethods.map((method, i) => (

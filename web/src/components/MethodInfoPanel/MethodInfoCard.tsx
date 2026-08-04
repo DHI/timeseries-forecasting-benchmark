@@ -89,6 +89,7 @@ function MethodInfoCardComponent({ method, index, caseMeta, methodMeta }: Props)
         border: '2px solid var(--border)',
         borderBottom: 'none',
         boxSizing: 'border-box',
+        pointerEvents: 'auto',
       }}
     >
       {!collapsed && titleBar}
