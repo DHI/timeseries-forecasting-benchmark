@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo } from 'react';
 import { DomainChecklist } from './components/Sidebar/DomainChecklist';
 import { FamilyMultiSelect } from './components/Sidebar/FamilyMultiSelect';
 import { HoldTrainingTimeButton } from './components/Sidebar/HoldTrainingTimeButton';
@@ -15,7 +15,7 @@ import { InstructionsModal } from './components/InstructionsModal/InstructionsMo
 import { useEdgeResize } from './hooks/useEdgeResize';
 import { useHoldButton } from './hooks/useHoldButton';
 import { DOMAIN_RESTRICTED_METRICS } from './data/metricConfig';
-import { TEXT_WIDTH_OVERHANG, TITLE_BAR_HEIGHT, TRAINING_TIME_MIN_ROWS } from './data/constants';
+import { TRAINING_TIME_MIN_ROWS } from './data/constants';
 import {
   casesEligibleForMetric,
   domainOptions,
@@ -145,11 +145,6 @@ function MainLayout({
 }) {
   const state = useAppState();
   const dispatch = useAppDispatch();
-
-  // Undefined until MatrixGraph reports its first rendered width; the intro/Benchmark
-  // Design text falls back to its old fixed width until then.
-  const [matrixWidth, setMatrixWidth] = useState<number | undefined>(undefined);
-  const textMaxWidth = matrixWidth ? matrixWidth + TEXT_WIDTH_OVERHANG : 1000;
 
   const handleCellClick = useCallback(
     (caseId: string, method: string) => dispatch({ type: 'CELL_CLICK', case_id: caseId, method }),
@@ -511,25 +506,9 @@ function MainLayout({
               showExogenous={state.showExogenous}
               showTrainingTime={state.trainingTimeOverlay}
               onCellClick={handleCellClick}
-              onWidthChange={setMatrixWidth}
             />
             {!selectedCase && <SelectionHint />}
           </div>
-          <h1>Getting started</h1>
-        </div>
-        <div
-          style={{
-            flex: 1,
-            minHeight: 0,
-            overflow: 'auto',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            padding: '0 16px 16px',
-          }}
-        >
-          <AppInstructions maxWidth={textMaxWidth} />
-          <div style={{ height: TITLE_BAR_HEIGHT }} />
         </div>
       </main>
       <Suspense fallback={null}>

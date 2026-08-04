@@ -3,10 +3,6 @@
 // CELL.
 export const CELL = 42;
 
-/** How much wider the intro/App instructions text blocks are than the matrix figure, so
- * the text visually "wraps" the narrower heatmap+colorbar below/above it. */
-export const TEXT_WIDTH_OVERHANG = 80;
-
 /** Short row-label abbreviation per domain, so the vertical domain label column stays
  * narrow. Port of app/app.py's DOMAIN_KEY_DICT. */
 export const DOMAIN_KEY_DICT: Record<string, string> = {
