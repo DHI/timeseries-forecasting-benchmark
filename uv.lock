@@ -315,7 +315,7 @@ name = "cffi"
 version = "2.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "pycparser", marker = "implementation_name != 'PyPy'" },
+    { name = "pycparser" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/eb/56/b1ba7935a17738ae8453301356628e8147c79dbb825bcbc73dc7401f9846/cffi-2.0.0.tar.gz", hash = "sha256:44d1b5909021139fe36001ae048dbdde8214afa20200eda0f64c068cac5d5529", size = 523588, upload-time = "2025-09-08T23:24:04.541Z" }
 wheels = [
@@ -1101,7 +1101,7 @@ name = "importlib-metadata"
 version = "9.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "zipp", marker = "python_full_version < '3.12'" },
+    { name = "zipp" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/a9/01/15bb152d77b21318514a96f43af312635eb2500c96b55398d020c93d86ea/importlib_metadata-9.0.0.tar.gz", hash = "sha256:a4f57ab599e6a2e3016d7595cfd72eb4661a5106e787a95bcc90c7105b831efc", size = 56405, upload-time = "2026-03-20T06:42:56.999Z" }
 wheels = [
@@ -1526,32 +1526,33 @@ wheels = [
 
 [[package]]
 name = "marimo"
-version = "0.23.9"
+version = "0.23.16"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "click" },
+    { name = "click", marker = "sys_platform != 'emscripten'" },
     { name = "docutils" },
     { name = "itsdangerous" },
     { name = "jedi" },
-    { name = "loro" },
+    { name = "loro", marker = "sys_platform != 'android' and sys_platform != 'emscripten'" },
     { name = "markdown" },
     { name = "msgspec" },
     { name = "narwhals" },
     { name = "packaging" },
-    { name = "psutil" },
+    { name = "psutil", marker = "sys_platform != 'android' and sys_platform != 'emscripten'" },
     { name = "pygments" },
     { name = "pymdown-extensions" },
     { name = "python-multipart" },
     { name = "pyyaml" },
-    { name = "pyzmq" },
-    { name = "starlette" },
+    { name = "pyzmq", marker = "sys_platform != 'emscripten'" },
+    { name = "starlette", marker = "sys_platform != 'emscripten'" },
     { name = "tomlkit" },
-    { name = "uvicorn" },
-    { name = "websockets" },
+    { name = "typing-extensions", marker = "python_full_version < '3.12'" },
+    { name = "uvicorn", marker = "sys_platform != 'emscripten'" },
+    { name = "websockets", marker = "sys_platform != 'emscripten'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/15/be/4a4c7bc1bc160d825c6ae1b4154add505a466532977a5516434ac57ce050/marimo-0.23.9.tar.gz", hash = "sha256:9fb7123aa0dacb202d53bc0989cecd1892435671efc4107b8d8491986b4a6bb9", size = 38538904, upload-time = "2026-06-04T23:06:06.505Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/83/c0/b6b7101dc9d3760c51d67714d4547047cb2c29c11f26691bed6a64d8a995/marimo-0.23.16.tar.gz", hash = "sha256:378c892f0e1bc3985bc0b5b61109078e09fc767438b95234bfec9faa45858c98", size = 38789959, upload-time = "2026-07-31T20:04:47.92Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/68/f4/ab8be4e65b37deb4d1d780df4a3555e983849ac280b0ec7967801fb438c8/marimo-0.23.9-py3-none-any.whl", hash = "sha256:2cbd50ce9a995c2a256b9a05cc1844f035060e070b8a85fdb32645719817dbdf", size = 38970788, upload-time = "2026-06-04T23:06:01.628Z" },
+    { url = "https://files.pythonhosted.org/packages/69/7a/db0583b21d1f03403fc26800cb4638f59e95a33efd333f7a4d45ac348b82/marimo-0.23.16-py3-none-any.whl", hash = "sha256:e0bba0a44b395d402072c65d686fb459bd8955c9ab8b0d6135a22f729c989373", size = 39241287, upload-time = "2026-07-31T20:04:43.678Z" },
 ]
 
 [[package]]
@@ -1886,9 +1887,9 @@ resolution-markers = [
     "python_full_version < '3.12' and platform_machine == 'ARM64' and sys_platform == 'win32'",
 ]
 dependencies = [
-    { name = "certifi", marker = "platform_machine == 'ARM64' and sys_platform == 'win32'" },
-    { name = "cftime", marker = "platform_machine == 'ARM64' and sys_platform == 'win32'" },
-    { name = "numpy", marker = "platform_machine == 'ARM64' and sys_platform == 'win32'" },
+    { name = "certifi" },
+    { name = "cftime" },
+    { name = "numpy" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/0e/76/7bc801796dee752c1ce9cd6935564a6ee79d5c9d9ef9192f57b156495a35/netcdf4-1.7.3.tar.gz", hash = "sha256:83f122fc3415e92b1d4904fd6a0898468b5404c09432c34beb6b16c533884673", size = 836095, upload-time = "2025-10-13T18:38:00.76Z" }
 
@@ -1902,9 +1903,9 @@ resolution-markers = [
     "python_full_version < '3.12' and sys_platform != 'win32'",
 ]
 dependencies = [
-    { name = "certifi", marker = "platform_machine != 'ARM64' or sys_platform != 'win32'" },
-    { name = "cftime", marker = "platform_machine != 'ARM64' or sys_platform != 'win32'" },
-    { name = "numpy", marker = "platform_machine != 'ARM64' or sys_platform != 'win32'" },
+    { name = "certifi" },
+    { name = "cftime" },
+    { name = "numpy" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/34/b6/0370bb3af66a12098da06dc5843f3b349b7c83ccbdf7306e7afa6248b533/netcdf4-1.7.4.tar.gz", hash = "sha256:cdbfdc92d6f4d7192ca8506c9b3d4c1d9892969ff28d8e8e1fc97ca08bf12164", size = 838352, upload-time = "2026-01-05T02:27:38.593Z" }
 wheels = [
@@ -1932,17 +1933,17 @@ name = "neuralforecast"
 version = "3.1.9"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "coreforecast", marker = "(python_full_version >= '3.12' and platform_machine != 'ARM64') or sys_platform != 'win32'" },
-    { name = "fsspec", marker = "(python_full_version >= '3.12' and platform_machine != 'ARM64') or sys_platform != 'win32'" },
-    { name = "numpy", marker = "(python_full_version >= '3.12' and platform_machine != 'ARM64') or sys_platform != 'win32'" },
-    { name = "optuna", marker = "(python_full_version >= '3.12' and platform_machine != 'ARM64') or sys_platform != 'win32'" },
-    { name = "pandas", marker = "(python_full_version >= '3.12' and platform_machine != 'ARM64') or sys_platform != 'win32'" },
-    { name = "pytorch-lightning", marker = "(python_full_version >= '3.12' and platform_machine != 'ARM64') or sys_platform != 'win32'" },
-    { name = "ray", extra = ["train", "tune"], marker = "(python_full_version >= '3.12' and platform_machine != 'ARM64') or sys_platform != 'win32'" },
-    { name = "scipy", marker = "(python_full_version >= '3.12' and platform_machine != 'ARM64') or sys_platform != 'win32'" },
-    { name = "torch", marker = "(python_full_version >= '3.12' and platform_machine != 'ARM64') or sys_platform != 'win32'" },
-    { name = "tornado", marker = "(python_full_version >= '3.12' and platform_machine != 'ARM64') or sys_platform != 'win32'" },
-    { name = "utilsforecast", marker = "(python_full_version >= '3.12' and platform_machine != 'ARM64') or sys_platform != 'win32'" },
+    { name = "coreforecast" },
+    { name = "fsspec" },
+    { name = "numpy" },
+    { name = "optuna" },
+    { name = "pandas" },
+    { name = "pytorch-lightning" },
+    { name = "ray", extra = ["train", "tune"] },
+    { name = "scipy" },
+    { name = "torch" },
+    { name = "tornado" },
+    { name = "utilsforecast" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/99/25/729bca0195f7a434bbf315e3f50bad82f94d7936fed42b6c8f4a3ed82ee9/neuralforecast-3.1.9.tar.gz", hash = "sha256:d9620d542ba0947e0305667d54b542a080aa0447b8f41ba84dbc4260a66b7c51", size = 242668, upload-time = "2026-05-28T14:45:03.919Z" }
 wheels = [
@@ -2052,7 +2053,7 @@ name = "nvidia-cudnn-cu12"
 version = "9.1.0.70"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-cublas-cu12", marker = "(python_full_version >= '3.12' and platform_machine != 'ARM64') or sys_platform != 'win32'" },
+    { name = "nvidia-cublas-cu12" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/9f/fd/713452cd72343f682b1c7b9321e23829f00b842ceaedcda96e742ea0b0b3/nvidia_cudnn_cu12-9.1.0.70-py3-none-manylinux2014_x86_64.whl", hash = "sha256:165764f44ef8c61fcdfdfdbe769d687e06374059fbb388b6c89ecb0e28793a6f", size = 664752741, upload-time = "2024-04-22T15:24:15.253Z" },
@@ -2079,9 +2080,9 @@ name = "nvidia-cusolver-cu12"
 version = "11.4.5.107"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-cublas-cu12", marker = "(python_full_version >= '3.12' and platform_machine != 'ARM64') or sys_platform != 'win32'" },
-    { name = "nvidia-cusparse-cu12", marker = "(python_full_version >= '3.12' and platform_machine != 'ARM64') or sys_platform != 'win32'" },
-    { name = "nvidia-nvjitlink-cu12", marker = "(python_full_version >= '3.12' and platform_machine != 'ARM64') or sys_platform != 'win32'" },
+    { name = "nvidia-cublas-cu12" },
+    { name = "nvidia-cusparse-cu12" },
+    { name = "nvidia-nvjitlink-cu12" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/bc/1d/8de1e5c67099015c834315e333911273a8c6aaba78923dd1d1e25fc5f217/nvidia_cusolver_cu12-11.4.5.107-py3-none-manylinux1_x86_64.whl", hash = "sha256:8a7ec542f0412294b15072fa7dab71d31334014a69f953004ea7a118206fe0dd", size = 124161928, upload-time = "2023-04-19T15:51:25.781Z" },
@@ -2092,7 +2093,7 @@ name = "nvidia-cusparse-cu12"
 version = "12.1.0.106"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-nvjitlink-cu12", marker = "(python_full_version >= '3.12' and platform_machine != 'ARM64') or sys_platform != 'win32'" },
+    { name = "nvidia-nvjitlink-cu12" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/65/5b/cfaeebf25cd9fdec14338ccb16f6b2c4c7fa9163aefcf057d86b9cc248bb/nvidia_cusparse_cu12-12.1.0.106-py3-none-manylinux1_x86_64.whl", hash = "sha256:f3b50f42cf363f86ab21f720998517a659a48131e8d538dc02f8768237bd884c", size = 195958278, upload-time = "2023-04-19T15:51:49.939Z" },
@@ -2288,7 +2289,7 @@ name = "pexpect"
 version = "4.9.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "ptyprocess", marker = "(python_full_version >= '3.12' and platform_machine != 'ARM64') or sys_platform != 'win32'" },
+    { name = "ptyprocess" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/42/92/cc564bf6381ff43ce1f4d06852fc19a2f11d180f23dc32d9588bee2f149d/pexpect-4.9.0.tar.gz", hash = "sha256:ee7d41123f3c9911050ea2c2dac107568dc43b2d3b0c7557a33212c398ead30f", size = 166450, upload-time = "2023-11-25T09:07:26.339Z" }
 wheels = [
@@ -2612,15 +2613,15 @@ wheels = [
 
 [[package]]
 name = "pymdown-extensions"
-version = "10.21.3"
+version = "11.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "markdown" },
     { name = "pyyaml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/9e/26/d1015444da4d952a1ca487a236b522eb979766f0295a0bd0c5fc089989a9/pymdown_extensions-10.21.3.tar.gz", hash = "sha256:72cfcf55f07aea0d4af2c4f11dd4e52466ddfb1bb819673146398e0bd3a77354", size = 854140, upload-time = "2026-05-13T12:57:32.267Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/47/67/f1e79672a5f91985577c7984c9709ca110e4fd37fe7fd167b60422e6ccc2/pymdown_extensions-11.0.tar.gz", hash = "sha256:8269cef0247f9e2d0a62fcea10860aba05c1cbab5470fd4b63230b96434dc589", size = 857049, upload-time = "2026-06-23T02:27:45.146Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/7e/85/545a951eecc270fcd688288c600017e2050a1aacb56c711d208586d3e470/pymdown_extensions-10.21.3-py3-none-any.whl", hash = "sha256:d7a5d08014fc571e80ca21dd6f854e31f94c489800350564d55d15b3c41e76b6", size = 269002, upload-time = "2026-05-13T12:57:30.296Z" },
+    { url = "https://files.pythonhosted.org/packages/af/b6/1ae53367e28b9cffa3be7574e13fbe4589694272fd47710fbdbafd3d63c6/pymdown_extensions-11.0-py3-none-any.whl", hash = "sha256:fbc4acb641814fa9d17521bbd21a5240ef739a662f11c06330c4b78c93e954d6", size = 269415, upload-time = "2026-06-23T02:27:43.826Z" },
 ]
 
 [[package]]
@@ -2800,14 +2801,14 @@ name = "ray"
 version = "2.55.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "click", marker = "(python_full_version >= '3.12' and platform_machine != 'ARM64') or sys_platform != 'win32'" },
-    { name = "filelock", marker = "(python_full_version >= '3.12' and platform_machine != 'ARM64') or sys_platform != 'win32'" },
-    { name = "jsonschema", marker = "(python_full_version >= '3.12' and platform_machine != 'ARM64') or sys_platform != 'win32'" },
-    { name = "msgpack", marker = "(python_full_version >= '3.12' and platform_machine != 'ARM64') or sys_platform != 'win32'" },
-    { name = "packaging", marker = "(python_full_version >= '3.12' and platform_machine != 'ARM64') or sys_platform != 'win32'" },
-    { name = "protobuf", marker = "(python_full_version >= '3.12' and platform_machine != 'ARM64') or sys_platform != 'win32'" },
-    { name = "pyyaml", marker = "(python_full_version >= '3.12' and platform_machine != 'ARM64') or sys_platform != 'win32'" },
-    { name = "requests", marker = "(python_full_version >= '3.12' and platform_machine != 'ARM64') or sys_platform != 'win32'" },
+    { name = "click" },
+    { name = "filelock" },
+    { name = "jsonschema" },
+    { name = "msgpack" },
+    { name = "packaging" },
+    { name = "protobuf" },
+    { name = "pyyaml" },
+    { name = "requests" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/8f/a3/d6db3a428e4ea17cc72e79f747cfe11e90e63e36e1705bb8324e45f334b7/ray-2.55.1-cp311-cp311-manylinux2014_aarch64.whl", hash = "sha256:0ea2f670a7725833ad2333a8c46ab69865ad06c8e5de9f65695e0f8f35331cec", size = 72879783, upload-time = "2026-04-22T20:09:40.986Z" },
@@ -2818,20 +2819,20 @@ wheels = [
 
 [package.optional-dependencies]
 train = [
-    { name = "fsspec", marker = "(python_full_version >= '3.12' and platform_machine != 'ARM64') or sys_platform != 'win32'" },
-    { name = "pandas", marker = "(python_full_version >= '3.12' and platform_machine != 'ARM64') or sys_platform != 'win32'" },
-    { name = "pyarrow", marker = "(python_full_version >= '3.12' and platform_machine != 'ARM64') or sys_platform != 'win32'" },
-    { name = "pydantic", marker = "(python_full_version >= '3.12' and platform_machine != 'ARM64') or sys_platform != 'win32'" },
-    { name = "requests", marker = "(python_full_version >= '3.12' and platform_machine != 'ARM64') or sys_platform != 'win32'" },
-    { name = "tensorboardx", marker = "(python_full_version >= '3.12' and platform_machine != 'ARM64') or sys_platform != 'win32'" },
+    { name = "fsspec" },
+    { name = "pandas" },
+    { name = "pyarrow" },
+    { name = "pydantic" },
+    { name = "requests" },
+    { name = "tensorboardx" },
 ]
 tune = [
-    { name = "fsspec", marker = "(python_full_version >= '3.12' and platform_machine != 'ARM64') or sys_platform != 'win32'" },
-    { name = "pandas", marker = "(python_full_version >= '3.12' and platform_machine != 'ARM64') or sys_platform != 'win32'" },
-    { name = "pyarrow", marker = "(python_full_version >= '3.12' and platform_machine != 'ARM64') or sys_platform != 'win32'" },
-    { name = "pydantic", marker = "(python_full_version >= '3.12' and platform_machine != 'ARM64') or sys_platform != 'win32'" },
-    { name = "requests", marker = "(python_full_version >= '3.12' and platform_machine != 'ARM64') or sys_platform != 'win32'" },
-    { name = "tensorboardx", marker = "(python_full_version >= '3.12' and platform_machine != 'ARM64') or sys_platform != 'win32'" },
+    { name = "fsspec" },
+    { name = "pandas" },
+    { name = "pyarrow" },
+    { name = "pydantic" },
+    { name = "requests" },
+    { name = "tensorboardx" },
 ]
 
 [[package]]
@@ -3160,17 +3161,17 @@ resolution-markers = [
     "python_full_version < '3.12' and platform_machine != 'ARM64' and sys_platform == 'win32'",
 ]
 dependencies = [
-    { name = "cloudpickle", marker = "python_full_version < '3.12' and sys_platform == 'win32'" },
-    { name = "coreforecast", marker = "python_full_version < '3.12' and sys_platform == 'win32'" },
-    { name = "fugue", marker = "python_full_version < '3.12' and sys_platform == 'win32'" },
-    { name = "numba", marker = "python_full_version < '3.12' and sys_platform == 'win32'" },
-    { name = "numpy", marker = "python_full_version < '3.12' and sys_platform == 'win32'" },
-    { name = "pandas", marker = "python_full_version < '3.12' and sys_platform == 'win32'" },
-    { name = "scipy", marker = "python_full_version < '3.12' and sys_platform == 'win32'" },
-    { name = "statsmodels", marker = "python_full_version < '3.12' and sys_platform == 'win32'" },
-    { name = "threadpoolctl", marker = "python_full_version < '3.12' and sys_platform == 'win32'" },
-    { name = "tqdm", marker = "python_full_version < '3.12' and sys_platform == 'win32'" },
-    { name = "utilsforecast", marker = "python_full_version < '3.12' and sys_platform == 'win32'" },
+    { name = "cloudpickle" },
+    { name = "coreforecast" },
+    { name = "fugue" },
+    { name = "numba" },
+    { name = "numpy" },
+    { name = "pandas" },
+    { name = "scipy" },
+    { name = "statsmodels" },
+    { name = "threadpoolctl" },
+    { name = "tqdm" },
+    { name = "utilsforecast" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/d3/57/af316e1f44f48d823ecbdf66ad7ead09bfc59e58bbbe8b8640533f94fd8c/statsforecast-2.0.2.tar.gz", hash = "sha256:fd790fd4fe98f6e5571ee9f3a3d77bdffa7d57702b68a7657675be3864b77d46", size = 2880086, upload-time = "2025-07-05T11:02:45.313Z" }
 wheels = [
@@ -3188,17 +3189,17 @@ resolution-markers = [
     "python_full_version < '3.12' and sys_platform != 'win32'",
 ]
 dependencies = [
-    { name = "cloudpickle", marker = "python_full_version >= '3.12' or sys_platform != 'win32'" },
-    { name = "coreforecast", marker = "python_full_version >= '3.12' or sys_platform != 'win32'" },
-    { name = "fugue", marker = "python_full_version >= '3.12' or sys_platform != 'win32'" },
-    { name = "numba", marker = "python_full_version >= '3.12' or sys_platform != 'win32'" },
-    { name = "numpy", marker = "python_full_version >= '3.12' or sys_platform != 'win32'" },
-    { name = "pandas", marker = "python_full_version >= '3.12' or sys_platform != 'win32'" },
-    { name = "scipy", marker = "python_full_version >= '3.12' or sys_platform != 'win32'" },
-    { name = "statsmodels", marker = "python_full_version >= '3.12' or sys_platform != 'win32'" },
-    { name = "threadpoolctl", marker = "python_full_version >= '3.12' or sys_platform != 'win32'" },
-    { name = "tqdm", marker = "python_full_version >= '3.12' or sys_platform != 'win32'" },
-    { name = "utilsforecast", marker = "python_full_version >= '3.12' or sys_platform != 'win32'" },
+    { name = "cloudpickle" },
+    { name = "coreforecast" },
+    { name = "fugue" },
+    { name = "numba" },
+    { name = "numpy" },
+    { name = "pandas" },
+    { name = "scipy" },
+    { name = "statsmodels" },
+    { name = "threadpoolctl" },
+    { name = "tqdm" },
+    { name = "utilsforecast" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/34/93/20f7d735fad49510cad3e4e8ab540a2d62e7c268bc14c89d75b969b1c841/statsforecast-2.0.3.tar.gz", hash = "sha256:0b548adf385e2a29cd88441929ad0e7caf2d0adc531a1603f95e796664316ab9", size = 2871276, upload-time = "2025-10-29T17:55:43.601Z" }
 wheels = [
@@ -3331,9 +3332,9 @@ name = "tensorboardx"
 version = "2.6.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "numpy", marker = "(python_full_version >= '3.12' and platform_machine != 'ARM64') or sys_platform != 'win32'" },
-    { name = "packaging", marker = "(python_full_version >= '3.12' and platform_machine != 'ARM64') or sys_platform != 'win32'" },
-    { name = "protobuf", marker = "(python_full_version >= '3.12' and platform_machine != 'ARM64') or sys_platform != 'win32'" },
+    { name = "numpy" },
+    { name = "packaging" },
+    { name = "protobuf" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/48/a9/fc520ea91ab1f3ba51cbf3fe24f2b6364ed3b49046969e0868d46d6da372/tensorboardx-2.6.5.tar.gz", hash = "sha256:ca176db3997ee8c07d2eb77381225956a3fd1c10c91beafab1f17069adc47017", size = 4770195, upload-time = "2026-04-03T15:40:23.803Z" }
 wheels = [
@@ -3578,7 +3579,7 @@ name = "triton"
 version = "3.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "filelock", marker = "(python_full_version >= '3.12' and platform_machine != 'ARM64') or sys_platform != 'win32'" },
+    { name = "filelock" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/33/3e/a2f59384587eff6aeb7d37b6780de7fedd2214935e27520430ca9f5b7975/triton-3.0.0-1-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:5ce8520437c602fb633f1324cc3871c47bee3b67acf9756c1a66309b60e3216c", size = 209438883, upload-time = "2024-07-19T20:56:52.275Z" },
