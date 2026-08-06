@@ -87,7 +87,7 @@ class Case(BaseModel):
     # Domain-expert judgment, not derivable from measured skill: which exogenous columns
     # are necessary for a meaningful forecast (e.g. rain for a flood case). Everything
     # else in `exogenous`/`exogenous_known_future` is implicitly optional — see
-    # `optional_exogenous` below and RESEARCH_LOG.md 2026-07-02.
+    # `optional_exogenous` below and research_log/details.md 2026-07-02.
     necessary_exogenous: list[str] = Field(default_factory=list)
     static_attrs: list[str] = Field(default_factory=list)
     # Domain-expert judgment, like `necessary_exogenous`: which domain-restricted metrics
