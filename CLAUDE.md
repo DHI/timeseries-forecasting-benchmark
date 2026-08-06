@@ -3,11 +3,11 @@
 ## Research log
 
 Maintain `research_log/details.md` as a running record of this project's testing and
-decision-making process, `research_log/index.md` as a title-only index of every entry in it, and
-`research_log/commits.md` linking each entry to the commit(s) that implemented it. This is a
-research project and the log is meant to be git-tracked and shared with collaborators via GitHub,
-so write entries for that audience (self-contained, no assumed context from the conversation) —
-but keep them skimmable, not exhaustive.
+decision-making process, and `research_log/index.md` as a title-only index of every entry in it.
+This is a research project and the log is meant to be git-tracked and shared with collaborators
+via GitHub, so write entries for that audience (self-contained, no assumed context from the
+conversation) — but keep them skimmable, not exhaustive. See `research_log/schema.md` for the
+exact file format (id assignment, YAML fields, index grouping).
 
 Append a new dated entry:
 - whenever the user explicitly asks (e.g. "add summary notes", "log this")
@@ -26,12 +26,10 @@ requires a reader to act (e.g. "re-run X" or "old numbers are now stale"). Skip:
 If several small entries in one day are really steps toward one evolving decision, combine them
 into a single entry rather than logging each step separately.
 
-Create `research_log/details.md`, `research_log/index.md`, and `research_log/commits.md` if they
-don't exist yet. A new entry goes at the top of all three, under each one's "newest first" marker:
-the full entry in `details.md`; just its `YYYY-MM-DD — Title` heading, as a one-line bullet, in
-`index.md`; and the same heading followed by a short-SHA-plus-subject bullet list of the commit(s)
-that did the work, oldest first, in `commits.md` — this is usually just whatever was committed in
-the same session, so no reconstruction is needed.
+A new entry gets `id = max(existing ids) + 1` and goes at the top of both files, per
+`research_log/schema.md`: the full YAML document (including its own `commits` list — usually just
+whatever was committed in the same session, no reconstruction needed) in `details.md`, and the
+`- id — Title` bullet under today's date in `index.md`.
 
 When adding a new entry, also add a matching node (and any relevant edges) to the embedded data
 in `research_log/resources/research_graph.html`, the interactive graph view of this log.
