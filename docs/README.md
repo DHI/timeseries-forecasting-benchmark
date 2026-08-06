@@ -3,7 +3,7 @@
 | Document | Purpose |
 |---|---|
 | [`RESULTS.md`](RESULTS.md) | Headline cross-case findings: the cases × methods skill matrix and analysis |
-| [`research_graph.html`](research_graph.html) | Interactive node-link graph of the decisions in [`RESEARCH_LOG.md`](../RESEARCH_LOG.md) — open directly in a browser |
+| [`research_graph.html`](../research_log/resources/research_graph.html) | Interactive node-link graph of the decisions in [`research_log/details.md`](../research_log/details.md) — open directly in a browser |
 | [`cases/`](cases/) | One doc per case — domain context, drivers, exogenous, why this station/sensor, operational use |
 | [`reports/`](reports/) | Auto-generated per-case reports (data summary, scores, example forecasts) — `scripts/case_report.py` |
 | [`SCOPING.md`](SCOPING.md) | *Historical* — the original scoping-review request to Rocco (see [`review_responses_pr2.md`](review_responses_pr2.md)) |
