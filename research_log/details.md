@@ -4,7 +4,8 @@ A running record of the testing and decision-making behind this benchmark — wh
 what was decided, and why. Intended to be readable by collaborators without needing to dig
 through commit history or notebooks.
 
-Entries are in reverse-chronological order (newest first).
+Entries are in reverse-chronological order (newest first). For a title-only scan of every entry,
+see `index.md`.
 
 <!-- Add new entries below this line, newest first. -->
 
