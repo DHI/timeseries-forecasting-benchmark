@@ -17,6 +17,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from tsforecastbench.bench.eval.budget import TRAIN_POINT_CEILING
 from tsforecastbench.bench.methods.base import Forecaster
 from tsforecastbench.bench.methods.scorecard import (
     Capabilities,
@@ -96,16 +97,18 @@ def _fit_len(vals: np.ndarray, n: int, fill: float) -> np.ndarray:
 class _WindowedMLBase(Forecaster):
     """Shared lag-feature pipeline; subclasses provide the sklearn regressor.
 
-    `max_train_steps` caps the fit to the most recent N points. None = no cap. Useful
-    for heavy methods (MLP) on long high-frequency series; truncation does not move the
-    forecast origin so test alignment holds.
+    `max_train_steps` bounds the fit to the most recent N points. It defaults to
+    `eval.budget`'s ceiling, which is a guard against a future oversized case rather than a
+    training budget, and does not bind on any case here — see that module on why the old
+    per-method caps were removed (issue #95). Truncation does not move the forecast origin,
+    so test alignment holds wherever it does bind.
     """
 
     name = "WindowedML"
     family = "ml"
     is_global = True
     pools_segments = True
-    max_train_steps: int | None = None
+    max_train_steps: int = TRAIN_POINT_CEILING
     use_exogenous: bool = False
     direct_horizon: bool = False
     compute_profile = (
@@ -149,8 +152,7 @@ class _WindowedMLBase(Forecaster):
         # mlforecast treats them as separate series, so no lag feature ever spans a gap.
         # The tail segment (latest ds) is the one whose forecast we return at predict.
         self._target_uid = df["unique_id"].iloc[-1]
-        if self.max_train_steps:
-            df = df.groupby("unique_id", sort=False).tail(self.max_train_steps)
+        df = df.groupby("unique_id", sort=False).tail(self.max_train_steps)
         df["ds"] = _naive_ds(df["ds"]).to_numpy()
         for c in self._exo:
             df[c] = pd.to_numeric(df[c], errors="coerce")
@@ -367,6 +369,10 @@ class MLPForecaster(_WindowedMLBase):
     """Multi-layer perceptron (scikit-learn MLPRegressor) over lag and calendar features."""
 
     name = "MLP"
+    # The one surviving per-method cap, and a temporary one: MLP costs ~12s per horizon step
+    # per fit, so 609s for 2,000 points on a 48-step horizon (issue #97). Its cost is set by
+    # the horizon rather than by history length, so this cap does not actually contain it —
+    # it stays only until #97 brings the per-step cost down, and is removed with that fix.
     max_train_steps = 20000
     # Trains one model per horizon step from the origin's lag features instead of one
     # recursive model whose own predictions feed back in as later lag inputs — an
@@ -405,9 +411,9 @@ class MLPForecaster(_WindowedMLBase):
     # No override needed: an MLP's linear output layer can extrapolate past the training
     # range like the base's trend=True already claims, now that nothing clips it back.
     # Several interacting knobs (layer sizes, iterations, early stopping, feature
-    # scaling), and the slowest of the four to fit — direct_horizon means training H
-    # independent models instead of one, and it's capped to the most recent 20,000
-    # points for the same reason.
+    # scaling), and by a wide margin the slowest fit in the benchmark — direct_horizon
+    # means training H independent models instead of one, at ~12s each regardless of
+    # history length, so a 48-step horizon costs ~609s on 2,000 points (issue #97).
     scorecard = Scorecard(
         history_requirements=Level.HIGH,
         interpretability=Level.LOW,
