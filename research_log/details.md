@@ -645,7 +645,7 @@ date: "2026-07-19"
 title: "Interactive decision graph for the research log"
 description: |
   This log had grown to enough entries that cross-references only existing as prose made related
-  decisions hard to trace without reading the whole file. Added `docs/research_graph.html`, a
+  decisions hard to trace without reading the whole file. Added `research_log/resources/research_graph.html`, a
   self-contained D3 force-directed graph — one node per log entry, hover for a summary, click for
   full detail plus a list of connections, drag to pin nodes, pan/zoom. Node and edge data (relation
   types: supersedes/fixes-bug-in/depends-on/relates-to) were hand-extracted from the log's own

@@ -48,7 +48,7 @@ first. Each document has these fields:
 | `date` | quoted string | yes | `"YYYY-MM-DD"`, or `"YYYY-MM-DD to YYYY-MM-DD"` for work spanning several days. Quoted so no YAML loader coerces it to a date type. |
 | `title` | quoted string | yes | One line. Matches the entry's heading text in `index.md`. |
 | `description` | literal block scalar (`\|`) | yes | The entry body: self-contained prose for a GitHub audience, 3–6 sentences per `CLAUDE.md`'s logging guidance. Markdown formatting (`` ` ``, `**bold**`) is fine — it's rendered wherever this gets displayed. |
-| `commits` | list of one-key mappings | yes | `- sha: "subject"`, oldest commit first — the commit(s) that did the work this entry describes. Empty list (`commits: []`) only if the entry is a discussion/decision with no corresponding commit. |
+| `commits` | list of one-key mappings | yes | `- <sha>: "subject"` (the key is the commit SHA), oldest commit first — the commit(s) that did the work this entry describes. Empty list (`commits: []`) only if the entry is a discussion/decision with no corresponding commit. |
 | `commits_note` | quoted string | no | Only when the commit list is a best-effort reconstruction rather than commits that name the entry directly (e.g. work backfilled from docs/history after the fact) — value `"approximate — reconstructed after the fact"`. |
 
 Quoting: `title` and every commit subject are double-quoted, with internal `"` escaped as `\"`

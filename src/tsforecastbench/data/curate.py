@@ -1,6 +1,6 @@
 """Gap policy: turn a raw, gappy series into a benchmark-ready one.
 
-Two decisions, applied uniformly to every case (see research_log/details.md):
+Two decisions, applied uniformly to every case (see research_log/details.md, id 15):
 
 1. **Per-case gap cap.** A gap is small enough to interpolate only if its observed
    endpoints still carry information about the missing interior. That is exactly what
