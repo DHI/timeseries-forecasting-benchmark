@@ -95,6 +95,12 @@ class Forecaster(ABC):
     capabilities: Capabilities
     scorecard: Scorecard
     forecast_strategy: ForecastStrategy
+    # Gradient steps the last fit actually took, for the methods that train by gradient
+    # descent and stop on convergence rather than at a fixed count. The eval loop reads it
+    # into the results so a cell's training effort is visible in the data instead of only in
+    # the code. Stays None for every method that does not train this way -- that is an honest
+    # "not applicable", not a missing measurement.
+    last_fit_steps: int | None = None
 
     @abstractmethod
     def fit(self, case: Case, train: pd.DataFrame) -> None:

@@ -200,6 +200,10 @@ def run_case_rolling(
             a, p, ref_p, ref_m = [], [], [], []  # pooled actual, pred, persistence, mean
             method_snaps: list[pd.DataFrame] = []
             n_ok = 0
+            # Rows handed to the most recent fit: one frame for a global method, the
+            # origin's growing history for a local one, so this is the last origin's.
+            train_points: int | None = None
+            method.last_fit_steps = None
             try:
                 # A global method keeps a trained model apart from its input, so it is fit
                 # once, on data strictly before the test period — train+val locally, or the
@@ -212,6 +216,7 @@ def run_case_rolling(
                     fit_frame = (
                         pd.concat([*segs], ignore_index=True) if used_extended else train_val
                     )
+                    train_points = len(fit_frame)
                     t_fit0 = time.perf_counter()
                     method.fit(case, fit_frame)
                     fit_times.append(time.perf_counter() - t_fit0)
@@ -225,6 +230,7 @@ def run_case_rolling(
                         history = local_hist
                     fexog = full_fit.iloc[o : o + H][["ds", *exo_present]] if exo_present else None
                     if not method.is_global:
+                        train_points = len(history)
                         t_fit0 = time.perf_counter()
                         method.fit(case, history)
                         fit_times.append(time.perf_counter() - t_fit0)
@@ -311,6 +317,14 @@ def run_case_rolling(
                         else 0.0,
                         "status": status,
                         "n_origins": n_ok,
+                        # What this fit was actually given and what it spent. Training
+                        # budgets used to be per-method constants that differed by two
+                        # orders of magnitude (issue #95); recording them per cell keeps
+                        # any future divergence visible in the data rather than only in
+                        # the code. `train_steps` is null for methods that do not train
+                        # by gradient descent.
+                        "train_points": train_points,
+                        "train_steps": method.last_fit_steps,
                     }
                 )
             tag = " [ext]" if used_extended else ""

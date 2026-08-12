@@ -13,6 +13,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from tsforecastbench.bench.eval.budget import MAX_TRAIN_WINDOWS
 from tsforecastbench.bench.methods.base import Forecaster, lookback_for, segment_arrays
 from tsforecastbench.bench.methods.scorecard import (
     Capabilities,
@@ -41,7 +42,7 @@ class DLinearForecaster(Forecaster):
     family = "dl"
     is_global = True
     pools_segments = True
-    max_samples: int = 8000
+    max_samples: int = MAX_TRAIN_WINDOWS
     library = "scikit-learn (Ridge) — no deep-learning framework"
     compute_profile = (
         "CPU only, fast; both linear maps collapse into a single closed-form ridge "
@@ -102,7 +103,9 @@ class DLinearForecaster(Forecaster):
         if total <= 10:  # too little data: fall back to persistence at predict time
             self._model = None
             return
-        # one shared stride across all segments so total windows stay <= max_samples
+        # One shared stride across all segments so total windows stay <= max_samples. No
+        # segment is truncated (issue #95): striding spans the whole record at lower
+        # resolution rather than keeping only its tail.
         stride = max(1, total // self.max_samples)
         Xs, Ys = [], []
         for y, n in zip(segs, counts, strict=True):
