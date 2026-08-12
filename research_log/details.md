@@ -1,4 +1,32 @@
 ---
+id: 90
+date: "2026-08-12"
+title: "Removed the per-method training caps outright rather than equalising them"
+description: |
+  Measured how fit cost grows with training-history length for every method whose cost depends
+  on it (`scripts/calibrate_train_caps.py`; curves in `docs/results/train_cap_calibration.csv`),
+  to decide how to fix the unequal training budgets of entry 89. A shared cap turned out to be
+  unnecessary: six methods read the entire 182,304-point `surge_cuxhaven` record in under 8
+  seconds each, and the four expensive classical ones reach it in an extrapolated 7 min
+  (AutoARIMA) to 47-66 min (Theta) per fit — affordable, since a fit happens once per case, not
+  once per origin. So the caps were removed rather than equalised, leaving one ceiling in the
+  new `bench/eval/budget.py` set far above any current record: a guard against a future
+  oversized case, not a budget. An equal-fit-compute rule was considered first and rejected,
+  because fixing the time budget would have pinned `fit_seconds` at that budget for every
+  expensive method and destroyed the cost measurement the scorecards are meant to rest on.
+  The deep-learning methods now train to convergence — a chronological 20% validation tail,
+  patience of 5 checks, a 2,000-step ceiling as a safety net — instead of the fixed 500/600
+  gradient steps that made a large case see each training window ~12x less often than a small
+  one; every result row now records `train_points` and `train_steps`. MLP is the one exception,
+  keeping its 20,000-point cap until #97 brings down its per-horizon-step cost, and every
+  number in the current pilot is stale until the re-run.
+commits:
+  - 924f395: "Create scripts for calibrating training caps"
+  - fb8f263: "Add measured fit-cost curves for the training-cap decision"
+  - caa7e04: "Remove the classical and ML training-history caps"
+  - 43210c9: "Train the DL methods to convergence instead of a fixed step count"
+  - df0c40f: "Update the cap-calibration script for the post-#95 world"
+---
 id: 89
 date: "2026-08-12"
 title: "Auditing the method cards surfaced a training-budget problem that blocks the card fixes"
@@ -25,7 +53,8 @@ description: |
   and a "scaling with history" card field was rejected — it discards the cost *level* an engineer
   asks for first, and for the 13 capped methods its slope is zero by construction.
 commits: []
----id: 88
+---
+id: 88
 date: "2026-07-30"
 title: "Fixed MLP's divergence at the source, and added a Forecast strategy card to every method"
 description: |

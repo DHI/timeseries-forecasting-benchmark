@@ -342,6 +342,22 @@
 {
   "nodes": [
     {
+      "id": "2026-08-12-training-caps-removed",
+      "date": "2026-08-12",
+      "title": "Removed the per-method training caps outright rather than equalising them",
+      "category": "methodology",
+      "summary": "Measured fit cost against training-history length for every method whose cost depends on it, to fix the unequal training budgets of the card audit. A shared cap proved unnecessary -- six methods read the whole 182,304-point record in under 8 seconds and the expensive classical ones reach it in 7-66 min per fit -- so the caps were removed rather than equalised, and the DL methods now train to convergence instead of a fixed step count.",
+      "detail": "`scripts/calibrate_train_caps.py` walks each method up a training-size ladder, timing one fit per rung and dropping the method once it crosses a budget, with a projection guard so no single measurement disappears into a multi-hour fit. The curves (`docs/results/train_cap_calibration.csv`) showed the fix did not need a shared cap at all: AutoETS (1.9s), LinearLags (0.5s), LightGBM (1.3s), CatBoost (2.6s), DLinear (0.4s) and MSTL-ETS (7.4s) all read the entire 182,304-point `surge_cuxhaven` record in under 8 seconds, and extrapolating the four expensive classical methods to full history gives ~7 min (AutoARIMA), ~10 (MSTL-ARIMA), 6-12 (TBATS) and 47-66 (Theta) per fit. Since a fit happens once per case rather than once per origin, that is affordable, so the per-method caps were deleted and `bench/eval/budget.py` keeps a single ceiling far above any current record -- a guard against a future oversized case, not a comparability device.\n\nAn equal-fit-compute rule (every method gets the same fit-seconds budget, history follows from throughput) was considered first and rejected: fixing the time would have pinned `fit_seconds` at the budget for every expensive method, destroying the very measurement the scorecard's cost fields are meant to rest on. Fixing data and measuring time also yields strictly more information, since throughput falls out for free when the history is equal.\n\nThe deep-learning methods changed on the other axis. A fixed 500 (nf_models) / 600 (torchdl) gradient steps meant a large case saw each training window roughly 12x less often than a small one; training now stops when held-out loss stops improving, using a chronological 20% validation tail, patience of 5 checks 50 steps apart, and a 2,000-step ceiling as a safety net. On `discharge_lowland_denmark` N-HiTS stops at 350 steps and PatchTST at 300. Window sub-sampling -- a separate knob that strides the whole span rather than truncating it -- is unified at 15,000 windows, replacing 6,000 in torchdl and 8,000 in DLinear. Every result row now carries `train_points` and `train_steps` so a cell's budget is visible in the data.\n\nMLP is the one method still capped: its cost is set by the horizon rather than by history (one model per horizon step, ~12s each), so it cannot be uncapped until #97 lands. A side measurement while chasing a test-suite slowdown found MLP's fit is also ~1.9x inflated by BLAS thread oversubscription on a 12-core host, while the classical methods and LightGBM are thread-insensitive -- which makes `fit_seconds` host-dependent for the BLAS-bound methods specifically. Every number in the current pilot is stale until the re-run.",
+      "tags": [
+        "training-budget",
+        "benchmark-integrity",
+        "classical",
+        "deep-learning",
+        "early-stopping",
+        "pilot-rerun"
+      ]
+    },
+    {
       "id": "2026-08-12-training-budget-blocks-card-fixes",
       "date": "2026-08-12",
       "title": "Auditing the method cards surfaced a training-budget problem that blocks the card fixes",
@@ -1529,6 +1545,16 @@
     }
   ],
   "edges": [
+    {
+      "source": "2026-08-12-training-caps-removed",
+      "target": "2026-08-12-training-budget-blocks-card-fixes",
+      "type": "follows-from"
+    },
+    {
+      "source": "2026-08-12-training-caps-removed",
+      "target": "2026-07-30-mlp-direct-horizon-forecast-strategy",
+      "type": "relates-to"
+    },
     {
       "source": "2026-08-12-training-budget-blocks-card-fixes",
       "target": "2026-07-29-method-scorecards",
