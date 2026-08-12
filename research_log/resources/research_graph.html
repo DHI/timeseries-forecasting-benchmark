@@ -342,6 +342,22 @@
 {
   "nodes": [
     {
+      "id": "2026-08-12-training-budget-blocks-card-fixes",
+      "date": "2026-08-12",
+      "title": "Auditing the method cards surfaced a training-budget problem that blocks the card fixes",
+      "category": "methodology",
+      "summary": "Auditing Handles/Scorecard against the results showed the two cost fields are not anchored to the measured seconds they claim to be. Chasing why fit time doesn't track training size revealed fixed gradient-step budgets (500/600 steps) and 13 per-method history caps, which compare methods at very unequal data budgets on the same case. The pilot needs re-running before any scorecard fix is worth making.",
+      "detail": "The rubric in `scorecard.py` states that `fit_cost` and `inference_cost` are anchored to the `fit_seconds`/`predict_seconds` the eval loop records. Checking that against `docs/results/scores.parquet` found straight inversions: N-HiTS (5.8s median fit) and iTransformer (6.0s) are rated High while the slower Theta (8.6s) and EnsembleBaselinesTheta (9.3s) are rated Low, and Moirai-2.0 is rated High inference at 34ms/origin while several methods 3x slower are rated Low. A per-field monotonicity check — no method may be rated worse than one it beats on the measurement — reduces the whole registry to three root offenders, which is a far smaller and more robust fix than binning levels against numeric thresholds.\n\nChasing *why* fit time doesn't track training size turned out to matter more than the card. For the neuralforecast/torch methods, fit time is a deterministic function of `lookback + h` (correlation 1.000) and independent of the number of training samples (correlation 0.496, entirely explained by longer series happening to use longer lookbacks). `_MAX_STEPS = 500` in `nf_models.py` and `max_steps = 600` in `torchdl.py` pin the gradient-step count, so `wwtp_influent_n2o_350k` (2,594 points) and `waves_oregon` (20,735) both fit in ~140.7s, and each available training window is seen roughly 12x more often on the small cases than on the large ones. Separately, 13 methods truncate training history to a per-method cap (`max_train_steps`, `_MAX_TRAIN`, `max_samples`), so a single case compares methods at very unequal data budgets: on `surge_cuxhaven` (182,304 points) TBATS sees 1.6% of the history, AutoARIMA and MSTL-ARIMA 2.7%, Theta and MSTL-ETS 4.4%, the DL family 11-16%, and the mlforecast family 100%.\n\nDecision: fix the step budgets and sample caps and re-run the pilot before touching the scorecards — making a card consistent with a matrix whose columns were produced under unequal budgets would only lock the distortion in. Two smaller decisions are deferred to that later card work: the cost fields become explicitly qualitative (drop the anchoring claim from both `scorecard.py` and `scorecardConfig.ts`, keep the levels as declared judgement, guard them with the monotonicity test plus a rule that an ensemble may not be rated better than its worst member), and a proposed \"scales with history\" card field was rejected because it discards the cost level an engineer asks for first and its slope is zero by construction for every capped method.",
+      "tags": [
+        "method-cards",
+        "scorecard",
+        "training-budget",
+        "neuralforecast",
+        "benchmark-integrity",
+        "pilot-rerun"
+      ]
+    },
+    {
       "id": "2026-07-30-mlp-direct-horizon-forecast-strategy",
       "date": "2026-07-30",
       "title": "Fixed MLP's divergence at the source, and added a Forecast strategy card to every method",
@@ -1513,6 +1529,16 @@
     }
   ],
   "edges": [
+    {
+      "source": "2026-08-12-training-budget-blocks-card-fixes",
+      "target": "2026-07-29-method-scorecards",
+      "type": "relates-to"
+    },
+    {
+      "source": "2026-08-12-training-budget-blocks-card-fixes",
+      "target": "2026-07-30-mlp-direct-horizon-forecast-strategy",
+      "type": "relates-to"
+    },
     {
       "source": "2026-07-30-mlp-direct-horizon-forecast-strategy",
       "target": "2026-07-27-mlp-recursive-divergence-bounded",

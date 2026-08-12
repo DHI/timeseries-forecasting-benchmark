@@ -1,5 +1,31 @@
 ---
-id: 88
+id: 89
+date: "2026-08-12"
+title: "Auditing the method cards surfaced a training-budget problem that blocks the card fixes"
+description: |
+  Audited every method's `Handles` and `Scorecard` against the shipped results to check the
+  rubric's claim that `fit_cost`/`inference_cost` are "anchored to the measured
+  `fit_seconds`/`predict_seconds`" — they aren't: N-HiTS (5.8s) and iTransformer (6.0s) are rated
+  High fit while the slower Theta (8.6s) is rated Low, and Moirai-2.0 is rated High inference at
+  34ms per origin while methods 3x slower are rated Low. Chasing *why* fit time doesn't track
+  training size showed that for the neuralforecast/torch methods it is a deterministic function
+  of `lookback + h` (correlation 1.000) and completely independent of the number of training
+  samples: `_MAX_STEPS = 500` (`nf_models.py`) and `max_steps = 600` (`torchdl.py`) fix the
+  gradient-step count, so `wwtp_influent_n2o_350k` (2,594 points) and `waves_oregon` (20,735)
+  both fit in ~140.7s and each available training window is seen roughly 12x more often on the
+  small cases than the large ones. Separately, 13 methods truncate training history to a
+  per-method cap, so on one case the methods are compared at very unequal data budgets — on
+  `surge_cuxhaven` (182,304 points) TBATS sees 1.6% of the history, AutoARIMA 2.7%, the DL family
+  11-16%, and the mlforecast family 100%. **Decision: fix the step budgets and sample caps and
+  re-run the pilot before touching the scorecards**, since making a card consistent with a matrix
+  whose columns were produced under unequal budgets would only lock in the distortion. Two
+  smaller decisions came out of the same discussion and are deferred to that later card work: the
+  cost fields become explicitly qualitative (drop the anchoring claim, keep the levels as
+  declared judgement, guard them with a per-field monotonicity test rather than numeric bands),
+  and a "scaling with history" card field was rejected — it discards the cost *level* an engineer
+  asks for first, and for the 13 capped methods its slope is zero by construction.
+commits: []
+---id: 88
 date: "2026-07-30"
 title: "Fixed MLP's divergence at the source, and added a Forecast strategy card to every method"
 description: |
