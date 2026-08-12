@@ -1,11 +1,16 @@
 """Measure fit cost against training-history length, to choose the benchmark's training cap.
 
-Issue #95: every method truncates training history to its own hand-picked cap — 3,000 points
-for TBATS, 30,000 for the neuralforecast zoo, no cap at all for the mlforecast family — so a
-column of the results matrix compares methods at unequal data budgets. Replacing those
-constants with one shared cap needs a number, and the number has to come from measurement:
-the cap is bounded by what keeps a full pilot run feasible, and by which methods cannot
-reach it at all.
+Issue #95: every method used to truncate training history to its own hand-picked cap — 3,000
+points for TBATS, 30,000 for the neuralforecast zoo, no cap at all for the mlforecast family
+— so a column of the results matrix compared methods at unequal data budgets. This script
+measured what removing those caps would cost; the answer (`docs/results/train_cap_calibration.csv`)
+was that even the expensive classical methods reach the full 182,304-point record in minutes
+per fit, so the caps were removed outright rather than equalised at a shared value.
+
+It stays useful for re-checking that decision: on new hardware, after a method's internals
+change, or when a case arrives that is much larger than anything here. What it answers is
+"how fast does this method's fit cost grow with history, and where does that stop being
+affordable" — the question behind `eval.budget.TRAIN_POINT_CEILING`.
 
 What this measures: `fit` only — one call per (method, size), with no rolling origins, no
 predict and no scoring. Fit is where the cap bites. Predict is deliberately left uncapped and
@@ -19,10 +24,11 @@ That guard is what keeps TBATS from disappearing into a multi-hour fit at 100,00
 Every measurement is written to the output CSV as it completes, so an interrupted run keeps
 whatever it had already measured.
 
-Only history truncation is lifted for the measurement (`max_train_steps`, `_MAX_TRAIN`).
-Window sub-sampling (`DLinear.max_samples`, `torchdl._MAX_SAMPLES`) is left at its default:
-it strides windows across the whole history rather than discarding the front of the record,
-so it is a different knob from the cap under discussion here and would confound the curve.
+Any surviving history cap is lifted for the measurement, so the curve reflects the method
+rather than its cap. Only MLP still has one, until #97 brings its per-horizon-step cost down.
+Window sub-sampling (`DLinear.max_samples`, `torchdl` window striding) is left at its
+default: it strides windows across the whole history rather than discarding the front of the
+record, so it is a different knob and would confound the curve.
 
 The deep-learning methods are off by default. Their fit cost is set by the gradient-step
 budget rather than by how much history they are handed — the audit in research log entry 89
@@ -39,6 +45,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import contextlib
 import sys
 import time
 from pathlib import Path
@@ -105,24 +112,12 @@ def build_methods():
 def uncap(method) -> None:
     """Lift a method's own history cap so the fit sees exactly the frame we hand it.
 
-    Instance attribute for the classical forecasters, class attribute for the MSTL pair and
-    MLP; setting it on the instance shadows either. Methods with no such attribute (DLinear)
-    already train on the whole frame.
+    Since #95 the shared default is `eval.budget`'s ceiling, which never binds; this exists
+    for the methods that still carry a real cap of their own (MLP, until #97) and for
+    re-running the script against an older revision.
     """
     if hasattr(method, "max_train_steps"):
         method.max_train_steps = _NO_CAP
-
-
-def uncap_modules(with_dl: bool, with_nf: bool) -> None:
-    """Same, for the two deep-learning wrappers that hold their cap as a module constant."""
-    if with_dl:
-        from tsforecastbench.bench.methods import torchdl
-
-        torchdl._MAX_TRAIN = _NO_CAP
-    if with_nf:
-        from tsforecastbench.bench.methods import nf_models
-
-        nf_models._MAX_TRAIN = _NO_CAP
 
 
 def train_frame(case, prefer_synth: bool = False) -> pd.DataFrame:
@@ -147,6 +142,11 @@ def measure_method(case, method, train, sizes, budget, hard_limit, records, out_
     killed run keeps everything it had already paid for.
     """
     label = method.name
+    # One throwaway fit first: the first call into a library pays numba/import warmup that
+    # belongs to the process, not to the method. Left in, it inflated the smallest rung by
+    # 30x (LinearLags read 1.53s then 0.05s at the same size).
+    with contextlib.suppress(Exception):  # failing on a tiny frame is measured below anyway
+        method.fit(case, train.iloc[-min(len(train), 512) :].copy())
     for i, n in enumerate(sizes):
         frame = train.iloc[-n:].copy()
         try:
@@ -300,7 +300,6 @@ def main() -> int:
         methods += [TFTForecaster(), ITransformerForecaster(), TimesNetForecaster()]
     for m in methods:
         uncap(m)
-    uncap_modules(args.with_dl, args.with_nf)
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     print(
