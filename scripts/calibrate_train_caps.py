@@ -25,7 +25,8 @@ Every measurement is written to the output CSV as it completes, so an interrupte
 whatever it had already measured.
 
 Any surviving history cap is lifted for the measurement, so the curve reflects the method
-rather than its cap. Only MLP still has one, until #97 brings its per-horizon-step cost down.
+rather than its cap. No method carries one any more — MLP's went with #97, which traced its
+apparent per-horizon-step cost to BLAS thread oversubscription rather than to the strategy.
 Window sub-sampling (`DLinear.max_samples`, `torchdl` window striding) is left at its
 default: it strides windows across the whole history rather than discarding the front of the
 record, so it is a different knob and would confound the curve.
@@ -118,9 +119,9 @@ def build_methods():
 def uncap(method) -> None:
     """Lift a method's own history cap so the fit sees exactly the frame we hand it.
 
-    Since #95 the shared default is `eval.budget`'s ceiling, which never binds; this exists
-    for the methods that still carry a real cap of their own (MLP, until #97) and for
-    re-running the script against an older revision.
+    Since #95 the shared default is `eval.budget`'s ceiling, which never binds, and #97
+    removed the last per-method cap. This exists so the script still measures the method
+    rather than a cap when run against an older revision.
     """
     if hasattr(method, "max_train_steps"):
         method.max_train_steps = _NO_CAP

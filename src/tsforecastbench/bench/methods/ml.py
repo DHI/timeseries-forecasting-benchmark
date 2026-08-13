@@ -118,8 +118,12 @@ class _WindowedMLBase(Forecaster):
     blas_threads: int | None = None
     compute_profile = (
         "CPU only; a lag+calendar feature table is built once, then the regressor "
-        "fits on it directly — fast for the linear/tree models here, slower for the "
-        "MLP (which also cross-validates an early-stopping split)."
+        "fits on it directly — seconds for the linear/tree models here. The MLP costs "
+        "far more: it holds out an early-stopping split, and its direct multi-horizon "
+        "strategy trains one network per horizon step, so its fit scales with the "
+        "horizon as well as with the history. Its fit is pinned to a single BLAS thread, "
+        "whose matmuls are too small for multi-threading to do anything but add "
+        "synchronisation overhead."
     )
     limitations = (
         "Needs enough history to fill its lag windows (shortest lag 1, longest tied "
@@ -378,11 +382,6 @@ class MLPForecaster(_WindowedMLBase):
     """Multi-layer perceptron (scikit-learn MLPRegressor) over lag and calendar features."""
 
     name = "MLP"
-    # The one surviving per-method cap, and a temporary one: MLP costs ~12s per horizon step
-    # per fit, so 609s for 2,000 points on a 48-step horizon (issue #97). Its cost is set by
-    # the horizon rather than by history length, so this cap does not actually contain it —
-    # it stays only until #97 brings the per-step cost down, and is removed with that fix.
-    max_train_steps = 20000
     # Trains one model per horizon step from the origin's lag features instead of one
     # recursive model whose own predictions feed back in as later lag inputs — an
     # MLPRegressor's unbounded linear output layer had no guarantee against drifting
@@ -430,10 +429,12 @@ class MLPForecaster(_WindowedMLBase):
     )
     # No override needed: an MLP's linear output layer can extrapolate past the training
     # range like the base's trend=True already claims, now that nothing clips it back.
-    # Several interacting knobs (layer sizes, iterations, early stopping, feature
-    # scaling), and by a wide margin the slowest fit in the benchmark — direct_horizon
-    # means training H independent models instead of one, at ~12s each regardless of
-    # history length, so a 48-step horizon costs ~609s on 2,000 points (issue #97).
+    # Several interacting knobs (layer sizes, iterations, early stopping, feature scaling),
+    # and among the most expensive fits in the benchmark: direct_horizon trains H models
+    # instead of one, and each scales with history, so cost is the product of the two. On a
+    # 48-step horizon the measured curve runs 28.8s at 2,000 points to 153.6s at 10,000,
+    # extrapolating to roughly 45 min over the full 182,304-point record — Theta's order of
+    # magnitude, which is what #95 accepted as affordable for a once-per-case fit.
     scorecard = Scorecard(
         history_requirements=Level.HIGH,
         interpretability=Level.LOW,
