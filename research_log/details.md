@@ -1,4 +1,34 @@
 ---
+id: 91
+date: "2026-08-13"
+title: "MLP's 609s fit was BLAS thread oversubscription, not the cost of direct_horizon"
+description: |
+  Issue #97 measured MLP's fit at 608.5s for 2,000 training points on a 48-step horizon and
+  attributed it to `direct_horizon`, which trains one `MLPRegressor` per horizon step at an
+  apparent ~12s each. The real cause was thread oversubscription: a minibatch matmul here is
+  200 x ~15 features into a 64-wide layer, roughly 0.4 MFLOP, so spreading it across a dozen
+  cores costs more in synchronisation than the arithmetic it saves — `direct_horizon` merely
+  multiplied an already-inflated constant by H. One fit of identical data, seed and iteration
+  count takes 37.3s unrestricted against 0.50s on one thread, and MLP's fit now runs under a
+  one-thread BLAS limit (`surge_cuxhaven` 608.5s -> 29.8s). A shape sweep put the crossover
+  where multi-threading starts paying at roughly batch >= 2,000 *and* a 1,024-wide layer *and*
+  ~500 features simultaneously, so none of the three redesigns #97 proposed was needed. The cap
+  also stabilises the measurement — four repeats of one fit ranged 2.72s to 0.38s unrestricted
+  as the thread pool warmed, while one thread held 0.14s, which matters because `fit_cost` is
+  meant to rest on measured `fit_seconds` (entry 89). With that fixed, MLP's remeasured curve
+  (28.8s at 2,000 points, 153.6s at 10,000, roughly linear) extrapolates to ~45 min over the
+  full 182,304-point record — Theta's order of magnitude — so its 20,000-point cap was removed
+  too, finishing entry 90's cap removal. Every MLP and MLP+exo number in the pilot is stale
+  pending a re-run, and the committed `train_cap_calibration.csv` still holds MLP's pre-fix
+  rows until a full run regenerates it. Two questions came out of this and are tracked
+  separately: MLP's batch size is left at scikit-learn's `min(200, n)` default even though 32
+  scored better on held-out R2 at equal wall time (changing it changes scores), and the
+  `torchdl` methods never move a tensor off the CPU.
+commits:
+  - c565e6b: "Cap BLAS threads during the MLP fit"
+  - f342a87: "Add a --methods filter to the cap-calibration script"
+  - 4b33f4d: "Remove MLP's training cap, the last one left after #95"
+---
 id: 90
 date: "2026-08-12"
 title: "Removed the per-method training caps outright rather than equalising them"

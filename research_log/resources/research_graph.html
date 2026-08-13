@@ -342,6 +342,23 @@
 {
   "nodes": [
     {
+      "id": "2026-08-13-mlp-blas-thread-oversubscription",
+      "date": "2026-08-13",
+      "title": "MLP's 609s fit was BLAS thread oversubscription, not the cost of direct_horizon",
+      "category": "bug-fix",
+      "summary": "MLP's fit read 608.5s for 2,000 points on a 48-step horizon, blamed on direct_horizon training one MLPRegressor per step at ~12s each. The per-step cost was itself inflated 20-60x by OpenBLAS thread oversubscription -- its matmuls are ~0.4 MFLOP, too small to spread over a dozen cores. Capping the fit to one BLAS thread took surge_cuxhaven 608.5s -> 29.8s, so none of the three redesigns proposed for #97 was needed, and MLP's 20,000-point cap could go too.",
+      "detail": "Issue #97 measured MLP's fit at 608.5s for 2,000 training points on a 48-step horizon, 299.5s on a 24-step horizon and 112.7s on a 7-step one -- a cost tracking horizon-step count at roughly 12s per step, which pointed at `direct_horizon = True` training one independent `MLPRegressor` per step. That framing was half right: `direct_horizon` multiplies by H, but the per-step constant was inflated by thread oversubscription. A minibatch matmul in this pipeline is 200 x ~15 features into a 64-wide layer, roughly 0.4 MFLOP, so spreading it across a 12-core OpenBLAS pool costs more in thread synchronisation than the arithmetic it saves. scikit-learn's MLP has no parallelism of its own -- all of it comes from BLAS, and at these shapes that parallelism is strongly negative.\n\nOne fit of identical data, seed and iteration count takes 37.3s unrestricted against 0.50s on a single thread. End to end the fit runs 608.5s -> 29.8s on `surge_cuxhaven` and 298.8s -> 5.0s on `discharge_lowland_denmark`. A sweep over matmul shapes located the crossover where multi-threading starts paying: roughly batch >= 2,000 *and* a 1,024-wide layer *and* ~500 features, all three at once. This pipeline sits two to three orders of magnitude below that, and two of the knobs are not ours -- the feature count comes from the lag ladder, and scikit-learn's default batch size is capped at min(200, n). So the fit is pinned to one BLAS thread and the strategy is untouched; none of the three redesigns #97 proposed (shrink the per-step model, share one model across steps, return to recursive) was needed.\n\nThe cap also makes the number trustworthy. Four repeats of one fit in a single process ranged 2.72s, 1.95s, 0.90s, 0.38s as the thread pool warmed, while single-threaded held 0.14s every time -- and the scorecard's cost fields are meant to rest on measured `fit_seconds`. That variance also explains why the entry above recorded the inflation as only ~1.9x: a repeated in-process measurement catches a warm pool, a cold fit does not.\n\nWith the constant fixed, MLP was remeasured up the training-size ladder (`--methods MLP`, added to the calibration script for exactly this case): 28.8s at 2,000 points, 54.1s at 5,000 and 153.6s at 10,000 on a 48-step horizon -- roughly linear in history, extrapolating to about 45 min over the full 182,304-point record. That is Theta's order of magnitude, which the cap-removal decision already accepted as affordable for a once-per-case fit, so MLP's 20,000-point cap was removed as well and no method carries one now. `fit_cost` stays High: direct_horizon multiplies a history-scaled cost by the horizon-step count, which still leaves it among the most expensive fits here.\n\nA GPU is not an alternative for this method: scikit-learn has no CUDA backend and its array-API dispatch does not cover `MLPRegressor`, and even if it did, a GPU would lose on these shapes for the same reason twelve CPU threads do -- kernel launch overhead against 0.4 MFLOP of work.\n\nEvery MLP and MLP+exo number in the pilot is stale pending a re-run, and `docs/results/train_cap_calibration.csv` still holds MLP's pre-fix rows until a full run regenerates it. Two loose ends are tracked separately: batch size is left at scikit-learn's default even though 32 scored better on held-out R2 at equal wall time (changing it changes scores), and the `torchdl` methods never move a tensor off the CPU.",
+      "tags": [
+        "mlp",
+        "performance",
+        "blas-threads",
+        "training-budget",
+        "direct-horizon",
+        "pilot-rerun",
+        "bug-fix"
+      ]
+    },
+    {
       "id": "2026-08-12-training-caps-removed",
       "date": "2026-08-12",
       "title": "Removed the per-method training caps outright rather than equalising them",
@@ -1545,6 +1562,16 @@
     }
   ],
   "edges": [
+    {
+      "source": "2026-08-13-mlp-blas-thread-oversubscription",
+      "target": "2026-08-12-training-caps-removed",
+      "type": "follows-from"
+    },
+    {
+      "source": "2026-08-13-mlp-blas-thread-oversubscription",
+      "target": "2026-07-30-mlp-direct-horizon-forecast-strategy",
+      "type": "relates-to"
+    },
     {
       "source": "2026-08-12-training-caps-removed",
       "target": "2026-08-12-training-budget-blocks-card-fixes",
