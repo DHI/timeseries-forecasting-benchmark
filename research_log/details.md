@@ -15,19 +15,26 @@ description: |
   ~500 features simultaneously, so none of the three redesigns #97 proposed was needed. The cap
   also stabilises the measurement — four repeats of one fit ranged 2.72s to 0.38s unrestricted
   as the thread pool warmed, while one thread held 0.14s, which matters because `fit_cost` is
-  meant to rest on measured `fit_seconds` (entry 89). With that fixed, MLP's remeasured curve
-  (28.8s at 2,000 points, 153.6s at 10,000, roughly linear) extrapolates to ~45 min over the
-  full 182,304-point record — Theta's order of magnitude — so its 20,000-point cap was removed
-  too, finishing entry 90's cap removal. Every MLP and MLP+exo number in the pilot is stale
-  pending a re-run, and the committed `train_cap_calibration.csv` still holds MLP's pre-fix
-  rows until a full run regenerates it. Two questions came out of this and are tracked
-  separately: MLP's batch size is left at scikit-learn's `min(200, n)` default even though 32
-  scored better on held-out R2 at equal wall time (changing it changes scores), and the
-  `torchdl` methods never move a tensor off the CPU.
+  meant to rest on measured `fit_seconds` (entry 89). With that fixed, MLP was remeasured up
+  the ladder: it now reaches the full 42,073-point `sewerlevel_bellinge` record in 3.3 min, and
+  on `surge_cuxhaven`'s 48-step horizon reaches 20,000 points in 124s, extrapolating to roughly
+  20 min over that case's full 182,304 points. That is under Theta's 47-66 min, which entry 90
+  already accepted as affordable for a once-per-case fit, so MLP's 20,000-point cap was removed
+  too and no method carries one now. The whole calibration CSV was regenerated in the same
+  pass, which also cleared a second defect: the previous file predated the script's
+  throwaway-warmup fit, so each method's smallest rung was inflated by library import cost
+  (the `LinearLags` 2,000-point rung read 1.53s against 0.05s at the same size, and AutoARIMA's
+  first three rungs *decreased* with more data). Every MLP and MLP+exo number in the pilot is
+  still stale pending a re-run. Two questions came out of this and are tracked separately:
+  MLP's batch size is left at scikit-learn's `min(200, n)` default even though 32 scored better
+  on held-out R2 at equal wall time (#98, changing it changes scores), and the declared val
+  split is displayed as a split but folded into training by every method while the DL methods
+  carve their own 20% holdout (#99).
 commits:
   - c565e6b: "Cap BLAS threads during the MLP fit"
   - f342a87: "Add a --methods filter to the cap-calibration script"
   - 4b33f4d: "Remove MLP's training cap, the last one left after #95"
+  - 069244c: "Commit compute time results."
 ---
 id: 90
 date: "2026-08-12"

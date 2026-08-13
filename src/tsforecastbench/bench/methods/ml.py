@@ -430,11 +430,13 @@ class MLPForecaster(_WindowedMLBase):
     # No override needed: an MLP's linear output layer can extrapolate past the training
     # range like the base's trend=True already claims, now that nothing clips it back.
     # Several interacting knobs (layer sizes, iterations, early stopping, feature scaling),
-    # and among the most expensive fits in the benchmark: direct_horizon trains H models
-    # instead of one, and each scales with history, so cost is the product of the two. On a
-    # 48-step horizon the measured curve runs 28.8s at 2,000 points to 153.6s at 10,000,
-    # extrapolating to roughly 45 min over the full 182,304-point record — Theta's order of
-    # magnitude, which is what #95 accepted as affordable for a once-per-case fit.
+    # and among the more expensive fits in the benchmark: direct_horizon trains H models
+    # instead of one, and each scales with history, so cost is the product of the two. The
+    # measured curves are in `docs/results/train_cap_calibration.csv` — on a 24-step horizon
+    # the full 42,073-point `sewerlevel_bellinge` record costs 3.3 min, and on a 48-step one
+    # `surge_cuxhaven` reaches 20,000 points in 124s, extrapolating to roughly 20 min over
+    # its full 182,304 points. That is under Theta's 47-66 min, which #95 already accepted as
+    # affordable for a fit that happens once per case rather than once per origin.
     scorecard = Scorecard(
         history_requirements=Level.HIGH,
         interpretability=Level.LOW,
