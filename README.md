@@ -133,7 +133,9 @@ React app, deployed via GitHub Pages).
 - **Storage**: canonical long-format Parquet (`unique_id`, `ds` UTC, `y`, exogenous);
   pandas in memory. SHA-256 manifest in `data/manifest.json`.
 - **Splits**: calendar or observed-span fractions (`split_mode="fraction"`), robust to
-  series whose record doesn't cover a fixed window.
+  series whose record doesn't cover a fixed window. Parameters are estimated on train, val is
+  the early-stopping holdout for the iteratively trained deep-learning methods and is never
+  trained on, test is scored.
 - **Gaps**: explicit NaN rows; training is imputed, scoring is NaN-masked so only real
   observations count (each run reports the observed fraction of the test window).
 - **Tractability**: AutoARIMA/AutoETS are non-seasonal by default and capped at 5000

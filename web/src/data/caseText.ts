@@ -32,6 +32,8 @@ export function caseTrainingStats(caseMeta: CaseMeta, extended = false): string 
   const counts = extended ? caseMeta.split_counts_extended : caseMeta.split_counts;
   return (
     `Number of samples: train ${NUMBER_FORMAT.format(counts.train)} · ` +
-    `val ${NUMBER_FORMAT.format(counts.val)} · test ${NUMBER_FORMAT.format(counts.test)} `
+    `val ${NUMBER_FORMAT.format(counts.val)} · test ${NUMBER_FORMAT.format(counts.test)} ` +
+    '\n\nParameters are estimated on train; val is the early-stopping holdout for the ' +
+    'iteratively trained deep-learning methods and is never trained on; test is scored.'
   );
 }

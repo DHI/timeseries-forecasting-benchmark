@@ -52,11 +52,12 @@ def _(case_picker, get_case):
 
 
 @app.cell
-def _(case, mo):
+def _(case, df_curated, mo):
     exo_parts = list(case.exogenous)
     if case.exogenous_known_future:
         exo_parts += [f"{v} (kf)" for v in case.exogenous_known_future]
     exo_display = ", ".join(exo_parts) if exo_parts else "none"
+    _split_ends = case.split_bounds(df_curated)
     source_link = (
         f"[{case.source.name}]({case.source.url})" if case.source.url else case.source.name
     )
@@ -77,10 +78,12 @@ def _(case, mo):
             mo.md(
                 f"> {case.notes}  \n"
                 f"> **Source:** {source_link} · "
+                # The bounds actually used: in fraction mode `case.splits`' calendar dates
+                # are inert, so printing them described a split the run never used.
                 f"**Splits ({case.split_mode}):** "
-                f"train → {case.splits.train_end} · "
-                f"val → {case.splits.val_end} · "
-                f"test → {case.splits.test_end}"
+                f"train → {_split_ends[0].date()} · "
+                f"val → {_split_ends[1].date()} · "
+                f"test → {_split_ends[2].date()}"
             ),
         ]
     )

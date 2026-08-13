@@ -59,4 +59,10 @@ describe('caseTrainingStats', () => {
     expect(stats).toContain('train 12,264');
     expect(stats).not.toContain('Training time');
   });
+
+  it('says what each split is used for, since the counts alone imply nothing', () => {
+    const stats = caseTrainingStats(caseMeta());
+    expect(stats).toContain('estimated on train');
+    expect(stats).toContain('never trained on');
+  });
 });
