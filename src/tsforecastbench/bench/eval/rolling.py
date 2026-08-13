@@ -51,7 +51,12 @@ import numpy as np
 import pandas as pd
 
 from tsforecastbench.bench.eval.config import DEFAULT_ORIGINS
-from tsforecastbench.bench.eval.loop import _horizon_to_steps, _raw_y, _segment_extended
+from tsforecastbench.bench.eval.loop import (
+    _horizon_to_steps,
+    _raw_y,
+    _segment_extended,
+    _split_segments_at_train_end,
+)
 from tsforecastbench.bench.eval.metrics import kge, mape, nse, smape
 from tsforecastbench.bench.methods.base import Forecaster
 from tsforecastbench.data.schema import Case
@@ -119,6 +124,7 @@ def run_case_rolling(
     """
     df = case.load(prefer_synth=prefer_synth, curated=True)
     splits = case.split_frame(df)
+    train_end, _val_end, _test_end = case.split_bounds(df)
     train_val = pd.concat([splits["train"], splits["val"]], ignore_index=True)
     test = splits["test"]
     if len(test) == 0:
@@ -131,11 +137,18 @@ def run_case_rolling(
     exo_present = [c for c in exo_cols if c in full_fit.columns]
     raw_y = _raw_y(full)
 
+    val_start = len(splits["train"])
     test_start = len(train_val)
     last_origin = len(full) - H
     if last_origin <= test_start:
         raise ValueError(f"Case {case.id}: test span too short for horizon {H}")
     origins = _select_rolling_origins(test_start, last_origin, raw_y, H, n_origins)
+
+    # Parameters are estimated on the train split alone; the val split goes over separately
+    # for the iteratively trained methods to stop on (gh #99). Neither is the history a
+    # forecast conditions on -- that grows with the origin, further down.
+    local_fit_frame = full_fit.iloc[:val_start]
+    local_val_frame = full_fit.iloc[val_start:test_start]
 
     def _naive_scale(y_pre: np.ndarray) -> float:
         s = mase_season_for(case.seasonalities, len(y_pre))
@@ -203,6 +216,7 @@ def run_case_rolling(
             # Rows handed to the most recent fit: one frame for a global method, the
             # origin's growing history for a local one, so this is the last origin's.
             train_points: int | None = None
+            val_points: int | None = None
             method.last_fit_steps = None
             try:
                 # A global method keeps a trained model apart from its input, so it is fit
@@ -213,12 +227,14 @@ def run_case_rolling(
                 # one fit per case. A local (non-global) method, whose parameters are a
                 # direct function of the fitted series, refits at each origin below instead.
                 if method.is_global:
-                    fit_frame = (
-                        pd.concat([*segs], ignore_index=True) if used_extended else train_val
-                    )
+                    if used_extended:
+                        fit_frame, val_frame = _split_segments_at_train_end(segs, train_end)
+                    else:
+                        fit_frame, val_frame = local_fit_frame, local_val_frame
                     train_points = len(fit_frame)
+                    val_points = len(val_frame)
                     t_fit0 = time.perf_counter()
-                    method.fit(case, fit_frame)
+                    method.fit(case, fit_frame, val_frame)
                     fit_times.append(time.perf_counter() - t_fit0)
                 for i, o in enumerate(origins):
                     local_hist = full_fit.iloc[:o]
@@ -231,8 +247,13 @@ def run_case_rolling(
                     fexog = full_fit.iloc[o : o + H][["ds", *exo_present]] if exo_present else None
                     if not method.is_global:
                         train_points = len(history)
+                        # No holdout: for a method refit at every origin the fit IS the
+                        # forecast, there is nothing to stop early, and its estimate is a
+                        # direct function of the history up to this origin -- val included,
+                        # because that history is contiguous and cannot skip a period.
+                        val_points = 0
                         t_fit0 = time.perf_counter()
-                        method.fit(case, history)
+                        method.fit(case, history, history.iloc[:0])
                         fit_times.append(time.perf_counter() - t_fit0)
                     t_pred0 = time.perf_counter()
                     preds = method.predict(case, history, H, future_exog=fexog)
@@ -322,8 +343,10 @@ def run_case_rolling(
                         # orders of magnitude (issue #95); recording them per cell keeps
                         # any future divergence visible in the data rather than only in
                         # the code. `train_steps` is null for methods that do not train
-                        # by gradient descent.
+                        # by gradient descent. `val_points` is the early-stopping holdout
+                        # handed over, 0 for a method refit at every origin.
                         "train_points": train_points,
+                        "val_points": val_points,
                         "train_steps": method.last_fit_steps,
                     }
                 )
@@ -365,6 +388,7 @@ def run_leadtime_curve(
     full_fit = full  # curated: the target is already complete within the span
     exo_present = [c for c in exo_cols if c in full_fit.columns]
 
+    val_start = len(splits["train"])
     test_start = len(train_val)
     last_origin = len(full) - H - 1
     if last_origin <= test_start:
@@ -380,12 +404,13 @@ def run_leadtime_curve(
         signed = [[] for _ in range(H)]
         n_ok = 0
         # Same protocol as the matrix (see `run_case_rolling`): a global method is fit once,
-        # on train+val only, then evaluated across every origin by inference; a local method
-        # refits per origin below. A failed single fit makes the method unusable on this
-        # case, so it contributes no rows.
+        # on the train split, with the val split handed over for early stopping, then
+        # evaluated across every origin by inference; a local method refits per origin
+        # below. A failed single fit makes the method unusable on this case, so it
+        # contributes no rows.
         if method.is_global:
             try:
-                method.fit(case, full_fit.iloc[:test_start])
+                method.fit(case, full_fit.iloc[:val_start], full_fit.iloc[val_start:test_start])
             except Exception:
                 continue
         for o in origins:
@@ -395,7 +420,7 @@ def run_leadtime_curve(
             )
             try:
                 if not method.is_global:
-                    method.fit(case, history)
+                    method.fit(case, history, history.iloc[:0])  # no holdout: refit per origin
                 y_hat = method.predict(case, history, H, future_exog=future_exog)["y_hat"].to_numpy(
                     dtype=float
                 )

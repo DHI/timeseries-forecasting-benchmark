@@ -104,7 +104,9 @@ def _example_figure(case, methods, out_path: Path) -> str:
     )
     for m in methods:
         try:
-            m.fit(case, hist)
+            # Empty holdout: none of the illustrated methods trains iteratively, so none
+            # of them reads it (see `Forecaster.fit`).
+            m.fit(case, hist, hist.iloc[:0])
             yh = m.predict(case, hist, H, future_exog=fexog)["y_hat"].to_numpy(float)
             ax.plot(full["ds"].iloc[o : o + H], yh, lw=1.2, alpha=0.9, label=m.name)
         except Exception:
@@ -146,6 +148,7 @@ def make_report(case_id: str, with_fm: bool, origins: int) -> Path:
     df = case.load()
     y = pd.to_numeric(df["y"], errors="coerce")
     span_days = (pd.to_datetime(df["ds"]).max() - pd.to_datetime(df["ds"]).min()).days
+    _train_end, _val_end, _test_end = case.split_bounds(df)
 
     order = [
         "Persistence",
@@ -170,8 +173,10 @@ def make_report(case_id: str, with_fm: bool, origins: int) -> Path:
         f"- Source: {case.source.name}" + (f" — {case.source.url}" if case.source.url else ""),
         f"- Record span: {span_days} days, {int(y.notna().sum()):,} observed of {len(df):,} rows "
         f"({y.notna().mean():.0%})",
-        f"- Splits ({case.split_mode}): train→{case.splits.train_end}, val→{case.splits.val_end}, "
-        f"test→{case.splits.test_end}",
+        # The bounds actually used, not `case.splits`: in fraction mode those calendar dates
+        # are inert and printing them described a split the run never used.
+        f"- Splits ({case.split_mode}): train→{_train_end.date()}, val→{_val_end.date()}, "
+        f"test→{_test_end.date()}",
         f"- Exogenous: {', '.join(case.exogenous) or 'none'}"
         + (
             f" (known-future: {', '.join(case.exogenous_known_future)})"

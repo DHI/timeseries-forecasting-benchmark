@@ -45,7 +45,7 @@ class MeanBaseline(Forecaster):
         robustness_to_noise=Level.HIGH,
     )
 
-    def fit(self, case: Case, train: pd.DataFrame) -> None:
+    def fit(self, case: Case, train: pd.DataFrame, val: pd.DataFrame) -> None:
         self._mean = float(train["y"].mean())
 
     def predict(
@@ -89,7 +89,7 @@ class Persistence(Forecaster):
         robustness_to_noise=Level.LOW,
     )
 
-    def fit(self, case: Case, train: pd.DataFrame) -> None:
+    def fit(self, case: Case, train: pd.DataFrame, val: pd.DataFrame) -> None:
         pass
 
     def predict(
@@ -140,7 +140,7 @@ class SeasonalNaive(Forecaster):
     def __init__(self, season_length: int | None = None):
         self.season_length = season_length
 
-    def fit(self, case: Case, train: pd.DataFrame) -> None:
+    def fit(self, case: Case, train: pd.DataFrame, val: pd.DataFrame) -> None:
         self._s = self.season_length or dominant_period(case.seasonalities, train["y"].to_numpy())
         if self._s == 1:
             raise ValueError(
@@ -214,7 +214,7 @@ class Climatology(Forecaster):
     def _key(self, idx: pd.DatetimeIndex) -> np.ndarray:
         return position_in_cycle(self._freq, self._period, idx)
 
-    def fit(self, case: Case, train: pd.DataFrame) -> None:
+    def fit(self, case: Case, train: pd.DataFrame, val: pd.DataFrame) -> None:
         self._freq = case.freq
         self._period = dominant_period(case.seasonalities, train["y"].to_numpy())
         idx = pd.DatetimeIndex(pd.to_datetime(train["ds"]))

@@ -107,7 +107,7 @@ class _ForwardForecaster(Forecaster):
     def _make_model(self, case: Case, df: pd.DataFrame):
         raise NotImplementedError
 
-    def fit(self, case: Case, train: pd.DataFrame) -> None:
+    def fit(self, case: Case, train: pd.DataFrame, val: pd.DataFrame) -> None:
         df = _prepare_train(train, self.max_train_steps)
         self._model = self._make_model(case, df)
         self._model.fit(df["y"].to_numpy(dtype=float))
@@ -362,7 +362,7 @@ class TBATSForecaster(Forecaster):
         self.season_length = season_length
         self.max_train_steps = max_train_steps
 
-    def fit(self, case: Case, train: pd.DataFrame) -> None:
+    def fit(self, case: Case, train: pd.DataFrame, val: pd.DataFrame) -> None:
         from sklearn.preprocessing import PowerTransformer
         from statsforecast.tbats import tbats_selection
 

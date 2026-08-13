@@ -21,7 +21,7 @@ from tsforecastbench.bench.eval.budget import (
     DL_MAX_STEPS,
     DL_PATIENCE_CHECKS,
     DL_VAL_CHECK_STEPS,
-    DL_VAL_FRACTION,
+    nf_val_size,
 )
 from tsforecastbench.bench.methods.base import Forecaster, lookback_for
 from tsforecastbench.bench.methods.scorecard import (
@@ -61,7 +61,10 @@ class _NFBase(Forecaster):
     limitations = (
         "Univariate — ignores exogenous inputs. Trains a fresh model per case with "
         "no hyperparameter tuning, using the same architecture defaults regardless "
-        "of the series' scale or frequency."
+        "of the series' scale or frequency. On an extended-history fit, where the record "
+        "is a panel of gap-separated segments, neuralforecast can only hold out an "
+        "equal-length tail from every segment, so early stopping there watches a shorter "
+        "holdout than the case's full validation split."
     )
     # Shared by all three: window models that learn trend and several interacting periods
     # from the lookback. neuralforecast supports future covariates for some of these
@@ -83,7 +86,7 @@ class _NFBase(Forecaster):
         robustness_to_noise=Level.MEDIUM,
     )
 
-    def fit(self, case: Case, train: pd.DataFrame) -> None:
+    def fit(self, case: Case, train: pd.DataFrame, val: pd.DataFrame) -> None:
         import neuralforecast.models as nfm
         import pytorch_lightning as pl
         from neuralforecast import NeuralForecast
@@ -102,16 +105,38 @@ class _NFBase(Forecaster):
         df["y"] = pd.to_numeric(df["y"], errors="coerce")
 
         lookback = lookback_for(case.freq, h)
-        # Held-out tail for early stopping, sized off the target segment and clamped so that
-        # segment keeps at least one full training window. neuralforecast cuts `val_size`
-        # steps from the end of *every* series in the panel, so segments too short to give up
-        # that much are dropped rather than shrinking the validation tail for everyone —
-        # they are the shortest fragments of the record and contribute few windows anyway.
+        # Early stopping runs on the declared val split (gh #99). neuralforecast holds out
+        # the last `val_size` steps of every series in the panel, so the target series is
+        # handed its train rows plus that many val rows: the cut then lands exactly on val
+        # and the series keeps every training window it has. The other series are whole
+        # history segments of train data, and each gives up its last `val_size` steps —
+        # `nf_val_size` picks the cut that leaves the most training windows overall.
+        val_target = val[val["unique_id"] == self._target_uid]
         lens = df.groupby("unique_id", sort=False).size()
-        tail_len = int(lens[self._target_uid])
-        val_size = min(max(h, int(tail_len * DL_VAL_FRACTION)), max(0, tail_len - lookback - h))
-        usable = lens[lens >= lookback + h + val_size].index
-        df = df[df["unique_id"].isin(usable)]
+        target_train = int(lens[self._target_uid])
+        other_lens = [int(n) for uid, n in lens.items() if uid != self._target_uid]
+        val_size = nf_val_size(other_lens, target_train, lookback, h, len(val_target))
+        if val_size < len(val_target):
+            print(
+                f"  [note] {self.name}: panel validation cut is {val_size:,} of the "
+                f"{len(val_target):,}-point val split, so every one of its "
+                f"{len(other_lens) + 1} segments trains; the rest of val goes unused."
+            )
+        keep = [
+            uid
+            for uid, n in lens.items()
+            if uid == self._target_uid or n >= lookback + h + val_size
+        ]
+        df = df[df["unique_id"].isin(keep)]
+        val_head = val_target.iloc[:val_size][["unique_id", "ds", "y"]].copy()
+        val_head["ds"] = _naive_ds(val_head["ds"]).to_numpy()
+        val_head["y"] = pd.to_numeric(val_head["y"], errors="coerce")
+        # Sorted explicitly rather than relying on the frame arriving in order: the val rows
+        # are appended after every segment, and `val_size` counts back from each series' last
+        # row, so a panel left in append order would put another segment's rows there.
+        df = pd.concat([df, val_head], ignore_index=True).sort_values(
+            ["unique_id", "ds"], kind="stable", ignore_index=True
+        )
 
         model_cls = getattr(nfm, self.model_name)
         model = model_cls(

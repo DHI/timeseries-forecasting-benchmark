@@ -149,7 +149,7 @@ class _WindowedMLBase(Forecaster):
     def _make_model(self):
         raise NotImplementedError
 
-    def fit(self, case: Case, train: pd.DataFrame) -> None:
+    def fit(self, case: Case, train: pd.DataFrame, val: pd.DataFrame) -> None:
         from mlforecast import MLForecast
 
         from tsforecastbench.bench.eval.loop import _horizon_to_steps

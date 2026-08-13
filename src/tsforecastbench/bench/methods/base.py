@@ -103,8 +103,20 @@ class Forecaster(ABC):
     last_fit_steps: int | None = None
 
     @abstractmethod
-    def fit(self, case: Case, train: pd.DataFrame) -> None:
-        """Fit on the train split. May store any state on self."""
+    def fit(self, case: Case, train: pd.DataFrame, val: pd.DataFrame) -> None:
+        """Estimate parameters on `train`. May store any state on self.
+
+        `train` is the case's declared train split and nothing else. `val` is the declared
+        validation split, for deciding when to stop training and for nothing else: a method
+        that trains iteratively reads it to detect that its held-out loss has stopped
+        improving, and every other method ignores it. **No method estimates parameters on
+        `val`** — that is what makes the split the eval loop displays the split it runs
+        (gh #99). `test` is scored and never reaches `fit` at all.
+
+        Not seeing `val` at fit time is not the same as never reading it: an `is_global`
+        method's `predict` conditions on the observed history running through val and into
+        the test period up to each origin. Conditioning is not estimation.
+        """
 
     @abstractmethod
     def predict(

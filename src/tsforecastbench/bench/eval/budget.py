@@ -46,9 +46,66 @@ MAX_TRAIN_WINDOWS = 15_000
 # held-out loss stops improving; the ceiling below is a safety net for a fit that never
 # converges, not a target, and the steps actually used are recorded per cell.
 DL_MAX_STEPS = 2_000
-# Fraction of windows held out, chronologically from the end, to decide when to stop.
-DL_VAL_FRACTION = 0.2
 # Validation loss is checked this often, and training stops after this many consecutive
 # checks without improvement (250 steps of no progress at the defaults below).
 DL_VAL_CHECK_STEPS = 50
 DL_PATIENCE_CHECKS = 5
+
+# What that held-out loss is measured on is the case's declared val split, not a fraction of
+# the training windows (gh #99): the eval loop hands `fit` the train split and the val split
+# separately, and no method estimates parameters on the latter. The one place that cannot be
+# expressed directly is a multi-segment neuralforecast panel -- see `nf_val_size`.
+
+# Shortest validation cut worth stopping on, in horizons. Four gives a handful of disjoint
+# horizon windows per series, enough for the loss curve to have a recognisable minimum. It
+# does not bind on any current case: the smallest cut `nf_val_size` chooses is 213 points
+# against a floor of 96 (`wwtp_influent_n2o_350k`, h=24).
+NF_VAL_MIN_HORIZONS = 4
+
+
+def nf_val_size(
+    other_lens: list[int], target_train_len: int, lookback: int, h: int, val_len: int
+) -> int:
+    """Panel-wide validation cut for a neuralforecast fit.
+
+    `NeuralForecast.fit(df, val_size=V)` takes one V for the whole panel: it holds out the
+    last V steps of *every* series and needs each to retain `lookback + h` points to form a
+    training window, dropping those that cannot. There is no per-series val_size and no way
+    to pass an explicit validation frame.
+
+    The target series is handed `V` rows of the declared val split appended to its train
+    rows, so nf's cut lands exactly on val and the series keeps every training window it has
+    — `target_train_len` is there to size those windows, not to constrain V. The other series
+    are whole history segments of train data (`other_lens`); each gives up its last V steps
+    and is dropped below `lookback + h + V`. So V trades the declared val's coverage against
+    how many history segments survive. Sized off the tail segment alone, as it was before
+    gh #99, it threw four of `waves_oregon`'s nine segments away.
+
+    Pick the V leaving the most training windows, never above the declared val split and
+    never below `NF_VAL_MIN_HORIZONS` horizons. Where V lands below the declared val, the
+    remainder of that split is simply left out of the panel: unused, and trained on by
+    nobody. A single-series panel needs none of this — one series means the cut is the
+    declared val — and gets it anyway, `val_len` being the only candidate.
+    """
+    floor = NF_VAL_MIN_HORIZONS * h
+    if target_train_len < lookback + h + floor and val_len < floor:
+        raise ValueError(
+            f"target segment holds {target_train_len:,} train points and {val_len} val points, "
+            f"too few for a {floor}-step validation cut ({NF_VAL_MIN_HORIZONS} horizons) on top "
+            f"of lookback {lookback} + horizon {h}"
+        )
+    target_windows = max(0, target_train_len - lookback - h + 1)
+    best: tuple[int, int] | None = None
+    for v in sorted({min(n - lookback - h, val_len) for n in other_lens} | {val_len}):
+        if v < floor or v > val_len:
+            continue
+        kept = [n for n in other_lens if n >= lookback + h + v]
+        windows = target_windows + sum(n - v - lookback - h + 1 for n in kept)
+        if best is None or windows > best[0]:
+            best = (windows, v)
+    if best is None:
+        raise ValueError(
+            f"no validation cut works for this panel: the declared val split holds {val_len} "
+            f"points, below the {floor}-step floor ({NF_VAL_MIN_HORIZONS} horizons at h={h})"
+        )
+    return best[1]

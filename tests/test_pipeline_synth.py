@@ -36,6 +36,11 @@ from tsforecastbench.data.seasonality import dominant_period  # noqa: E402
 
 ALL_CASES = list(discover_cases())
 
+# Methods fitted directly in these tests are handed an empty early-stopping holdout: none of
+# them trains iteratively, so none reads `fit`'s val argument. The eval loops pass the real
+# declared val split (see `test_val_split_reserved`).
+NO_VAL = pd.DataFrame({"unique_id": [], "ds": pd.to_datetime([]), "y": []})
+
 
 def test_expected_cases_present():
     for cid in (
@@ -95,7 +100,7 @@ def test_climatology_forecast_is_periodic_in_declared_dominant_period():
     period = dominant_period(case.seasonalities, train["y"].to_numpy())
 
     clim = Climatology()
-    clim.fit(case, train)
+    clim.fit(case, train, NO_VAL)
     horizon = 2 * period + 5
     preds = clim.predict(case, train, horizon)["y_hat"].to_numpy()
     np.testing.assert_allclose(preds[:period], preds[period : 2 * period])
@@ -120,7 +125,7 @@ def test_climatology_on_nonseasonal_case_is_global_mean():
     train = pd.DataFrame({"ds": ds, "y": np.arange(240, dtype=float)})
 
     clim = Climatology()
-    clim.fit(case, train)
+    clim.fit(case, train, NO_VAL)
     preds = clim.predict(case, train, 6)["y_hat"].to_numpy()
     np.testing.assert_allclose(preds, train["y"].mean())
 
@@ -141,12 +146,12 @@ def test_ensemble_is_median_of_members():
     horizon = 24
 
     ens = ensemble_baselines()
-    ens.fit(case, train)
+    ens.fit(case, train, NO_VAL)
     combined = ens.predict(case, train, horizon)["y_hat"].to_numpy()
 
     member_preds = []
     for member in ens.members:
-        member.fit(case, train)
+        member.fit(case, train, NO_VAL)
         member_preds.append(member.predict(case, train, horizon)["y_hat"].to_numpy())
     expected = np.nanmedian(np.vstack(member_preds), axis=0)
 
@@ -192,7 +197,7 @@ def test_mlp_fit_caps_blas_threads(monkeypatch):
 
     case = get_case("waves_oregon")
     train = case.split_frame(case.synth())["train"]
-    MLPForecaster().fit(case, train)
+    MLPForecaster().fit(case, train, NO_VAL)
 
     assert observed, "MLPRegressor.fit was never called — the spy is not on the fit path"
     assert set(observed) == {1}, f"expected 1 BLAS thread during fit, saw {sorted(set(observed))}"
@@ -219,7 +224,7 @@ def test_mlp_direct_horizon_forecast_stays_bounded_on_smooth_case():
     horizon = _horizon_to_steps(case.horizon_primary, case.freq)
 
     mlp = MLPForecaster()
-    mlp.fit(case, train)
+    mlp.fit(case, train, NO_VAL)
     y_hat = mlp.predict(case, train, horizon)["y_hat"].to_numpy()
 
     y_train = train["y"].to_numpy()

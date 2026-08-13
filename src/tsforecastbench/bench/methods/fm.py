@@ -237,7 +237,7 @@ class ChronosForecaster(Forecaster):
         # from the library since 2048 already matches the checkpoint.
         self.context_length = context_length
 
-    def fit(self, case: Case, train: pd.DataFrame) -> None:
+    def fit(self, case: Case, train: pd.DataFrame, val: pd.DataFrame) -> None:
         # Zero-shot: no case-specific training. The only fit-time state is the pre-test
         # history length, which pins the context to a fixed width (see predict) so it stays
         # constant across rolling origins instead of growing with each one.
@@ -342,7 +342,7 @@ class Chronos2Forecaster(Forecaster):
         self.context_length = context_length
         self.uses_exogenous = self.use_exogenous
 
-    def fit(self, case: Case, train: pd.DataFrame) -> None:
+    def fit(self, case: Case, train: pd.DataFrame, val: pd.DataFrame) -> None:
         # Records the pre-test history length to pin a fixed context width (see
         # ChronosForecaster.fit); no case-specific training.
         self._n_fit = len(train)
@@ -466,7 +466,7 @@ class TimesFMForecaster(Forecaster):
         self.max_context = max_context
         self.uses_exogenous = self.use_exogenous
 
-    def fit(self, case: Case, train: pd.DataFrame) -> None:
+    def fit(self, case: Case, train: pd.DataFrame, val: pd.DataFrame) -> None:
         # Records the pre-test history length to pin a fixed context width (see
         # ChronosForecaster.fit); no case-specific training. Sizing the context from this
         # fixed length rather than the growing per-origin history means one compiled shape
@@ -600,7 +600,7 @@ class Moirai2Forecaster(Forecaster):
         self.context_length = context_length
         self.uses_exogenous = self.use_exogenous
 
-    def fit(self, case: Case, train: pd.DataFrame) -> None:
+    def fit(self, case: Case, train: pd.DataFrame, val: pd.DataFrame) -> None:
         # Records the pre-test history length to pin a fixed context width (see
         # ChronosForecaster.fit); no case-specific training.
         self._n_fit = len(train)

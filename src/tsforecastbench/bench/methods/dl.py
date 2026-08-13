@@ -86,7 +86,14 @@ class DLinearForecaster(Forecaster):
         self.kernel = kernel
         self.alpha = alpha
 
-    def fit(self, case: Case, train: pd.DataFrame) -> None:
+    def fit(self, case: Case, train: pd.DataFrame, val: pd.DataFrame) -> None:
+        """Fit the ridge on every window in `train`.
+
+        `val` goes unread: there is no training loop to stop, so a closed-form fit has
+        nothing to decide with a holdout. It still never sees the val split -- `train` is
+        the train split alone (gh #99) -- which is what keeps its training data the same as
+        every other method's.
+        """
         from sklearn.linear_model import Ridge
 
         from tsforecastbench.bench.eval.loop import _horizon_to_steps

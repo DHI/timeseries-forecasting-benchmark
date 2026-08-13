@@ -231,7 +231,7 @@ def _(
     _palette = ["#4C72B0", "#DD8452", "#55A868", "#C44E52", "#8172B2"]
     for _mi, _m in enumerate(_methods_ex):
         try:
-            _m.fit(case, hist_ex)
+            _m.fit(case, hist_ex, hist_ex.iloc[:0])
             _yh = _m.predict(case, hist_ex, H, future_exog=fexog_ex)["y_hat"].to_numpy(float)
             fig_ex.add_trace(
                 go.Scatter(
@@ -299,7 +299,7 @@ def _(
     for _o in _candidates:
         _hist_d = full_fit.iloc[:_o]
         try:
-            _m_p.fit(case, _hist_d)
+            _m_p.fit(case, _hist_d, _hist_d.iloc[:0])
             _yh_p = _m_p.predict(case, _hist_d, H)["y_hat"].to_numpy(float)
             _errors.append((_o, float(np.sqrt(np.nanmean((raw_y[_o : _o + H] - _yh_p) ** 2)))))
         except Exception:
@@ -357,7 +357,7 @@ def _(
         )
         for _mi, _m_d in enumerate(_method_objs_d):
             try:
-                _m_d.fit(case, _hist_d2)
+                _m_d.fit(case, _hist_d2, _hist_d2.iloc[:0])
                 _yh_d = _m_d.predict(case, _hist_d2, H, future_exog=_fexog_d)["y_hat"].to_numpy(
                     float
                 )

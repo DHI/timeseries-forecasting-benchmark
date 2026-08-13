@@ -86,6 +86,35 @@ def _segment_extended(
     return segments
 
 
+def _naive_ds(df: pd.DataFrame) -> pd.Series:
+    """`ds` as tz-naive UTC, matching what `Case.split_bounds` returns."""
+    ds = pd.to_datetime(df["ds"])
+    if ds.dt.tz is not None:
+        ds = ds.dt.tz_convert("UTC").dt.tz_localize(None)
+    return ds
+
+
+def _split_segments_at_train_end(
+    segments: list[pd.DataFrame], train_end: pd.Timestamp
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Split a segmented extended-history panel into its fit frame and its val frame.
+
+    The declared val period lies at the end of the tail segment, since `load_extended`
+    cuts the record at `val_end`. Splitting every segment by `train_end` rather than only
+    the tail one costs nothing and stays correct if a gap ever falls inside the val period,
+    which would put val rows at the end of an earlier segment too.
+    """
+    fit_parts, val_parts = [], []
+    for seg in segments:
+        ds = _naive_ds(seg)
+        fit_parts.append(seg[ds <= train_end])
+        val_parts.append(seg[ds > train_end])
+    return (
+        pd.concat(fit_parts, ignore_index=True),
+        pd.concat(val_parts, ignore_index=True),
+    )
+
+
 def _raw_y(df: pd.DataFrame) -> np.ndarray:
     """Target with filled points masked back to NaN, for honest scoring/origin choice."""
     return np.where(_observed_mask(df).to_numpy(), df["y"].to_numpy(dtype=float), np.nan)
@@ -113,6 +142,7 @@ def _pick_origin(
 def run_case(case: Case, methods: list[Forecaster], prefer_synth: bool = False) -> pd.DataFrame:
     df = case.load(prefer_synth=prefer_synth, curated=True)
     splits = case.split_frame(df)
+    train_end, _val_end, _test_end = case.split_bounds(df)
     train_val = pd.concat([splits["train"], splits["val"]], ignore_index=True)
     test = splits["test"]
     if len(test) == 0:
@@ -132,12 +162,19 @@ def run_case(case: Case, methods: list[Forecaster], prefer_synth: bool = False) 
     full = pd.concat([train_val, test], ignore_index=True)
     full_fit = full  # curated: the target is already complete within the span
     raw_y = _raw_y(full)
+    val_start = len(splits["train"])
     test_start = len(train_val)
     last_origin = len(full) - horizon_steps
     origin = _pick_origin(raw_y, test_start, last_origin, horizon_steps)
 
-    train_fit = full_fit.iloc[:origin].reset_index(drop=True)
-    # Rows the origin-picking slide pulled from the test split into training -- carried
+    # Three frames, not one. Parameters are estimated on the train split alone; the val
+    # split is handed over separately, for the iteratively trained methods to stop on and
+    # for no other purpose; and `history` -- everything before the origin, val and the
+    # slid-in test prefix included -- is what predict conditions on (gh #99).
+    fit_frame = full_fit.iloc[:val_start].reset_index(drop=True)
+    val_frame = full_fit.iloc[val_start:test_start].reset_index(drop=True)
+    history = full_fit.iloc[:origin].reset_index(drop=True)
+    # Rows the origin-picking slide pulled from the test split into the history -- carried
     # over verbatim onto the extended frame too, so global methods forecast from the
     # same origin as everyone else.
     slide_in = full_fit.iloc[test_start:origin].reset_index(drop=True)
@@ -151,24 +188,30 @@ def run_case(case: Case, methods: list[Forecaster], prefer_synth: bool = False) 
     finite = np.isfinite(y_true_raw)
     frac_finite = float(finite.mean()) if len(finite) else 0.0
 
-    def _train_stats(train_df: pd.DataFrame) -> tuple[np.ndarray, int, np.ndarray, np.ndarray]:
-        y_train = train_df["y"].to_numpy(dtype=float)
+    def _train_stats(history_df: pd.DataFrame) -> tuple[np.ndarray, int, np.ndarray, np.ndarray]:
+        """Reference scales for MASE and the skill scores.
+
+        Read off the pre-origin history, not the (shorter) fit frame: these are the
+        yardstick every method is measured against, so reserving the val split from
+        training must not move them.
+        """
+        y_train = history_df["y"].to_numpy(dtype=float)
         # Declared dominant period the train series can support (>= 2 cycles), else the
         # next declared period, else 1 — a real season or honest persistence scaling,
         # never an arbitrary truncated lag.
         season = mase_season_for(case.seasonalities, len(y_train))
-        ref_persistence = np.full(horizon_steps, float(train_df["y"].iloc[-1]))
+        ref_persistence = np.full(horizon_steps, float(history_df["y"].iloc[-1]))
         ref_mean = np.full(horizon_steps, float(np.nanmean(y_train)))
         return y_train, season, ref_persistence, ref_mean
 
-    y_train, season, ref_persistence, ref_mean = _train_stats(train_fit)
+    y_train, season, ref_persistence, ref_mean = _train_stats(history)
 
     # Extended-history training for `is_global` methods that pool segments. The extended
     # frame is split at its big gaps into contiguous segments (see `_segment_extended`);
     # the tail segment equals the local train span, so the metric reference scales stay
     # identical and only the training data the model sees grows. A gap-free record yields
     # a single segment (no history beyond the curated span), so only the local fit runs.
-    train_fit_ext = None
+    fit_frame_ext = val_frame_ext = history_ext = None
     if any(m.is_global and m.pools_segments for m in methods):
         try:
             extended = case.load_extended(prefer_synth=prefer_synth)
@@ -182,7 +225,8 @@ def run_case(case: Case, methods: list[Forecaster], prefer_synth: bool = False) 
             if len(segments) >= 2:
                 slide = slide_in.copy()
                 slide["unique_id"] = segments[-1]["unique_id"].iloc[0]
-                train_fit_ext = pd.concat([*segments, slide], ignore_index=True)
+                fit_frame_ext, val_frame_ext = _split_segments_at_train_end(segments, train_end)
+                history_ext = pd.concat([*segments, slide], ignore_index=True)
             else:
                 print(
                     "  [note] no history beyond the curated span; "
@@ -206,19 +250,19 @@ def run_case(case: Case, methods: list[Forecaster], prefer_synth: bool = False) 
         # a second time on the extended history, when the case has any. Both fits share
         # the local reference scales (persistence/mean/seasonal-naive), so the extended
         # row differs from the local one only through the model, not the yardstick.
-        variants = [(train_fit, False)]
-        if method.is_global and method.pools_segments and train_fit_ext is not None:
-            variants.append((train_fit_ext, True))
-        for m_train_fit, used_extended in variants:
+        variants = [(fit_frame, val_frame, history, False)]
+        if method.is_global and method.pools_segments and fit_frame_ext is not None:
+            variants.append((fit_frame_ext, val_frame_ext, history_ext, True))
+        for m_fit, m_val, m_history, used_extended in variants:
             fit_seconds = float("nan")
             predict_seconds = float("nan")
             method.last_fit_steps = None
             try:
                 t_fit0 = time.perf_counter()
-                method.fit(case, m_train_fit)
+                method.fit(case, m_fit, m_val)
                 fit_seconds = time.perf_counter() - t_fit0
                 t_pred0 = time.perf_counter()
-                preds = method.predict(case, m_train_fit, horizon_steps, future_exog=future_exog)
+                preds = method.predict(case, m_history, horizon_steps, future_exog=future_exog)
                 predict_seconds = time.perf_counter() - t_pred0
                 y_hat = preds["y_hat"].to_numpy(dtype=float)
                 assert len(y_hat) == horizon_steps, (
@@ -259,9 +303,12 @@ def run_case(case: Case, methods: list[Forecaster], prefer_synth: bool = False) 
                         "predict_seconds": predict_seconds,
                         "frac_finite_test": frac_finite,
                         "status": status,
-                        # What this fit was given and what it spent -- see the same pair
+                        # What this fit was given and what it spent -- see the same set
                         # in `eval.rolling` and `eval.budget` on why they are recorded.
-                        "train_points": len(m_train_fit),
+                        # `val_points` is the holdout handed over for early stopping; a
+                        # method that does not train iteratively ignores it.
+                        "train_points": len(m_fit),
+                        "val_points": len(m_val),
                         "train_steps": method.last_fit_steps,
                     }
                 )

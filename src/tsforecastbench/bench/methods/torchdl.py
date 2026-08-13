@@ -22,7 +22,6 @@ from tsforecastbench.bench.eval.budget import (
     DL_MAX_STEPS,
     DL_PATIENCE_CHECKS,
     DL_VAL_CHECK_STEPS,
-    DL_VAL_FRACTION,
     MAX_TRAIN_WINDOWS,
 )
 from tsforecastbench.bench.methods.base import Forecaster, lookback_for, segment_arrays
@@ -58,6 +57,32 @@ def _build_windows(segs: list[np.ndarray], L: int, H: int):
         Ys.append(np.stack([y[s + L : s + L + H] for s in starts]))
     X = np.concatenate(Xs).astype(np.float32)
     Y = np.concatenate(Ys).astype(np.float32)
+    return X, Y
+
+
+def _build_val_windows(train_tail: np.ndarray, val_y: np.ndarray, L: int, H: int):
+    """Stack the early-stopping windows: every target step lies inside the declared val split.
+
+    Inputs may reach back into train, which is exactly what a forecast made at the first val
+    origin conditions on; no target step is ever one the model trained on (gh #99). Targets
+    are strided by `H` so they tile the val period without overlapping: consecutive
+    single-step-apart windows are near-duplicates that would multiply the cost of every
+    validation check for almost no extra information, while one window per horizon spreads
+    the check across the whole val period. `surge_cuxhaven`'s 32,171-point val split gives
+    670 disjoint 48-step origins spanning 3.7 years.
+    """
+    series = np.concatenate([train_tail, val_y]).astype(np.float32)
+    n_train = len(train_tail)
+    first = max(0, n_train - L)  # earliest start whose target begins at or after val
+    last = len(series) - L - H  # latest start whose target still fits
+    starts = np.arange(first, last + 1, H)
+    if len(starts) == 0:
+        raise ValueError(
+            f"val split holds {len(val_y)} points, too few for one {H}-step validation "
+            f"window; early stopping would monitor a metric with no data in it"
+        )
+    X = np.stack([series[s : s + L] for s in starts])
+    Y = np.stack([series[s + L : s + L + H] for s in starts])
     return X, Y
 
 
@@ -185,7 +210,7 @@ class _TorchDLBase(Forecaster):
     def _net(self, mods, L, H):
         raise NotImplementedError
 
-    def fit(self, case: Case, train: pd.DataFrame) -> None:
+    def fit(self, case: Case, train: pd.DataFrame, val: pd.DataFrame) -> None:
         from tsforecastbench.bench.eval.loop import _horizon_to_steps
 
         mods = _make_modules()
@@ -196,8 +221,9 @@ class _TorchDLBase(Forecaster):
         self._L = lookback_for(case.freq, self._H)
 
         # Per-segment windows (unique_id), never across a gap; single-segment local
-        # frames behave exactly as before.
-        segs, _tail = segment_arrays(train)
+        # frames behave exactly as before. The tail segment is the one the val split
+        # continues from, so it supplies the validation windows' input context.
+        segs, tail = segment_arrays(train)
         segs = [s.astype(np.float32) for s in segs]
 
         X, Y = _build_windows(segs, self._L, self._H)
@@ -205,12 +231,17 @@ class _TorchDLBase(Forecaster):
             self._model = None
             self.last_fit_steps = None
             return
-        # Windows arrive in time order, so the most recent slice is the validation set —
-        # holding out a random subset would leak, since neighbouring windows overlap in all
-        # but one step. `_build_windows` has already guaranteed more than 10 windows.
-        n_val = max(1, int(len(X) * DL_VAL_FRACTION))
-        Xt, Yt = torch.from_numpy(X[:-n_val]), torch.from_numpy(Y[:-n_val])
-        Xv, Yv = torch.from_numpy(X[-n_val:]), torch.from_numpy(Y[-n_val:])
+        # Early stopping runs on the declared val split, not on a fraction carved off the
+        # training windows: the boundary the app displays is the boundary the fit uses
+        # (gh #99). Every training window's target is inside train, every validation
+        # window's target is inside val.
+        tail_uid = train["unique_id"].iloc[-1]
+        val_y = pd.to_numeric(val.loc[val["unique_id"] == tail_uid, "y"], errors="coerce").to_numpy(
+            dtype=np.float32
+        )
+        Xv_np, Yv_np = _build_val_windows(segs[tail], val_y, self._L, self._H)
+        Xt, Yt = torch.from_numpy(X), torch.from_numpy(Y)
+        Xv, Yv = torch.from_numpy(Xv_np), torch.from_numpy(Yv_np)
 
         self._model = self._net(mods, self._L, self._H)
         opt = torch.optim.Adam(self._model.parameters(), lr=self.lr)
