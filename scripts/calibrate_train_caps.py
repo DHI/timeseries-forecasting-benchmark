@@ -36,9 +36,15 @@ measured TFT's fit time as flat across an 8x difference in training size — so 
 near-flat and costs minutes per point to trace. Use `--with-dl` / `--with-nf` to confirm that
 it is flat, not to find a cap.
 
+`--methods` narrows a run to one method, for the "a method's internals changed" case above.
+It writes only what it measured, so pair it with `--out`: the committed CSV is replaced only
+by a full run, keeping every row in that file from one revision rather than mixing
+measurements taken before and after a change.
+
 Usage:
     uv run python scripts/calibrate_train_caps.py
     uv run python scripts/calibrate_train_caps.py --cases surge_cuxhaven --budget 300
+    uv run python scripts/calibrate_train_caps.py --methods MLP --out /tmp/mlp_caps.csv
     uv run python scripts/calibrate_train_caps.py --with-dl --with-nf
 """
 
@@ -275,6 +281,12 @@ def main() -> int:
         "flat for the same reason as --with-dl.",
     )
     p.add_argument(
+        "--methods",
+        nargs="*",
+        help="Method names to measure (default: all). Case-insensitive. Use with --out to "
+        "re-check one method without overwriting the committed CSV.",
+    )
+    p.add_argument(
         "--out", type=Path, default=DEFAULT_OUT, help=f"CSV path (default {DEFAULT_OUT})"
     )
     args = p.parse_args()
@@ -298,6 +310,13 @@ def main() -> int:
         )
 
         methods += [TFTForecaster(), ITransformerForecaster(), TimesNetForecaster()]
+    if args.methods:
+        available = [m.name for m in methods]
+        wanted = {n.lower() for n in args.methods}
+        methods = [m for m in methods if m.name.lower() in wanted]
+        if not methods:
+            print(f"No matching methods. Available: {', '.join(available)}")
+            return 1
     for m in methods:
         uncap(m)
 
