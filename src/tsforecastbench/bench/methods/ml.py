@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+from threadpoolctl import threadpool_limits
 
 from tsforecastbench.bench.eval.budget import TRAIN_POINT_CEILING
 from tsforecastbench.bench.methods.base import Forecaster
@@ -111,6 +112,10 @@ class _WindowedMLBase(Forecaster):
     max_train_steps: int = TRAIN_POINT_CEILING
     use_exogenous: bool = False
     direct_horizon: bool = False
+    # BLAS threads allowed for the duration of the fit. `None` leaves the process default
+    # untouched, which is what the tree and Ridge regressors want; a subclass sets a small
+    # integer when its estimator's matmuls are too small to parallelise (see MLPForecaster).
+    blas_threads: int | None = None
     compute_profile = (
         "CPU only; a lag+calendar feature table is built once, then the regressor "
         "fits on it directly — fast for the linear/tree models here, slower for the "
@@ -181,7 +186,11 @@ class _WindowedMLBase(Forecaster):
         max_horizon = (
             _horizon_to_steps(case.horizon_primary, case.freq) if self.direct_horizon else None
         )
-        self._fcst.fit(df, static_features=[], max_horizon=max_horizon)
+        # `limits=None` is a documented no-op, so the unrestricted regressors take the same
+        # path. Only "blas" is filtered: LightGBM and CatBoost run their own OpenMP pools,
+        # which are productive and must not be capped along with numpy's.
+        with threadpool_limits(limits=self.blas_threads, user_api="blas"):
+            self._fcst.fit(df, static_features=[], max_horizon=max_horizon)
         # mlforecast names prediction columns after its own alias for each model (the
         # underlying estimator's class name, unwrapped from any Pipeline) — read that
         # alias directly rather than re-deriving it from the fitted object's type, which
@@ -383,6 +392,17 @@ class MLPForecaster(_WindowedMLBase):
     direct_horizon = True
     # direct_horizon above is exactly this: mlforecast's direct multi-horizon strategy.
     forecast_strategy = ForecastStrategy.DIRECT
+    # One BLAS thread, because this estimator's matmuls are far too small to parallelise:
+    # a minibatch is 200 x ~15 features into a 64-wide layer, ~0.4 MFLOP, so spreading it
+    # over a dozen cores costs more in thread synchronisation than the arithmetic it saves.
+    # Measured on a 12-core box, one fit of identical data and iteration count: 37.3s
+    # unrestricted against 0.50s here. Threading only starts paying for this pipeline at
+    # roughly batch >= 2,000 *and* a 1,024-wide layer *and* ~500 features, all at once —
+    # two of which sklearn and the feature table fix well below that. It also makes the fit
+    # a stable measurement: unrestricted, four repeats of one fit ranged 2.72s to 0.38s as
+    # the thread pool warmed, while this holds steady, and `fit_cost` is meant to rest on
+    # measured `fit_seconds` (issue #97).
+    blas_threads = 1
     library = "mlforecast + scikit-learn (MLPRegressor)"
     code_snippet = (
         "from mlforecast import MLForecast\n"

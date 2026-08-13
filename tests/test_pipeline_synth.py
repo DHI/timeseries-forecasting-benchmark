@@ -168,6 +168,46 @@ def test_mlp_runs_on_one_case():
     assert (res["status"] == "ok").all()
 
 
+def test_mlp_fit_caps_blas_threads(monkeypatch):
+    """Issue #97: MLP's fit read 609s for 2,000 points, which was OpenBLAS thread
+    oversubscription rather than the cost of `direct_horizon`'s one-model-per-step. Its
+    minibatch matmuls are far too small to spread over many cores, so the fit runs under a
+    one-thread limit.
+
+    Asserts the limit is in force at the moment the estimator fits, rather than timing the
+    fit — a wall-clock bound would depend on the machine's core count and on how warm the
+    thread pool happens to be (the very variance that motivated the cap).
+    """
+    from sklearn.neural_network import MLPRegressor
+    from threadpoolctl import threadpool_info
+
+    observed: list[int] = []
+    real_fit = MLPRegressor.fit
+
+    def spy(self, X, y):
+        observed.extend(d["num_threads"] for d in threadpool_info() if d["user_api"] == "blas")
+        return real_fit(self, X, y)
+
+    monkeypatch.setattr(MLPRegressor, "fit", spy)
+
+    case = get_case("waves_oregon")
+    train = case.split_frame(case.synth())["train"]
+    MLPForecaster().fit(case, train)
+
+    assert observed, "MLPRegressor.fit was never called — the spy is not on the fit path"
+    assert set(observed) == {1}, f"expected 1 BLAS thread during fit, saw {sorted(set(observed))}"
+
+
+def test_windowed_ml_siblings_do_not_cap_blas_threads():
+    """The cap belongs to MLP alone. LightGBM and CatBoost parallelise productively, so a
+    future edit must not lift `blas_threads` onto the shared base class."""
+    from tsforecastbench.bench.methods import ml
+
+    assert ml._WindowedMLBase.blas_threads is None
+    for cls in (ml.LightGBMForecaster, ml.CatBoostForecaster, ml.LinearLagsForecaster):
+        assert cls.blas_threads is None, f"{cls.__name__} should not cap BLAS threads"
+
+
 def test_mlp_direct_horizon_forecast_stays_bounded_on_smooth_case():
     """Regression test for the groundwater_yorktown blow-up: MLP's direct multi-horizon
     strategy (one model per horizon step, no feedback loop) must not diverge far outside
