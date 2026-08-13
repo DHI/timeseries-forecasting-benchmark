@@ -137,7 +137,9 @@ if st.button("📦 Export Web Data", type="primary"):
 # Section 4: Full Pipeline (run all steps sequentially)
 # ---------------------------------------------------------------------------
 st.header("4️⃣ Full Pipeline")
-st.caption("Run pilot (full, no tag) → export web data. Use when a single machine covers all methods.")
+st.caption(
+    "Run pilot (full, no tag) → export web data. Use when a single machine covers all methods."
+)
 
 if st.button("🏁 Run Full Pipeline", type="primary"):
     # Step 1: pilot (full run, no tag)
