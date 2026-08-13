@@ -1,4 +1,41 @@
 ---
+id: 92
+date: "2026-08-13"
+title: "The declared val split is now a real holdout instead of extra training data"
+description: |
+  The benchmark displayed a three-way train/val/test split while `eval.loop` concatenated train
+  and val into one fit frame, so every method estimated parameters on train+val and the val
+  boundary survived only as the offset locating where test begins; the methods that needed an
+  early-stopping holdout each carved their own from the tail of that frame (20% of points in
+  `nf_models`, 20% of windows in `torchdl`, none in DLinear). Nothing leaked into test, but the
+  near-agreement between the declared val (17.6% of train+val) and `DL_VAL_FRACTION` (20%) rested
+  on two unrelated constants, and a case declaring `split_fraction = [0.6, 0.9]` would have put a
+  third of the frame the UI labels validation into training. `fit` now takes the val split as a
+  required third argument and the eval loops separate three frames that used to be one:
+  parameters come from train, val is the holdout the iteratively trained methods stop on, and
+  predict still conditions on the whole pre-origin history — reading val is not estimating on it.
+  The reference scales for MASE and the skill scores deliberately stay on that history, so the
+  yardstick did not move with the fit frame. Every method's parameters now come from 70% of the
+  record rather than 85%, which restales the pilot along with the rest of #98/#101.
+
+  The declared val was left at its full 15% rather than trimmed to what early stopping strictly
+  needs: a long validation period is the point, since it lets the stopping decision average over
+  a span of months to years (`surge_cuxhaven` 670 disjoint 48-step origins over 3.7 years) instead
+  of one narrow slice. The one place that cannot be expressed directly is a gap-segmented
+  neuralforecast panel: `NeuralForecast.fit(df, val_size=V)` takes a single V, cuts the last V
+  steps of *every* series and drops those left below `lookback + h`, with no per-series cut and no
+  way to pass an explicit validation frame. So `budget.nf_val_size` picks the V leaving the most
+  training windows, never above the declared val and never below four horizons: it takes the whole
+  val split where the panel affords it (`discharge_lowland_denmark`, `waves_massachusetts`) and
+  less where that buys segments, which keeps every history segment in all five multi-segment cases
+  — `waves_oregon` trains on 9/9 segments and 96.9% of its windows against 5/9 and 68.0% under the
+  old expression. Where V lands below the declared val, the remainder of that split is left out of
+  the panel: unused, and trained on by nobody.
+commits:
+  - 522b229: "Pin the val split as a real holdout (failing test)"
+  - e1c6931: "Reserve the declared val split from every method's fit"
+  - fe6d18c: "Say what each split is actually used for"
+---
 id: 91
 date: "2026-08-13"
 title: "MLP's 609s fit was BLAS thread oversubscription, not the cost of direct_horizon"
