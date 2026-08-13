@@ -16,7 +16,9 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+from threadpoolctl import threadpool_limits
 
+from tsforecastbench.bench.eval.budget import TRAIN_POINT_CEILING
 from tsforecastbench.bench.methods.base import Forecaster
 from tsforecastbench.bench.methods.scorecard import (
     Capabilities,
@@ -96,22 +98,32 @@ def _fit_len(vals: np.ndarray, n: int, fill: float) -> np.ndarray:
 class _WindowedMLBase(Forecaster):
     """Shared lag-feature pipeline; subclasses provide the sklearn regressor.
 
-    `max_train_steps` caps the fit to the most recent N points. None = no cap. Useful
-    for heavy methods (MLP) on long high-frequency series; truncation does not move the
-    forecast origin so test alignment holds.
+    `max_train_steps` bounds the fit to the most recent N points. It defaults to
+    `eval.budget`'s ceiling, which is a guard against a future oversized case rather than a
+    training budget, and does not bind on any case here — see that module on why the old
+    per-method caps were removed (issue #95). Truncation does not move the forecast origin,
+    so test alignment holds wherever it does bind.
     """
 
     name = "WindowedML"
     family = "ml"
     is_global = True
     pools_segments = True
-    max_train_steps: int | None = None
+    max_train_steps: int = TRAIN_POINT_CEILING
     use_exogenous: bool = False
     direct_horizon: bool = False
+    # BLAS threads allowed for the duration of the fit. `None` leaves the process default
+    # untouched, which is what the tree and Ridge regressors want; a subclass sets a small
+    # integer when its estimator's matmuls are too small to parallelise (see MLPForecaster).
+    blas_threads: int | None = None
     compute_profile = (
         "CPU only; a lag+calendar feature table is built once, then the regressor "
-        "fits on it directly — fast for the linear/tree models here, slower for the "
-        "MLP (which also cross-validates an early-stopping split)."
+        "fits on it directly — seconds for the linear/tree models here. The MLP costs "
+        "far more: it holds out an early-stopping split, and its direct multi-horizon "
+        "strategy trains one network per horizon step, so its fit scales with the "
+        "horizon as well as with the history. Its fit is pinned to a single BLAS thread, "
+        "whose matmuls are too small for multi-threading to do anything but add "
+        "synchronisation overhead."
     )
     limitations = (
         "Needs enough history to fill its lag windows (shortest lag 1, longest tied "
@@ -149,8 +161,7 @@ class _WindowedMLBase(Forecaster):
         # mlforecast treats them as separate series, so no lag feature ever spans a gap.
         # The tail segment (latest ds) is the one whose forecast we return at predict.
         self._target_uid = df["unique_id"].iloc[-1]
-        if self.max_train_steps:
-            df = df.groupby("unique_id", sort=False).tail(self.max_train_steps)
+        df = df.groupby("unique_id", sort=False).tail(self.max_train_steps)
         df["ds"] = _naive_ds(df["ds"]).to_numpy()
         for c in self._exo:
             df[c] = pd.to_numeric(df[c], errors="coerce")
@@ -179,7 +190,11 @@ class _WindowedMLBase(Forecaster):
         max_horizon = (
             _horizon_to_steps(case.horizon_primary, case.freq) if self.direct_horizon else None
         )
-        self._fcst.fit(df, static_features=[], max_horizon=max_horizon)
+        # `limits=None` is a documented no-op, so the unrestricted regressors take the same
+        # path. Only "blas" is filtered: LightGBM and CatBoost run their own OpenMP pools,
+        # which are productive and must not be capped along with numpy's.
+        with threadpool_limits(limits=self.blas_threads, user_api="blas"):
+            self._fcst.fit(df, static_features=[], max_horizon=max_horizon)
         # mlforecast names prediction columns after its own alias for each model (the
         # underlying estimator's class name, unwrapped from any Pipeline) — read that
         # alias directly rather than re-deriving it from the fitted object's type, which
@@ -367,7 +382,6 @@ class MLPForecaster(_WindowedMLBase):
     """Multi-layer perceptron (scikit-learn MLPRegressor) over lag and calendar features."""
 
     name = "MLP"
-    max_train_steps = 20000
     # Trains one model per horizon step from the origin's lag features instead of one
     # recursive model whose own predictions feed back in as later lag inputs — an
     # MLPRegressor's unbounded linear output layer had no guarantee against drifting
@@ -377,6 +391,17 @@ class MLPForecaster(_WindowedMLBase):
     direct_horizon = True
     # direct_horizon above is exactly this: mlforecast's direct multi-horizon strategy.
     forecast_strategy = ForecastStrategy.DIRECT
+    # One BLAS thread, because this estimator's matmuls are far too small to parallelise:
+    # a minibatch is 200 x ~15 features into a 64-wide layer, ~0.4 MFLOP, so spreading it
+    # over a dozen cores costs more in thread synchronisation than the arithmetic it saves.
+    # Measured on a 12-core box, one fit of identical data and iteration count: 37.3s
+    # unrestricted against 0.50s here. Threading only starts paying for this pipeline at
+    # roughly batch >= 2,000 *and* a 1,024-wide layer *and* ~500 features, all at once —
+    # two of which sklearn and the feature table fix well below that. It also makes the fit
+    # a stable measurement: unrestricted, four repeats of one fit ranged 2.72s to 0.38s as
+    # the thread pool warmed, while this holds steady, and `fit_cost` is meant to rest on
+    # measured `fit_seconds` (issue #97).
+    blas_threads = 1
     library = "mlforecast + scikit-learn (MLPRegressor)"
     code_snippet = (
         "from mlforecast import MLForecast\n"
@@ -404,10 +429,14 @@ class MLPForecaster(_WindowedMLBase):
     )
     # No override needed: an MLP's linear output layer can extrapolate past the training
     # range like the base's trend=True already claims, now that nothing clips it back.
-    # Several interacting knobs (layer sizes, iterations, early stopping, feature
-    # scaling), and the slowest of the four to fit — direct_horizon means training H
-    # independent models instead of one, and it's capped to the most recent 20,000
-    # points for the same reason.
+    # Several interacting knobs (layer sizes, iterations, early stopping, feature scaling),
+    # and among the more expensive fits in the benchmark: direct_horizon trains H models
+    # instead of one, and each scales with history, so cost is the product of the two. The
+    # measured curves are in `docs/results/train_cap_calibration.csv` — on a 24-step horizon
+    # the full 42,073-point `sewerlevel_bellinge` record costs 3.3 min, and on a 48-step one
+    # `surge_cuxhaven` reaches 20,000 points in 124s, extrapolating to roughly 20 min over
+    # its full 182,304 points. That is under Theta's 47-66 min, which #95 already accepted as
+    # affordable for a fit that happens once per case rather than once per origin.
     scorecard = Scorecard(
         history_requirements=Level.HIGH,
         interpretability=Level.LOW,

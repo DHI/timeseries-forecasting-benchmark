@@ -18,6 +18,13 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from tsforecastbench.bench.eval.budget import (
+    DL_MAX_STEPS,
+    DL_PATIENCE_CHECKS,
+    DL_VAL_CHECK_STEPS,
+    DL_VAL_FRACTION,
+    MAX_TRAIN_WINDOWS,
+)
 from tsforecastbench.bench.methods.base import Forecaster, lookback_for, segment_arrays
 from tsforecastbench.bench.methods.scorecard import (
     Capabilities,
@@ -27,23 +34,21 @@ from tsforecastbench.bench.methods.scorecard import (
 )
 from tsforecastbench.data.schema import Case
 
-_MAX_TRAIN = 20000
-_MAX_SAMPLES = 6000
-
 
 def _build_windows(segs: list[np.ndarray], L: int, H: int):
     """Stack (input, target) windows over every segment, never across a gap.
 
-    Each segment is capped to its most recent `_MAX_TRAIN` points, then a single shared
-    stride across all segments keeps the total window count <= `_MAX_SAMPLES`. A local
+    No segment is truncated: the whole record is in scope (issue #95). A single shared stride
+    across all segments keeps the total window count <= `MAX_TRAIN_WINDOWS`, which bounds the
+    window matrix without discarding any part of the span — consecutive windows differ by one
+    step and are near-duplicates, so striding costs resolution, not coverage. A local
     (single-segment) frame reduces to the original one-series windowing.
     """
-    segs = [y[-_MAX_TRAIN:] for y in segs]
     counts = [max(0, len(y) - L - H + 1) for y in segs]
     total = sum(counts)
     if total <= 10:
         return None, None
-    stride = max(1, total // _MAX_SAMPLES)
+    stride = max(1, total // MAX_TRAIN_WINDOWS)
     Xs, Ys = [], []
     for y, n in zip(segs, counts, strict=True):
         if n <= 0:
@@ -142,15 +147,16 @@ class _TorchDLBase(Forecaster):
     family = "dl"
     is_global = True
     pools_segments = True
-    max_steps = 600
+    max_steps = DL_MAX_STEPS  # ceiling; training normally early-stops well below it
     batch = 256
     lr = 1e-3
     library = "torch (custom implementation, no ray/lightning)"
     compute_profile = (
-        "CPU (no GPU dependency); trains a small network from scratch per case — "
-        "600 gradient steps over randomly sampled windows — making these the "
-        "heaviest CPU methods in the benchmark. Keep rolling-origin counts modest "
-        "when including them."
+        "CPU (no GPU dependency); trains a small network from scratch per case over "
+        "randomly sampled windows, stopping when held-out loss stops improving rather "
+        "than at a fixed step count, so training cost scales with how much the case has "
+        "left to learn. Among the heaviest CPU methods in the benchmark; keep "
+        "rolling-origin counts modest when including them."
     )
     limitations = (
         "Univariate — ignores exogenous inputs (the covariate story lives in the "
@@ -164,9 +170,9 @@ class _TorchDLBase(Forecaster):
     capabilities = Capabilities(
         trend=True, seasonality=True, multiple_seasonality=True, exogenous=False
     )
-    # The heaviest CPU fits in the benchmark — 600 gradient steps over sampled windows —
-    # against a single forward pass at predict. Per-window instance normalisation is what
-    # keeps robustness at Medium rather than Low despite the training loop.
+    # Among the heaviest CPU fits in the benchmark — a training loop over sampled windows,
+    # run to convergence — against a single forward pass at predict. Per-window instance
+    # normalisation is what keeps robustness at Medium rather than Low despite the loop.
     scorecard = Scorecard(
         history_requirements=Level.HIGH,
         interpretability=Level.LOW,
@@ -197,23 +203,53 @@ class _TorchDLBase(Forecaster):
         X, Y = _build_windows(segs, self._L, self._H)
         if X is None:
             self._model = None
+            self.last_fit_steps = None
             return
-        Xt, Yt = torch.from_numpy(X), torch.from_numpy(Y)
+        # Windows arrive in time order, so the most recent slice is the validation set —
+        # holding out a random subset would leak, since neighbouring windows overlap in all
+        # but one step. `_build_windows` has already guaranteed more than 10 windows.
+        n_val = max(1, int(len(X) * DL_VAL_FRACTION))
+        Xt, Yt = torch.from_numpy(X[:-n_val]), torch.from_numpy(Y[:-n_val])
+        Xv, Yv = torch.from_numpy(X[-n_val:]), torch.from_numpy(Y[-n_val:])
+
         self._model = self._net(mods, self._L, self._H)
         opt = torch.optim.Adam(self._model.parameters(), lr=self.lr)
         lossf = torch.nn.MSELoss()
         n = len(Xt)
-        self._model.train()
-        for _step in range(self.max_steps):
-            idx = torch.randint(0, n, (min(self.batch, n),))
-            xb, yb = Xt[idx], Yt[idx]
+
+        def _revin_pred(xb):
             mu = xb.mean(1, keepdim=True)
             sd = xb.std(1, keepdim=True) + 1e-5
-            pred = self._model((xb - mu) / sd) * sd + mu  # RevIN-style
-            loss = lossf(pred, yb)
+            return self._model((xb - mu) / sd) * sd + mu
+
+        best, best_state, stale = float("inf"), None, 0
+        steps = 0
+        for step in range(1, self.max_steps + 1):
+            self._model.train()
+            idx = torch.randint(0, n, (min(self.batch, n),))
+            loss = lossf(_revin_pred(Xt[idx]), Yt[idx])
             opt.zero_grad()
             loss.backward()
             opt.step()
+            steps = step
+            if step % DL_VAL_CHECK_STEPS:
+                continue
+            # Stop when held-out loss stops improving, rather than at a fixed step count: a
+            # fixed count made the number of passes over the data vary inversely with case
+            # size (research log entry 89). self.max_steps is the safety net, not the target.
+            self._model.eval()
+            with torch.no_grad():
+                val = float(lossf(_revin_pred(Xv), Yv))
+            if val < best:
+                best, stale = val, 0
+                best_state = {k: v.detach().clone() for k, v in self._model.state_dict().items()}
+            else:
+                stale += 1
+                if stale >= DL_PATIENCE_CHECKS:
+                    break
+        if best_state is not None:
+            self._model.load_state_dict(best_state)
+        self.last_fit_steps = steps
 
     def predict(
         self,

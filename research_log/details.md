@@ -1,4 +1,96 @@
 ---
+id: 91
+date: "2026-08-13"
+title: "MLP's 609s fit was BLAS thread oversubscription, not the cost of direct_horizon"
+description: |
+  Issue #97 measured MLP's fit at 608.5s for 2,000 training points on a 48-step horizon and
+  attributed it to `direct_horizon`, which trains one `MLPRegressor` per horizon step at an
+  apparent ~12s each. The real cause was thread oversubscription: a minibatch matmul here is
+  200 x ~15 features into a 64-wide layer, roughly 0.4 MFLOP, so spreading it across a dozen
+  cores costs more in synchronisation than the arithmetic it saves — `direct_horizon` merely
+  multiplied an already-inflated constant by H. One fit of identical data, seed and iteration
+  count takes 37.3s unrestricted against 0.50s on one thread, and MLP's fit now runs under a
+  one-thread BLAS limit (`surge_cuxhaven` 608.5s -> 29.8s). A shape sweep put the crossover
+  where multi-threading starts paying at roughly batch >= 2,000 *and* a 1,024-wide layer *and*
+  ~500 features simultaneously, so none of the three redesigns #97 proposed was needed. The cap
+  also stabilises the measurement — four repeats of one fit ranged 2.72s to 0.38s unrestricted
+  as the thread pool warmed, while one thread held 0.14s, which matters because `fit_cost` is
+  meant to rest on measured `fit_seconds` (entry 89). With that fixed, MLP was remeasured up
+  the ladder: it now reaches the full 42,073-point `sewerlevel_bellinge` record in 3.3 min, and
+  on `surge_cuxhaven`'s 48-step horizon reaches 20,000 points in 124s, extrapolating to roughly
+  20 min over that case's full 182,304 points. That is under Theta's 47-66 min, which entry 90
+  already accepted as affordable for a once-per-case fit, so MLP's 20,000-point cap was removed
+  too and no method carries one now. The whole calibration CSV was regenerated in the same
+  pass, which also cleared a second defect: the previous file predated the script's
+  throwaway-warmup fit, so each method's smallest rung was inflated by library import cost
+  (the `LinearLags` 2,000-point rung read 1.53s against 0.05s at the same size, and AutoARIMA's
+  first three rungs *decreased* with more data). Every MLP and MLP+exo number in the pilot is
+  still stale pending a re-run. Two questions came out of this and are tracked separately:
+  MLP's batch size is left at scikit-learn's `min(200, n)` default even though 32 scored better
+  on held-out R2 at equal wall time (#98, changing it changes scores), and the declared val
+  split is displayed as a split but folded into training by every method while the DL methods
+  carve their own 20% holdout (#99).
+commits:
+  - c565e6b: "Cap BLAS threads during the MLP fit"
+  - f342a87: "Add a --methods filter to the cap-calibration script"
+  - 4b33f4d: "Remove MLP's training cap, the last one left after #95"
+  - 069244c: "Commit compute time results."
+---
+id: 90
+date: "2026-08-12"
+title: "Removed the per-method training caps outright rather than equalising them"
+description: |
+  Measured how fit cost grows with training-history length for every method whose cost depends
+  on it (`scripts/calibrate_train_caps.py`; curves in `docs/results/train_cap_calibration.csv`),
+  to decide how to fix the unequal training budgets of entry 89. A shared cap turned out to be
+  unnecessary: six methods read the entire 182,304-point `surge_cuxhaven` record in under 8
+  seconds each, and the four expensive classical ones reach it in an extrapolated 7 min
+  (AutoARIMA) to 47-66 min (Theta) per fit — affordable, since a fit happens once per case, not
+  once per origin. So the caps were removed rather than equalised, leaving one ceiling in the
+  new `bench/eval/budget.py` set far above any current record: a guard against a future
+  oversized case, not a budget. An equal-fit-compute rule was considered first and rejected,
+  because fixing the time budget would have pinned `fit_seconds` at that budget for every
+  expensive method and destroyed the cost measurement the scorecards are meant to rest on.
+  The deep-learning methods now train to convergence — a chronological 20% validation tail,
+  patience of 5 checks, a 2,000-step ceiling as a safety net — instead of the fixed 500/600
+  gradient steps that made a large case see each training window ~12x less often than a small
+  one; every result row now records `train_points` and `train_steps`. MLP is the one exception,
+  keeping its 20,000-point cap until #97 brings down its per-horizon-step cost, and every
+  number in the current pilot is stale until the re-run.
+commits:
+  - 924f395: "Create scripts for calibrating training caps"
+  - fb8f263: "Add measured fit-cost curves for the training-cap decision"
+  - caa7e04: "Remove the classical and ML training-history caps"
+  - 43210c9: "Train the DL methods to convergence instead of a fixed step count"
+  - df0c40f: "Update the cap-calibration script for the post-#95 world"
+---
+id: 89
+date: "2026-08-12"
+title: "Auditing the method cards surfaced a training-budget problem that blocks the card fixes"
+description: |
+  Audited every method's `Handles` and `Scorecard` against the shipped results to check the
+  rubric's claim that `fit_cost`/`inference_cost` are "anchored to the measured
+  `fit_seconds`/`predict_seconds`" — they aren't: N-HiTS (5.8s) and iTransformer (6.0s) are rated
+  High fit while the slower Theta (8.6s) is rated Low, and Moirai-2.0 is rated High inference at
+  34ms per origin while methods 3x slower are rated Low. Chasing *why* fit time doesn't track
+  training size showed that for the neuralforecast/torch methods it is a deterministic function
+  of `lookback + h` (correlation 1.000) and completely independent of the number of training
+  samples: `_MAX_STEPS = 500` (`nf_models.py`) and `max_steps = 600` (`torchdl.py`) fix the
+  gradient-step count, so `wwtp_influent_n2o_350k` (2,594 points) and `waves_oregon` (20,735)
+  both fit in ~140.7s and each available training window is seen roughly 12x more often on the
+  small cases than the large ones. Separately, 13 methods truncate training history to a
+  per-method cap, so on one case the methods are compared at very unequal data budgets — on
+  `surge_cuxhaven` (182,304 points) TBATS sees 1.6% of the history, AutoARIMA 2.7%, the DL family
+  11-16%, and the mlforecast family 100%. **Decision: fix the step budgets and sample caps and
+  re-run the pilot before touching the scorecards**, since making a card consistent with a matrix
+  whose columns were produced under unequal budgets would only lock in the distortion. Two
+  smaller decisions came out of the same discussion and are deferred to that later card work: the
+  cost fields become explicitly qualitative (drop the anchoring claim, keep the levels as
+  declared judgement, guard them with a per-field monotonicity test rather than numeric bands),
+  and a "scaling with history" card field was rejected — it discards the cost *level* an engineer
+  asks for first, and for the 13 capped methods its slope is zero by construction.
+commits: []
+---
 id: 88
 date: "2026-07-30"
 title: "Fixed MLP's divergence at the source, and added a Forecast strategy card to every method"

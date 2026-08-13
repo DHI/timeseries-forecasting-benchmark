@@ -19,6 +19,9 @@ dependencies = [
     "lightgbm>=4.3",
     "catboost>=1.2",
     "scikit-learn>=1.4",
+    # Arrives transitively with scikit-learn, but methods/ml.py imports it directly to cap
+    # BLAS threads around the MLP fit, so it is declared here in its own right.
+    "threadpoolctl>=3.1",
     "utilsforecast>=0.2",
     "tomli>=2.0; python_version < '3.11'",
     "scipy>=1.11",

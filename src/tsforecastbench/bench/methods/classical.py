@@ -39,20 +39,26 @@ Three tractability choices, all standard practice:
    which deseasonalizes cheaply. Pass season_length explicitly to force a seasonal
    AutoARIMA/AutoETS fit on a low-period case.
 
-3. Capped *search* window, uncapped roll-forward. Order/spec-search cost grows with length,
-   so we search on the most recent max_train_steps observations. Truncating from the front
-   does not move the forecast origin, so test alignment is preserved. `predict` is
-   deliberately *not* capped: it forwards over the whole history it is handed, because that
-   is what the fitted model's state at the origin actually implies, and truncating would
-   substitute an arbitrary re-initialization for it.
+3. Neither the search window nor the roll-forward is capped. These methods used to search on
+   a hand-picked slice of recent history -- 3,000 points for TBATS, 5,000 for AutoARIMA and
+   AutoETS, 8,000 for Theta -- while the mlforecast methods trained on everything, which made
+   a matrix column a comparison at unequal data budgets rather than between methods (issue
+   #95). The caps are gone: `max_train_steps` now defaults to `eval.budget`'s ceiling, which
+   is a guard against a future oversized case, not a budget, and does not bind on any case
+   here. Order/spec-search cost grows with history length, so the expensive methods are now
+   genuinely slow to fit -- extrapolated to the 182,304-point `surge_cuxhaven` record, ~7 min
+   for AutoARIMA, ~10 for MSTL-ARIMA, 6-12 for TBATS and 47-66 for Theta, once per case.
 
-   That costs real time, unevenly, and the benchmark reports it rather than engineering
-   around it -- `predict_seconds` is one of the numbers on display. On a 200,000-point
-   history: AutoARIMA ~0.03s and AutoETS ~0.01s per origin, but AutoTheta ~110s (superlinear
-   -- 0.02s at 5,000, 2.5s at 50,000) and MSTL ~28s for periods [24, 168], since STL cost
-   grows with n x period. A rolling run over a long record is therefore slow for Theta and
-   MSTL. That is a true fact about those methods at that history length, and capping their
-   context to hide it would also change their forecasts.
+   The benchmark reports that cost rather than engineering around it, at fit and at predict
+   alike -- `fit_seconds` and `predict_seconds` are both on display. Predict was never capped:
+   it forwards over the whole history it is handed, because that is what the fitted model's
+   state at the origin actually implies, and truncating would substitute an arbitrary
+   re-initialization for it. On a 200,000-point history: AutoARIMA ~0.03s and AutoETS ~0.01s
+   per origin, but AutoTheta ~110s (superlinear -- 0.02s at 5,000, 2.5s at 50,000) and MSTL
+   ~28s for periods [24, 168], since STL cost grows with n x period. A rolling run over a long
+   record is therefore slow for Theta and MSTL. That is a true fact about those methods at
+   that history length, and capping their context to hide it would also change their
+   forecasts.
 """
 
 from __future__ import annotations
@@ -62,6 +68,7 @@ import warnings
 import numpy as np
 import pandas as pd
 
+from tsforecastbench.bench.eval.budget import TRAIN_POINT_CEILING
 from tsforecastbench.bench.methods.base import Forecaster
 from tsforecastbench.bench.methods.scorecard import (
     Capabilities,
@@ -131,10 +138,11 @@ class AutoARIMAForecaster(_ForwardForecaster):
     name = "AutoARIMA"
     library = "statsforecast (Nixtla)"
     compute_profile = (
-        "CPU only; a stepwise order search at fit time, typically seconds per case (searched "
-        "on the most recent 5,000 points by default); each origin after that is one "
-        "fixed-parameter `forward` pass over that origin's whole history — ~0.03s even on a "
-        "200,000-point one, the cheapest roll-forward of the classical methods here."
+        "CPU only; a stepwise order search at fit time over the whole training record, whose "
+        "cost grows with its length — seconds on a few thousand points, ~4 min at 100,000 and "
+        "an extrapolated ~7 min at 182,000. Each origin after that is one fixed-parameter "
+        "`forward` pass over that origin's whole history — ~0.03s even on a 200,000-point one, "
+        "the cheapest roll-forward of the classical methods here."
     )
     limitations = (
         "Non-seasonal by default (season_length=1) — a large seasonal period would "
@@ -170,7 +178,7 @@ class AutoARIMAForecaster(_ForwardForecaster):
         robustness_to_noise=Level.MEDIUM,
     )
 
-    def __init__(self, season_length: int = 1, max_train_steps: int = 5000):
+    def __init__(self, season_length: int = 1, max_train_steps: int = TRAIN_POINT_CEILING):
         self.season_length = season_length
         self.max_train_steps = max_train_steps
 
@@ -189,15 +197,15 @@ class AutoETSForecaster(_ForwardForecaster):
     selected spec and its smoothing parameters held fixed.
 
     Like AutoARIMA, season_length defaults to 1 (non-seasonal); set explicitly for
-    cases where a small seasonal period is appropriate. max_train_steps caps fit cost.
+    cases where a small seasonal period is appropriate.
     """
 
     name = "AutoETS"
     library = "statsforecast (Nixtla)"
     compute_profile = (
-        "CPU only; searches over error/trend/season state combinations at fit time, "
-        "typically seconds per case (searched on the most recent 5,000 points by default); "
-        "each origin after that is one fixed-parameter `forward` pass over that origin's "
+        "CPU only; searches over error/trend/season state combinations at fit time, on the "
+        "whole training record and barely sensitive to its length — ~1.9s at 182,000 points. "
+        "Each origin after that is one fixed-parameter `forward` pass over that origin's "
         "whole history — ~0.01s even on a 200,000-point one."
     )
     limitations = (
@@ -232,7 +240,7 @@ class AutoETSForecaster(_ForwardForecaster):
         robustness_to_noise=Level.MEDIUM,
     )
 
-    def __init__(self, season_length: int = 1, max_train_steps: int = 5000):
+    def __init__(self, season_length: int = 1, max_train_steps: int = TRAIN_POINT_CEILING):
         self.season_length = season_length
         self.max_train_steps = max_train_steps
 
@@ -297,8 +305,9 @@ class TBATSForecaster(Forecaster):
     compute_profile = (
         "CPU only; a genuine AIC search over Box-Cox/trend/damped-trend/ARMA-error "
         "combinations at fit time (up to 12 candidate models) -- the heaviest single fit "
-        "of the classical methods here, on the order of a minute at 3,000 points with an "
-        "annual (365) season. Paid once, though: each origin after that is a fixed-"
+        "of the classical methods here: ~25s at 10,000 points, ~72s at 20,000 and an "
+        "extrapolated 6-12 min on the 182,000-point record. Paid once, though: each origin "
+        "after that is a fixed-"
         "coefficient state-space filter pass (`calcTBATSFaster`) over that origin's whole "
         "history, on the order of milliseconds even on long records."
     )
@@ -345,7 +354,11 @@ class TBATSForecaster(Forecaster):
         robustness_to_noise=Level.MEDIUM,
     )
 
-    def __init__(self, season_length: int | list[int] | None = None, max_train_steps: int = 3000):
+    def __init__(
+        self,
+        season_length: int | list[int] | None = None,
+        max_train_steps: int = TRAIN_POINT_CEILING,
+    ):
         self.season_length = season_length
         self.max_train_steps = max_train_steps
 
@@ -457,11 +470,12 @@ class ThetaForecaster(_ForwardForecaster):
     name = "Theta"
     library = "statsforecast (Nixtla)"
     compute_profile = (
-        "CPU only; a cheap deseasonalize/fit/re-seasonalize decomposition at fit time "
-        "(searched on the most recent 8,000 points). Cheap to fit, but the most expensive "
-        "roll-forward here: each origin re-derives the decomposition and re-runs the "
-        "fixed-parameter filter over that origin's whole history, at a cost superlinear in "
-        "its length — 0.02s at 5,000 points, ~2.5s at 50,000, ~110s at 200,000."
+        "CPU only; a deseasonalize/fit/re-seasonalize decomposition at fit time over the "
+        "whole training record, superlinear in its length — 2s at 5,000 points, ~278s at "
+        "50,000, an extrapolated 47-66 min at 182,000. The same superlinear cost lands again "
+        "at every origin, which re-derives the decomposition and re-runs the fixed-parameter "
+        "filter over that origin's whole history — 0.02s at 5,000 points, ~2.5s at 50,000, "
+        "~110s at 200,000 — making this the most expensive roll-forward here as well."
     )
     limitations = (
         "Univariate: ignores exogenous inputs. Parameters are fixed at fit time, but the "
@@ -485,8 +499,8 @@ class ThetaForecaster(_ForwardForecaster):
     )
     # Same feed-forward recursion as AutoARIMA/AutoETS — see AutoARIMAForecaster's comment.
     forecast_strategy = ForecastStrategy.RECURSIVE
-    # Cheap to fit, but the most expensive roll-forward here: the per-origin cost is
-    # superlinear in history length — 0.02s at 5,000 points, ~110s at 200,000.
+    # Superlinear in history length at both ends now that the fit sees the whole record:
+    # tens of minutes to fit a long one, and ~110s per origin at 200,000 points to predict it.
     scorecard = Scorecard(
         history_requirements=Level.MEDIUM,
         interpretability=Level.HIGH,
@@ -496,7 +510,9 @@ class ThetaForecaster(_ForwardForecaster):
         robustness_to_noise=Level.MEDIUM,
     )
 
-    def __init__(self, season_length: int | None = None, max_train_steps: int = 8000):
+    def __init__(
+        self, season_length: int | None = None, max_train_steps: int = TRAIN_POINT_CEILING
+    ):
         self.season_length = season_length
         self.max_train_steps = max_train_steps
 
@@ -538,11 +554,12 @@ class _MSTLBase(_ForwardForecaster):
     """
 
     name = "MSTL"
-    max_train_steps = 8000
+    max_train_steps = TRAIN_POINT_CEILING
     library = "statsforecast (Nixtla)"
     compute_profile = (
-        "CPU only; a fast STL-based decomposition plus the subclass's trend forecaster, on "
-        "the most recent 8,000 points — typically seconds per case. Each origin after that "
+        "CPU only; a fast STL-based decomposition plus the subclass's trend forecaster over "
+        "the whole training record. Cost is dominated by the trend model: ~7s at 182,000 "
+        "points with AutoETS, an extrapolated ~10 min with AutoARIMA. Each origin after that "
         "re-derives STL over that origin's whole history and forwards the trend model with "
         "its parameters fixed; STL cost grows with history x period, so a long record is "
         "slow — ~0.7s at 5,000 points up to ~28s at 200,000 for periods [24, 168]."
@@ -623,7 +640,7 @@ class MSTLAutoARIMAForecaster(_MSTLBase):
     MSTL-ETS because the ARIMA stepwise search is the more expensive fit."""
 
     name = "MSTL-ARIMA"
-    max_train_steps = 5000
+    max_train_steps = TRAIN_POINT_CEILING
     library = "statsforecast (Nixtla) — trend forecaster: AutoARIMA"
     code_snippet = (
         "from statsforecast.models import MSTL, AutoARIMA\n\n"

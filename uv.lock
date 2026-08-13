@@ -3604,6 +3604,7 @@ dependencies = [
     { name = "statsforecast", version = "2.0.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12' and sys_platform == 'win32'" },
     { name = "statsforecast", version = "2.0.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12' or sys_platform != 'win32'" },
     { name = "statsmodels" },
+    { name = "threadpoolctl" },
     { name = "tqdm" },
     { name = "utilsforecast" },
 ]
@@ -3675,6 +3676,7 @@ requires-dist = [
     { name = "statsforecast", specifier = ">=1.7" },
     { name = "statsmodels", specifier = ">=0.14" },
     { name = "streamlit", marker = "extra == 'dev'", specifier = ">=1.35" },
+    { name = "threadpoolctl", specifier = ">=3.1" },
     { name = "timesfm", extras = ["torch"], marker = "extra == 'fm'", specifier = ">=2.0" },
     { name = "tomli", marker = "python_full_version < '3.11'", specifier = ">=2.0" },
     { name = "torch", marker = "extra == 'dl'", specifier = ">=2.2" },

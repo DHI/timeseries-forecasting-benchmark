@@ -6,6 +6,13 @@ entry and its commits. See `schema.md` for the format both files follow.
 
 <!-- Add new entries below this line, newest first, matching details.md. -->
 
+### 2026-08-13
+- 91 — MLP's 609s fit was BLAS thread oversubscription, not the cost of direct_horizon
+
+### 2026-08-12
+- 90 — Removed the per-method training caps outright rather than equalising them
+- 89 — Auditing the method cards surfaced a training-budget problem that blocks the card fixes
+
 ### 2026-07-30
 - 88 — Fixed MLP's divergence at the source, and added a Forecast strategy card to every method
 

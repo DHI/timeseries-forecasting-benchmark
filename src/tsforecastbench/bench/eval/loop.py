@@ -212,6 +212,7 @@ def run_case(case: Case, methods: list[Forecaster], prefer_synth: bool = False) 
         for m_train_fit, used_extended in variants:
             fit_seconds = float("nan")
             predict_seconds = float("nan")
+            method.last_fit_steps = None
             try:
                 t_fit0 = time.perf_counter()
                 method.fit(case, m_train_fit)
@@ -258,6 +259,10 @@ def run_case(case: Case, methods: list[Forecaster], prefer_synth: bool = False) 
                         "predict_seconds": predict_seconds,
                         "frac_finite_test": frac_finite,
                         "status": status,
+                        # What this fit was given and what it spent -- see the same pair
+                        # in `eval.rolling` and `eval.budget` on why they are recorded.
+                        "train_points": len(m_train_fit),
+                        "train_steps": method.last_fit_steps,
                     }
                 )
             tag = " [ext]" if used_extended else ""

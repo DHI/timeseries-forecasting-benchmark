@@ -342,6 +342,55 @@
 {
   "nodes": [
     {
+      "id": "2026-08-13-mlp-blas-thread-oversubscription",
+      "date": "2026-08-13",
+      "title": "MLP's 609s fit was BLAS thread oversubscription, not the cost of direct_horizon",
+      "category": "bug-fix",
+      "summary": "MLP's fit read 608.5s for 2,000 points on a 48-step horizon, blamed on direct_horizon training one MLPRegressor per step at ~12s each. The per-step cost was itself inflated 20-60x by OpenBLAS thread oversubscription -- its matmuls are ~0.4 MFLOP, too small to spread over a dozen cores. Capping the fit to one BLAS thread took surge_cuxhaven 608.5s -> 29.8s, so none of the three redesigns proposed for #97 was needed, and MLP's 20,000-point cap could go too.",
+      "detail": "Issue #97 measured MLP's fit at 608.5s for 2,000 training points on a 48-step horizon, 299.5s on a 24-step horizon and 112.7s on a 7-step one -- a cost tracking horizon-step count at roughly 12s per step, which pointed at `direct_horizon = True` training one independent `MLPRegressor` per step. That framing was half right: `direct_horizon` multiplies by H, but the per-step constant was inflated by thread oversubscription. A minibatch matmul in this pipeline is 200 x ~15 features into a 64-wide layer, roughly 0.4 MFLOP, so spreading it across a 12-core OpenBLAS pool costs more in thread synchronisation than the arithmetic it saves. scikit-learn's MLP has no parallelism of its own -- all of it comes from BLAS, and at these shapes that parallelism is strongly negative.\n\nOne fit of identical data, seed and iteration count takes 37.3s unrestricted against 0.50s on a single thread. End to end the fit runs 608.5s -> 29.8s on `surge_cuxhaven` and 298.8s -> 5.0s on `discharge_lowland_denmark`. A sweep over matmul shapes located the crossover where multi-threading starts paying: roughly batch >= 2,000 *and* a 1,024-wide layer *and* ~500 features, all three at once. This pipeline sits two to three orders of magnitude below that, and two of the knobs are not ours -- the feature count comes from the lag ladder, and scikit-learn's default batch size is capped at min(200, n). So the fit is pinned to one BLAS thread and the strategy is untouched; none of the three redesigns #97 proposed (shrink the per-step model, share one model across steps, return to recursive) was needed.\n\nThe cap also makes the number trustworthy. Four repeats of one fit in a single process ranged 2.72s, 1.95s, 0.90s, 0.38s as the thread pool warmed, while single-threaded held 0.14s every time -- and the scorecard's cost fields are meant to rest on measured `fit_seconds`. That variance also explains why the entry above recorded the inflation as only ~1.9x: a repeated in-process measurement catches a warm pool, a cold fit does not.\n\nWith the constant fixed, MLP was remeasured up the training-size ladder (`--methods MLP`, added to the calibration script for exactly this case): 28.8s at 2,000 points, 54.1s at 5,000 and 153.6s at 10,000 on a 48-step horizon -- roughly linear in history, extrapolating to about 45 min over the full 182,304-point record. That is Theta's order of magnitude, which the cap-removal decision already accepted as affordable for a once-per-case fit, so MLP's 20,000-point cap was removed as well and no method carries one now. `fit_cost` stays High: direct_horizon multiplies a history-scaled cost by the horizon-step count, which still leaves it among the most expensive fits here.\n\nA GPU is not an alternative for this method: scikit-learn has no CUDA backend and its array-API dispatch does not cover `MLPRegressor`, and even if it did, a GPU would lose on these shapes for the same reason twelve CPU threads do -- kernel launch overhead against 0.4 MFLOP of work.\n\nEvery MLP and MLP+exo number in the pilot is stale pending a re-run, and `docs/results/train_cap_calibration.csv` still holds MLP's pre-fix rows until a full run regenerates it. Two loose ends are tracked separately: batch size is left at scikit-learn's default even though 32 scored better on held-out R2 at equal wall time (changing it changes scores), and the `torchdl` methods never move a tensor off the CPU.",
+      "tags": [
+        "mlp",
+        "performance",
+        "blas-threads",
+        "training-budget",
+        "direct-horizon",
+        "pilot-rerun",
+        "bug-fix"
+      ]
+    },
+    {
+      "id": "2026-08-12-training-caps-removed",
+      "date": "2026-08-12",
+      "title": "Removed the per-method training caps outright rather than equalising them",
+      "category": "methodology",
+      "summary": "Measured fit cost against training-history length for every method whose cost depends on it, to fix the unequal training budgets of the card audit. A shared cap proved unnecessary -- six methods read the whole 182,304-point record in under 8 seconds and the expensive classical ones reach it in 7-66 min per fit -- so the caps were removed rather than equalised, and the DL methods now train to convergence instead of a fixed step count.",
+      "detail": "`scripts/calibrate_train_caps.py` walks each method up a training-size ladder, timing one fit per rung and dropping the method once it crosses a budget, with a projection guard so no single measurement disappears into a multi-hour fit. The curves (`docs/results/train_cap_calibration.csv`) showed the fix did not need a shared cap at all: AutoETS (1.9s), LinearLags (0.5s), LightGBM (1.3s), CatBoost (2.6s), DLinear (0.4s) and MSTL-ETS (7.4s) all read the entire 182,304-point `surge_cuxhaven` record in under 8 seconds, and extrapolating the four expensive classical methods to full history gives ~7 min (AutoARIMA), ~10 (MSTL-ARIMA), 6-12 (TBATS) and 47-66 (Theta) per fit. Since a fit happens once per case rather than once per origin, that is affordable, so the per-method caps were deleted and `bench/eval/budget.py` keeps a single ceiling far above any current record -- a guard against a future oversized case, not a comparability device.\n\nAn equal-fit-compute rule (every method gets the same fit-seconds budget, history follows from throughput) was considered first and rejected: fixing the time would have pinned `fit_seconds` at the budget for every expensive method, destroying the very measurement the scorecard's cost fields are meant to rest on. Fixing data and measuring time also yields strictly more information, since throughput falls out for free when the history is equal.\n\nThe deep-learning methods changed on the other axis. A fixed 500 (nf_models) / 600 (torchdl) gradient steps meant a large case saw each training window roughly 12x less often than a small one; training now stops when held-out loss stops improving, using a chronological 20% validation tail, patience of 5 checks 50 steps apart, and a 2,000-step ceiling as a safety net. On `discharge_lowland_denmark` N-HiTS stops at 350 steps and PatchTST at 300. Window sub-sampling -- a separate knob that strides the whole span rather than truncating it -- is unified at 15,000 windows, replacing 6,000 in torchdl and 8,000 in DLinear. Every result row now carries `train_points` and `train_steps` so a cell's budget is visible in the data.\n\nMLP is the one method still capped: its cost is set by the horizon rather than by history (one model per horizon step, ~12s each), so it cannot be uncapped until #97 lands. A side measurement while chasing a test-suite slowdown found MLP's fit is also ~1.9x inflated by BLAS thread oversubscription on a 12-core host, while the classical methods and LightGBM are thread-insensitive -- which makes `fit_seconds` host-dependent for the BLAS-bound methods specifically. Every number in the current pilot is stale until the re-run.",
+      "tags": [
+        "training-budget",
+        "benchmark-integrity",
+        "classical",
+        "deep-learning",
+        "early-stopping",
+        "pilot-rerun"
+      ]
+    },
+    {
+      "id": "2026-08-12-training-budget-blocks-card-fixes",
+      "date": "2026-08-12",
+      "title": "Auditing the method cards surfaced a training-budget problem that blocks the card fixes",
+      "category": "methodology",
+      "summary": "Auditing Handles/Scorecard against the results showed the two cost fields are not anchored to the measured seconds they claim to be. Chasing why fit time doesn't track training size revealed fixed gradient-step budgets (500/600 steps) and 13 per-method history caps, which compare methods at very unequal data budgets on the same case. The pilot needs re-running before any scorecard fix is worth making.",
+      "detail": "The rubric in `scorecard.py` states that `fit_cost` and `inference_cost` are anchored to the `fit_seconds`/`predict_seconds` the eval loop records. Checking that against `docs/results/scores.parquet` found straight inversions: N-HiTS (5.8s median fit) and iTransformer (6.0s) are rated High while the slower Theta (8.6s) and EnsembleBaselinesTheta (9.3s) are rated Low, and Moirai-2.0 is rated High inference at 34ms/origin while several methods 3x slower are rated Low. A per-field monotonicity check — no method may be rated worse than one it beats on the measurement — reduces the whole registry to three root offenders, which is a far smaller and more robust fix than binning levels against numeric thresholds.\n\nChasing *why* fit time doesn't track training size turned out to matter more than the card. For the neuralforecast/torch methods, fit time is a deterministic function of `lookback + h` (correlation 1.000) and independent of the number of training samples (correlation 0.496, entirely explained by longer series happening to use longer lookbacks). `_MAX_STEPS = 500` in `nf_models.py` and `max_steps = 600` in `torchdl.py` pin the gradient-step count, so `wwtp_influent_n2o_350k` (2,594 points) and `waves_oregon` (20,735) both fit in ~140.7s, and each available training window is seen roughly 12x more often on the small cases than on the large ones. Separately, 13 methods truncate training history to a per-method cap (`max_train_steps`, `_MAX_TRAIN`, `max_samples`), so a single case compares methods at very unequal data budgets: on `surge_cuxhaven` (182,304 points) TBATS sees 1.6% of the history, AutoARIMA and MSTL-ARIMA 2.7%, Theta and MSTL-ETS 4.4%, the DL family 11-16%, and the mlforecast family 100%.\n\nDecision: fix the step budgets and sample caps and re-run the pilot before touching the scorecards — making a card consistent with a matrix whose columns were produced under unequal budgets would only lock the distortion in. Two smaller decisions are deferred to that later card work: the cost fields become explicitly qualitative (drop the anchoring claim from both `scorecard.py` and `scorecardConfig.ts`, keep the levels as declared judgement, guard them with the monotonicity test plus a rule that an ensemble may not be rated better than its worst member), and a proposed \"scales with history\" card field was rejected because it discards the cost level an engineer asks for first and its slope is zero by construction for every capped method.",
+      "tags": [
+        "method-cards",
+        "scorecard",
+        "training-budget",
+        "neuralforecast",
+        "benchmark-integrity",
+        "pilot-rerun"
+      ]
+    },
+    {
       "id": "2026-07-30-mlp-direct-horizon-forecast-strategy",
       "date": "2026-07-30",
       "title": "Fixed MLP's divergence at the source, and added a Forecast strategy card to every method",
@@ -1513,6 +1562,36 @@
     }
   ],
   "edges": [
+    {
+      "source": "2026-08-13-mlp-blas-thread-oversubscription",
+      "target": "2026-08-12-training-caps-removed",
+      "type": "follows-from"
+    },
+    {
+      "source": "2026-08-13-mlp-blas-thread-oversubscription",
+      "target": "2026-07-30-mlp-direct-horizon-forecast-strategy",
+      "type": "relates-to"
+    },
+    {
+      "source": "2026-08-12-training-caps-removed",
+      "target": "2026-08-12-training-budget-blocks-card-fixes",
+      "type": "follows-from"
+    },
+    {
+      "source": "2026-08-12-training-caps-removed",
+      "target": "2026-07-30-mlp-direct-horizon-forecast-strategy",
+      "type": "relates-to"
+    },
+    {
+      "source": "2026-08-12-training-budget-blocks-card-fixes",
+      "target": "2026-07-29-method-scorecards",
+      "type": "relates-to"
+    },
+    {
+      "source": "2026-08-12-training-budget-blocks-card-fixes",
+      "target": "2026-07-30-mlp-direct-horizon-forecast-strategy",
+      "type": "relates-to"
+    },
     {
       "source": "2026-07-30-mlp-direct-horizon-forecast-strategy",
       "target": "2026-07-27-mlp-recursive-divergence-bounded",

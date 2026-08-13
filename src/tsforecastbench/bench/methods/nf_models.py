@@ -17,6 +17,12 @@ from typing import ClassVar
 import numpy as np
 import pandas as pd
 
+from tsforecastbench.bench.eval.budget import (
+    DL_MAX_STEPS,
+    DL_PATIENCE_CHECKS,
+    DL_VAL_CHECK_STEPS,
+    DL_VAL_FRACTION,
+)
 from tsforecastbench.bench.methods.base import Forecaster, lookback_for
 from tsforecastbench.bench.methods.scorecard import (
     Capabilities,
@@ -26,8 +32,6 @@ from tsforecastbench.bench.methods.scorecard import (
 )
 from tsforecastbench.data.schema import Case
 
-_MAX_STEPS = 500
-_MAX_TRAIN = 30000
 _TRAINER_KW = {"accelerator": "auto", "enable_progress_bar": False, "logger": False}
 
 
@@ -48,10 +52,11 @@ class _NFBase(Forecaster):
     library = "neuralforecast + pytorch_lightning"
     compute_profile = (
         "Uses a GPU automatically if one is available (accelerator='auto'), "
-        "otherwise falls back to CPU; a heavier training loop (up to 500 steps, "
-        "full pytorch_lightning trainer overhead) than the custom torch models in "
-        "torchdl.py. Only available on Linux with Python <3.13 (the `nf` extra), "
-        "since neuralforecast depends on `ray`."
+        "otherwise falls back to CPU; a heavier training loop (full pytorch_lightning "
+        "trainer overhead, run until held-out loss stops improving rather than for a "
+        "fixed number of steps) than the custom torch models in torchdl.py. Only "
+        "available on Linux with Python <3.13 (the `nf` extra), since neuralforecast "
+        "depends on `ray`."
     )
     limitations = (
         "Univariate — ignores exogenous inputs. Trains a fresh model per case with "
@@ -64,10 +69,11 @@ class _NFBase(Forecaster):
     capabilities = Capabilities(
         trend=True, seasonality=True, multiple_seasonality=True, exogenous=False
     )
-    # A full pytorch_lightning training loop per case, heavier than the custom torch models
-    # in torchdl.py, against one forward pass at predict. Tuning effort is High as the cost
-    # of doing it properly: these run on architecture defaults regardless of the series'
-    # scale or frequency, which is a limitation rather than an absence of knobs.
+    # A full pytorch_lightning training loop per case, run to convergence and heavier than
+    # the custom torch models in torchdl.py, against one forward pass at predict. Tuning
+    # effort is High as the cost of doing it properly: these run on architecture defaults
+    # regardless of the series' scale or frequency, which is a limitation rather than an
+    # absence of knobs.
     scorecard = Scorecard(
         history_requirements=Level.HIGH,
         interpretability=Level.LOW,
@@ -91,22 +97,42 @@ class _NFBase(Forecaster):
         # neuralforecast fits them as a panel, so no window spans a gap. The tail segment
         # (latest ds, always the last row) is the series we forecast at predict.
         self._target_uid = df["unique_id"].iloc[-1]
-        df = df.groupby("unique_id", sort=False).tail(_MAX_TRAIN)
+        # No truncation: the whole record is trained on (issue #95).
         df["ds"] = _naive_ds(df["ds"]).to_numpy()
         df["y"] = pd.to_numeric(df["y"], errors="coerce")
+
+        lookback = lookback_for(case.freq, h)
+        # Held-out tail for early stopping, sized off the target segment and clamped so that
+        # segment keeps at least one full training window. neuralforecast cuts `val_size`
+        # steps from the end of *every* series in the panel, so segments too short to give up
+        # that much are dropped rather than shrinking the validation tail for everyone —
+        # they are the shortest fragments of the record and contribute few windows anyway.
+        lens = df.groupby("unique_id", sort=False).size()
+        tail_len = int(lens[self._target_uid])
+        val_size = min(max(h, int(tail_len * DL_VAL_FRACTION)), max(0, tail_len - lookback - h))
+        usable = lens[lens >= lookback + h + val_size].index
+        df = df[df["unique_id"].isin(usable)]
 
         model_cls = getattr(nfm, self.model_name)
         model = model_cls(
             h=h,
-            input_size=lookback_for(case.freq, h),
-            max_steps=_MAX_STEPS,
+            input_size=lookback,
+            # Convergence, not a fixed step count: a fixed count made a large case see each
+            # training window far less often than a small one (research log entry 89).
+            # max_steps is the safety net for a fit that never converges.
+            max_steps=DL_MAX_STEPS,
+            val_check_steps=DL_VAL_CHECK_STEPS,
+            early_stop_patience_steps=DL_PATIENCE_CHECKS,
             scaler_type="standard",
             **self.extra_kwargs,
             **_TRAINER_KW,
         )
         self._nf = NeuralForecast(models=[model], freq=case.freq)
-        self._nf.fit(df)
+        self._nf.fit(df, val_size=val_size)
         self._col = self.model_name
+        # pytorch_lightning counts the optimisation steps it actually ran, so this reflects
+        # where early stopping landed rather than the ceiling above.
+        self.last_fit_steps = int(getattr(model.trainer, "global_step", 0)) or None
 
     def predict(
         self,
@@ -142,9 +168,9 @@ class TFTForecaster(_NFBase):
     code_snippet = (
         "from neuralforecast import NeuralForecast\n"
         "from neuralforecast.models import TFT\n\n"
-        "model = TFT(h=horizon, input_size=lookback, max_steps=500)\n"
+        "model = TFT(h=horizon, input_size=lookback, early_stop_patience_steps=5)\n"
         "nf = NeuralForecast(models=[model], freq=case.freq)\n"
-        "nf.fit(train_df)                     # train_df: unique_id, ds, y\n"
+        "nf.fit(train_df, val_size=val_size)  # train_df: unique_id, ds, y\n"
         'y_hat = nf.predict()["TFT"]'
     )
     # A single neuralforecast predict() call returns the full horizon at once — TFT's
@@ -161,9 +187,10 @@ class ITransformerForecaster(_NFBase):
     code_snippet = (
         "from neuralforecast import NeuralForecast\n"
         "from neuralforecast.models import iTransformer\n\n"
-        "model = iTransformer(h=horizon, input_size=lookback, n_series=1, max_steps=500)\n"
+        "model = iTransformer(h=horizon, input_size=lookback, n_series=1,\n"
+        "                     early_stop_patience_steps=5)\n"
         "nf = NeuralForecast(models=[model], freq=case.freq)\n"
-        "nf.fit(train_df)                     # train_df: unique_id, ds, y\n"
+        "nf.fit(train_df, val_size=val_size)  # train_df: unique_id, ds, y\n"
         'y_hat = nf.predict()["iTransformer"]'
     )
     # iTransformer is multivariate and fixed to n_series=1 here, so it cannot absorb the
@@ -188,9 +215,9 @@ class TimesNetForecaster(_NFBase):
     code_snippet = (
         "from neuralforecast import NeuralForecast\n"
         "from neuralforecast.models import TimesNet\n\n"
-        "model = TimesNet(h=horizon, input_size=lookback, max_steps=500)\n"
+        "model = TimesNet(h=horizon, input_size=lookback, early_stop_patience_steps=5)\n"
         "nf = NeuralForecast(models=[model], freq=case.freq)\n"
-        "nf.fit(train_df)                     # train_df: unique_id, ds, y\n"
+        "nf.fit(train_df, val_size=val_size)  # train_df: unique_id, ds, y\n"
         'y_hat = nf.predict()["TimesNet"]'
     )
     # Same one-call, full-horizon-at-once prediction as its siblings — see TFTForecaster.
