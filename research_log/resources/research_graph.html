@@ -342,6 +342,23 @@
 {
   "nodes": [
     {
+      "id": "2026-08-14-stochastic-methods-median-seed",
+      "date": "2026-08-14",
+      "title": "Stochastic methods are scored over five seeds, reporting the median run whole",
+      "category": "methodology",
+      "summary": "Every cell was one fit at one seed, mixing a method's skill with the luck of one initialisation. Nine methods now run five times per cell and the middle run by pooled MSE is kept whole -- its nine metrics, its snapshots, its timings. CatBoost joins the seven already known to be stochastic: its default MVS bootstrap resamples rows, so it was reproducible at the library's default seed of 0 rather than deterministic. The app is unchanged; selection happens inside the eval loop, so there is still one row per cell.",
+      "detail": "Every cell in the results matrix was a single fit at a single seed, so for a method whose forecast moves with its initialisation the cell mixed the method's skill with the luck of one draw, and nothing in the output separated the two -- which makes any close comparison between two deep-learning methods unsupported. Each such method is now run five times per cell and the middle run by pooled MSE is kept **whole**: its nine metrics, its snapshots, its `fit_seconds`/`predict_seconds`, its `train_steps`.\n\nKeeping the run whole is the decision that matters. Averaging the forecasts across seeds would have made the number better rather than merely steadier -- a five-member deep ensemble genuinely forecasts more accurately than one network -- and would have benchmarked an ensemble against non-ensembled classical and foundation methods. Medianing each of the nine metrics separately would have given a better central estimate per metric but left the row a composite, with `MASE` from one run and `Skill_vs_Persistence` from another and a drawn forecast matching neither. The median-run rule also settles the snapshot question by construction: the forecast line the viewer draws is the run the cell's number describes. Because origins, the observed-point masks and the persistence/mean reference arrays are all seed-independent, only the prediction vector varies between runs, so the MSEs genuinely rank runs of the same experiment.\n\nThe sweep covers nine methods, not the seven first identified: N-HiTS and PatchTST (`torch.manual_seed`), TFT, iTransformer and TimesNet (`pl.seed_everything`), MLP and MLP+exo (`MLPRegressor(random_state=...)`), and CatBoost and CatBoost+exo. CatBoost's default MVS bootstrap (subsample ~0.8 for RMSE on CPU) resamples rows at every iteration, so two fits differing only in `random_seed` give different forecasts; it had looked deterministic only because the library's own default seed is 0. Reproducible is not the same as deterministic, and by the test that puts MLP in the list CatBoost belongs there too. Everything else still runs once -- LightGBM's sampling defaults are off, Ridge is closed-form, and the classical, baseline and foundation families draw no random numbers -- so repeating them would be pure cost for identical results.\n\nMechanically, `Forecaster` gained a `seed` the eval loop writes before each fit (the same arrangement as `last_fit_steps`) and an `is_stochastic` flag, and the per-variant body of both eval loops moved into a closure that returns a complete run bundle, so the caller can run it per seed and commit only the winner. `DEFAULT_SEEDS` defaults to 5, overridable with `TSFB_SEEDS` or `--seeds` in the same style as `DEFAULT_ORIGINS`, and costs roughly seven extra hours on a full pilot. Every stochastic method's existing scores are now stale, so this wants to land before the next full pilot rather than after one. Left open: `run_leadtime_curve` still runs a single seed, and gh #104 (MLP early-stopping on a shuffled holdout rather than the declared val split) also restales MLP.",
+      "tags": [
+        "seeds",
+        "reproducibility",
+        "methodology",
+        "catboost",
+        "mlp",
+        "deep-learning",
+        "eval-loop"
+      ]
+    },
+    {
       "id": "2026-08-14-ml-family-comparability-audit",
       "date": "2026-08-14",
       "title": "Auditing the method set for comparability turned up two more picked constants, both in the ML family",
@@ -1614,6 +1631,16 @@
     }
   ],
   "edges": [
+    {
+      "source": "2026-08-14-stochastic-methods-median-seed",
+      "target": "2026-08-14-ml-family-comparability-audit",
+      "type": "follows-from"
+    },
+    {
+      "source": "2026-08-14-stochastic-methods-median-seed",
+      "target": "2026-08-14-window-and-step-caps-removed",
+      "type": "relates-to"
+    },
     {
       "source": "2026-08-14-ml-family-comparability-audit",
       "target": "2026-08-14-window-and-step-caps-removed",

@@ -1,4 +1,42 @@
 ---
+id: 95
+date: "2026-08-14"
+title: "Stochastic methods are scored over five seeds, reporting the median run whole"
+description: |
+  Every cell in the results matrix was a single fit at a single seed, so for a method whose
+  forecast moves with its initialisation the cell mixed the method's skill with the luck of one
+  draw — and nothing in the output separated the two. Each such method is now run five times per
+  cell and the **middle run by pooled MSE is kept whole**: its nine metrics, its snapshots, its
+  timings, its `train_steps`. Keeping the run whole is the point. Averaging the forecasts across
+  seeds would have made the number better rather than merely steadier, benchmarking a five-member
+  deep ensemble against non-ensembled classical and foundation methods; medianing each metric
+  separately would have left a row whose `MASE` and `Skill_vs_Persistence` came from different
+  runs and whose drawn forecast matched neither. The app is unchanged — still one number per cell,
+  no uncertainty display — because selection happens inside the eval loop, so there is still
+  exactly one row per `(case_id, method, used_extended_history, metric)`.
+
+  The sweep covers nine methods, not the seven first identified: N-HiTS and PatchTST
+  (`torch.manual_seed`), TFT, iTransformer and TimesNet (`pl.seed_everything`), MLP and MLP+exo
+  (`MLPRegressor(random_state=...)`), and — newly — CatBoost and CatBoost+exo. CatBoost's default
+  MVS bootstrap resamples rows at every iteration, so two fits differing only in `random_seed`
+  give different forecasts; it had looked deterministic only because the library's own default
+  seed is 0. Reproducible is not the same as deterministic, and by the test that puts MLP in the
+  list CatBoost belongs there too. Everything else still runs once: LightGBM's sampling defaults
+  are off, Ridge is closed-form, and the classical, baseline and foundation families draw no
+  random numbers, so repeating them would be pure cost for identical results.
+
+  `DEFAULT_SEEDS` defaults to 5 (override with `TSFB_SEEDS` or `--seeds`, in the same style as
+  `DEFAULT_ORIGINS`), costing roughly seven extra hours on a full pilot. Every stochastic method's
+  existing scores are now stale, so this wants to land before the next full pilot rather than
+  after one. Left open: `run_leadtime_curve` still runs a single seed, and gh #104 (MLP
+  early-stopping on a shuffled holdout rather than the declared val split) also restales MLP.
+commits:
+  - a5ba0f8: "Route every method's randomness through a settable seed"
+  - 4b0c9e9: "Add DEFAULT_SEEDS, the runs-per-stochastic-cell knob"
+  - 1dbdef9: "Score stochastic methods over several seeds, keep the median run"
+  - a11b82b: "Apply the same seed sweep to the single-holdout path"
+  - 3e28ba0: "Add --seeds to run_pilot and pin CatBoost's seed sensitivity"
+---
 id: 94
 date: "2026-08-14"
 title: "Auditing the method set for comparability turned up two more picked constants, both in the ML family"
