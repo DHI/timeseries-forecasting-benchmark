@@ -13,6 +13,12 @@ scoring with tighter error bars. Override per-run without code edits via the
 
 Rule of thumb: 8 is the dev default (legible lead-time curves, enough window
 diversity to surface edge-case failures, cheap to run); 24 for final numbers.
+
+`DEFAULT_SEEDS` is how many times a stochastic method is run per cell before the
+median-MSE run is kept (issue #106). Deterministic methods ignore it and run once
+whatever it is set to. Same override style::
+
+    TSFB_SEEDS=1 uv run python scripts/run_pilot.py   # single run, fast iteration
 """
 
 from __future__ import annotations
@@ -22,3 +28,7 @@ import os
 # Dev default: fast to iterate on, still gives readable lead-time curves and
 # enough window coverage for review. Bump to ~24 for reliable published scores.
 DEFAULT_ORIGINS = int(os.environ.get("TSFB_ORIGINS", "8"))
+# Five is the smallest odd count with a real middle to pick — a median of three sits one
+# unlucky draw away from being an extreme itself. The cost lands only on the nine
+# `is_stochastic` methods, all of which are `is_global` and so fit once per case per seed.
+DEFAULT_SEEDS = int(os.environ.get("TSFB_SEEDS", "5"))
