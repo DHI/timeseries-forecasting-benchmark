@@ -342,6 +342,23 @@
 {
   "nodes": [
     {
+      "id": "2026-08-14-window-and-step-caps-removed",
+      "date": "2026-08-14",
+      "title": "The last two training caps are gone, and the step budget is now counted in epochs",
+      "category": "methodology",
+      "summary": "`MAX_TRAIN_WINDOWS = 15_000` and `DL_MAX_STEPS = 2_000` were the last hand-picked constants left after #95 and #97, and only made sense as a pair -- dropping the window cap alone would have spread a fixed step count over a 24x larger pool. Both are removed; the step ceiling becomes `DL_MAX_EPOCHS = 150` passes over whichever pool a fit has, so views-per-window are equal across cases. Measured after: N-HiTS early-stops at 300-450 steps and PatchTST at 300-650, against ceilings of 900 to 87,900, and fit cost stays flat rather than scaling with the record.",
+      "detail": "Issue #101 named the two constants `eval.budget` still carried: `MAX_TRAIN_WINDOWS = 15_000`, striding the window matrix for DLinear and the torch models, and `DL_MAX_STEPS = 2_000`, capping gradient steps for the torch models and the neuralforecast zoo. Neither was derived from anything, which is the objection #95 raised against the per-method history caps. The two also had to move together: `torchdl` samples a random batch per step, so removing the window cap alone would have left the same number of updates spread over a pool up to 24x larger -- 1.8 views per window on `sewerlevel_bellinge` extended against 42.4 under the cap, while a small case still saw hundreds. That is entry 89's imbalance reappearing on a different axis.\n\nThe window cap bound on only 5 of 17 (frame, case) pairs, and never applied to the neuralforecast zoo at all, so removing it makes `torchdl` and `dl` consistent with `nf_models` rather than opening a new regime. Window building moved to a shared `methods.base.build_windows`, used by both, which allocates float32 and fills it through a strided view rather than stacking float64 slices and casting afterwards. On the largest pair (`sewerlevel_bellinge` extended, 244,565 windows) that builds in 0.04s against the 1.36s a per-window Python loop took at that size, and holds one 188 MB copy where the old shape held three.\n\nThe step ceiling is replaced by a budget in epochs -- `DL_MAX_EPOCHS = 150` passes over whichever window pool a fit actually has, via `budget.dl_step_ceiling`. That is what makes it derived rather than picked: an epoch is a property of the data, so views-per-window are equal across cases and a longer record buys more steps rather than thinner ones. The value follows the long-horizon literature with headroom on top. PatchTST (Nie et al., ICLR 2023) trains for 100 epochs with early stopping, cutting that to 20-50 on its largest datasets to save compute. N-HiTS (Challu et al., AAAI 2023, Table A3) instead fixes 1,000 steps at batch 256 and learning rate 1e-3 -- the batch size and learning rate `torchdl` already uses, but a flat step count is exactly the shape this benchmark rejected. For the neuralforecast zoo the epoch has to be measured against each architecture's own `windows_batch_size` (32 for iTransformer, 64 for TimesNet, 1,024 for TFT), read off the model class rather than assumed, since that library sets it per model. Passing Lightning's `max_steps=-1` is not an option there: `neuralforecast` computes `val_check_interval = min(val_check_steps, max_steps)`, so -1 would break the validation checks early stopping depends on.\n\nMeasured afterwards, the ceiling is nowhere near binding. N-HiTS early-stops at 300-450 steps and PatchTST at 300-650, against ceilings running from 900 on `discharge_lowland_denmark` to 87,900 on `surge_cuxhaven`. Fit cost stays flat across a 100x range in window count -- N-HiTS ~3s, PatchTST 6-22s -- because early stopping decides the step count and per-step cost does not depend on pool size. That contradicts #101's expectation that DL fit cost would become proportional to record length, so no `fit_cost` scorecard rating changes on account of this work.\n\nOne pre-existing failure surfaced while measuring: DLinear's fit on `sewerlevel_bellinge` extended raises `Input X contains NaN`. That frame carries 707 NaNs inside its single segment, which put 126 NaN windows in the strided matrix and 1,998 in the full one. It fails identically on `main`, so it is not a consequence of this change -- but the cell has been erroring rather than scoring, and needs its own fix before the next pilot.",
+      "tags": [
+        "training-budget",
+        "early-stopping",
+        "dlinear",
+        "torchdl",
+        "neuralforecast",
+        "memory",
+        "methodology"
+      ]
+    },
+    {
       "id": "2026-08-13-val-split-becomes-real",
       "date": "2026-08-13",
       "title": "The declared val split is now a real holdout instead of extra training data",
@@ -1579,6 +1596,21 @@
     }
   ],
   "edges": [
+    {
+      "source": "2026-08-14-window-and-step-caps-removed",
+      "target": "2026-08-12-training-caps-removed",
+      "type": "follows-from"
+    },
+    {
+      "source": "2026-08-14-window-and-step-caps-removed",
+      "target": "2026-08-12-training-budget-blocks-card-fixes",
+      "type": "relates-to"
+    },
+    {
+      "source": "2026-08-14-window-and-step-caps-removed",
+      "target": "2026-08-13-val-split-becomes-real",
+      "type": "relates-to"
+    },
     {
       "source": "2026-08-13-val-split-becomes-real",
       "target": "2026-08-13-mlp-blas-thread-oversubscription",

@@ -6,6 +6,9 @@ entry and its commits. See `schema.md` for the format both files follow.
 
 <!-- Add new entries below this line, newest first, matching details.md. -->
 
+### 2026-08-14
+- 93 — The last two training caps are gone, and the step budget is now counted in epochs
+
 ### 2026-08-13
 - 92 — The declared val split is now a real holdout instead of extra training data
 - 91 — MLP's 609s fit was BLAS thread oversubscription, not the cost of direct_horizon
