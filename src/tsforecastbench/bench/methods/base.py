@@ -118,6 +118,15 @@ class Forecaster(ABC):
     # bridge a gap, so extended history leaves their forecast unchanged. The eval loop
     # runs the second (extended) fit only for `is_global and pools_segments` methods.
     pools_segments: bool = False
+    # Whether this method's forecast changes when `seed` changes -- weight init, minibatch
+    # sampling, dropout, row subsampling. A cell for such a method is one draw from a
+    # distribution, so the eval loop runs it several times and reports the median-MSE run
+    # rather than whichever draw seed 0 happened to give (issue #106). False is the honest
+    # default: most methods here estimate a direct function of their input and would return
+    # identical numbers on every repeat, so repeating them is pure cost. Note that "seeded at
+    # a fixed value" is not the same as deterministic -- CatBoost's default bootstrap
+    # resamples rows and only looked deterministic because its library default seed is 0.
+    is_stochastic: bool = False
     # The rest are documentation only, read by the results viewer's method-info
     # panel (tsforecastbench.webdata) — they have no effect on fit/predict. Kept as class attributes
     # (not a separate metadata file) so a method's implementation and its description of
@@ -139,6 +148,11 @@ class Forecaster(ABC):
     # the code. Stays None for every method that does not train this way -- that is an honest
     # "not applicable", not a missing measurement.
     last_fit_steps: int | None = None
+    # The seed the next fit should use, set by the eval loop before each call to `fit` (the
+    # same write-then-read arrangement as `last_fit_steps` above). Every `is_stochastic`
+    # method must route all of its randomness through this -- a hard-coded literal would
+    # silently give the same run back five times. Ignored by the rest.
+    seed: int = 0
 
     @abstractmethod
     def fit(self, case: Case, train: pd.DataFrame, val: pd.DataFrame) -> None:

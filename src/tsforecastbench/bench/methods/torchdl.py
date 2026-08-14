@@ -150,6 +150,9 @@ class _TorchDLBase(Forecaster):
     family = "dl"
     is_global = True
     pools_segments = True
+    # Weight init, the minibatch draw in the training loop, and PatchTST's dropout all come
+    # off torch's global RNG, so a different seed is a different network.
+    is_stochastic = True
     # Batch size and learning rate are N-HiTS's own (Challu et al., AAAI 2023, Table A3).
     batch = 256
     lr = 1e-3
@@ -193,7 +196,7 @@ class _TorchDLBase(Forecaster):
 
         mods = _make_modules()
         torch = mods[0]
-        torch.manual_seed(0)
+        torch.manual_seed(self.seed)
         self._mods = mods
         self._H = _horizon_to_steps(case.horizon_primary, case.freq)
         self._L = lookback_for(case.freq, self._H)
