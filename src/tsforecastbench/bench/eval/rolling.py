@@ -220,8 +220,9 @@ def run_case_rolling(
             method.last_fit_steps = None
             try:
                 # A global method keeps a trained model apart from its input, so it is fit
-                # once, on data strictly before the test period — train+val locally, or the
-                # pre-curated segments for the extended fit — then evaluated across every
+                # once, on the train split alone — plus the pre-curated segments for the
+                # extended fit — with the val split handed over separately for the
+                # iteratively trained methods to stop on (gh #99), then evaluated across every
                 # origin by inference alone. No origin's forecast sees test data in its
                 # weights, so this stays leak-free while cutting the cost of `--origins` to
                 # one fit per case. A local (non-global) method, whose parameters are a

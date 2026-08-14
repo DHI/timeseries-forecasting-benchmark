@@ -18,7 +18,7 @@ import numpy as np
 import pandas as pd
 from threadpoolctl import threadpool_limits
 
-from tsforecastbench.bench.eval.budget import TRAIN_POINT_CEILING
+from tsforecastbench.bench.eval.budget import MLP_MAX_EPOCHS, TRAIN_POINT_CEILING
 from tsforecastbench.bench.methods.base import Forecaster
 from tsforecastbench.bench.methods.scorecard import (
     Capabilities,
@@ -254,7 +254,7 @@ class LightGBMForecaster(_WindowedMLBase):
         "from lightgbm import LGBMRegressor\n"
         "from mlforecast import MLForecast\n\n"
         "fcst = MLForecast(\n"
-        "    models=[LGBMRegressor(n_estimators=200, learning_rate=0.05, verbosity=-1)],\n"
+        "    models=[LGBMRegressor(verbosity=-1)],          # LightGBM's own defaults\n"
         "    freq=case.freq,\n"
         "    lags=[1, 2, 4, 8, 16, 32, *case.seasonalities],\n"
         '    date_features=["dayofweek", "month", ...],\n'
@@ -287,7 +287,12 @@ class LightGBMForecaster(_WindowedMLBase):
     def _make_model(self):
         from lightgbm import LGBMRegressor
 
-        return LGBMRegressor(n_estimators=200, learning_rate=0.05, verbosity=-1)
+        # LightGBM's own defaults (n_estimators=100, learning_rate=0.1). The 200 rounds at
+        # 0.05 that stood here were picked rather than taken from anywhere, and applied
+        # unchanged to a 1,500-point case and a 150,000-point one. This benchmark does not
+        # tune, so each library's default is the honest configuration to compare — see
+        # CatBoost, whose default round count is an order of magnitude higher.
+        return LGBMRegressor(verbosity=-1)
 
 
 class CatBoostForecaster(_WindowedMLBase):
@@ -299,7 +304,7 @@ class CatBoostForecaster(_WindowedMLBase):
         "from catboost import CatBoostRegressor\n"
         "from mlforecast import MLForecast\n\n"
         "fcst = MLForecast(\n"
-        "    models=[CatBoostRegressor(iterations=200, learning_rate=0.05, verbose=False)],\n"
+        "    models=[CatBoostRegressor(verbose=False)],      # CatBoost's own defaults\n"
         "    freq=case.freq,\n"
         "    lags=[1, 2, 4, 8, 16, 32, *case.seasonalities],\n"
         '    date_features=["dayofweek", "month", ...],\n'
@@ -328,9 +333,11 @@ class CatBoostForecaster(_WindowedMLBase):
     def _make_model(self):
         from catboost import CatBoostRegressor
 
-        return CatBoostRegressor(
-            iterations=200, learning_rate=0.05, verbose=False, allow_writing_files=False
-        )
+        # CatBoost's own defaults (iterations=1000, learning_rate auto-selected from the
+        # data), for the reason given on LightGBM's `_make_model`. `verbose`/
+        # `allow_writing_files` are kept: they silence output and stop it writing a
+        # catboost_info/ directory, neither of which affects the model.
+        return CatBoostRegressor(verbose=False, allow_writing_files=False)
 
 
 class LinearLagsForecaster(_WindowedMLBase):
@@ -410,7 +417,8 @@ class MLPForecaster(_WindowedMLBase):
         "from sklearn.preprocessing import StandardScaler\n\n"
         "model = make_pipeline(\n"
         "    StandardScaler(),\n"
-        "    MLPRegressor(hidden_layer_sizes=(64, 32), max_iter=300, early_stopping=True),\n"
+        "    MLPRegressor(hidden_layer_sizes=(64, 32), early_stopping=True,\n"
+        "                 max_iter=MLP_MAX_EPOCHS),   # guard, not a budget\n"
         ")\n"
         "fcst = MLForecast(\n"
         "    models=[model],\n"
@@ -455,10 +463,17 @@ class MLPForecaster(_WindowedMLBase):
         # to 366) span very different ranges, so scale them first.
         return make_pipeline(
             StandardScaler(),
+            # `max_iter` is a guard against a fit that never converges, not a budget: see
+            # `eval.budget.MLP_MAX_EPOCHS` for where it comes from. `early_stopping` is what
+            # actually ends the fit, and it does so on a shuffled 10% of the training rows
+            # rather than on the case's declared val split — scikit-learn exposes only
+            # `validation_fraction`, with no way to pass an explicit holdout, so unlike the
+            # torch and neuralforecast models this one validates on rows interleaved in time
+            # with the rows it trains on. Known and deliberate for now (gh #104).
             MLPRegressor(
                 hidden_layer_sizes=(64, 32),
                 activation="relu",
-                max_iter=300,
+                max_iter=MLP_MAX_EPOCHS,
                 early_stopping=True,
                 random_state=0,
             ),

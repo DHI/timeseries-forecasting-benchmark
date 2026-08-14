@@ -64,6 +64,22 @@ DL_MAX_EPOCHS = 150
 DL_VAL_CHECK_STEPS = 50
 DL_PATIENCE_CHECKS = 5
 
+# MLP's equivalent, kept separate because the two numbers are not comparable. scikit-learn's
+# `max_iter` counts epochs too ("the number of epochs ... not the number of gradient steps"),
+# but MLPRegressor stops after 10 epochs without improvement while `torchdl` stops after 250
+# gradient steps — a fraction of one epoch on a large case. So the same model needs far more
+# epochs under the first rule than the second, and a shared constant would bind on one of them.
+#
+# This is a guard, not a budget: it sits above where every case actually converges. Measured by
+# lifting the cap and reading back `n_iter_`, the largest a per-horizon model needed is 586, on
+# `wwtp_influent_n2o_350k` — the noisiest target here, and notably not the largest case, since
+# a bigger record packs more updates into each epoch and so converges in fewer (87 median on
+# `sewerlevel_bellinge` against 322 on `wwtp`). The 300 that stood here was picked rather than
+# measured, and it bound on 4 of the 11 cases checked, cutting training short on the noisy ones
+# while leaving the rest untouched — a difference between cases that came from the constant
+# rather than from the data.
+MLP_MAX_EPOCHS = 2_000
+
 # What that held-out loss is measured on is the case's declared val split, not a fraction of
 # the training windows (gh #99): the eval loop hands `fit` the train split and the val split
 # separately, and no method estimates parameters on the latter. The one place that cannot be
