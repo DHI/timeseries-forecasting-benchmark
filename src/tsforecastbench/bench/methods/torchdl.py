@@ -19,12 +19,16 @@ import numpy as np
 import pandas as pd
 
 from tsforecastbench.bench.eval.budget import (
-    DL_MAX_STEPS,
     DL_PATIENCE_CHECKS,
     DL_VAL_CHECK_STEPS,
-    MAX_TRAIN_WINDOWS,
+    dl_step_ceiling,
 )
-from tsforecastbench.bench.methods.base import Forecaster, lookback_for, segment_arrays
+from tsforecastbench.bench.methods.base import (
+    Forecaster,
+    build_windows,
+    lookback_for,
+    segment_arrays,
+)
 from tsforecastbench.bench.methods.scorecard import (
     Capabilities,
     ForecastStrategy,
@@ -32,32 +36,6 @@ from tsforecastbench.bench.methods.scorecard import (
     Scorecard,
 )
 from tsforecastbench.data.schema import Case
-
-
-def _build_windows(segs: list[np.ndarray], L: int, H: int):
-    """Stack (input, target) windows over every segment, never across a gap.
-
-    No segment is truncated: the whole record is in scope (issue #95). A single shared stride
-    across all segments keeps the total window count <= `MAX_TRAIN_WINDOWS`, which bounds the
-    window matrix without discarding any part of the span — consecutive windows differ by one
-    step and are near-duplicates, so striding costs resolution, not coverage. A local
-    (single-segment) frame reduces to the original one-series windowing.
-    """
-    counts = [max(0, len(y) - L - H + 1) for y in segs]
-    total = sum(counts)
-    if total <= 10:
-        return None, None
-    stride = max(1, total // MAX_TRAIN_WINDOWS)
-    Xs, Ys = [], []
-    for y, n in zip(segs, counts, strict=True):
-        if n <= 0:
-            continue
-        starts = np.arange(0, n, stride)
-        Xs.append(np.stack([y[s : s + L] for s in starts]))
-        Ys.append(np.stack([y[s + L : s + L + H] for s in starts]))
-    X = np.concatenate(Xs).astype(np.float32)
-    Y = np.concatenate(Ys).astype(np.float32)
-    return X, Y
 
 
 def _build_val_windows(train_tail: np.ndarray, val_y: np.ndarray, L: int, H: int):
@@ -172,7 +150,7 @@ class _TorchDLBase(Forecaster):
     family = "dl"
     is_global = True
     pools_segments = True
-    max_steps = DL_MAX_STEPS  # ceiling; training normally early-stops well below it
+    # Batch size and learning rate are N-HiTS's own (Challu et al., AAAI 2023, Table A3).
     batch = 256
     lr = 1e-3
     library = "torch (custom implementation, no ray/lightning)"
@@ -226,7 +204,7 @@ class _TorchDLBase(Forecaster):
         segs, tail = segment_arrays(train)
         segs = [s.astype(np.float32) for s in segs]
 
-        X, Y = _build_windows(segs, self._L, self._H)
+        X, Y = build_windows(segs, self._L, self._H)
         if X is None:
             self._model = None
             self.last_fit_steps = None
@@ -255,7 +233,11 @@ class _TorchDLBase(Forecaster):
 
         best, best_state, stale = float("inf"), None, 0
         steps = 0
-        for step in range(1, self.max_steps + 1):
+        # `DL_MAX_EPOCHS` passes over this fit's own window pool, so a longer record buys
+        # more steps rather than thinner ones (gh #101). Early stopping below is what
+        # normally ends the fit; this is only reached by one that never converges.
+        max_steps = dl_step_ceiling(n, self.batch)
+        for step in range(1, max_steps + 1):
             self._model.train()
             idx = torch.randint(0, n, (min(self.batch, n),))
             loss = lossf(_revin_pred(Xt[idx]), Yt[idx])
@@ -267,7 +249,7 @@ class _TorchDLBase(Forecaster):
                 continue
             # Stop when held-out loss stops improving, rather than at a fixed step count: a
             # fixed count made the number of passes over the data vary inversely with case
-            # size (research log entry 89). self.max_steps is the safety net, not the target.
+            # size (research log entry 89). `max_steps` is the safety net, not the target.
             self._model.eval()
             with torch.no_grad():
                 val = float(lossf(_revin_pred(Xv), Yv))

@@ -27,12 +27,12 @@ whatever it had already measured.
 Any surviving history cap is lifted for the measurement, so the curve reflects the method
 rather than its cap. No method carries one any more — MLP's went with #97, which traced its
 apparent per-horizon-step cost to BLAS thread oversubscription rather than to the strategy.
-Window sub-sampling (`DLinear.max_samples`, `torchdl` window striding) is left at its
-default: it strides windows across the whole history rather than discarding the front of the
-record, so it is a different knob and would confound the curve.
+Window sub-sampling went the same way in gh #101: DLinear and the torch models now build every
+window the frame allows, so the size of the window matrix follows the history the ladder hands
+them rather than a cap of its own.
 
-The deep-learning methods are off by default. Their fit cost is set by the gradient-step
-budget rather than by how much history they are handed — the audit in research log entry 89
+The deep-learning methods are off by default. Their fit cost is set by where early stopping
+lands rather than by how much history they are handed — the audit in research log entry 89
 measured TFT's fit time as flat across an 8x difference in training size — so the curve is
 near-flat and costs minutes per point to trace. Use `--with-dl` / `--with-nf` to confirm that
 it is flat, not to find a cap.
