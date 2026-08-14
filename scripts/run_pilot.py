@@ -21,7 +21,12 @@ import pandas as pd
 # Allow running from a clone without installing
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from tsforecastbench.bench.eval import DEFAULT_ORIGINS, run_case, run_case_rolling
+from tsforecastbench.bench.eval import (
+    DEFAULT_ORIGINS,
+    DEFAULT_SEEDS,
+    run_case,
+    run_case_rolling,
+)
 from tsforecastbench.bench.methods import (
     AutoARIMAForecaster,
     AutoETSForecaster,
@@ -100,6 +105,14 @@ def main() -> int:
         default=DEFAULT_ORIGINS,
         help=f"Rolling origins per cell (default {DEFAULT_ORIGINS}; "
         "override globally with TSFB_ORIGINS).",
+    )
+    p.add_argument(
+        "--seeds",
+        type=int,
+        default=DEFAULT_SEEDS,
+        help=f"Runs per stochastic method; the median-MSE run is kept whole "
+        f"(default {DEFAULT_SEEDS}; override globally with TSFB_SEEDS). Deterministic "
+        "methods run once whatever this is set to.",
     )
     p.add_argument(
         "--with-fm",
@@ -203,11 +216,15 @@ def main() -> int:
             if args.fast:
                 # Single hold-out doesn't emit per-origin snapshots; the viewer degrades
                 # to a "no forecast stored" note for these cases.
-                res = run_case(case, methods, prefer_synth=args.synth)
+                res = run_case(case, methods, prefer_synth=args.synth, n_seeds=args.seeds)
                 snaps = None
             else:
                 res, snaps = run_case_rolling(
-                    case, methods, n_origins=args.origins, prefer_synth=args.synth
+                    case,
+                    methods,
+                    n_origins=args.origins,
+                    prefer_synth=args.synth,
+                    n_seeds=args.seeds,
                 )
         except Exception as exc:  # keep a long unattended run going if one case fails
             print(f"  [case-error] {case.id}: {type(exc).__name__}: {exc}")
