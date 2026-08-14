@@ -12,15 +12,16 @@ actually try to fit one. See `scripts/bootstrap_wsl.sh`.
 
 from __future__ import annotations
 
+import inspect
 from typing import ClassVar
 
 import numpy as np
 import pandas as pd
 
 from tsforecastbench.bench.eval.budget import (
-    DL_MAX_STEPS,
     DL_PATIENCE_CHECKS,
     DL_VAL_CHECK_STEPS,
+    dl_step_ceiling,
     nf_val_size,
 )
 from tsforecastbench.bench.methods.base import Forecaster, lookback_for
@@ -139,13 +140,25 @@ class _NFBase(Forecaster):
         )
 
         model_cls = getattr(nfm, self.model_name)
+        # Windows the panel trains on, after the cut: the target series keeps every window it
+        # has, and each surviving history segment gives up its last `val_size` steps.
+        train_windows = max(0, target_train - lookback - h + 1) + sum(
+            max(0, int(lens[uid]) - val_size - lookback - h + 1)
+            for uid in keep
+            if uid != self._target_uid
+        )
+        # One neuralforecast step consumes `windows_batch_size` windows, and that default is
+        # per architecture (32 for iTransformer, 64 for TimesNet, 1,024 for TFT), so the
+        # epoch has to be measured against the model's own value rather than a shared one.
+        windows_per_step = inspect.signature(model_cls).parameters["windows_batch_size"].default
         model = model_cls(
             h=h,
             input_size=lookback,
             # Convergence, not a fixed step count: a fixed count made a large case see each
-            # training window far less often than a small one (research log entry 89).
-            # max_steps is the safety net for a fit that never converges.
-            max_steps=DL_MAX_STEPS,
+            # training window far less often than a small one (research log entry 89), which
+            # is why the ceiling is `DL_MAX_EPOCHS` passes over this panel rather than a
+            # constant (gh #101). It is the safety net for a fit that never converges.
+            max_steps=dl_step_ceiling(train_windows, windows_per_step),
             val_check_steps=DL_VAL_CHECK_STEPS,
             early_stop_patience_steps=DL_PATIENCE_CHECKS,
             scaler_type="standard",

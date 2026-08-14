@@ -18,8 +18,10 @@ case, not once per origin, so that is an affordable one-off.
 What remains here is not a comparability device. `TRAIN_POINT_CEILING` is a guard against a
 future case far larger than anything in the benchmark today, deliberately set well above the
 longest current record so it never binds and never silently reintroduces the problem above.
-The other constants bound memory and wall-clock for the windowed methods, where an unbounded
-fit would materialise a matrix of overlapping windows rather than merely take a long time.
+The deep-learning constants say when a training loop has converged, and how many passes over
+the data it may take before we call it a fit that never will — a budget expressed in epochs,
+so it scales with the record rather than rationing a fixed number of steps between cases of
+very different size (gh #101).
 
 Values here are the single source of truth: methods read them, they are not duplicated as
 per-method defaults, and there is no path where a missing value falls back to something else.
@@ -33,19 +35,30 @@ from __future__ import annotations
 TRAIN_POINT_CEILING = 5_000_000
 
 # Windowed methods (DLinear, N-HiTS, PatchTST) build one length-`lookback` row per training
-# window. Consecutive windows differ by a single step and are near-duplicates, so a stride is
-# taken across the whole span rather than truncating to its tail: coverage stays complete
-# while the window matrix stays bounded. At 15,000 windows a fit over the longest record
-# still samples it densely, and the matrix is a few hundred MB at the largest lookbacks here.
-MAX_TRAIN_WINDOWS = 15_000
+# window, and build every window there is. `MAX_TRAIN_WINDOWS = 15_000` used to stride that
+# matrix; it went with gh #101 for the same reason the history caps went with #95, being a
+# constant nothing derived. It bound on 5 of 17 (frame, case) pairs, so the neuralforecast
+# zoo — which never had it — was already training on pools the other windowed methods were
+# not. See `methods.base.build_windows` for what the matrix costs now.
 
-# Deep-learning training runs to convergence, not to a fixed step count. The step budget used
-# to be the binding constraint on what these models learned — 500 steps in nf_models, 600 in
-# torchdl, regardless of how many windows existed — which made a large case see each window
-# roughly 12x less often than a small one (research log entry 89). Training now stops when
+# Deep-learning training runs to convergence, not to a fixed step count. Training stops when
 # held-out loss stops improving; the ceiling below is a safety net for a fit that never
 # converges, not a target, and the steps actually used are recorded per cell.
-DL_MAX_STEPS = 2_000
+#
+# It is counted in epochs — passes over the training windows — rather than in steps, which is
+# what makes it derived rather than picked. A flat step count was the binding constraint on
+# what these models learned (500 steps in nf_models, 600 in torchdl, later 2,000 in both),
+# and it made a large case see each window far less often than a small one: research log
+# entry 89's finding, and the reason gh #101 could not remove the window cap on its own.
+# Counting epochs holds views-per-window equal across cases, so a longer record buys more
+# steps rather than thinner ones.
+#
+# 150 is the long-horizon literature's budget with headroom on top. PatchTST (Nie et al.,
+# ICLR 2023) trains for 100 epochs with early stopping, cutting that to 20-50 on its largest
+# datasets to save compute. N-HiTS (Challu et al., AAAI 2023, Table A3) instead fixes 1,000
+# steps at batch 256 and learning rate 1e-3 — the batch size and learning rate `torchdl`
+# already uses, but a flat step count is the shape this benchmark rejected.
+DL_MAX_EPOCHS = 150
 # Validation loss is checked this often, and training stops after this many consecutive
 # checks without improvement (250 steps of no progress at the defaults below).
 DL_VAL_CHECK_STEPS = 50
@@ -61,6 +74,20 @@ DL_PATIENCE_CHECKS = 5
 # does not bind on any current case: the smallest cut `nf_val_size` chooses is 213 points
 # against a floor of 96 (`wwtp_influent_n2o_350k`, h=24).
 NF_VAL_MIN_HORIZONS = 4
+
+
+def dl_step_ceiling(n_windows: int, windows_per_step: int) -> int:
+    """Gradient steps a fit may take: `DL_MAX_EPOCHS` passes over `n_windows` windows.
+
+    `windows_per_step` is how many training windows one optimisation step consumes — the
+    batch size for the torch models, `windows_batch_size` for a neuralforecast one, which
+    that library sets per architecture (32 for iTransformer, 64 for TimesNet, 1,024 for TFT)
+    rather than globally. Reading it off the model is what keeps the epoch an epoch.
+
+    Only a fit whose held-out loss never goes stale gets here; early stopping is the normal
+    end, and `Forecaster.last_fit_steps` records which of the two a given cell hit.
+    """
+    return DL_MAX_EPOCHS * max(1, -(-n_windows // windows_per_step))
 
 
 def nf_val_size(

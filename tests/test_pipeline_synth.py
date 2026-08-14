@@ -442,14 +442,15 @@ def test_neuralforecast_zoo_classes_importable():
     )
 
 
-def test_torch_dl_runs_if_installed():
+def test_torch_dl_runs_if_installed(monkeypatch):
     pytest.importorskip("torch")
-    from tsforecastbench.bench.methods import NHITSForecaster, PatchTSTForecaster
+    from tsforecastbench.bench.methods import NHITSForecaster, PatchTSTForecaster, torchdl
 
-    # tiny training budget keeps the test fast
+    # There is no step budget to shrink any more (gh #101) — training runs until held-out
+    # loss goes stale — so an impatient early stop is what keeps the test fast.
+    monkeypatch.setattr(torchdl, "DL_VAL_CHECK_STEPS", 5)
+    monkeypatch.setattr(torchdl, "DL_PATIENCE_CHECKS", 1)
     methods = [NHITSForecaster(), PatchTSTForecaster()]
-    for mdl in methods:
-        mdl.max_steps = 5
     res = run_case(get_case("discharge_flashy_catskills"), methods, prefer_synth=True)
     assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
 

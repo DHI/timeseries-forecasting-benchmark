@@ -13,8 +13,12 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from tsforecastbench.bench.eval.budget import MAX_TRAIN_WINDOWS
-from tsforecastbench.bench.methods.base import Forecaster, lookback_for, segment_arrays
+from tsforecastbench.bench.methods.base import (
+    Forecaster,
+    build_windows,
+    lookback_for,
+    segment_arrays,
+)
 from tsforecastbench.bench.methods.scorecard import (
     Capabilities,
     ForecastStrategy,
@@ -30,7 +34,9 @@ def _moving_avg(x: np.ndarray, k: int) -> np.ndarray:
         return x.copy()
     pad = k // 2
     xp = np.pad(x, ((0, 0), (pad, pad)), mode="edge")
-    kernel = np.ones(k) / k
+    # Kernel dtype follows the window matrix: a float64 kernel would silently upcast a
+    # float32 design matrix here and undo what `build_windows` allocated (gh #101).
+    kernel = np.ones(k, dtype=x.dtype) / k
     return np.apply_along_axis(lambda r: np.convolve(r, kernel, mode="valid")[: x.shape[1]], 1, xp)
 
 
@@ -42,7 +48,6 @@ class DLinearForecaster(Forecaster):
     family = "dl"
     is_global = True
     pools_segments = True
-    max_samples: int = MAX_TRAIN_WINDOWS
     library = "scikit-learn (Ridge) — no deep-learning framework"
     compute_profile = (
         "CPU only, fast; both linear maps collapse into a single closed-form ridge "
@@ -103,26 +108,14 @@ class DLinearForecaster(Forecaster):
         L, H = self._L, self._H
 
         # Windows are built per contiguous segment (unique_id) and never across a gap; a
-        # plain local frame is a single segment, so this reduces to the original loop.
+        # plain local frame is a single segment, so this reduces to the original loop. Every
+        # window is in the design matrix — the 15,000-window cap that used to stride it went
+        # with gh #101.
         segs, _tail = segment_arrays(train)
-        counts = [max(0, len(y) - L - H + 1) for y in segs]
-        total = sum(counts)
-        if total <= 10:  # too little data: fall back to persistence at predict time
+        X, Y = build_windows(segs, L, H)
+        if X is None:  # too little data: fall back to persistence at predict time
             self._model = None
             return
-        # One shared stride across all segments so total windows stay <= max_samples. No
-        # segment is truncated (issue #95): striding spans the whole record at lower
-        # resolution rather than keeping only its tail.
-        stride = max(1, total // self.max_samples)
-        Xs, Ys = [], []
-        for y, n in zip(segs, counts, strict=True):
-            if n <= 0:
-                continue
-            starts = np.arange(0, n, stride)
-            Xs.append(np.stack([y[s : s + L] for s in starts]))
-            Ys.append(np.stack([y[s + L : s + L + H] for s in starts]))
-        X = np.concatenate(Xs)
-        Y = np.concatenate(Ys)
         feats = self._decompose(X)
         self._model = Ridge(alpha=self.alpha).fit(feats, Y)
 
