@@ -81,8 +81,8 @@ function CasePanelComponent({ caseId, caseMeta, scores, showGlobal, selectedMeth
   );
   const foundationNote =
     foundationMethods.length === 1
-      ? "is a zero-shot foundation model: it forecasts from recent context only and never fits on this case's train/val split."
-      : "are zero-shot foundation models: they forecast from recent context only and never fit on this case's train/val split.";
+      ? "is a zero-shot foundation model: it forecasts from recent context only and never fits on this case's training data at all."
+      : "are zero-shot foundation models: they forecast from recent context only and never fit on this case's training data at all.";
 
   // Local methods have no single reusable trained model, so they're refit from scratch at
   // every forecast origin. That's the naive baselines and the ensembles built on them.
@@ -92,8 +92,8 @@ function CasePanelComponent({ caseId, caseMeta, scores, showGlobal, selectedMeth
   );
   const localNote =
     localMethods.length === 1
-      ? "is a local method: it's refit from scratch at every forecast origin, using all history up to that point, rather than being fit once on the train/val split like the global methods. It therefore re-estimates on more recent data than they do."
-      : "are local methods: they're refit from scratch at every forecast origin, using all history up to that point, rather than being fit once on the train/val split like the global methods. They therefore re-estimate on more recent data than the global methods do.";
+      ? "is a local method: it's refit from scratch at every forecast origin, using all history up to that point, rather than being fit once on the train split like the global methods. It therefore re-estimates on more recent data than they do."
+      : "are local methods: they're refit from scratch at every forecast origin, using all history up to that point, rather than being fit once on the train split like the global methods. They therefore re-estimate on more recent data than the global methods do.";
 
   return (
     <div>

@@ -9,6 +9,15 @@ Each case declares its train/val/test split in case.toml, either as calendar dat
 timestamps, so series with gaps still split cleanly. Splits are strictly chronological —
 no shuffling.
 
+Every method estimates its parameters on train alone. Val is the held-out period the
+iteratively trained deep-learning methods (N-HiTS, PatchTST, TFT, TimesNet) stop on once
+their validation loss stops improving; no method trains on it. Test is scored, and nothing
+else is.
+
+Fitting on train is not the same as never reading val: a fit-once method's forecast
+conditions on the observed history running through val and into the test period up to each
+origin. It reads that data, it just doesn't estimate parameters from it.
+
 ## Curation
 
 Curation enforces minimum lengths: train must cover at least two full seasonal cycles, and
@@ -24,8 +33,8 @@ and foundation-model family, plus all of the classical ones (AutoARIMA, AutoETS,
 TBATS) — fit once on data strictly before the test period, then roll forward across every
 origin by inference alone, with no further re-estimation. Baseline and ensemble methods refit
 from scratch at each origin instead, since for them the fit is the forecast. This split keeps
-a method's score from depending on how often it happens to be allowed to re-estimate, and the
-train/val/test boundary already keeps the fit-once methods leak-free without repeated
+a method's score from depending on how often it happens to be allowed to re-estimate, and
+fitting strictly before the test period keeps the fit-once methods leak-free without repeated
 retraining. Predict cost isn't uniformly small for the fit-once methods either — Theta and
 MSTL, for instance, re-derive a seasonal decomposition over the whole history at every origin
 — so the benchmark records fit time and predict time separately rather than folding them into
@@ -36,9 +45,10 @@ one number.
 There's no per-case tuning or grid search. Each method uses fixed, hard-coded
 defaults — e.g., LightGBM and CatBoost both use 200 iterations at a 0.05 learning rate, so
 the two gradient-boosting methods compete on equal footing. Classical methods (AutoARIMA,
-AutoETS, etc.) run their own internal search, but training size is capped per method to
-bound fit time, not to improve accuracy. Any deviation from a method's default is manual
-and explicit, not automated.
+AutoETS, etc.) run their own internal search. Every method reads the whole train split: the
+per-method training caps, which once differed by two orders of magnitude and made a column of
+the matrix incomparable, were removed once their cost was measured. Any deviation from a
+method's default is manual and explicit, not automated.
 
 ## Case description
 

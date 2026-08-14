@@ -342,6 +342,23 @@
 {
   "nodes": [
     {
+      "id": "2026-08-13-val-split-becomes-real",
+      "date": "2026-08-13",
+      "title": "The declared val split is now a real holdout instead of extra training data",
+      "category": "methodology",
+      "summary": "The app displayed a three-way train/val/test split while the eval loop folded val into the fit frame, so every method trained on train+val and the DL methods carved their own 20% holdout instead. `fit` now takes val as a required argument: parameters come from train, val is the early-stopping holdout, predict still conditions on the whole pre-origin history. For gap-segmented neuralforecast panels, where one val_size is cut from every series, `nf_val_size` picks the cut leaving the most training windows -- waves_oregon keeps 9/9 segments and 96.9% of its windows against 5/9 and 68.0%.",
+      "detail": "`eval.loop` concatenated train and val into a single fit frame, so every method -- classical, ML, DL, foundation -- estimated its parameters on train+val, and the declared val boundary survived only as the integer offset locating where test begins. The methods that genuinely needed an early-stopping holdout each carved their own from the tail of that same frame: 20% of the target segment's points in `nf_models`, 20% of the window matrix in `torchdl`, nothing at all in DLinear. Three notions of validation, none of them the declared one, while the case panel and the design modal described a split the runs never used.\n\nNothing leaked into test, so this was not a correctness bug. What made it worth fixing is that the near-agreement between the declared val (17.6% of train+val at the 70/15/15 default) and `DL_VAL_FRACTION` (20%) rested on two unrelated constants with nothing tying them: a case declaring `split_fraction = [0.6, 0.9]` would have put a third of the frame the UI labels validation straight into training. The same expression also pruned the extended-history panel, costing `waves_oregon` four of its nine history segments in exactly the comparison that variant exists to make.\n\n`Forecaster.fit` now takes the val split as a required third argument -- no default, no None-fallback -- and the eval loops separate three frames that used to be one object: the fit frame ends at the train boundary, the val frame is handed over for stopping, and predict still receives the whole pre-origin history. That last distinction is the one worth keeping straight: a fit-once method's forecast conditions on the observed history running through val and into the test prefix, and reading data is not estimating parameters from it. The reference scales for MASE and the skill scores stay on that history rather than the shorter fit frame, so the yardstick did not shift. Parameters now come from 70% of the record rather than 85%, which restales the pilot -- one re-run after #98 and #101 land, not one per PR.\n\nThe declared val was kept at its full 15% rather than trimmed to what early stopping strictly needs. A long validation period is the point: it lets the stopping decision average over months to years rather than one narrow slice that might sit entirely inside a calm stretch. N-HiTS and PatchTST stop on windows whose targets lie inside val, strided by one horizon so they tile the period without overlapping -- `surge_cuxhaven` gets 670 disjoint 48-step origins spanning 3.7 years, where consecutive single-step-apart windows would have multiplied the cost of every check for almost no extra information.\n\nOne place cannot express that directly. `NeuralForecast.fit(df, val_size=V)` takes a single V for the whole panel: it holds out the last V steps of every series and drops any left below `lookback + h`, with no per-series cut and no way to pass an explicit validation frame. So the target series is handed its train rows plus V val rows -- the cut then lands exactly on val and the series keeps every training window it has -- while `budget.nf_val_size` picks the V leaving the most training windows overall, never above the declared val and never below four horizons. It reaches the whole val split where the panel affords it (`discharge_lowland_denmark` 329, `waves_massachusetts` 1,744) and backs off where that buys segments (`sewerlevel_bellinge` 345, `waves_oregon` 270, `wwtp_influent_n2o_350k` 213), keeping every segment in all five multi-segment cases. Where V lands below the declared val, the remainder of that split is left out of the panel: unused, and trained on by nobody. Two latent failures became explicit errors on the way -- a val split too short for one horizon window, and a panel whose longest segment cannot spare the four-horizon floor.",
+      "tags": [
+        "splits",
+        "validation",
+        "early-stopping",
+        "neuralforecast",
+        "extended-history",
+        "pilot-rerun",
+        "methodology"
+      ]
+    },
+    {
       "id": "2026-08-13-mlp-blas-thread-oversubscription",
       "date": "2026-08-13",
       "title": "MLP's 609s fit was BLAS thread oversubscription, not the cost of direct_horizon",
@@ -1562,6 +1579,16 @@
     }
   ],
   "edges": [
+    {
+      "source": "2026-08-13-val-split-becomes-real",
+      "target": "2026-08-13-mlp-blas-thread-oversubscription",
+      "type": "follows-from"
+    },
+    {
+      "source": "2026-08-13-val-split-becomes-real",
+      "target": "2026-08-12-training-caps-removed",
+      "type": "relates-to"
+    },
     {
       "source": "2026-08-13-mlp-blas-thread-oversubscription",
       "target": "2026-08-12-training-caps-removed",

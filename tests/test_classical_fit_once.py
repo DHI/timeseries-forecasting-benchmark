@@ -46,6 +46,11 @@ from tsforecastbench.bench.methods.classical import (  # noqa: E402
 )
 from tsforecastbench.data.schema import Case  # noqa: E402
 
+# None of the classical methods trains iteratively, so none of them reads `fit`'s val
+# argument. These tests hand over an empty holdout rather than carving one out of a
+# synthetic series that exists only to exercise the roll-forward path.
+NO_VAL = pd.DataFrame({"unique_id": [], "ds": pd.to_datetime([]), "y": []})
+
 
 def _case(seasonalities: list[int]) -> Case:
     return Case(
@@ -81,7 +86,7 @@ def _series_with_zero_before_the_search_window(n: int = 500, window: int = 200) 
 
 def _assert_conditions_on_growing_history(method, case, train) -> None:
     assert method.is_global
-    method.fit(case, train)
+    method.fit(case, train, NO_VAL)
     short = method.predict(case, train.iloc[:400], 6)["y_hat"].to_numpy()
     long = method.predict(case, train.iloc[:450], 6)["y_hat"].to_numpy()
     assert np.isfinite(short).all() and np.isfinite(long).all()
@@ -99,7 +104,7 @@ def _assert_survives_history_the_search_window_never_saw(method, case) -> None:
     chose a positive-only spec (Box-Cox, multiplicative ETS) from the capped window alone.
     """
     train = _series_with_zero_before_the_search_window()
-    method.fit(case, train)
+    method.fit(case, train, NO_VAL)
     y_hat = method.predict(case, train, 6)["y_hat"].to_numpy()
     assert np.isfinite(y_hat).all()
 
@@ -118,7 +123,7 @@ def test_auto_arima_fits_order_search_exactly_once():
     method = AutoARIMAForecaster(season_length=24)
 
     with patch.object(AutoARIMA, "fit", autospec=True, wraps=AutoARIMA.fit) as order_search:
-        method.fit(case, train)
+        method.fit(case, train, NO_VAL)
         _multi_origin_predict(method, case, train)
 
     assert order_search.call_count == 1
@@ -133,7 +138,7 @@ def test_auto_arima_matches_statsforecasts_own_forecast():
     case = _case([24])
     train = _synthetic_series()
     method = AutoARIMAForecaster(season_length=24)
-    method.fit(case, train)
+    method.fit(case, train, NO_VAL)
 
     y = train["y"].to_numpy(dtype=float)
     reference = AutoARIMA(season_length=24)
@@ -164,7 +169,7 @@ def test_auto_ets_fits_spec_search_exactly_once():
     method = AutoETSForecaster(season_length=24)
 
     with patch.object(AutoETS, "fit", autospec=True, wraps=AutoETS.fit) as spec_search:
-        method.fit(case, train)
+        method.fit(case, train, NO_VAL)
         _multi_origin_predict(method, case, train)
 
     assert spec_search.call_count == 1
@@ -176,7 +181,7 @@ def test_auto_ets_matches_statsforecasts_own_forecast():
     case = _case([24])
     train = _synthetic_series()
     method = AutoETSForecaster(season_length=24)
-    method.fit(case, train)
+    method.fit(case, train, NO_VAL)
 
     reference = AutoETS(season_length=24)
     reference.fit(train["y"].to_numpy(dtype=float))
@@ -206,7 +211,7 @@ def test_theta_fits_exactly_once():
     method = ThetaForecaster(season_length=24)
 
     with patch.object(AutoTheta, "fit", autospec=True, wraps=AutoTheta.fit) as fit:
-        method.fit(case, train)
+        method.fit(case, train, NO_VAL)
         _multi_origin_predict(method, case, train)
 
     assert fit.call_count == 1
@@ -241,7 +246,7 @@ def test_mstl_ets_decomposes_and_fits_trend_exactly_once():
         patch.object(MSTL, "fit", autospec=True, wraps=MSTL.fit) as decompose,
         patch.object(AutoETS, "fit", autospec=True, wraps=AutoETS.fit) as trend_spec_search,
     ):
-        method.fit(case, train)
+        method.fit(case, train, NO_VAL)
         _multi_origin_predict(method, case, train)
 
     assert decompose.call_count == 1
@@ -259,7 +264,7 @@ def test_mstl_arima_decomposes_and_fits_trend_exactly_once():
         patch.object(MSTL, "fit", autospec=True, wraps=MSTL.fit) as decompose,
         patch.object(AutoARIMA, "fit", autospec=True, wraps=AutoARIMA.fit) as trend_order_search,
     ):
-        method.fit(case, train)
+        method.fit(case, train, NO_VAL)
         _multi_origin_predict(method, case, train)
 
     assert decompose.call_count == 1
@@ -293,7 +298,7 @@ def test_forward_reads_the_whole_history_not_the_capped_search_window():
         TBATSForecaster(season_length=24, max_train_steps=200),
     ):
         method.max_train_steps = 200
-        method.fit(case, train)
+        method.fit(case, train, NO_VAL)
         as_is = method.predict(case, train, 6)["y_hat"].to_numpy()
         shifted = method.predict(case, altered, 6)["y_hat"].to_numpy()
         assert np.isfinite(as_is).all() and np.isfinite(shifted).all()
@@ -306,7 +311,7 @@ def test_mstl_is_still_honestly_inapplicable_on_declared_nonseasonal_case():
     case = _case([])
     train = _synthetic_series()
     try:
-        MSTLAutoETSForecaster().fit(case, train)
+        MSTLAutoETSForecaster().fit(case, train, NO_VAL)
         raise AssertionError("expected MSTL to raise on a non-seasonal case")
     except ValueError as exc:
         assert "non-seasonal" in str(exc)
@@ -332,7 +337,7 @@ def test_tbats_component_search_runs_exactly_once():
     with patch.object(
         tbats_module, "tbats_selection", autospec=True, wraps=tbats_module.tbats_selection
     ) as component_search:
-        method.fit(case, train)
+        method.fit(case, train, NO_VAL)
         _multi_origin_predict(method, case, train)
 
     assert component_search.call_count == 1
@@ -350,7 +355,7 @@ def test_tbats_matches_statsforecasts_own_forecast():
     case = _case([24])
     train = _synthetic_series()
     method = TBATSForecaster(season_length=24)
-    method.fit(case, train)
+    method.fit(case, train, NO_VAL)
 
     y = train["y"].to_numpy(dtype=float)
     reference = AutoTBATS(season_length=24)

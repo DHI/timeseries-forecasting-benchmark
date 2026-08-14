@@ -127,11 +127,16 @@ def uncap(method) -> None:
         method.max_train_steps = _NO_CAP
 
 
-def train_frame(case, prefer_synth: bool = False) -> pd.DataFrame:
-    """The frame a global method is fit on in a rolling run: train + val, test excluded."""
+def fit_frames(case, prefer_synth: bool = False) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """The frames a global method is fit on in a rolling run, test excluded.
+
+    The train split, whose length is what the ladder walks, and the declared val split,
+    handed over for the iteratively trained methods to stop on (gh #99). Keeping val out of
+    the ladder is what makes the measured cost the cost of the real fit path.
+    """
     df = case.load(prefer_synth=prefer_synth, curated=True)
     splits = case.split_frame(df)
-    return pd.concat([splits["train"], splits["val"]], ignore_index=True)
+    return splits["train"], splits["val"]
 
 
 def sizes_for(n_available: int) -> list[int]:
@@ -142,7 +147,7 @@ def sizes_for(n_available: int) -> list[int]:
     return rungs
 
 
-def measure_method(case, method, train, sizes, budget, hard_limit, records, out_path):
+def measure_method(case, method, train, val, sizes, budget, hard_limit, records, out_path):
     """Walk one method up the ladder, stopping at the first size past the budget.
 
     Appends one record per completed measurement and flushes the CSV after each, so a
@@ -153,12 +158,12 @@ def measure_method(case, method, train, sizes, budget, hard_limit, records, out_
     # belongs to the process, not to the method. Left in, it inflated the smallest rung by
     # 30x (LinearLags read 1.53s then 0.05s at the same size).
     with contextlib.suppress(Exception):  # failing on a tiny frame is measured below anyway
-        method.fit(case, train.iloc[-min(len(train), 512) :].copy())
+        method.fit(case, train.iloc[-min(len(train), 512) :].copy(), val)
     for i, n in enumerate(sizes):
         frame = train.iloc[-n:].copy()
         try:
             t0 = time.perf_counter()
-            method.fit(case, frame)
+            method.fit(case, frame, val)
             dt = time.perf_counter() - t0
             status = "ok"
         except Exception as exc:  # a method that cannot fit at this size is a result too
@@ -329,13 +334,16 @@ def main() -> int:
 
     records: list[dict] = []
     for case in cases:
-        train = train_frame(case, prefer_synth=args.synth)
+        train, val = fit_frames(case, prefer_synth=args.synth)
         sizes = sizes_for(len(train))
-        print(f"=== {case.id} (freq={case.freq}, train+val={len(train):,} points) ===")
+        print(
+            f"=== {case.id} (freq={case.freq}, train={len(train):,} points, "
+            f"val={len(val):,} held out) ==="
+        )
         print(f"  sizes: {', '.join(f'{n:,}' for n in sizes)}")
         for method in methods:
             measure_method(
-                case, method, train, sizes, args.budget, args.hard_limit, records, args.out
+                case, method, train, val, sizes, args.budget, args.hard_limit, records, args.out
             )
         print()
 

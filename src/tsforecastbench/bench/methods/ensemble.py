@@ -76,9 +76,9 @@ class EnsembleForecaster(Forecaster):
         # class, not several sibling subclasses that could disagree.
         self.forecast_strategy = ForecastStrategy.NOT_APPLICABLE
 
-    def fit(self, case: Case, train: pd.DataFrame) -> None:
+    def fit(self, case: Case, train: pd.DataFrame, val: pd.DataFrame) -> None:
         for member in self.members:
-            member.fit(case, train)
+            member.fit(case, train, val)
 
     def predict(
         self,
