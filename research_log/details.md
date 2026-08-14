@@ -27,12 +27,6 @@ description: |
   `methods.base.build_windows` that allocates float32 and fills it through a strided view: the
   largest pair (`sewerlevel_bellinge` extended, 244,565 windows) builds in 0.04s against the 1.36s
   a per-window Python loop took at that size, and holds one 188 MB copy instead of three.
-
-  Separately and pre-existing: DLinear's fit on `sewerlevel_bellinge` extended fails with
-  `Input X contains NaN` — that frame carries 707 NaNs inside its single segment, which put 126
-  NaN windows in the strided matrix and 1,998 in the full one. It fails identically on `main`, so
-  it is not a consequence of this change, but it does mean that cell has been erroring rather
-  than scoring and needs its own fix before the next pilot.
 commits:
   - 5b7fab2: "Add a shared window builder that keeps every window"
   - c8f9e4a: "Remove the last two training caps and budget training in epochs"
