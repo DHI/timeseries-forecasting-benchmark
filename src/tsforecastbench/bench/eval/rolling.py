@@ -50,7 +50,7 @@ import time
 import numpy as np
 import pandas as pd
 
-from tsforecastbench.bench.eval.config import DEFAULT_ORIGINS
+from tsforecastbench.bench.eval.config import DEFAULT_ORIGINS, DEFAULT_SEEDS
 from tsforecastbench.bench.eval.loop import (
     _horizon_to_steps,
     _raw_y,
@@ -101,6 +101,7 @@ def run_case_rolling(
     methods: list[Forecaster],
     n_origins: int = DEFAULT_ORIGINS,
     prefer_synth: bool = False,
+    n_seeds: int = DEFAULT_SEEDS,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Rolling-origin scores for the cases x methods matrix — robust to single-window luck.
 
@@ -121,6 +122,13 @@ def run_case_rolling(
       several methods (and swap in a method's extended-history fit) on one origin's
       panel. A method that errors contributes no snapshot rows for that fit (its metrics
       row still records the failure).
+
+    An `is_stochastic` method is run `n_seeds` times per cell and the median-MSE run is
+    kept WHOLE — its nine metrics, its snapshots, its timings, its `train_steps` — so the
+    cell stays one real fit rather than a composite of several (issue #106). Every other
+    method runs once. Averaging the forecasts instead would benchmark a deep ensemble
+    against non-ensembled methods, and medianing each metric separately would leave a row
+    whose numbers came from different runs and whose drawn forecast matched none of them.
     """
     df = case.load(prefer_synth=prefer_synth, curated=True)
     splits = case.split_frame(df)
@@ -194,6 +202,153 @@ def run_case_rolling(
     )
     records: list[dict] = []
     snap_frames: list[pd.DataFrame] = []
+
+    def _run_once(method: Forecaster, segs, used_extended: bool, seed: int) -> dict:
+        """Fit and score one (method, variant) at one seed, returning the whole run.
+
+        A closure rather than a module-level helper: it reads a dozen-odd frames and
+        indices off the enclosing scope, all of which are seed-independent and computed
+        once per case. Everything the caller needs comes back in the returned bundle
+        instead of being written into `records`/`snap_frames` here, so several seeds can
+        be run and only the one that is kept gets committed.
+        """
+        # Timed separately (not as one fit+predict block) because a global method's
+        # single fit and a local method's per-origin refit are fundamentally different
+        # amounts of work — see the module docstring. Both are averaged per origin
+        # (fit_times has 1 entry for a global method, `n_origins` for a local one) so
+        # `fit_seconds` answers "how much does one fit cost", not "how many origins did
+        # this run use".
+        fit_times: list[float] = []
+        predict_times: list[float] = []
+        a, p, ref_p, ref_m = [], [], [], []  # pooled actual, pred, persistence, mean
+        method_snaps: list[pd.DataFrame] = []
+        n_ok = 0
+        # Rows handed to the most recent fit: one frame for a global method, the
+        # origin's growing history for a local one, so this is the last origin's.
+        train_points: int | None = None
+        val_points: int | None = None
+        # Ranks the seeds of a stochastic method. Pooled over the same origins against the
+        # same observed points every time, so only the predictions differ between runs.
+        # Infinite for a run that failed, which keeps it out of the median.
+        mse = float("inf")
+        method.last_fit_steps = None
+        method.seed = seed
+        try:
+            # A global method keeps a trained model apart from its input, so it is fit
+            # once, on the train split alone — plus the pre-curated segments for the
+            # extended fit — with the val split handed over separately for the
+            # iteratively trained methods to stop on (gh #99), then evaluated across every
+            # origin by inference alone. No origin's forecast sees test data in its
+            # weights, so this stays leak-free while cutting the cost of `--origins` to
+            # one fit per case. A local (non-global) method, whose parameters are a
+            # direct function of the fitted series, refits at each origin below instead.
+            if method.is_global:
+                if used_extended:
+                    fit_frame, val_frame = _split_segments_at_train_end(segs, train_end)
+                else:
+                    fit_frame, val_frame = local_fit_frame, local_val_frame
+                train_points = len(fit_frame)
+                val_points = len(val_frame)
+                t_fit0 = time.perf_counter()
+                method.fit(case, fit_frame, val_frame)
+                fit_times.append(time.perf_counter() - t_fit0)
+            for i, o in enumerate(origins):
+                local_hist = full_fit.iloc[:o]
+                if used_extended:
+                    slide = full_fit.iloc[test_start:o].copy()
+                    slide["unique_id"] = segs[-1]["unique_id"].iloc[0]
+                    history = pd.concat([*segs, slide], ignore_index=True)
+                else:
+                    history = local_hist
+                fexog = full_fit.iloc[o : o + H][["ds", *exo_present]] if exo_present else None
+                if not method.is_global:
+                    train_points = len(history)
+                    # No holdout: for a method refit at every origin the fit IS the
+                    # forecast, there is nothing to stop early, and its estimate is a
+                    # direct function of the history up to this origin -- val included,
+                    # because that history is contiguous and cannot skip a period.
+                    val_points = 0
+                    t_fit0 = time.perf_counter()
+                    method.fit(case, history, history.iloc[:0])
+                    fit_times.append(time.perf_counter() - t_fit0)
+                t_pred0 = time.perf_counter()
+                preds = method.predict(case, history, H, future_exog=fexog)
+                predict_times.append(time.perf_counter() - t_pred0)
+                y_hat = preds["y_hat"].to_numpy(float)
+                # Full predicted series (all H steps, before masking) so the viewer
+                # draws a continuous forecast line even where the actual has gaps.
+                method_snaps.append(
+                    pd.DataFrame(
+                        {
+                            "case_id": case.id,
+                            "method": method.name,
+                            "used_extended_history": used_extended,
+                            "origin_id": i,
+                            "origin_ds": full_fit["ds"].iloc[o],
+                            "ds": preds["ds"].to_numpy(),
+                            "y_hat": y_hat,
+                        }
+                    )
+                )
+                actual = raw_y[o : o + H]
+                m = np.isfinite(actual)
+                if not m.any():
+                    continue
+                n_ok += 1
+                a.extend(actual[m])
+                p.extend(y_hat[m])
+                # Local-history references, shared by both fits so the extended fit's
+                # skill scores isolate the model, not a shifted baseline.
+                ref_p.extend(np.full(int(m.sum()), float(local_hist["y"].iloc[-1])))
+                ref_m.extend(
+                    np.full(int(m.sum()), float(np.nanmean(local_hist["y"].to_numpy(float))))
+                )
+            if not a:
+                raise ValueError("no finite test points across origins")
+            a = np.array(a)
+            p = np.array(p)
+            ref_p = np.array(ref_p)
+            ref_m = np.array(ref_m)
+            mse = float(np.mean((a - p) ** 2))
+            mse_ref_p = float(np.mean((a - ref_p) ** 2))
+            mse_ref_m = float(np.mean((a - ref_m) ** 2))
+            metrics = {
+                "MAE": float(np.mean(np.abs(a - p))),
+                "RMSE": float(np.sqrt(mse)),
+                "MASE": float(np.mean(np.abs(a - p)) / naive_scale)
+                if naive_scale
+                else float("nan"),
+                "Skill_vs_Persistence": 1.0 - mse / mse_ref_p if mse_ref_p != 0.0 else float("nan"),
+                "Skill_vs_Mean": 1.0 - mse / mse_ref_m if mse_ref_m != 0.0 else float("nan"),
+                "MAPE": mape(a, p),
+                "sMAPE": smape(a, p),
+                "NSE": nse(a, p),
+                "KGE": kge(a, p),
+            }
+            status = "ok"
+        except Exception as exc:
+            metrics = {k: float("nan") for k in metric_names}
+            status = f"error: {type(exc).__name__}: {str(exc)[:70]}"
+        return {
+            "seed": seed,
+            "status": status,
+            "mse": mse,
+            "metrics": metrics,
+            # A failed run contributes no snapshots, so the viewer never draws a line for
+            # a cell whose metrics row records an error.
+            "snaps": method_snaps if status == "ok" else [],
+            "fit_seconds": float(np.mean(fit_times)) if fit_times else float("nan"),
+            "predict_seconds": float(np.mean(predict_times)) if predict_times else float("nan"),
+            "n_ok": n_ok,
+            "frac_finite_test": float(len(a) / max(1, len(origins) * H))
+            if isinstance(a, np.ndarray)
+            else 0.0,
+            "train_points": train_points,
+            "val_points": val_points,
+            # Read here rather than by the caller: the next seed's fit overwrites it.
+            "train_steps": method.last_fit_steps,
+        }
+
     for method in methods:
         # Local fit for everyone; a second extended fit for segment-pooling methods when
         # the case has history beyond the curated span. Both fits' forecasts are saved as
@@ -202,124 +357,28 @@ def run_case_rolling(
         if method.is_global and method.pools_segments and ext_segments is not None:
             variants.append((ext_segments, True))
         for segs, used_extended in variants:
-            # Timed separately (not as one fit+predict block) because a global method's
-            # single fit and a local method's per-origin refit are fundamentally different
-            # amounts of work — see the module docstring. Both are averaged per origin
-            # (fit_times has 1 entry for a global method, `n_origins` for a local one) so
-            # `fit_seconds` answers "how much does one fit cost", not "how many origins did
-            # this run use".
-            fit_times: list[float] = []
-            predict_times: list[float] = []
-            a, p, ref_p, ref_m = [], [], [], []  # pooled actual, pred, persistence, mean
-            method_snaps: list[pd.DataFrame] = []
-            n_ok = 0
-            # Rows handed to the most recent fit: one frame for a global method, the
-            # origin's growing history for a local one, so this is the last origin's.
-            train_points: int | None = None
-            val_points: int | None = None
-            method.last_fit_steps = None
-            try:
-                # A global method keeps a trained model apart from its input, so it is fit
-                # once, on the train split alone — plus the pre-curated segments for the
-                # extended fit — with the val split handed over separately for the
-                # iteratively trained methods to stop on (gh #99), then evaluated across every
-                # origin by inference alone. No origin's forecast sees test data in its
-                # weights, so this stays leak-free while cutting the cost of `--origins` to
-                # one fit per case. A local (non-global) method, whose parameters are a
-                # direct function of the fitted series, refits at each origin below instead.
-                if method.is_global:
-                    if used_extended:
-                        fit_frame, val_frame = _split_segments_at_train_end(segs, train_end)
-                    else:
-                        fit_frame, val_frame = local_fit_frame, local_val_frame
-                    train_points = len(fit_frame)
-                    val_points = len(val_frame)
-                    t_fit0 = time.perf_counter()
-                    method.fit(case, fit_frame, val_frame)
-                    fit_times.append(time.perf_counter() - t_fit0)
-                for i, o in enumerate(origins):
-                    local_hist = full_fit.iloc[:o]
-                    if used_extended:
-                        slide = full_fit.iloc[test_start:o].copy()
-                        slide["unique_id"] = segs[-1]["unique_id"].iloc[0]
-                        history = pd.concat([*segs, slide], ignore_index=True)
-                    else:
-                        history = local_hist
-                    fexog = full_fit.iloc[o : o + H][["ds", *exo_present]] if exo_present else None
-                    if not method.is_global:
-                        train_points = len(history)
-                        # No holdout: for a method refit at every origin the fit IS the
-                        # forecast, there is nothing to stop early, and its estimate is a
-                        # direct function of the history up to this origin -- val included,
-                        # because that history is contiguous and cannot skip a period.
-                        val_points = 0
-                        t_fit0 = time.perf_counter()
-                        method.fit(case, history, history.iloc[:0])
-                        fit_times.append(time.perf_counter() - t_fit0)
-                    t_pred0 = time.perf_counter()
-                    preds = method.predict(case, history, H, future_exog=fexog)
-                    predict_times.append(time.perf_counter() - t_pred0)
-                    y_hat = preds["y_hat"].to_numpy(float)
-                    # Full predicted series (all H steps, before masking) so the viewer
-                    # draws a continuous forecast line even where the actual has gaps.
-                    method_snaps.append(
-                        pd.DataFrame(
-                            {
-                                "case_id": case.id,
-                                "method": method.name,
-                                "used_extended_history": used_extended,
-                                "origin_id": i,
-                                "origin_ds": full_fit["ds"].iloc[o],
-                                "ds": preds["ds"].to_numpy(),
-                                "y_hat": y_hat,
-                            }
-                        )
+            # One draw is not a score for a method whose forecast moves with the seed, so
+            # take several and keep the middle one whole (issue #106). Every run is pooled
+            # over the same origins against the same observed points, so the MSEs rank
+            # runs of the same experiment and the chosen run's nine metrics, snapshots and
+            # timings all describe one real fit.
+            cell_seeds = list(range(n_seeds)) if method.is_stochastic else [0]
+            runs = []
+            for seed in cell_seeds:
+                run = _run_once(method, segs, used_extended, seed)
+                if len(cell_seeds) > 1:
+                    print(
+                        f"    seed {seed}: {run['status'][:40]:<40s} "
+                        f"(fit {run['fit_seconds']:.2f}s, MSE {run['mse']:.6g})"
                     )
-                    actual = raw_y[o : o + H]
-                    m = np.isfinite(actual)
-                    if not m.any():
-                        continue
-                    n_ok += 1
-                    a.extend(actual[m])
-                    p.extend(y_hat[m])
-                    # Local-history references, shared by both fits so the extended fit's
-                    # skill scores isolate the model, not a shifted baseline.
-                    ref_p.extend(np.full(int(m.sum()), float(local_hist["y"].iloc[-1])))
-                    ref_m.extend(
-                        np.full(int(m.sum()), float(np.nanmean(local_hist["y"].to_numpy(float))))
-                    )
-                if not a:
-                    raise ValueError("no finite test points across origins")
-                a = np.array(a)
-                p = np.array(p)
-                ref_p = np.array(ref_p)
-                ref_m = np.array(ref_m)
-                mse = float(np.mean((a - p) ** 2))
-                mse_ref_p = float(np.mean((a - ref_p) ** 2))
-                mse_ref_m = float(np.mean((a - ref_m) ** 2))
-                metrics = {
-                    "MAE": float(np.mean(np.abs(a - p))),
-                    "RMSE": float(np.sqrt(mse)),
-                    "MASE": float(np.mean(np.abs(a - p)) / naive_scale)
-                    if naive_scale
-                    else float("nan"),
-                    "Skill_vs_Persistence": 1.0 - mse / mse_ref_p
-                    if mse_ref_p != 0.0
-                    else float("nan"),
-                    "Skill_vs_Mean": 1.0 - mse / mse_ref_m if mse_ref_m != 0.0 else float("nan"),
-                    "MAPE": mape(a, p),
-                    "sMAPE": smape(a, p),
-                    "NSE": nse(a, p),
-                    "KGE": kge(a, p),
-                }
-                status = "ok"
-                snap_frames.extend(method_snaps)
-            except Exception as exc:
-                metrics = {k: float("nan") for k in metric_names}
-                status = f"error: {type(exc).__name__}: {str(exc)[:70]}"
-            fit_seconds = float(np.mean(fit_times)) if fit_times else float("nan")
-            predict_seconds = float(np.mean(predict_times)) if predict_times else float("nan")
-            for metric_name, value in metrics.items():
+                runs.append(run)
+            ok = [r for r in runs if r["status"] == "ok"]
+            # Lower-middle when a seed failed and an even number survived; the true median
+            # when all five did. If none did, report the first run's failure, which is what
+            # a single-seed run would have reported.
+            chosen = sorted(ok, key=lambda r: r["mse"])[(len(ok) - 1) // 2] if ok else runs[0]
+            snap_frames.extend(chosen["snaps"])
+            for metric_name, value in chosen["metrics"].items():
                 records.append(
                     {
                         "case_id": case.id,
@@ -332,13 +391,16 @@ def run_case_rolling(
                         "horizon": case.horizon_primary,
                         "metric": metric_name,
                         "value": value,
-                        "fit_seconds": fit_seconds,
-                        "predict_seconds": predict_seconds,
-                        "frac_finite_test": float(len(a) / max(1, len(origins) * H))
-                        if isinstance(a, np.ndarray)
-                        else 0.0,
-                        "status": status,
-                        "n_origins": n_ok,
+                        "fit_seconds": chosen["fit_seconds"],
+                        "predict_seconds": chosen["predict_seconds"],
+                        "frac_finite_test": chosen["frac_finite_test"],
+                        "status": chosen["status"],
+                        "n_origins": chosen["n_ok"],
+                        # Which run this row describes and how many it was picked from, so
+                        # a cell's provenance is in the data rather than inferred from the
+                        # method's name. `n_seeds` is 1 for every deterministic method.
+                        "seed": chosen["seed"],
+                        "n_seeds": len(runs),
                         # What this fit was actually given and what it spent. Training
                         # budgets used to be per-method constants that differed by two
                         # orders of magnitude (issue #95); recording them per cell keeps
@@ -346,15 +408,17 @@ def run_case_rolling(
                         # the code. `train_steps` is null for methods that do not train
                         # by gradient descent. `val_points` is the early-stopping holdout
                         # handed over, 0 for a method refit at every origin.
-                        "train_points": train_points,
-                        "val_points": val_points,
-                        "train_steps": method.last_fit_steps,
+                        "train_points": chosen["train_points"],
+                        "val_points": chosen["val_points"],
+                        "train_steps": chosen["train_steps"],
                     }
                 )
             tag = " [ext]" if used_extended else ""
+            picked = f", seed {chosen['seed']} of {len(runs)}" if len(runs) > 1 else ""
             print(
-                f"  {method.name:>18s}{tag:>6s}: {status[:48]:<48s} "
-                f"({n_ok} origins, fit {fit_seconds:.2f}s, predict {predict_seconds:.2f}s)"
+                f"  {method.name:>18s}{tag:>6s}: {chosen['status'][:48]:<48s} "
+                f"({chosen['n_ok']} origins, fit {chosen['fit_seconds']:.2f}s, "
+                f"predict {chosen['predict_seconds']:.2f}s{picked})"
             )
     snapshots = (
         pd.concat(snap_frames, ignore_index=True)
