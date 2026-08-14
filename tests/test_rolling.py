@@ -204,3 +204,29 @@ def test_cell_fails_when_every_seed_fails(case):
     assert res["value"].isna().all()
     assert snaps.empty, "a failed cell must not leave a forecast line behind"
     assert set(res["seed"]) == {0}, "the first run's failure, as a single-seed run would report"
+
+
+def test_single_holdout_path_also_keeps_the_median_run(case):
+    """`run_pilot --fast` scores one window instead of rolling origins, but the seed rule
+    is the same: several runs, keep the middle one by MSE."""
+    from tsforecastbench.bench.eval.loop import run_case
+
+    method = _SeedSensitive()
+
+    res = run_case(case, [method], prefer_synth=True, n_seeds=5)
+
+    assert (res["status"] == "ok").all()
+    assert sorted(method.seeds_seen) == [0, 1, 2, 3, 4]
+    assert set(res["seed"]) == {_MEDIAN_SEED}
+    assert set(res["n_seeds"]) == {5}
+
+
+def test_single_holdout_path_runs_a_deterministic_method_once(case):
+    from tsforecastbench.bench.eval.loop import run_case
+
+    method = _Deterministic()
+
+    res = run_case(case, [method], prefer_synth=True, n_seeds=5)
+
+    assert method.fit_calls == 1
+    assert set(res["n_seeds"]) == {1}

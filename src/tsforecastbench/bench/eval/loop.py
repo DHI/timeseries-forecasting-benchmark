@@ -31,6 +31,7 @@ import time
 import numpy as np
 import pandas as pd
 
+from tsforecastbench.bench.eval.config import DEFAULT_SEEDS
 from tsforecastbench.bench.eval.metrics import kge, mae, mape, mase, nse, rmse, skill_score, smape
 from tsforecastbench.bench.methods.base import Forecaster, lookback_for
 from tsforecastbench.data.schema import Case, _observed_mask
@@ -139,7 +140,19 @@ def _pick_origin(
     return best_o
 
 
-def run_case(case: Case, methods: list[Forecaster], prefer_synth: bool = False) -> pd.DataFrame:
+def run_case(
+    case: Case,
+    methods: list[Forecaster],
+    prefer_synth: bool = False,
+    n_seeds: int = DEFAULT_SEEDS,
+) -> pd.DataFrame:
+    """Single-holdout scores for the cases x methods matrix.
+
+    An `is_stochastic` method is run `n_seeds` times and the median-MSE run is kept whole
+    — all nine of its metrics and its timings — so the cell stays one real fit rather than
+    a composite (issue #106). See `eval.rolling.run_case_rolling`, which does the same for
+    the rolling-origin path and carries the full reasoning.
+    """
     df = case.load(prefer_synth=prefer_synth, curated=True)
     splits = case.split_frame(df)
     train_end, _val_end, _test_end = case.split_bounds(df)
@@ -245,6 +258,62 @@ def run_case(case: Case, methods: list[Forecaster], prefer_synth: bool = False) 
         "KGE",
     )
     records: list[dict] = []
+
+    def _run_once(method: Forecaster, m_fit, m_val, m_history, seed) -> dict:
+        """Fit and score one (method, variant) at one seed, returning the whole run.
+
+        Returns a bundle rather than appending to `records`, so several seeds can be run
+        and only the one that is kept gets written out.
+        """
+        fit_seconds = float("nan")
+        predict_seconds = float("nan")
+        # Ranks the seeds of a stochastic method. Every run is scored on the same holdout
+        # points, so only the predictions differ. Infinite for a run that failed, which
+        # keeps it out of the median.
+        mse = float("inf")
+        method.last_fit_steps = None
+        method.seed = seed
+        try:
+            t_fit0 = time.perf_counter()
+            method.fit(case, m_fit, m_val)
+            fit_seconds = time.perf_counter() - t_fit0
+            t_pred0 = time.perf_counter()
+            preds = method.predict(case, m_history, horizon_steps, future_exog=future_exog)
+            predict_seconds = time.perf_counter() - t_pred0
+            y_hat = preds["y_hat"].to_numpy(dtype=float)
+            assert len(y_hat) == horizon_steps, (
+                f"{method.name} returned {len(y_hat)} predictions, expected {horizon_steps}"
+            )
+            if finite.sum() == 0:
+                raise ValueError("no finite test points to score")
+            yt, yh = y_true_raw[finite], y_hat[finite]
+            mse = float(np.mean((yt - yh) ** 2))
+            metrics = {
+                "MAE": mae(yt, yh),
+                "RMSE": rmse(yt, yh),
+                "MASE": mase(yt, yh, y_train, season=season),
+                "Skill_vs_Persistence": skill_score(yt, yh, ref_persistence[finite]),
+                "Skill_vs_Mean": skill_score(yt, yh, ref_mean[finite]),
+                "MAPE": mape(yt, yh),
+                "sMAPE": smape(yt, yh),
+                "NSE": nse(yt, yh),
+                "KGE": kge(yt, yh),
+            }
+            status = "ok"
+        except Exception as exc:
+            metrics = {k: float("nan") for k in metric_names}
+            status = f"error: {type(exc).__name__}: {str(exc)[:70]}"
+        return {
+            "seed": seed,
+            "status": status,
+            "mse": mse,
+            "metrics": metrics,
+            "fit_seconds": fit_seconds,
+            "predict_seconds": predict_seconds,
+            # Read here rather than by the caller: the next seed's fit overwrites it.
+            "train_steps": method.last_fit_steps,
+        }
+
     for method in methods:
         # Every method is scored on the local span. Methods that pool segments are scored
         # a second time on the extended history, when the case has any. Both fits share
@@ -254,39 +323,21 @@ def run_case(case: Case, methods: list[Forecaster], prefer_synth: bool = False) 
         if method.is_global and method.pools_segments and fit_frame_ext is not None:
             variants.append((fit_frame_ext, val_frame_ext, history_ext, True))
         for m_fit, m_val, m_history, used_extended in variants:
-            fit_seconds = float("nan")
-            predict_seconds = float("nan")
-            method.last_fit_steps = None
-            try:
-                t_fit0 = time.perf_counter()
-                method.fit(case, m_fit, m_val)
-                fit_seconds = time.perf_counter() - t_fit0
-                t_pred0 = time.perf_counter()
-                preds = method.predict(case, m_history, horizon_steps, future_exog=future_exog)
-                predict_seconds = time.perf_counter() - t_pred0
-                y_hat = preds["y_hat"].to_numpy(dtype=float)
-                assert len(y_hat) == horizon_steps, (
-                    f"{method.name} returned {len(y_hat)} predictions, expected {horizon_steps}"
-                )
-                if finite.sum() == 0:
-                    raise ValueError("no finite test points to score")
-                yt, yh = y_true_raw[finite], y_hat[finite]
-                metrics = {
-                    "MAE": mae(yt, yh),
-                    "RMSE": rmse(yt, yh),
-                    "MASE": mase(yt, yh, y_train, season=season),
-                    "Skill_vs_Persistence": skill_score(yt, yh, ref_persistence[finite]),
-                    "Skill_vs_Mean": skill_score(yt, yh, ref_mean[finite]),
-                    "MAPE": mape(yt, yh),
-                    "sMAPE": smape(yt, yh),
-                    "NSE": nse(yt, yh),
-                    "KGE": kge(yt, yh),
-                }
-                status = "ok"
-            except Exception as exc:
-                metrics = {k: float("nan") for k in metric_names}
-                status = f"error: {type(exc).__name__}: {str(exc)[:70]}"
-            for metric_name, value in metrics.items():
+            # Several draws for a method whose forecast moves with the seed, keeping the
+            # middle one whole; one run for everyone else. See `eval.rolling` on why the
+            # run is kept whole rather than averaged or medianed metric by metric.
+            cell_seeds = list(range(n_seeds)) if method.is_stochastic else [0]
+            runs = [
+                _run_once(method, m_fit, m_val, m_history, seed) for seed in cell_seeds
+            ]
+            ok = [r for r in runs if r["status"] == "ok"]
+            # Lower-middle when a seed failed and an even number survived; if none did,
+            # report the first run's failure, as a single-seed run would have.
+            chosen = sorted(ok, key=lambda r: r["mse"])[(len(ok) - 1) // 2] if ok else runs[0]
+            fit_seconds = chosen["fit_seconds"]
+            predict_seconds = chosen["predict_seconds"]
+            status = chosen["status"]
+            for metric_name, value in chosen["metrics"].items():
                 records.append(
                     {
                         "case_id": case.id,
@@ -303,19 +354,25 @@ def run_case(case: Case, methods: list[Forecaster], prefer_synth: bool = False) 
                         "predict_seconds": predict_seconds,
                         "frac_finite_test": frac_finite,
                         "status": status,
+                        # Which run this row describes and how many it was picked from,
+                        # so a cell's provenance is in the data. `n_seeds` is 1 for every
+                        # deterministic method.
+                        "seed": chosen["seed"],
+                        "n_seeds": len(runs),
                         # What this fit was given and what it spent -- see the same set
                         # in `eval.rolling` and `eval.budget` on why they are recorded.
                         # `val_points` is the holdout handed over for early stopping; a
                         # method that does not train iteratively ignores it.
                         "train_points": len(m_fit),
                         "val_points": len(m_val),
-                        "train_steps": method.last_fit_steps,
+                        "train_steps": chosen["train_steps"],
                     }
                 )
             tag = " [ext]" if used_extended else ""
+            picked = f", seed {chosen['seed']} of {len(runs)}" if len(runs) > 1 else ""
             print(
                 f"  {method.name:>18s}{tag:>6s}: {status[:54]:<54s}  "
-                f"(fit {fit_seconds:.2f}s, predict {predict_seconds:.2f}s)"
+                f"(fit {fit_seconds:.2f}s, predict {predict_seconds:.2f}s{picked})"
             )
 
     if frac_finite < 1.0:
