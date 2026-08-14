@@ -1,4 +1,43 @@
 ---
+id: 94
+date: "2026-08-14"
+title: "Auditing the method set for comparability turned up two more picked constants, both in the ML family"
+description: |
+  Swept every method, both eval loops and `eval.budget` before the next full pilot, looking for
+  anything that varies by case or by method without being derived from the data. The classical,
+  baseline, foundation-model and deep-learning families came back clean: season lengths and lag
+  ladders resolve from `case.seasonalities`, MSTL drops periods the record cannot support,
+  AutoARIMA and AutoETS are non-seasonal by one uniform declared choice, and `TRAIN_POINT_CEILING`
+  does not bind anywhere. Two constants in `methods/ml.py` did not hold up. LightGBM's 200
+  boosting rounds at learning rate 0.05 and CatBoost's 200 iterations at 0.05 were picked rather
+  than taken from either library, and both are now each library's own defaults — this benchmark
+  does not tune, so the default is the honest configuration to compare, even though it leaves the
+  two an order of magnitude apart in round count.
+
+  MLP's `max_iter = 300` was the more interesting one, and it bound. Lifting it and reading back
+  `n_iter_` showed where each per-horizon model actually converges: 586 epochs at worst, on
+  `wwtp_influent_n2o_350k`, against a median of 87 on `sewerlevel_bellinge`. The pattern is the
+  opposite of entry 89's — scikit-learn's `max_iter` counts epochs, and a larger record packs more
+  updates into each one, so big cases converge in *fewer* epochs and the cap bit the small, noisy
+  cases instead. It bound on 4 of the 11 cases measured, which made those columns reflect the
+  constant rather than the data. `MLP_MAX_EPOCHS = 2_000` replaces it in `eval.budget`, above
+  every measured convergence point and kept separate from `DL_MAX_EPOCHS` because the two stopping
+  rules are not comparable: `torchdl` gives up after 250 gradient steps, a fraction of one epoch
+  on a large case, where MLPRegressor gives up after 10 whole epochs.
+
+  Three asymmetries were checked and left alone, all deliberate: extended history reaches only the
+  11 `pools_segments` methods (a classical fit takes a 1-D array and a foundation model conditions
+  on one contiguous window, neither of which can span a gap); local methods refit per origin on the
+  growing history, val included, because for them the fit *is* the forecast; and the foundation
+  models pin context to the train length so it stays a fixed width across origins. One real
+  inconsistency is left open as gh #104: MLP early-stops on a shuffled 10% of its training rows
+  rather than the declared val split, because scikit-learn exposes no way to pass an explicit
+  holdout. Every ML-family score is stale until the next pilot.
+commits:
+  - d14b492: "Use each boosting library's own defaults"
+  - e5b7e15: "Lift MLP's iteration cap above where it actually converges"
+  - b75f3da: "Correct a stale comment about what a global fit is handed"
+---
 id: 93
 date: "2026-08-14"
 title: "The last two training caps are gone, and the step budget is now counted in epochs"

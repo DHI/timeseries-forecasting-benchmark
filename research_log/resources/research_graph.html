@@ -342,6 +342,24 @@
 {
   "nodes": [
     {
+      "id": "2026-08-14-ml-family-comparability-audit",
+      "date": "2026-08-14",
+      "title": "Auditing the method set for comparability turned up two more picked constants, both in the ML family",
+      "category": "methodology",
+      "summary": "Swept every method and both eval loops before the next full pilot for anything varying by case or method without being derived. Classical, baseline, foundation-model and DL families came back clean. LightGBM's and CatBoost's 200 rounds are now each library's defaults, and MLP's `max_iter = 300` -- which bound on 4 of 11 cases -- becomes `MLP_MAX_EPOCHS = 2_000`, above the 586 epochs the worst case actually needs. Left open as gh #104: MLP early-stops on a shuffled 10% of its training rows rather than the declared val split.",
+      "detail": "The sweep covered every method module, `eval.loop`, `eval.rolling` and `eval.budget`, against four questions: does anything vary by case or by method without being derived from the data, is any cap still binding, is the declared val split used the same way everywhere, and is the extended-history variant applied consistently.\n\nMost of the field held up. Season lengths, lag ladders and sin/cos features resolve from `case.seasonalities`; MSTL drops periods the record cannot support (`len(df) >= 2 * p`); AutoARIMA and AutoETS are non-seasonal by one uniform declared choice rather than per-case tuning; `TRAIN_POINT_CEILING` does not bind anywhere. Two constants in `methods/ml.py` did not. LightGBM ran 200 boosting rounds at learning rate 0.05 and CatBoost 200 iterations at 0.05, neither taken from its library, both applied unchanged to a 1,500-point case and a 150,000-point one. Both are now each library's own defaults (LightGBM 100 rounds at 0.1, CatBoost 1,000 with an auto-selected rate). This benchmark does not tune, so the default is the honest configuration to compare, accepting that it leaves the two gradient-boosting columns an order of magnitude apart in capacity.\n\nMLP's `max_iter = 300` was the one that mattered, and it bound -- the test suite had been emitting scikit-learn's `ConvergenceWarning` all along. Lifting the cap to 100,000 and reading back `n_iter_` per fitted model gave where each per-horizon model actually converges: 586 epochs at worst on `wwtp_influent_n2o_350k`, 414 on `groundwater_yorktown`, 372 on `waves_massachusetts`, against medians of 87-124 on the large cases. The pattern inverts entry 89's. scikit-learn's `max_iter` counts epochs, not gradient steps, and a larger record packs more updates into each epoch, so big cases converge in fewer of them: 87 median on `sewerlevel_bellinge` (34,651 points) against 322 on `wwtp` (2,136). The cap therefore starved the small, noisy cases and never touched the large ones -- still a difference between columns that came from the constant rather than from the data, just pointing the other way than expected. `MLP_MAX_EPOCHS = 2_000` replaces it in `eval.budget`, roughly 3.4x the largest measured convergence point, and is kept separate from `DL_MAX_EPOCHS = 150` because the two stopping rules are not comparable: `torchdl` gives up after 250 gradient steps, a fraction of one epoch on a large case, where MLPRegressor gives up after 10 whole epochs.\n\nThree asymmetries were checked and deliberately left. Extended history reaches only the 11 `is_global and pools_segments` methods -- a classical fit takes a 1-D array and a foundation model conditions on one contiguous window, neither of which can span a gap, and iTransformer is fixed at `n_series=1`. Local methods refit at every origin on the growing history, val included, because for a method refit per origin the fit is the forecast and skipping val would leave a hole in a contiguous history. The foundation models pin context to the train length so it stays a fixed width across origins rather than growing, the opposite convention from the classical methods' `forward` over the whole history; both are defensible, they are just not the same rule.\n\nOne real inconsistency is left open as gh #104. MLP passes `early_stopping=True`, and scikit-learn implements that with a shuffled `train_test_split`, so its holdout is a random 10% of training rows interleaved in time with the rows it trains on -- not the declared val split every iteratively trained method has used since #99, and optimistic besides. Fixing it needs a custom estimator, since `MLPRegressor` exposes only `validation_fraction`. Every ML-family score is stale until the next pilot.",
+      "tags": [
+        "audit",
+        "comparability",
+        "mlp",
+        "lightgbm",
+        "catboost",
+        "training-budget",
+        "validation",
+        "methodology"
+      ]
+    },
+    {
       "id": "2026-08-14-window-and-step-caps-removed",
       "date": "2026-08-14",
       "title": "The last two training caps are gone, and the step budget is now counted in epochs",
@@ -1596,6 +1614,21 @@
     }
   ],
   "edges": [
+    {
+      "source": "2026-08-14-ml-family-comparability-audit",
+      "target": "2026-08-14-window-and-step-caps-removed",
+      "type": "follows-from"
+    },
+    {
+      "source": "2026-08-14-ml-family-comparability-audit",
+      "target": "2026-08-13-mlp-blas-thread-oversubscription",
+      "type": "relates-to"
+    },
+    {
+      "source": "2026-08-14-ml-family-comparability-audit",
+      "target": "2026-08-12-training-caps-removed",
+      "type": "relates-to"
+    },
     {
       "source": "2026-08-14-window-and-step-caps-removed",
       "target": "2026-08-12-training-caps-removed",

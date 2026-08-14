@@ -7,6 +7,7 @@ entry and its commits. See `schema.md` for the format both files follow.
 <!-- Add new entries below this line, newest first, matching details.md. -->
 
 ### 2026-08-14
+- 94 — Auditing the method set for comparability turned up two more picked constants, both in the ML family
 - 93 — The last two training caps are gone, and the step budget is now counted in epochs
 
 ### 2026-08-13
