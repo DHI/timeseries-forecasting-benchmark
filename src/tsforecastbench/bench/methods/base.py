@@ -35,6 +35,44 @@ def segment_arrays(train: pd.DataFrame, value_col: str = "y") -> tuple[list[np.n
     return segs, uids.index(tail_uid)
 
 
+def build_windows(
+    segs: list[np.ndarray], L: int, H: int
+) -> tuple[np.ndarray, np.ndarray] | tuple[None, None]:
+    """Stack (input, target) windows over every segment, never across a gap.
+
+    Every window is built. There is no stride, no truncation and no cap on the total (gh
+    #101, following #95 and #97). Consecutive windows overlap in all but one step, so
+    thinning them out used to look free — but it made the size of the training pool a
+    hand-picked constant rather than a property of the record, and the same constant applied
+    to a 1,500-window case and a 280,000-window one.
+
+    Both matrices are allocated float32 and filled in place. Stacking float64 slices and
+    casting afterwards kept three copies of the same data live at once, which on the largest
+    (frame, case) pair peaked at roughly five times the size of the matrix it returned.
+
+    Returns `(None, None)` when there are too few windows to learn anything from; callers
+    fall back to persistence.
+    """
+    counts = [max(0, len(y) - L - H + 1) for y in segs]
+    total = sum(counts)
+    if total <= 10:
+        return None, None
+    X = np.empty((total, L), dtype=np.float32)
+    Y = np.empty((total, H), dtype=np.float32)
+    at = 0
+    for y, n in zip(segs, counts, strict=True):
+        if n <= 0:
+            continue
+        # One strided view over the segment, copied out in a single vectorised assignment.
+        # The per-window Python loop this replaces grew linearly in window count, which with
+        # the cap gone is the whole record rather than a bounded sample of it.
+        view = np.lib.stride_tricks.sliding_window_view(y, L + H)
+        X[at : at + n] = view[:, :L]
+        Y[at : at + n] = view[:, L:]
+        at += n
+    return X, Y
+
+
 def lookback_for(freq: str, h: int) -> int:
     """Default lookback window length for a windowed DL/ML forecaster.
 
