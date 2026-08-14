@@ -327,9 +327,7 @@ def run_case(
             # middle one whole; one run for everyone else. See `eval.rolling` on why the
             # run is kept whole rather than averaged or medianed metric by metric.
             cell_seeds = list(range(n_seeds)) if method.is_stochastic else [0]
-            runs = [
-                _run_once(method, m_fit, m_val, m_history, seed) for seed in cell_seeds
-            ]
+            runs = [_run_once(method, m_fit, m_val, m_history, seed) for seed in cell_seeds]
             ok = [r for r in runs if r["status"] == "ok"]
             # Lower-middle when a seed failed and an even number survived; if none did,
             # report the first run's failure, as a single-seed run would have.
