@@ -14,6 +14,9 @@ from __future__ import annotations
 
 import argparse
 import sys
+import threading
+import time
+from contextlib import contextmanager
 from pathlib import Path
 
 import pandas as pd
@@ -86,6 +89,68 @@ def build_methods():
         CatBoostExoForecaster(),
         MLPExoForecaster(),
     ]
+
+
+@contextmanager
+def spinner(interval: float = 0.2):
+    """Overwrite one terminal line with a rotating glyph + elapsed time, so a silent
+    multi-minute fit (deep-learning, foundation-model) still visibly proves the
+    process isn't frozen, instead of just going quiet between method result lines.
+
+    Renders via a bare \\r + ANSI clear-line, so it survives being piped through
+    `tee` for logging (any real terminal downstream still interprets it live) --
+    unlike gating on sys.stdout.isatty(), which would be False the moment stdout
+    is piped anywhere, spinner included. The existing print() calls in eval/loop.py
+    and eval/rolling.py are routed through a clearing stdout wrapper so a method
+    result line lands on its own clean line instead of getting mixed into whatever
+    the spinner had drawn.
+    """
+    frames = "|/-\\"
+    stop = threading.Event()
+    lock = threading.Lock()
+    start = time.monotonic()
+    real_stdout = sys.stdout
+
+    class _ClearingStdout:
+        def write(self, s):
+            with lock:
+                if s and s != "\n":
+                    real_stdout.write("\r\x1b[K")
+                real_stdout.write(s)
+            return len(s)
+
+        def flush(self):
+            real_stdout.flush()
+
+        def isatty(self):
+            return real_stdout.isatty()
+
+        def __getattr__(self, name):
+            # ray (pulled in lazily by neuralforecast, e.g. for TFT/iTransformer/TimesNet)
+            # probes attributes like `.encoding` on sys.stdout at import time; forward
+            # anything we don't explicitly wrap so those checks see the real stream.
+            return getattr(real_stdout, name)
+
+    def _spin():
+        i = 0
+        while not stop.wait(interval):
+            with lock:
+                elapsed = time.monotonic() - start
+                real_stdout.write(f"\r\x1b[K{frames[i % len(frames)]} running ({elapsed:.0f}s)")
+                real_stdout.flush()
+            i += 1
+
+    sys.stdout = _ClearingStdout()
+    thread = threading.Thread(target=_spin, daemon=True)
+    thread.start()
+    try:
+        yield
+    finally:
+        stop.set()
+        thread.join()
+        sys.stdout = real_stdout
+        real_stdout.write("\r\x1b[K")
+        real_stdout.flush()
 
 
 def main() -> int:
@@ -208,35 +273,36 @@ def main() -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
     all_results = []
     all_snapshots = []
-    for case in cases:
-        print(
-            f"=== {case.id} ({case.domain}, freq={case.freq}, horizon={case.horizon_primary}) ==="
-        )
-        try:
-            if args.fast:
-                # Single hold-out doesn't emit per-origin snapshots; the viewer degrades
-                # to a "no forecast stored" note for these cases.
-                res = run_case(case, methods, prefer_synth=args.synth, n_seeds=args.seeds)
-                snaps = None
-            else:
-                res, snaps = run_case_rolling(
-                    case,
-                    methods,
-                    n_origins=args.origins,
-                    prefer_synth=args.synth,
-                    n_seeds=args.seeds,
-                )
-        except Exception as exc:  # keep a long unattended run going if one case fails
-            print(f"  [case-error] {case.id}: {type(exc).__name__}: {exc}")
-            continue
-        all_results.append(res)
-        if snaps is not None and not snaps.empty:
-            all_snapshots.append(snaps)
-        # incremental save so a multi-hour run is never all-or-nothing
-        pd.concat(all_results, ignore_index=True).to_parquet(metrics_path, index=False)
-        if all_snapshots:
-            pd.concat(all_snapshots, ignore_index=True).to_parquet(snapshots_path, index=False)
-        print()
+    with spinner():
+        for case in cases:
+            print(
+                f"=== {case.id} ({case.domain}, freq={case.freq}, horizon={case.horizon_primary}) ==="
+            )
+            try:
+                if args.fast:
+                    # Single hold-out doesn't emit per-origin snapshots; the viewer
+                    # degrades to a "no forecast stored" note for these cases.
+                    res = run_case(case, methods, prefer_synth=args.synth, n_seeds=args.seeds)
+                    snaps = None
+                else:
+                    res, snaps = run_case_rolling(
+                        case,
+                        methods,
+                        n_origins=args.origins,
+                        prefer_synth=args.synth,
+                        n_seeds=args.seeds,
+                    )
+            except Exception as exc:  # keep a long unattended run going if one case fails
+                print(f"  [case-error] {case.id}: {type(exc).__name__}: {exc}")
+                continue
+            all_results.append(res)
+            if snaps is not None and not snaps.empty:
+                all_snapshots.append(snaps)
+            # incremental save so a multi-hour run is never all-or-nothing
+            pd.concat(all_results, ignore_index=True).to_parquet(metrics_path, index=False)
+            if all_snapshots:
+                pd.concat(all_snapshots, ignore_index=True).to_parquet(snapshots_path, index=False)
+            print()
 
     if not all_results:
         print("No case produced results.")
