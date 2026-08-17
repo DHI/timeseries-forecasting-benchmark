@@ -369,7 +369,7 @@ def run_case_rolling(
                 if len(cell_seeds) > 1:
                     print(
                         f"    seed {seed}: {run['status'][:40]:<40s} "
-                        f"(fit {run['fit_seconds']:.2f}s, MSE {run['mse']:.6g})"
+                        f"(fit {run['fit_seconds']:.2f}s, MASE {run['metrics']['MASE']:.6g})"
                     )
                 runs.append(run)
             ok = [r for r in runs if r["status"] == "ok"]
