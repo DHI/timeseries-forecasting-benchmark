@@ -92,65 +92,37 @@ def build_methods():
 
 
 @contextmanager
-def spinner(interval: float = 0.2):
-    """Overwrite one terminal line with a rotating glyph + elapsed time, so a silent
-    multi-minute fit (deep-learning, foundation-model) still visibly proves the
-    process isn't frozen, instead of just going quiet between method result lines.
+def heartbeat(interval: float = 300.0):
+    """Print a proof-of-life line every `interval` seconds while a silent multi-minute
+    fit (deep-learning, foundation-model) runs, instead of going quiet between method
+    result lines.
 
-    Renders via a bare \\r + ANSI clear-line, so it survives being piped through
-    `tee` for logging (any real terminal downstream still interprets it live) --
-    unlike gating on sys.stdout.isatty(), which would be False the moment stdout
-    is piped anywhere, spinner included. The existing print() calls in eval/loop.py
-    and eval/rolling.py are routed through a clearing stdout wrapper so a method
-    result line lands on its own clean line instead of getting mixed into whatever
-    the spinner had drawn.
+    A plain newline-terminated print() rather than a live-updating spinner: an earlier
+    version drew a rotating glyph in place with a bare \\r + ANSI clear-line, which
+    looked fine on a live terminal but, once piped through `tee` for logging, left the
+    saved log as a wall of overwrite-frames with no real newlines -- unreadable. This
+    also drops the sys.stdout-patching that spinner needed to interleave its own writes
+    with the loop's print() calls (eval/loop.py, eval/rolling.py), which had its own
+    failure mode: neuralforecast's TFT/iTransformer/TimesNet lazily import `ray`, which
+    probes `sys.stdout.encoding` at import time and crashed against the patched stream.
+    `interval` is chosen well under Lightning AI's 10-minute-inactivity auto-sleep, since
+    stdout output is what has kept a long unattended run from being suspended.
     """
-    frames = "|/-\\"
     stop = threading.Event()
-    lock = threading.Lock()
     start = time.monotonic()
-    real_stdout = sys.stdout
 
-    class _ClearingStdout:
-        def write(self, s):
-            with lock:
-                if s and s != "\n":
-                    real_stdout.write("\r\x1b[K")
-                real_stdout.write(s)
-            return len(s)
-
-        def flush(self):
-            real_stdout.flush()
-
-        def isatty(self):
-            return real_stdout.isatty()
-
-        def __getattr__(self, name):
-            # ray (pulled in lazily by neuralforecast, e.g. for TFT/iTransformer/TimesNet)
-            # probes attributes like `.encoding` on sys.stdout at import time; forward
-            # anything we don't explicitly wrap so those checks see the real stream.
-            return getattr(real_stdout, name)
-
-    def _spin():
-        i = 0
+    def _beat():
         while not stop.wait(interval):
-            with lock:
-                elapsed = time.monotonic() - start
-                real_stdout.write(f"\r\x1b[K{frames[i % len(frames)]} running ({elapsed:.0f}s)")
-                real_stdout.flush()
-            i += 1
+            elapsed = time.monotonic() - start
+            print(f"    ... still running ({elapsed:.0f}s)")
 
-    sys.stdout = _ClearingStdout()
-    thread = threading.Thread(target=_spin, daemon=True)
+    thread = threading.Thread(target=_beat, daemon=True)
     thread.start()
     try:
         yield
     finally:
         stop.set()
         thread.join()
-        sys.stdout = real_stdout
-        real_stdout.write("\r\x1b[K")
-        real_stdout.flush()
 
 
 def main() -> int:
@@ -273,7 +245,7 @@ def main() -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
     all_results = []
     all_snapshots = []
-    with spinner():
+    with heartbeat():
         for case in cases:
             print(
                 f"=== {case.id} ({case.domain}, freq={case.freq}, horizon={case.horizon_primary}) ==="
