@@ -16,6 +16,10 @@ data/cache/
 # also swallow docs/results/ (the committed, distilled scores for onboarding).
 /results/
 
+# Run logs (nohup output from long unattended pilot runs)
+/logs/
+*.log
+
 # Notebook checkpoints
 .ipynb_checkpoints/
 

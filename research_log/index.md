@@ -6,6 +6,9 @@ entry and its commits. See `schema.md` for the format both files follow.
 
 <!-- Add new entries below this line, newest first, matching details.md. -->
 
+### 2026-08-18
+- 96 — TFT, iTransformer and TimesNet were crashing at the end of every fit
+
 ### 2026-08-14
 - 95 — Stochastic methods are scored over five seeds, reporting the median run whole
 - 94 — Auditing the method set for comparability turned up two more picked constants, both in the ML family

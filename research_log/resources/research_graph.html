@@ -1628,6 +1628,23 @@
         "box-cox",
         "bug-fix"
       ]
+    },
+    {
+      "id": "2026-08-18-nf-trainer-attach-bugfix",
+      "date": "2026-08-18",
+      "title": "TFT, iTransformer and TimesNet were crashing at the end of every fit",
+      "category": "bug-fix",
+      "summary": "A four-hour pilot run showed all three neuralforecast-zoo methods failing every case and seed with 'RuntimeError: <Class> is not attached to a Trainer', only after a full training run had completed. last_fit_steps read model.trainer.global_step off the pre-fit model copy; NeuralForecast deep-copies models_init internally and only attaches a trainer to the copy it actually trains. Fixed by reading the step count from the fitted copy's own train_trajectories instead.",
+      "detail": "The pilot's `--with-nf` methods (TFT, iTransformer, TimesNet) failed on every case and every seed with `RuntimeError: <Class> is not attached to a 'Trainer'`, each failure only surfacing after a full training run had already completed -- burning hours of GPU time per case before erroring out. The cause traced to `nf_models.py`'s shared `_NFBase.fit()`: `last_fit_steps` read `model.trainer.global_step` off `model`, the object passed into `NeuralForecast(models=[model], ...)`. But `NeuralForecast.__init__` deep-copies `models_init` internally and trains the copy, never the original, and once `fit()` returns it detaches the trainer from the fitted copy too (`model.__dict__.pop('_trainer', None)`) -- so both the original and the fitted copy's `.trainer` property raise instead of returning `None`, and `getattr(..., 0)`'s default never protects against a raised exception, only a missing attribute.\n\nFixed by reading the step count from the fitted copy's own recorded `train_trajectories` (`self._nf.models[0].train_trajectories[-1][0] + 1`) instead of a live trainer reference -- data neuralforecast 3.1.9 preserves post-fit even though it discards the trainer object. This was a version-drift bug: the line was written in entry 90's commit `43210c9` against an older neuralforecast that left the trainer differently attached, and nothing about the wrapper's intent changed. Verified with a live `TimesNetForecaster` fit on `waves_oregon` (`train_steps: 950`, no exception). N-HiTS and PatchTST were never affected -- they're hand-rolled torch in `torchdl.py`, not neuralforecast, and set `last_fit_steps` from their own loop counter.",
+      "tags": [
+        "neuralforecast",
+        "tft",
+        "itransformer",
+        "timesnet",
+        "bug-fix",
+        "pytorch-lightning",
+        "deep-learning"
+      ]
     }
   ],
   "edges": [
@@ -2104,6 +2121,16 @@
     {
       "source": "2026-07-29-method-scorecards",
       "target": "2026-07-29-classical-fit-once",
+      "type": "relates-to"
+    },
+    {
+      "source": "2026-08-18-nf-trainer-attach-bugfix",
+      "target": "2026-08-12-training-caps-removed",
+      "type": "follows-from"
+    },
+    {
+      "source": "2026-08-18-nf-trainer-attach-bugfix",
+      "target": "2026-08-14-stochastic-methods-median-seed",
       "type": "relates-to"
     }
   ],

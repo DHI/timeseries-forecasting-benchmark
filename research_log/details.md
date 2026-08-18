@@ -1,4 +1,20 @@
 ---
+id: 96
+date: "2026-08-18"
+title: "TFT, iTransformer and TimesNet were crashing at the end of every fit"
+description: |
+  The pilot's `--with-nf` methods failed on every case and every seed with `RuntimeError:
+  <Class> is not attached to a 'Trainer'`, each failure only surfacing after a full training run
+  had already completed. The cause was `last_fit_steps` reading `model.trainer.global_step` off
+  the pre-fit model object — `NeuralForecast` deep-copies `models_init` internally and only
+  attaches a trainer to the copy it actually trains, so the original's `.trainer` property raised
+  instead of returning `None`. Fixed by reading the step count from the fitted copy's own
+  `train_trajectories` instead of a live trainer reference. This was a version-drift bug (the
+  code was written against an older neuralforecast that left the trainer attached differently),
+  not a logic error in the wrapper's intent, so no other `_NFBase` behavior changed.
+commits:
+  - 85e89be: "Fix TFT/iTransformer/TimesNet crashing at the end of every fit"
+---
 id: 95
 date: "2026-08-14"
 title: "Stochastic methods are scored over five seeds, reporting the median run whole"
