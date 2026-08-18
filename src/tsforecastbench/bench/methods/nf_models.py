@@ -174,9 +174,14 @@ class _NFBase(Forecaster):
         self._nf = NeuralForecast(models=[model], freq=case.freq)
         self._nf.fit(df, val_size=val_size)
         self._col = self.model_name
-        # pytorch_lightning counts the optimisation steps it actually ran, so this reflects
-        # where early stopping landed rather than the ceiling above.
-        self.last_fit_steps = int(getattr(model.trainer, "global_step", 0)) or None
+        # `model` is the pre-fit copy (NeuralForecast deep-copies models_init at construction
+        # time and detaches the trainer from the fitted copy once fit() returns), so the
+        # step count has to come from the fitted model's own recorded trajectory rather than
+        # a live trainer, which reflects where early stopping landed rather than the ceiling
+        # above.
+        fitted = self._nf.models[0]
+        trajectory = getattr(fitted, "train_trajectories", None)
+        self.last_fit_steps = int(trajectory[-1][0]) + 1 if trajectory else None
 
     def predict(
         self,
