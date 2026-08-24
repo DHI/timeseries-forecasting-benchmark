@@ -180,6 +180,15 @@ def main() -> int:
         "for the final merged result.",
     )
     p.add_argument(
+        "--methods",
+        nargs="*",
+        default=None,
+        help="Method names to run, filtering whatever the flags above selected (default: "
+        "all of them). Case-insensitive; an unmatched name is an error rather than a "
+        "silently smaller run. Pair with --tag to refresh individual columns without "
+        "re-running whole cases.",
+    )
+    p.add_argument(
         "--skip-baseline",
         action="store_true",
         help="Skip the baseline/windowed-ML methods from build_methods() -- combine with "
@@ -232,6 +241,16 @@ def main() -> int:
     if not methods:
         print("No methods selected -- --skip-baseline needs at least one --with-* flag too.")
         return 1
+    if args.methods:
+        wanted = {n.lower() for n in args.methods}
+        unknown = wanted - {m.name.lower() for m in methods}
+        if unknown:
+            print(
+                f"Unknown method name(s): {', '.join(sorted(unknown))}\n"
+                f"Selected by the current flags: {', '.join(m.name for m in methods)}"
+            )
+            return 1
+        methods = [m for m in methods if m.name.lower() in wanted]
     method_order = [m.name for m in methods]
 
     mode = "single hold-out" if args.fast else f"rolling-origin ({args.origins} origins)"
