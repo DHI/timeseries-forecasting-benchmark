@@ -6,6 +6,9 @@ entry and its commits. See `schema.md` for the format both files follow.
 
 <!-- Add new entries below this line, newest first, matching details.md. -->
 
+### 2026-08-24
+- 97 — The ensembles are fit once per cell instead of refit at every rolling origin
+
 ### 2026-08-18
 - 96 — TFT, iTransformer and TimesNet were crashing at the end of every fit
 

@@ -342,6 +342,40 @@
 {
   "nodes": [
     {
+      "id": "2026-08-24-ensembles-fit-once",
+      "date": "2026-08-24",
+      "title": "The ensembles are fit once per cell instead of refit at every rolling origin",
+      "category": "methodology",
+      "summary": "EnsembleForecaster declared itself local, so the eval loop refit the whole composite at every origin, re-running AutoTheta's parameter search 100 times per cell -- ~39,500s against ~700s on sewerlevel_bellinge, and the reason surge_cuxhaven had never completed. The composite is now is_global with two cadences: trained members are fit once on the declared train split, naive members are re-derived inside predict from each origin's history. EnsembleBaselinesTheta's published numbers are stale pending a re-run.",
+      "detail": "`EnsembleForecaster` declared itself local, so `eval.rolling` refit the whole composite at every rolling origin -- re-running `AutoTheta`'s parameter search 100 times per cell for a forecast change of at most a fraction of a percent. The measured cost on `sewerlevel_bellinge` (34,651 training points) is ~39,500s of refits against ~700s fitting once: one 208s fit plus ~4.9s per origin, a 57x difference. That cost is also why `surge_cuxhaven` -- 214,000 points, ~110s per Theta origin -- had never completed a full 30-method run.\n\nThe composite is now `is_global` with two cadences inside it. Members holding a trained model apart from the series they score (`ThetaForecaster`, whose `AutoTheta` search is the expensive part) are fit once, on the declared train split, and rolled forward. Members whose parameters are a closed-form statistic of whatever frame they are shown -- the naive baselines: a sample mean, within-cycle means, the last observed cycle -- are re-derived inside `predict` from that origin's history, so they keep tracking the origin exactly as the per-origin refit did. The partition is on each member's own `is_global` rather than a hardcoded list, delegating the cadence decision to the same flag the eval loop would have used on that member directly. `is_global` and `pools_segments` are set unconditionally on the class rather than derived from the member list, so one flag cannot mean different things for two instances of the same class; an all-naive ensemble therefore reports a fit that reuses nothing, which is the honest description of it.\n\nFitting once is also what keeps the trained member off the validation split -- the entry-92 problem (gh #99). A model reused across origins has to be fit on the declared train split alone, and the only frame the local path ever hands `fit` is the history up to an origin, which runs through val.\n\n`EnsembleBaselines`' forecasts are provably unchanged by the move (max absolute difference `0.000e+00` against the median of its four naive columns on all seven recorded cases), though its recorded `is_global`, `train_points`, `val_points` and timings all shift. `EnsembleBaselinesTheta` is the only column that moves numerically, and its published numbers are stale until the `ensembles_fitonce` and `surge_full` re-runs land. Its `inference_cost` card also goes LOW -> HIGH, which the scorecard rubric's measured-`predict_seconds` anchor already implied.",
+      "tags": [
+        "ensembles",
+        "is-global",
+        "fit-once",
+        "theta",
+        "eval-loop",
+        "methodology",
+        "surge-cuxhaven"
+      ]
+    },
+    {
+      "id": "2026-08-18-nf-trainer-attach-bugfix",
+      "date": "2026-08-18",
+      "title": "TFT, iTransformer and TimesNet were crashing at the end of every fit",
+      "category": "bug-fix",
+      "summary": "A four-hour pilot run showed all three neuralforecast-zoo methods failing every case and seed with 'RuntimeError: <Class> is not attached to a Trainer', only after a full training run had completed. last_fit_steps read model.trainer.global_step off the pre-fit model copy; NeuralForecast deep-copies models_init internally and only attaches a trainer to the copy it actually trains. Fixed by reading the step count from the fitted copy's own train_trajectories instead.",
+      "detail": "The pilot's `--with-nf` methods (TFT, iTransformer, TimesNet) failed on every case and every seed with `RuntimeError: <Class> is not attached to a 'Trainer'`, each failure only surfacing after a full training run had already completed -- burning hours of GPU time per case before erroring out. The cause traced to `nf_models.py`'s shared `_NFBase.fit()`: `last_fit_steps` read `model.trainer.global_step` off `model`, the object passed into `NeuralForecast(models=[model], ...)`. But `NeuralForecast.__init__` deep-copies `models_init` internally and trains the copy, never the original, and once `fit()` returns it detaches the trainer from the fitted copy too (`model.__dict__.pop('_trainer', None)`) -- so both the original and the fitted copy's `.trainer` property raise instead of returning `None`, and `getattr(..., 0)`'s default never protects against a raised exception, only a missing attribute.\n\nFixed by reading the step count from the fitted copy's own recorded `train_trajectories` (`self._nf.models[0].train_trajectories[-1][0] + 1`) instead of a live trainer reference -- data neuralforecast 3.1.9 preserves post-fit even though it discards the trainer object. This was a version-drift bug: the line was written in entry 90's commit `43210c9` against an older neuralforecast that left the trainer differently attached, and nothing about the wrapper's intent changed. Verified with a live `TimesNetForecaster` fit on `waves_oregon` (`train_steps: 950`, no exception). N-HiTS and PatchTST were never affected -- they're hand-rolled torch in `torchdl.py`, not neuralforecast, and set `last_fit_steps` from their own loop counter.",
+      "tags": [
+        "neuralforecast",
+        "tft",
+        "itransformer",
+        "timesnet",
+        "bug-fix",
+        "pytorch-lightning",
+        "deep-learning"
+      ]
+    },
+    {
       "id": "2026-08-14-stochastic-methods-median-seed",
       "date": "2026-08-14",
       "title": "Stochastic methods are scored over five seeds, reporting the median run whole",
@@ -1628,26 +1662,29 @@
         "box-cox",
         "bug-fix"
       ]
-    },
-    {
-      "id": "2026-08-18-nf-trainer-attach-bugfix",
-      "date": "2026-08-18",
-      "title": "TFT, iTransformer and TimesNet were crashing at the end of every fit",
-      "category": "bug-fix",
-      "summary": "A four-hour pilot run showed all three neuralforecast-zoo methods failing every case and seed with 'RuntimeError: <Class> is not attached to a Trainer', only after a full training run had completed. last_fit_steps read model.trainer.global_step off the pre-fit model copy; NeuralForecast deep-copies models_init internally and only attaches a trainer to the copy it actually trains. Fixed by reading the step count from the fitted copy's own train_trajectories instead.",
-      "detail": "The pilot's `--with-nf` methods (TFT, iTransformer, TimesNet) failed on every case and every seed with `RuntimeError: <Class> is not attached to a 'Trainer'`, each failure only surfacing after a full training run had already completed -- burning hours of GPU time per case before erroring out. The cause traced to `nf_models.py`'s shared `_NFBase.fit()`: `last_fit_steps` read `model.trainer.global_step` off `model`, the object passed into `NeuralForecast(models=[model], ...)`. But `NeuralForecast.__init__` deep-copies `models_init` internally and trains the copy, never the original, and once `fit()` returns it detaches the trainer from the fitted copy too (`model.__dict__.pop('_trainer', None)`) -- so both the original and the fitted copy's `.trainer` property raise instead of returning `None`, and `getattr(..., 0)`'s default never protects against a raised exception, only a missing attribute.\n\nFixed by reading the step count from the fitted copy's own recorded `train_trajectories` (`self._nf.models[0].train_trajectories[-1][0] + 1`) instead of a live trainer reference -- data neuralforecast 3.1.9 preserves post-fit even though it discards the trainer object. This was a version-drift bug: the line was written in entry 90's commit `43210c9` against an older neuralforecast that left the trainer differently attached, and nothing about the wrapper's intent changed. Verified with a live `TimesNetForecaster` fit on `waves_oregon` (`train_steps: 950`, no exception). N-HiTS and PatchTST were never affected -- they're hand-rolled torch in `torchdl.py`, not neuralforecast, and set `last_fit_steps` from their own loop counter.",
-      "tags": [
-        "neuralforecast",
-        "tft",
-        "itransformer",
-        "timesnet",
-        "bug-fix",
-        "pytorch-lightning",
-        "deep-learning"
-      ]
     }
   ],
   "edges": [
+    {
+      "source": "2026-08-24-ensembles-fit-once",
+      "target": "2026-07-29-classical-fit-once",
+      "type": "follows-from"
+    },
+    {
+      "source": "2026-08-24-ensembles-fit-once",
+      "target": "2026-07-03-ensemble-baselines",
+      "type": "supersedes"
+    },
+    {
+      "source": "2026-08-24-ensembles-fit-once",
+      "target": "2026-08-13-val-split-becomes-real",
+      "type": "depends-on"
+    },
+    {
+      "source": "2026-08-24-ensembles-fit-once",
+      "target": "2026-07-28-fit-predict-timing-split",
+      "type": "relates-to"
+    },
     {
       "source": "2026-08-14-stochastic-methods-median-seed",
       "target": "2026-08-14-ml-family-comparability-audit",

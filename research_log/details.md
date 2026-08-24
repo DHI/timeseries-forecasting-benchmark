@@ -1,4 +1,31 @@
 ---
+id: 97
+date: "2026-08-24"
+title: "The ensembles are fit once per cell instead of refit at every rolling origin"
+description: |
+  `EnsembleForecaster` declared itself local, so the eval loop refit the whole composite at every
+  rolling origin — re-running `AutoTheta`'s parameter search 100 times per cell for a forecast
+  change of at most a fraction of a percent. On `sewerlevel_bellinge` that is ~39,500s of measured
+  cost against ~700s fitting once (one 208s fit plus ~4.9s per origin), a 57x difference, and it is
+  why `surge_cuxhaven` — 214,000 points, ~110s per Theta origin — had never completed a full run.
+  The composite is now `is_global` with two cadences inside it: members holding a trained model are
+  fit once on the declared train split and rolled forward, while members whose parameters are a
+  closed-form statistic of whatever frame they are shown (the naive baselines) are re-derived inside
+  `predict` from that origin's history, so they keep tracking the origin exactly as the refit did.
+  Fitting once is also what keeps the trained member off the validation split, the entry-92 problem
+  (gh #99): a model reused across origins must be fit on the declared train split alone, and the
+  only frame the local path ever hands `fit` is the history up to an origin, which runs through val.
+  `EnsembleBaselines`' forecasts are provably unchanged (max absolute difference `0.000e+00` against
+  the median of its four naive columns on all seven recorded cases), though its recorded
+  `is_global`, `train_points`, `val_points` and timings all move; `EnsembleBaselinesTheta` is the
+  only column that moves numerically, and **its published numbers are stale** until the
+  `ensembles_fitonce` and `surge_full` re-runs land.
+commits:
+  - bd41ef1: "Fit ensemble members once instead of at every origin"
+  - 7f2af0e: "Add --methods to run_pilot for refreshing single columns"
+  - a009f5d: "Describe the ensembles' two fit cadences in the app copy"
+  - 3db6ef8: "Re-export the web method cards"
+---
 id: 96
 date: "2026-08-18"
 title: "TFT, iTransformer and TimesNet were crashing at the end of every fit"
