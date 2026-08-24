@@ -110,6 +110,11 @@ class Forecaster(ABC):
     #      and there is no reusable model to carry forward. Every `is_global` method must
     #      therefore make predict depend only on its trained model plus the `history` it is
     #      handed, never on per-origin state captured during fit.
+    #      A composite (see `methods/ensemble.py`) satisfies that by fitting the members
+    #      which keep a trained model once, and re-deriving the members whose state is a
+    #      closed-form statistic of the history from the history predict was handed. That is
+    #      conditioning, not estimation, in the same sense as the per-origin seasonal
+    #      decomposition `methods/classical.py` re-runs inside `forward`.
     is_global: bool = False
     # Whether `fit` actually trains on the full multi-segment extended history (as
     # opposed to only conditioning on the tail segment). True for the methods that learn
@@ -185,6 +190,12 @@ class Forecaster(ABC):
         last timestamp (to place the forecast index) and forecast from state captured at
         `fit` — to move the origin, refit; passing fresh history to predict alone would
         silently forecast from the old origin.
+
+        A global method may also re-derive deterministic state from `history` here —
+        including by calling a local member's own `fit` on it, which is what a composite
+        does for the members whose parameters are a closed-form statistic of what they are
+        shown. What the `is_global` contract forbids is carrying origin information out of
+        the method's *own* fit, not re-reading the history predict was handed.
 
         `future_exog`, when given, holds the exogenous columns for the `horizon` future
         timestamps (ds + each declared covariate). Univariate methods ignore it;
