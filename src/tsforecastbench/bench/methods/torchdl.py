@@ -195,7 +195,7 @@ class _TorchDLBase(Forecaster):
         torch.manual_seed(self.seed)
         self._mods = mods
         self._H = _horizon_to_steps(case.horizon_primary, case.freq)
-        self._L = lookback_for(case.freq, self._H)
+        self._L = lookback_for(case, self._H)
 
         # Per-segment windows (unique_id), never across a gap; single-segment local
         # frames behave exactly as before. The tail segment is the one the val split

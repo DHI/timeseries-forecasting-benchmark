@@ -84,16 +84,25 @@ def _lags_for(case: Case) -> list[int]:
     return sorted(set(ladder) | set(case.seasonalities))
 
 
-def lookback_for(freq: str, h: int) -> int:
-    """Default lookback window length for a windowed DL/ML forecaster.
+def lookback_for(case: Case, h: int) -> int:
+    """Lookback window length for a windowed DL forecaster: the ML lag reach, floored at 2*h.
 
-    Frequency-tuned base, floored at 2*h so the window always covers at least two
-    horizons even at large h (freqs not listed default to 4*h).
+    A DL method sees a contiguous window and the windowed-ML pipeline sees the sparse
+    `_lags_for` ladder, so the two can never take the same input. What they can share is how
+    far back the earliest input sits, and that is what this matches: `max(_lags_for(case))`.
+    The pair used to disagree in both directions -- a frequency-keyed constant (64 daily, 168
+    hourly, 192 15-min, 52 weekly, introduced with no rationale in 573ec28 and never
+    revisited) left the DL methods unable to see the annual cycle the six daily cases declare,
+    while reaching further than the ML ladder does on five others.
+
+    The `2*h` floor stays, so the window always covers at least two horizons. It binds on the
+    four hourly cases whose declared periods are short (largest lag 32), which is where the DL
+    reach is still wider than the ML one -- exact on the other eight.
+
+    `_lags_for` always contains the [1,2,4,8,16,32] ladder, so this never returns less than 32
+    and needs no frequency fallback.
     """
-    f = freq.lower()
-    f = {"d": "1d", "h": "1h", "15t": "15min", "w": "1w"}.get(f, f)
-    base = {"1d": 64, "1h": 168, "15min": 192, "1w": 52}.get(f, 4 * h)
-    return max(base, 2 * h)
+    return max(max(_lags_for(case)), 2 * h)
 
 
 class Forecaster(ABC):

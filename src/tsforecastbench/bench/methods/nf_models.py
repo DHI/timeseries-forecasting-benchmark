@@ -112,7 +112,7 @@ class _NFBase(Forecaster):
         df["ds"] = _naive_ds(df["ds"]).to_numpy()
         df["y"] = pd.to_numeric(df["y"], errors="coerce")
 
-        lookback = lookback_for(case.freq, h)
+        lookback = lookback_for(case, h)
         # Early stopping runs on the declared val split (gh #99). neuralforecast holds out
         # the last `val_size` steps of every series in the panel, so the target series is
         # handed its train rows plus that many val rows: the cut then lands exactly on val

@@ -60,9 +60,7 @@ def _contiguous_runs(mask: np.ndarray) -> list[tuple[int, int]]:
     return runs
 
 
-def _segment_extended(
-    extended: pd.DataFrame, case_id: str, freq: str, horizon: int
-) -> list[pd.DataFrame]:
+def _segment_extended(extended: pd.DataFrame, case: Case, horizon: int) -> list[pd.DataFrame]:
     """Split the extended-history frame into contiguous segments at its big gaps.
 
     The extended frame is a regular-frequency grid whose gaps larger than the per-case
@@ -76,13 +74,13 @@ def _segment_extended(
     segment, i.e. no history beyond the curated span.
     """
     observed = pd.to_numeric(extended["y"], errors="coerce").notna().to_numpy()
-    floor = lookback_for(freq, horizon) + horizon
+    floor = lookback_for(case, horizon) + horizon
     segments: list[pd.DataFrame] = []
     for start, stop in _contiguous_runs(observed):
         if stop - start < floor:
             continue
         seg = extended.iloc[start:stop].copy()
-        seg["unique_id"] = f"{case_id}__s{len(segments)}"
+        seg["unique_id"] = f"{case.id}__s{len(segments)}"
         segments.append(seg)
     return segments
 
@@ -234,7 +232,7 @@ def run_case(
                 "is_global methods use the curated span only."
             )
         else:
-            segments = _segment_extended(extended, case.id, case.freq, horizon_steps)
+            segments = _segment_extended(extended, case, horizon_steps)
             if len(segments) >= 2:
                 slide = slide_in.copy()
                 slide["unique_id"] = segments[-1]["unique_id"].iloc[0]

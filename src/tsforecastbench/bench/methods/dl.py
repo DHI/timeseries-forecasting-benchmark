@@ -105,7 +105,7 @@ class DLinearForecaster(Forecaster):
         from tsforecastbench.bench.eval.loop import _horizon_to_steps
 
         self._H = _horizon_to_steps(case.horizon_primary, case.freq)
-        self._L = self.lookback or lookback_for(case.freq, self._H)
+        self._L = self.lookback or lookback_for(case, self._H)
         L, H = self._L, self._H
 
         # Windows are built per contiguous segment (unique_id) and never across a gap; a
