@@ -7,7 +7,7 @@ entry and its commits. See `schema.md` for the format both files follow.
 <!-- Add new entries below this line, newest first, matching details.md. -->
 
 ### 2026-08-26
-- 98 — The method cards' cost ratings were audited against the results and cut from six meters to four
+- 98 — Method cards drop to four ratings, with cost read off the measured timings
 
 ### 2026-08-24
 - 97 — The ensembles are fit once per cell instead of refit at every rolling origin
