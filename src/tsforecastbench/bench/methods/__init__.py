@@ -45,7 +45,12 @@ from tsforecastbench.bench.methods.nf_models import (
     TFTForecaster,
     TimesNetForecaster,
 )
-from tsforecastbench.bench.methods.torchdl import NHITSForecaster, PatchTSTForecaster
+from tsforecastbench.bench.methods.torchdl import (
+    NHITSExoForecaster,
+    NHITSForecaster,
+    PatchTSTExoForecaster,
+    PatchTSTForecaster,
+)
 
 __all__ = [
     "AutoARIMAForecaster",
@@ -72,7 +77,9 @@ __all__ = [
     "MeanBaseline",
     "Moirai2ExoForecaster",
     "Moirai2Forecaster",
+    "NHITSExoForecaster",
     "NHITSForecaster",
+    "PatchTSTExoForecaster",
     "PatchTSTForecaster",
     "Persistence",
     "SeasonalNaive",

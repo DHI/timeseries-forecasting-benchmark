@@ -205,6 +205,53 @@ def last_observed_exo(train: pd.DataFrame, cols: list[str]) -> dict[str, float]:
     return out
 
 
+class ExoScaler:
+    """Per-column covariate standardisation, fitted once on the training pool.
+
+    For the torch models, whose RevIN rescales the *target* window by its own statistics. A
+    covariate has no relation to that scale -- `waves_oregon` mixes air pressure near
+    1,000 hPa with wind speed near 5 m/s against a target near 1 m -- so a small network fed
+    raw values on those scales saturates before it learns anything.
+
+    Not for a ridge: `methods/dl.py` feeds its covariates raw on purpose, because a ridge
+    penalty is absolute and unit-variance columns need coefficients large enough that
+    `alpha=1` stops restraining them (measured, see that module).
+
+    A zero-variance column maps to zeros, which is the honest encoding of a covariate that
+    carries no information.
+    """
+
+    def __init__(self, mean: np.ndarray, std: np.ndarray) -> None:
+        self.mean = mean
+        self.std = std
+
+    @classmethod
+    def fit(cls, exo_segs: list[np.ndarray] | None, n_exo: int) -> ExoScaler:
+        if not n_exo or not exo_segs:
+            return cls(np.zeros(0), np.ones(0))
+        stacked = np.concatenate(exo_segs, axis=0)
+        mean = np.nanmean(stacked, axis=0)
+        std = np.nanstd(stacked, axis=0)
+        mean = np.where(np.isfinite(mean), mean, 0.0)
+        # A constant column must divide by 1.0, so it standardises to 0 and drops out. The
+        # test has to be *relative* to the column's magnitude: `waves_oregon`'s `atmp` is
+        # 12.7 at every one of its 17,176 training points, and the std of that comes back as
+        # 1.8e-15 from a contiguous 1-D slice but 3.4e-12 from the axis reduction over the
+        # strided 2-D column -- the reduction's own rounding error. Any absolute epsilon
+        # small enough to look safe sits inside that spread, and dividing a real covariate
+        # deviation by 3.4e-12 put 1e12 into the network.
+        floor = 1e-8 * np.maximum(np.abs(mean), 1.0)
+        std = np.where(np.isfinite(std) & (std > floor), std, 1.0)
+        return cls(mean, std)
+
+    def transform(self, block: np.ndarray) -> np.ndarray:
+        """Standardise a `(..., n_exo)` block, sending non-finite values to the column mean."""
+        if block.shape[-1] == 0:
+            return block
+        out = (block - self.mean) / self.std
+        return np.where(np.isfinite(out), out, 0.0)
+
+
 def lookback_for(case: Case, h: int) -> int:
     """Lookback window length for a windowed DL forecaster: the ML lag reach, floored at 2*h.
 

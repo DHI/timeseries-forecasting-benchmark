@@ -162,7 +162,8 @@ def main() -> int:
     p.add_argument(
         "--with-dl",
         action="store_true",
-        help="Add the torch deep-learning models (N-HiTS, PatchTST; needs the 'dl' extra). "
+        help="Add the torch deep-learning models (N-HiTS, PatchTST and their +exo variants; "
+        "needs the 'dl' extra). "
         "Heavy on CPU — pair with a small --origins.",
     )
     p.add_argument(
@@ -209,9 +210,19 @@ def main() -> int:
 
     methods = [] if args.skip_baseline else build_methods()
     if args.with_dl:
-        from tsforecastbench.bench.methods import NHITSForecaster, PatchTSTForecaster
+        from tsforecastbench.bench.methods import (
+            NHITSExoForecaster,
+            NHITSForecaster,
+            PatchTSTExoForecaster,
+            PatchTSTForecaster,
+        )
 
-        methods += [NHITSForecaster(), PatchTSTForecaster()]
+        methods += [
+            NHITSForecaster(),
+            PatchTSTForecaster(),
+            NHITSExoForecaster(),
+            PatchTSTExoForecaster(),
+        ]
     if args.with_nf:
         from tsforecastbench.bench.methods import (
             ITransformerForecaster,
