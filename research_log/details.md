@@ -62,10 +62,12 @@ description: |
   `build_windows`'s 11-window floor (smallest pool 1,163), no case trips the validation-window
   guard, and both nets stay non-degenerate at every new size.
 
-  The five univariate DL columns are superseded on those eleven cases and need a re-run. So are
-  the extended-history rows of all thirteen pooling methods on `waves_massachusetts`, the ML ones
-  included: `_segment_extended` drops a gap-bounded segment shorter than `lookback + horizon`, and
-  that case goes from 9 surviving segments to 11. `docs/RESULTS.md` attributed the DL family's
+  All six univariate DL columns are superseded on those eleven cases and need a re-run --
+  `iTransformer` included, which is easy to miss: it does not pool segments, but it shares
+  `_NFBase.fit` and so takes the same window as its siblings. So are the extended-history rows of
+  every pooling method on `waves_massachusetts`, the ML ones included: `_segment_extended` drops a
+  gap-bounded segment shorter than `lookback + horizon`, and that case goes from 9 surviving
+  segments to 11. `docs/RESULTS.md` attributed the DL family's
   weak daily-case showing to the 64-day window, so those cells should improve; `surge_cuxhaven`,
   where PatchTST was the best univariate method at 168, is where a narrowed window may cost
   accuracy. DLinear's moving-average kernel stays a constant 25 while the lookback now spans 48
