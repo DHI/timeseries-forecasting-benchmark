@@ -168,6 +168,25 @@ def test_catboost_runs_on_one_case():
     assert (res["status"] == "ok").all()
 
 
+def test_catboost_forecast_moves_with_the_seed():
+    """Why CatBoost is `is_stochastic` (issue #106) despite passing no explicit seed
+    before: its default bootstrap resamples rows every iteration, so it was reproducible
+    at the library's default seed of 0 rather than deterministic. If a future CatBoost
+    release turns sampling off by default, this fails and the flag should come off."""
+    case = get_case("waves_oregon")
+    train = case.split_frame(case.synth())["train"]
+    horizon = 12
+
+    def forecast(seed: int) -> np.ndarray:
+        m = CatBoostForecaster()
+        m.seed = seed
+        m.fit(case, train, NO_VAL)
+        return m.predict(case, train, horizon)["y_hat"].to_numpy()
+
+    assert np.array_equal(forecast(0), forecast(0)), "one seed must be reproducible"
+    assert not np.array_equal(forecast(0), forecast(1)), "different seeds must differ"
+
+
 def test_mlp_runs_on_one_case():
     res = run_case(get_case("waves_oregon"), [MLPForecaster()], prefer_synth=True)
     assert (res["status"] == "ok").all()

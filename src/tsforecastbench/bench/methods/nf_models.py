@@ -48,6 +48,9 @@ class _NFBase(Forecaster):
     family = "dl"
     is_global = True
     pools_segments = True
+    # Weight init, the window sampler and dropout are all drawn from the seeded global RNG,
+    # so a different seed is a different fit.
+    is_stochastic = True
     model_name = "NHITS"  # neuralforecast.models class name
     extra_kwargs: ClassVar[dict] = {}
     library = "neuralforecast + pytorch_lightning"
@@ -94,7 +97,7 @@ class _NFBase(Forecaster):
 
         from tsforecastbench.bench.eval.loop import _horizon_to_steps
 
-        pl.seed_everything(0)
+        pl.seed_everything(self.seed)
         self._h = h = _horizon_to_steps(case.horizon_primary, case.freq)
         df = train[["unique_id", "ds", "y"]].copy()
         # The extended-history frame carries one unique_id per contiguous segment;
@@ -162,15 +165,23 @@ class _NFBase(Forecaster):
             val_check_steps=DL_VAL_CHECK_STEPS,
             early_stop_patience_steps=DL_PATIENCE_CHECKS,
             scaler_type="standard",
+            # neuralforecast reseeds torch from its own `random_seed` when the model is
+            # built, which would undo the `seed_everything` above if left at its default.
+            random_seed=self.seed,
             **self.extra_kwargs,
             **_TRAINER_KW,
         )
         self._nf = NeuralForecast(models=[model], freq=case.freq)
         self._nf.fit(df, val_size=val_size)
         self._col = self.model_name
-        # pytorch_lightning counts the optimisation steps it actually ran, so this reflects
-        # where early stopping landed rather than the ceiling above.
-        self.last_fit_steps = int(getattr(model.trainer, "global_step", 0)) or None
+        # `model` is the pre-fit copy (NeuralForecast deep-copies models_init at construction
+        # time and detaches the trainer from the fitted copy once fit() returns), so the
+        # step count has to come from the fitted model's own recorded trajectory rather than
+        # a live trainer, which reflects where early stopping landed rather than the ceiling
+        # above.
+        fitted = self._nf.models[0]
+        trajectory = getattr(fitted, "train_trajectories", None)
+        self.last_fit_steps = int(trajectory[-1][0]) + 1 if trajectory else None
 
     def predict(
         self,

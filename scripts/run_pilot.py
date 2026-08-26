@@ -14,6 +14,9 @@ from __future__ import annotations
 
 import argparse
 import sys
+import threading
+import time
+from contextlib import contextmanager
 from pathlib import Path
 
 import pandas as pd
@@ -21,7 +24,12 @@ import pandas as pd
 # Allow running from a clone without installing
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from tsforecastbench.bench.eval import DEFAULT_ORIGINS, run_case, run_case_rolling
+from tsforecastbench.bench.eval import (
+    DEFAULT_ORIGINS,
+    DEFAULT_SEEDS,
+    run_case,
+    run_case_rolling,
+)
 from tsforecastbench.bench.methods import (
     AutoARIMAForecaster,
     AutoETSForecaster,
@@ -83,6 +91,40 @@ def build_methods():
     ]
 
 
+@contextmanager
+def heartbeat(interval: float = 300.0):
+    """Print a proof-of-life line every `interval` seconds while a silent multi-minute
+    fit (deep-learning, foundation-model) runs, instead of going quiet between method
+    result lines.
+
+    A plain newline-terminated print() rather than a live-updating spinner: an earlier
+    version drew a rotating glyph in place with a bare \\r + ANSI clear-line, which
+    looked fine on a live terminal but, once piped through `tee` for logging, left the
+    saved log as a wall of overwrite-frames with no real newlines -- unreadable. This
+    also drops the sys.stdout-patching that spinner needed to interleave its own writes
+    with the loop's print() calls (eval/loop.py, eval/rolling.py), which had its own
+    failure mode: neuralforecast's TFT/iTransformer/TimesNet lazily import `ray`, which
+    probes `sys.stdout.encoding` at import time and crashed against the patched stream.
+    `interval` is chosen well under Lightning AI's 10-minute-inactivity auto-sleep, since
+    stdout output is what has kept a long unattended run from being suspended.
+    """
+    stop = threading.Event()
+    start = time.monotonic()
+
+    def _beat():
+        while not stop.wait(interval):
+            elapsed = time.monotonic() - start
+            print(f"    ... still running ({elapsed:.0f}s)")
+
+    thread = threading.Thread(target=_beat, daemon=True)
+    thread.start()
+    try:
+        yield
+    finally:
+        stop.set()
+        thread.join()
+
+
 def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--synth", action="store_true", help="Force synthetic data generators")
@@ -100,6 +142,14 @@ def main() -> int:
         default=DEFAULT_ORIGINS,
         help=f"Rolling origins per cell (default {DEFAULT_ORIGINS}; "
         "override globally with TSFB_ORIGINS).",
+    )
+    p.add_argument(
+        "--seeds",
+        type=int,
+        default=DEFAULT_SEEDS,
+        help=f"Runs per stochastic method; the median-MSE run is kept whole "
+        f"(default {DEFAULT_SEEDS}; override globally with TSFB_SEEDS). Deterministic "
+        "methods run once whatever this is set to.",
     )
     p.add_argument(
         "--with-fm",
@@ -128,6 +178,15 @@ def main() -> int:
         "other tagged partial runs later via scripts/merge_pilot_results.py. Skips the "
         "matrix PNGs and the docs/results/scores.parquet mirror, which only make sense "
         "for the final merged result.",
+    )
+    p.add_argument(
+        "--methods",
+        nargs="*",
+        default=None,
+        help="Method names to run, filtering whatever the flags above selected (default: "
+        "all of them). Case-insensitive; an unmatched name is an error rather than a "
+        "silently smaller run. Pair with --tag to refresh individual columns without "
+        "re-running whole cases.",
     )
     p.add_argument(
         "--skip-baseline",
@@ -182,6 +241,16 @@ def main() -> int:
     if not methods:
         print("No methods selected -- --skip-baseline needs at least one --with-* flag too.")
         return 1
+    if args.methods:
+        wanted = {n.lower() for n in args.methods}
+        unknown = wanted - {m.name.lower() for m in methods}
+        if unknown:
+            print(
+                f"Unknown method name(s): {', '.join(sorted(unknown))}\n"
+                f"Selected by the current flags: {', '.join(m.name for m in methods)}"
+            )
+            return 1
+        methods = [m for m in methods if m.name.lower() in wanted]
     method_order = [m.name for m in methods]
 
     mode = "single hold-out" if args.fast else f"rolling-origin ({args.origins} origins)"
@@ -195,31 +264,36 @@ def main() -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
     all_results = []
     all_snapshots = []
-    for case in cases:
-        print(
-            f"=== {case.id} ({case.domain}, freq={case.freq}, horizon={case.horizon_primary}) ==="
-        )
-        try:
-            if args.fast:
-                # Single hold-out doesn't emit per-origin snapshots; the viewer degrades
-                # to a "no forecast stored" note for these cases.
-                res = run_case(case, methods, prefer_synth=args.synth)
-                snaps = None
-            else:
-                res, snaps = run_case_rolling(
-                    case, methods, n_origins=args.origins, prefer_synth=args.synth
-                )
-        except Exception as exc:  # keep a long unattended run going if one case fails
-            print(f"  [case-error] {case.id}: {type(exc).__name__}: {exc}")
-            continue
-        all_results.append(res)
-        if snaps is not None and not snaps.empty:
-            all_snapshots.append(snaps)
-        # incremental save so a multi-hour run is never all-or-nothing
-        pd.concat(all_results, ignore_index=True).to_parquet(metrics_path, index=False)
-        if all_snapshots:
-            pd.concat(all_snapshots, ignore_index=True).to_parquet(snapshots_path, index=False)
-        print()
+    with heartbeat():
+        for case in cases:
+            print(
+                f"=== {case.id} ({case.domain}, freq={case.freq}, horizon={case.horizon_primary}) ==="
+            )
+            try:
+                if args.fast:
+                    # Single hold-out doesn't emit per-origin snapshots; the viewer
+                    # degrades to a "no forecast stored" note for these cases.
+                    res = run_case(case, methods, prefer_synth=args.synth, n_seeds=args.seeds)
+                    snaps = None
+                else:
+                    res, snaps = run_case_rolling(
+                        case,
+                        methods,
+                        n_origins=args.origins,
+                        prefer_synth=args.synth,
+                        n_seeds=args.seeds,
+                    )
+            except Exception as exc:  # keep a long unattended run going if one case fails
+                print(f"  [case-error] {case.id}: {type(exc).__name__}: {exc}")
+                continue
+            all_results.append(res)
+            if snaps is not None and not snaps.empty:
+                all_snapshots.append(snaps)
+            # incremental save so a multi-hour run is never all-or-nothing
+            pd.concat(all_results, ignore_index=True).to_parquet(metrics_path, index=False)
+            if all_snapshots:
+                pd.concat(all_snapshots, ignore_index=True).to_parquet(snapshots_path, index=False)
+            print()
 
     if not all_results:
         print("No case produced results.")

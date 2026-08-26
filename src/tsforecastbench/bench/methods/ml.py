@@ -299,12 +299,17 @@ class CatBoostForecaster(_WindowedMLBase):
     """Gradient-boosted decision trees (CatBoost) over lag and calendar features."""
 
     name = "CatBoost"
+    # Unlike LightGBM, whose sampling defaults are off, CatBoost's default bootstrap (MVS,
+    # subsample ~0.8 for RMSE on CPU) resamples rows at every iteration, so its forecast
+    # moves with the seed. It only looked deterministic because the library's own default
+    # seed is 0 — reproducible, but one draw of many (issue #106).
+    is_stochastic = True
     library = "mlforecast + catboost"
     code_snippet = (
         "from catboost import CatBoostRegressor\n"
         "from mlforecast import MLForecast\n\n"
         "fcst = MLForecast(\n"
-        "    models=[CatBoostRegressor(verbose=False)],      # CatBoost's own defaults\n"
+        "    models=[CatBoostRegressor(verbose=False, random_seed=seed)],  # else its defaults\n"
         "    freq=case.freq,\n"
         "    lags=[1, 2, 4, 8, 16, 32, *case.seasonalities],\n"
         '    date_features=["dayofweek", "month", ...],\n'
@@ -337,7 +342,7 @@ class CatBoostForecaster(_WindowedMLBase):
         # data), for the reason given on LightGBM's `_make_model`. `verbose`/
         # `allow_writing_files` are kept: they silence output and stop it writing a
         # catboost_info/ directory, neither of which affects the model.
-        return CatBoostRegressor(verbose=False, allow_writing_files=False)
+        return CatBoostRegressor(verbose=False, allow_writing_files=False, random_seed=self.seed)
 
 
 class LinearLagsForecaster(_WindowedMLBase):
@@ -389,6 +394,9 @@ class MLPForecaster(_WindowedMLBase):
     """Multi-layer perceptron (scikit-learn MLPRegressor) over lag and calendar features."""
 
     name = "MLP"
+    # `random_state` below drives weight init, the early-stopping holdout draw and Adam's
+    # minibatch shuffling, so a different seed is a different fit.
+    is_stochastic = True
     # Trains one model per horizon step from the origin's lag features instead of one
     # recursive model whose own predictions feed back in as later lag inputs — an
     # MLPRegressor's unbounded linear output layer had no guarantee against drifting
@@ -475,7 +483,7 @@ class MLPForecaster(_WindowedMLBase):
                 activation="relu",
                 max_iter=MLP_MAX_EPOCHS,
                 early_stopping=True,
-                random_state=0,
+                random_state=self.seed,
             ),
         )
 

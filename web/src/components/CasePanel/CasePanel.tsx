@@ -61,10 +61,11 @@ function CasePanelComponent({ caseId, caseMeta, scores, showGlobal, selectedMeth
     return map;
   }, [scores, caseId]);
 
-  // Local vs global is a per-method property, not a per-family one: the naive baselines
-  // and the ensembles built on them are refit per origin while every classical method
-  // (AutoARIMA/AutoETS/Theta/MSTL/TBATS) fits once. So read the flag the eval loop
-  // actually acted on rather than inferring it from `family`.
+  // Local vs global is a per-method property, not a per-family one: the naive baselines are
+  // refit per origin while every classical method (AutoARIMA/AutoETS/Theta/MSTL/TBATS) fits
+  // once, and the ensembles are fit-once composites that re-derive their naive members per
+  // origin. So read the flag the eval loop actually acted on rather than inferring it from
+  // `family`.
   const isGlobalByMethod = useMemo(() => {
     const map = new Map<string, boolean>();
     for (const row of scores) {

@@ -123,8 +123,8 @@ export const METRIC_CONFIG: Record<string, MetricConfig> = {
  * string in useMatrixFigure.ts.
  *
  * The cell value is `fit_seconds + predict_seconds`, each already averaged per rolling
- * origin (see ScoreRow / eval.rolling) — for a method that refits at every origin
- * (baseline/ensemble), `fit_seconds` is the mean cost of one such refit; for a method that
+ * origin (see ScoreRow / eval.rolling) — for a method that refits at every origin (the
+ * naive baselines), `fit_seconds` is the mean cost of one such refit; for a method that
  * fits once (ML/DL, the classical ones, zero-shot foundation models), it's that single
  * fit's cost, and for zero-shot methods specifically it's ~0 since they
  * have no case-specific training. `predict_seconds` is not always the small half: Theta and

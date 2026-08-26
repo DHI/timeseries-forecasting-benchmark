@@ -110,6 +110,11 @@ class Forecaster(ABC):
     #      and there is no reusable model to carry forward. Every `is_global` method must
     #      therefore make predict depend only on its trained model plus the `history` it is
     #      handed, never on per-origin state captured during fit.
+    #      A composite (see `methods/ensemble.py`) satisfies that by fitting the members
+    #      which keep a trained model once, and re-deriving the members whose state is a
+    #      closed-form statistic of the history from the history predict was handed. That is
+    #      conditioning, not estimation, in the same sense as the per-origin seasonal
+    #      decomposition `methods/classical.py` re-runs inside `forward`.
     is_global: bool = False
     # Whether `fit` actually trains on the full multi-segment extended history (as
     # opposed to only conditioning on the tail segment). True for the methods that learn
@@ -118,6 +123,15 @@ class Forecaster(ABC):
     # bridge a gap, so extended history leaves their forecast unchanged. The eval loop
     # runs the second (extended) fit only for `is_global and pools_segments` methods.
     pools_segments: bool = False
+    # Whether this method's forecast changes when `seed` changes -- weight init, minibatch
+    # sampling, dropout, row subsampling. A cell for such a method is one draw from a
+    # distribution, so the eval loop runs it several times and reports the median-MSE run
+    # rather than whichever draw seed 0 happened to give (issue #106). False is the honest
+    # default: most methods here estimate a direct function of their input and would return
+    # identical numbers on every repeat, so repeating them is pure cost. Note that "seeded at
+    # a fixed value" is not the same as deterministic -- CatBoost's default bootstrap
+    # resamples rows and only looked deterministic because its library default seed is 0.
+    is_stochastic: bool = False
     # The rest are documentation only, read by the results viewer's method-info
     # panel (tsforecastbench.webdata) — they have no effect on fit/predict. Kept as class attributes
     # (not a separate metadata file) so a method's implementation and its description of
@@ -139,6 +153,11 @@ class Forecaster(ABC):
     # the code. Stays None for every method that does not train this way -- that is an honest
     # "not applicable", not a missing measurement.
     last_fit_steps: int | None = None
+    # The seed the next fit should use, set by the eval loop before each call to `fit` (the
+    # same write-then-read arrangement as `last_fit_steps` above). Every `is_stochastic`
+    # method must route all of its randomness through this -- a hard-coded literal would
+    # silently give the same run back five times. Ignored by the rest.
+    seed: int = 0
 
     @abstractmethod
     def fit(self, case: Case, train: pd.DataFrame, val: pd.DataFrame) -> None:
@@ -171,6 +190,12 @@ class Forecaster(ABC):
         last timestamp (to place the forecast index) and forecast from state captured at
         `fit` — to move the origin, refit; passing fresh history to predict alone would
         silently forecast from the old origin.
+
+        A global method may also re-derive deterministic state from `history` here —
+        including by calling a local member's own `fit` on it, which is what a composite
+        does for the members whose parameters are a closed-form statistic of what they are
+        shown. What the `is_global` contract forbids is carrying origin information out of
+        the method's *own* fit, not re-reading the history predict was handed.
 
         `future_exog`, when given, holds the exogenous columns for the `horizon` future
         timestamps (ds + each declared covariate). Univariate methods ignore it;
