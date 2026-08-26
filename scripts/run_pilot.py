@@ -169,7 +169,8 @@ def main() -> int:
     p.add_argument(
         "--with-nf",
         action="store_true",
-        help="Add the neuralforecast zoo (TFT, iTransformer, TimesNet; needs the 'nf' "
+        help="Add the neuralforecast zoo (TFT, iTransformer, TimesNet, plus TFT+exo and "
+        "TimesNet+exo; needs the 'nf' "
         "extra — Linux/WSL only). GPU-accelerated when available.",
     )
     p.add_argument(
@@ -226,11 +227,19 @@ def main() -> int:
     if args.with_nf:
         from tsforecastbench.bench.methods import (
             ITransformerForecaster,
+            TFTExoForecaster,
             TFTForecaster,
+            TimesNetExoForecaster,
             TimesNetForecaster,
         )
 
-        methods += [TFTForecaster(), ITransformerForecaster(), TimesNetForecaster()]
+        methods += [
+            TFTForecaster(),
+            ITransformerForecaster(),
+            TimesNetForecaster(),
+            TFTExoForecaster(),
+            TimesNetExoForecaster(),
+        ]
     if args.with_fm:
         from tsforecastbench.bench.methods import (
             Chronos2ExoForecaster,

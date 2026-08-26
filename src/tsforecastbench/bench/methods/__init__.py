@@ -42,7 +42,9 @@ from tsforecastbench.bench.methods.naive import (
 )
 from tsforecastbench.bench.methods.nf_models import (
     ITransformerForecaster,
+    TFTExoForecaster,
     TFTForecaster,
+    TimesNetExoForecaster,
     TimesNetForecaster,
 )
 from tsforecastbench.bench.methods.torchdl import (
@@ -84,10 +86,12 @@ __all__ = [
     "Persistence",
     "SeasonalNaive",
     "TBATSForecaster",
+    "TFTExoForecaster",
     "TFTForecaster",
     "ThetaForecaster",
     "TimesFMExoForecaster",
     "TimesFMForecaster",
+    "TimesNetExoForecaster",
     "TimesNetForecaster",
     "ensemble_baselines",
     "ensemble_baselines_theta",
