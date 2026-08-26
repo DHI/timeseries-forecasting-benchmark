@@ -84,6 +84,70 @@ def _lags_for(case: Case) -> list[int]:
     return sorted(set(ladder) | set(case.seasonalities))
 
 
+def segment_exo_arrays(train: pd.DataFrame, cols: list[str]) -> list[np.ndarray]:
+    """Per-segment covariate arrays, aligned one-for-one with `segment_arrays`.
+
+    Returns one ``(len(segment), len(cols))`` array per ``unique_id``, in the same
+    first-appearance order `segment_arrays` uses, so window `i` of the target lines up with
+    window `i` of the covariates. A missing column becomes all-NaN rather than shifting the
+    remaining ones left, which would silently pair a window with the wrong covariate.
+    """
+    out = []
+    for _, g in train.groupby("unique_id", sort=False):
+        block = np.empty((len(g), len(cols)), dtype=float)
+        for j, c in enumerate(cols):
+            if c in g.columns:
+                block[:, j] = pd.to_numeric(g[c], errors="coerce").to_numpy(dtype=float)
+            else:
+                block[:, j] = np.nan
+        out.append(block)
+    return out
+
+
+def build_windows_fut(
+    segs: list[np.ndarray], exo_segs: list[np.ndarray] | None, L: int, H: int
+) -> tuple[np.ndarray, np.ndarray, np.ndarray] | tuple[None, None, None]:
+    """`build_windows`, plus each window's horizon-aligned covariate block.
+
+    Returns ``(X, Xf, Y)`` with ``X`` shaped ``(N, L)``, ``Y`` shaped ``(N, H)`` -- both
+    identical to what `build_windows` returns for the same input -- and ``Xf`` shaped
+    ``(N, H, n_exo)`` holding the covariate values at the *same* timestamps as ``Y``. That is
+    the covariate contract the windowed-ML `+exo` methods use: the value at the step being
+    predicted, not the covariate's history (see `methods/ml.py`).
+
+    All three come out of one function so the window ordering cannot drift between the target
+    and its covariates. An off-by-one in ``Xf`` would shift covariates against the target and
+    still train to convergence, so there is nothing to catch it downstream.
+
+    `exo_segs` is `None` (or a list of width-0 blocks) on a case with no covariates, and then
+    ``Xf`` is ``(N, H, 0)`` and the caller's model reduces to univariate.
+    """
+    counts = [max(0, len(y) - L - H + 1) for y in segs]
+    total = sum(counts)
+    if total <= 10:
+        return None, None, None
+    n_exo = 0 if exo_segs is None else (exo_segs[0].shape[1] if exo_segs else 0)
+    X = np.empty((total, L), dtype=np.float32)
+    Y = np.empty((total, H), dtype=np.float32)
+    Xf = np.empty((total, H, n_exo), dtype=np.float32)
+    at = 0
+    for k, (y, n) in enumerate(zip(segs, counts, strict=True)):
+        if n <= 0:
+            continue
+        view = np.lib.stride_tricks.sliding_window_view(y, L + H)
+        X[at : at + n] = view[:, :L]
+        Y[at : at + n] = view[:, L:]
+        if n_exo:
+            # One strided view per covariate column over the same segment, sliced to the
+            # horizon span [L, L+H) -- the timestamps Y covers.
+            e = exo_segs[k]
+            for j in range(n_exo):
+                ev = np.lib.stride_tricks.sliding_window_view(e[:, j], L + H)
+                Xf[at : at + n, :, j] = ev[:n, L:]
+        at += n
+    return X, Xf, Y
+
+
 def lookback_for(case: Case, h: int) -> int:
     """Lookback window length for a windowed DL forecaster: the ML lag reach, floored at 2*h.
 
