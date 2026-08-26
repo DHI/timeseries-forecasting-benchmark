@@ -95,3 +95,54 @@ def test_missing_column_becomes_nan_not_a_shifted_column():
     assert exo[0].shape[1] == 2
     assert not np.isnan(exo[0][:, 0]).any()
     assert np.isnan(exo[0][:, 1]).all()
+
+
+# --- the torch nets' univariate path -------------------------------------------------
+
+
+@pytest.mark.parametrize(("L", "H"), [(48, 24), (96, 48), (365, 7)])
+def test_torch_nets_are_unchanged_without_covariates(L, H):
+    """At n_exo=0 both nets must produce exactly what they did before the covariate input.
+
+    The five univariate DL columns keep their numbers only if this holds, and `n_exo` reaches
+    the first layer of one net and the head of the other -- a shape that is easy to perturb
+    by accident. Compared in eval mode: PatchTST's encoder carries dropout, so two forward
+    passes in train mode differ by RNG draw rather than by architecture.
+    """
+    torch = pytest.importorskip("torch")
+    from tsforecastbench.bench.methods.torchdl import _make_modules
+
+    _, _, PatchTSTNet, NHiTSNet = _make_modules()
+    x = torch.randn(4, L)
+    for net_cls in (PatchTSTNet, NHiTSNet):
+        torch.manual_seed(0)
+        with_arg = net_cls(L, H, 0)
+        torch.manual_seed(0)
+        default = net_cls(L, H)
+        with_arg.eval()
+        default.eval()
+        with torch.no_grad():
+            a = default(x)
+            b = with_arg(x, None)
+        assert torch.equal(a, b), net_cls.__name__
+        # the covariate layer must not exist at all, so it cannot contribute a bias
+        assert getattr(with_arg, "fut_lin", None) is None or with_arg.n_exo == 0
+
+
+@pytest.mark.parametrize(("L", "H", "n_exo"), [(48, 24, 1), (96, 48, 3), (365, 7, 2)])
+def test_torch_nets_accept_a_horizon_covariate_block(L, H, n_exo):
+    torch = pytest.importorskip("torch")
+    from tsforecastbench.bench.methods.torchdl import _make_modules
+
+    _, _, PatchTSTNet, NHiTSNet = _make_modules()
+    x, xf = torch.randn(4, L), torch.randn(4, H, n_exo)
+    for net_cls in (PatchTSTNet, NHiTSNet):
+        net = net_cls(L, H, n_exo)
+        net.eval()
+        with torch.no_grad():
+            out = net(x, xf)
+        assert out.shape == (4, H)
+        # the block must actually reach the output, or the +exo column is univariate
+        with torch.no_grad():
+            other = net(x, xf + 1.0)
+        assert not torch.equal(out, other), net_cls.__name__

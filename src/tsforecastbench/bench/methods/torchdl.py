@@ -8,6 +8,12 @@ windowed-ML `+exo` columns) and use per-window instance normalisation (RevIN-sty
 each input window is standardised before the model and the forecast is de-standardised,
 which is what makes these models robust across the benchmark's very different scales.
 
+Each comes in two flavours, like the windowed-ML methods in `ml.py`: univariate, and
+exogenous-aware (``use_exogenous=True``) which additionally reads the covariate values over
+the forecast horizon. The covariate contract is the ML one -- the value at the step being
+predicted, supplied by the eval loop as a perfect-forecast proxy -- so neither architecture
+grows a channel dimension over the lookback.
+
 `torch` is the optional `dl` extra; it is imported lazily so the package runs without it.
 These are the heaviest CPU methods (each fit trains a small network) — keep rolling-origin
 counts modest when including them.
@@ -73,13 +79,23 @@ def _make_modules():
 
     class PatchTSTNet(nn.Module):
         def __init__(
-            self, L, H, patch_len=16, stride=8, d_model=64, n_heads=4, n_layers=2, dropout=0.1
+            self,
+            L,
+            H,
+            n_exo=0,
+            patch_len=16,
+            stride=8,
+            d_model=64,
+            n_heads=4,
+            n_layers=2,
+            dropout=0.1,
         ):
             super().__init__()
             patch_len = min(patch_len, L)
             stride = min(stride, patch_len)
             self.patch_len, self.stride = patch_len, stride
             self.n_patches = (L - patch_len) // stride + 1
+            self.n_exo = n_exo
             self.embed = nn.Linear(patch_len, d_model)
             self.pos = nn.Parameter(torch.randn(self.n_patches, d_model) * 0.02)
             layer = nn.TransformerEncoderLayer(
@@ -91,12 +107,18 @@ def _make_modules():
                 activation="gelu",
             )
             self.encoder = nn.TransformerEncoder(layer, n_layers)
-            self.head = nn.Sequential(nn.Flatten(), nn.Linear(self.n_patches * d_model, H))
+            # The horizon covariates join at the head, not in the patch embedding: patching is
+            # defined on the lookback, and a covariate over the horizon has no patch to sit in.
+            self.head = nn.Sequential(
+                nn.Flatten(), nn.Linear(self.n_patches * d_model + H * n_exo, H)
+            )
 
-        def forward(self, x):  # x: (B, L) already normalised
+        def forward(self, x, xf=None):  # x: (B, L) already normalised; xf: (B, H, n_exo)
             patches = x.unfold(1, self.patch_len, self.stride)  # (B, n_patches, patch_len)
             z = self.embed(patches) + self.pos
             z = self.encoder(z)
+            if self.n_exo:
+                z = torch.cat([z.flatten(1), xf.flatten(1)], dim=1)
             return self.head(z)  # (B, H)
 
     class _NHiTSBlock(nn.Module):
@@ -129,19 +151,27 @@ def _make_modules():
             ).squeeze(1)
 
     class NHiTSNet(nn.Module):
-        def __init__(self, L, H, pools=(8, 4, 1), downs=(24, 8, 1), hidden=256):
+        def __init__(self, L, H, n_exo=0, pools=(8, 4, 1), downs=(24, 8, 1), hidden=256):
             super().__init__()
             self.blocks = nn.ModuleList(
                 _NHiTSBlock(L, H, p, hidden, d) for p, d in zip(pools, downs, strict=False)
             )
+            self.n_exo = n_exo
+            # A fourth contribution to the same additive stack, so the residual mechanism the
+            # blocks share is untouched. The blocks decompose the lookback at three pooling
+            # rates; a covariate over the horizon has no lookback to pool, so it cannot enter
+            # one of them.
+            self.fut_lin = nn.Linear(H * n_exo, H) if n_exo else None
 
-        def forward(self, x):  # x: (B, L)
+        def forward(self, x, xf=None):  # x: (B, L); xf: (B, H, n_exo)
             residual = x
             forecast = 0.0
             for blk in self.blocks:
                 back, fore = blk(residual)
                 residual = residual - back
                 forecast = forecast + fore
+            if self.fut_lin is not None:
+                forecast = forecast + self.fut_lin(xf.flatten(1))
             return forecast
 
     return torch, nn, PatchTSTNet, NHiTSNet
@@ -184,7 +214,7 @@ class _TorchDLBase(Forecaster):
     # forward pass, but which of the two terms dominates the running cost differs between
     # them, and so does its growth shape. Each subclass declares its own.
 
-    def _net(self, mods, L, H):
+    def _net(self, mods, L, H, n_exo):
         raise NotImplementedError
 
     def fit(self, case: Case, train: pd.DataFrame, val: pd.DataFrame) -> None:
@@ -335,9 +365,9 @@ class NHITSForecaster(_TorchDLBase):
 
     forecast_strategy = ForecastStrategy.DIRECT
 
-    def _net(self, mods, L, H):
+    def _net(self, mods, L, H, n_exo):
         _, _, _, NHiTSNet = mods
-        return NHiTSNet(L, H)
+        return NHiTSNet(L, H, n_exo)
 
 
 class PatchTSTForecaster(_TorchDLBase):
@@ -378,6 +408,6 @@ class PatchTSTForecaster(_TorchDLBase):
 
     forecast_strategy = ForecastStrategy.DIRECT
 
-    def _net(self, mods, L, H):
+    def _net(self, mods, L, H, n_exo):
         _, _, PatchTSTNet, _ = mods
-        return PatchTSTNet(L, H)
+        return PatchTSTNet(L, H, n_exo)
