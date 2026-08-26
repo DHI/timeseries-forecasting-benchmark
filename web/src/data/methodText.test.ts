@@ -48,10 +48,8 @@ function methodMeta(overrides: Partial<MethodMeta> = {}): MethodMeta {
     scorecard: {
       history_requirements: 'Low',
       interpretability: 'High',
-      fit_cost: 'Low',
-      inference_cost: 'Low',
+      running_cost: { level: 'Low', growth: 'flat' },
       tuning_effort: 'Low',
-      robustness_to_noise: 'Medium',
     },
     forecast_strategy: 'Recursive',
     ...overrides,

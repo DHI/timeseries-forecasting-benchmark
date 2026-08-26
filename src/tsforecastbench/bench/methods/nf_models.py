@@ -28,7 +28,9 @@ from tsforecastbench.bench.methods.base import Forecaster, lookback_for
 from tsforecastbench.bench.methods.scorecard import (
     Capabilities,
     ForecastStrategy,
+    GrowthShape,
     Level,
+    RunningCost,
     Scorecard,
 )
 from tsforecastbench.data.schema import Case
@@ -63,7 +65,8 @@ class _NFBase(Forecaster):
         "depends on `ray`."
     )
     limitations = (
-        "Univariate — ignores exogenous inputs. Trains a fresh model per case with "
+        "Supports future covariates in neuralforecast, but this wrapper wires none of "
+        "them up, so the column runs univariate. Trains a fresh model per case with "
         "no hyperparameter tuning, using the same architecture defaults regardless "
         "of the series' scale or frequency. On an extended-history fit, where the record "
         "is a panel of gap-separated segments, neuralforecast can only hold out an "
@@ -71,23 +74,24 @@ class _NFBase(Forecaster):
         "holdout than the case's full validation split."
     )
     # Shared by all three: window models that learn trend and several interacting periods
-    # from the lookback. neuralforecast supports future covariates for some of these
-    # architectures, but this wrapper wires none of them, so there is no pathway here.
+    # from the lookback. `exogenous` describes the architecture, not the wiring (see the
+    # rubric): neuralforecast takes future covariates for these, this wrapper passes none,
+    # and `limitations` above is what says so.
     capabilities = Capabilities(
-        trend=True, seasonality=True, multiple_seasonality=True, exogenous=False
+        trend=True, seasonality=True, multiple_seasonality=True, exogenous=True
     )
-    # A full pytorch_lightning training loop per case, run to convergence and heavier than
-    # the custom torch models in torchdl.py, against one forward pass at predict. Tuning
-    # effort is High as the cost of doing it properly: these run on architecture defaults
-    # regardless of the series' scale or frequency, which is a limitation rather than an
-    # absence of knobs.
+    # A full pytorch_lightning training loop per case, run to convergence, against one forward
+    # pass at predict. The three land on the same rating from different directions: TFT's 159s
+    # fit outweighs its forecasts, while iTransformer's 7s fit is dwarfed by a thousand of
+    # them. All three read flat -- they train to a step ceiling, so a 3,000-point record costs
+    # about what a 150,000-point one does. Tuning effort is High as the cost of doing it
+    # properly: they run on architecture defaults regardless of the series' scale or
+    # frequency, which is a limitation rather than an absence of knobs.
     scorecard = Scorecard(
         history_requirements=Level.HIGH,
         interpretability=Level.LOW,
-        fit_cost=Level.HIGH,
-        inference_cost=Level.LOW,
+        running_cost=RunningCost(level=Level.MEDIUM, growth=GrowthShape.FLAT),
         tuning_effort=Level.HIGH,
-        robustness_to_noise=Level.MEDIUM,
     )
 
     def fit(self, case: Case, train: pd.DataFrame, val: pd.DataFrame) -> None:
@@ -249,7 +253,10 @@ class ITransformerForecaster(_NFBase):
     limitations = (
         _NFBase.limitations
         + " Architecturally multivariate but fixed to a single series here (n_series=1), "
-        "so unlike its siblings it can't pool the extra segments of an extended-history fit."
+        "so unlike its siblings it can't pool the extra segments of an extended-history "
+        "fit -- and that same pin leaves it without a covariate slot to wire, so it is the "
+        "one architecture here whose univariate column is a property of the configuration "
+        "rather than of unfinished plumbing."
     )
     # Same one-call, full-horizon-at-once prediction as its siblings — see TFTForecaster.
     forecast_strategy = ForecastStrategy.DIRECT

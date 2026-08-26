@@ -36,7 +36,9 @@ from tsforecastbench.bench.methods.ensemble import (  # noqa: E402
 from tsforecastbench.bench.methods.scorecard import (  # noqa: E402
     Capabilities,
     ForecastStrategy,
+    GrowthShape,
     Level,
+    RunningCost,
     Scorecard,
 )
 from tsforecastbench.data.registry import get_case  # noqa: E402
@@ -98,10 +100,8 @@ def _ensemble(members, name="StubEnsemble") -> EnsembleForecaster:
         scorecard=Scorecard(
             history_requirements=Level.LOW,
             interpretability=Level.HIGH,
-            fit_cost=Level.LOW,
-            inference_cost=Level.LOW,
+            running_cost=RunningCost(level=Level.LOW, growth=GrowthShape.FLAT),
             tuning_effort=Level.LOW,
-            robustness_to_noise=Level.LOW,
         ),
     )
 

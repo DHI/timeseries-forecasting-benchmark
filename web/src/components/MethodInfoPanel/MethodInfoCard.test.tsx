@@ -46,10 +46,8 @@ const methodMeta: MethodMeta = {
   scorecard: {
     history_requirements: 'High',
     interpretability: 'Medium',
-    fit_cost: 'Low',
-    inference_cost: 'Low',
+    running_cost: { level: 'Low', growth: 'flat' },
     tuning_effort: 'Medium',
-    robustness_to_noise: 'Medium',
   },
   forecast_strategy: 'Recursive',
 };

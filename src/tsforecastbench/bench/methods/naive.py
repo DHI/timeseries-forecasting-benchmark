@@ -9,7 +9,9 @@ from tsforecastbench.bench.methods.base import Forecaster
 from tsforecastbench.bench.methods.scorecard import (
     Capabilities,
     ForecastStrategy,
+    GrowthShape,
     Level,
+    RunningCost,
     Scorecard,
 )
 from tsforecastbench.data.schema import Case
@@ -34,15 +36,12 @@ class MeanBaseline(Forecaster):
     # Every future timestamp gets the same constant, looked up independently — there's no
     # step-by-step mechanism for "recursive vs direct" to describe.
     forecast_strategy = ForecastStrategy.NOT_APPLICABLE
-    # Averaging the whole split makes one bad point negligible, hence robust; the flip side
-    # is that it has no mechanism for anything at all.
+    # A mean over the training record and a constant forecast: nothing here scales.
     scorecard = Scorecard(
         history_requirements=Level.LOW,
         interpretability=Level.HIGH,
-        fit_cost=Level.LOW,
-        inference_cost=Level.LOW,
+        running_cost=RunningCost(level=Level.LOW, growth=GrowthShape.FLAT),
         tuning_effort=Level.LOW,
-        robustness_to_noise=Level.HIGH,
     )
 
     def fit(self, case: Case, train: pd.DataFrame, val: pd.DataFrame) -> None:
@@ -78,15 +77,12 @@ class Persistence(Forecaster):
     # Every future timestamp repeats the same last value, looked up independently — no
     # step-by-step mechanism this field could describe.
     forecast_strategy = ForecastStrategy.NOT_APPLICABLE
-    # The whole forecast rests on one observation, so an outlier at the origin propagates
-    # across the entire horizon — the least robust method here despite being the simplest.
+    # Reads one value and repeats it -- the cheapest thing in the benchmark.
     scorecard = Scorecard(
         history_requirements=Level.LOW,
         interpretability=Level.HIGH,
-        fit_cost=Level.LOW,
-        inference_cost=Level.LOW,
+        running_cost=RunningCost(level=Level.LOW, growth=GrowthShape.FLAT),
         tuning_effort=Level.LOW,
-        robustness_to_noise=Level.LOW,
     )
 
     def fit(self, case: Case, train: pd.DataFrame, val: pd.DataFrame) -> None:
@@ -126,15 +122,12 @@ class SeasonalNaive(Forecaster):
     # Tiles the last observed cycle verbatim, position by position — no step-by-step
     # mechanism this field could describe.
     forecast_strategy = ForecastStrategy.NOT_APPLICABLE
-    # Needs a full cycle before it can run at all, and tiles that one cycle verbatim, so a
-    # noisy last period is reproduced rather than averaged away.
+    # One lookup per future timestamp, independent of how long the record is.
     scorecard = Scorecard(
         history_requirements=Level.MEDIUM,
         interpretability=Level.HIGH,
-        fit_cost=Level.LOW,
-        inference_cost=Level.LOW,
+        running_cost=RunningCost(level=Level.LOW, growth=GrowthShape.FLAT),
         tuning_effort=Level.LOW,
-        robustness_to_noise=Level.LOW,
     )
 
     def __init__(self, season_length: int | None = None):
@@ -200,15 +193,12 @@ class Climatology(Forecaster):
     # Each future timestamp is an independent lookup by position in the cycle — no
     # step-by-step mechanism this field could describe.
     forecast_strategy = ForecastStrategy.NOT_APPLICABLE
-    # Wants several cycles so each within-cycle position has something to average, and that
-    # averaging is what makes it the robust seasonal baseline where SeasonalNaive isn't.
+    # One pass to build the per-phase table, then a lookup per timestamp.
     scorecard = Scorecard(
         history_requirements=Level.MEDIUM,
         interpretability=Level.HIGH,
-        fit_cost=Level.LOW,
-        inference_cost=Level.LOW,
+        running_cost=RunningCost(level=Level.LOW, growth=GrowthShape.FLAT),
         tuning_effort=Level.LOW,
-        robustness_to_noise=Level.HIGH,
     )
 
     def _key(self, idx: pd.DatetimeIndex) -> np.ndarray:

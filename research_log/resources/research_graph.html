@@ -338,9 +338,25 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
-<script type="application/json" id="graph-data">
-{
+<script type="application/json" id="graph-data">{
   "nodes": [
+    {
+      "id": "2026-08-26-scorecard-running-cost",
+      "date": "2026-08-26",
+      "title": "Method cards drop from six ratings to four",
+      "category": "methodology",
+      "summary": "fit_cost and inference_cost are replaced by one running_cost: one fit plus 1,000 forecasts on a 100,000-point record, with a growth-shape word for how it scales. The old pair banded raw seconds, which do not compare across cases spanning 3,052 to 214,476 points. robustness_to_noise is gone; no measurement in the results separates fragility from inaccuracy. A test pins every cost declaration to the results.",
+      "detail": "`fit_cost` and `inference_cost` are replaced by one `running_cost`: one fit plus 1,000 forecasts on a 100,000-point record. It bands Low under a minute, Medium to fifteen, High beyond, and carries a `flat` / `linear` / `superlinear` word for how it scales. All three levels are used (13/13/7). `tests/test_method_scorecards.py` pins every declaration to `results/pilot_metrics.parquet`.\\n\\nThe old pair banded raw seconds, which do not compare across cases spanning 3,052 to 214,476 points, at thresholds no one would notice -- 0.3s per forecast rated \"Medium\". `Moirai-2.0` held the worst inference rating of the four foundation models while measuring the fastest at 35ms per origin. `Theta` drew a cheap fit bar against `N-HiTS`'s expensive one, though at a fixed record size Theta costs more. `fit_cost` never used Medium, so a 7-second model and a 175-second one shared a bucket.\\n\\nOne field replaces two because whichever term dominates already separates a costly fit from a costly forecast. TFT's 159s fit amortises to Medium. MSTL-ETS's trivial fit and 4s-per-forecast cost lands High.\\n\\n`robustness_to_noise` is gone. It graded three structures on one Low/Medium/High scale, the \"Medium seasonality\" mistake `scorecard.py`'s own docstring warns against, and read Medium for 25 of 33 methods. Worst-vs-typical MASE rewards being uniformly mediocre. Per-origin error spread ranks flat predictors best. Fragility notes moved into each method's `limitations`.\\n\\n`exogenous` now follows the rubric everywhere; it had meant \"in principle\" for LightGBM and \"as wired here\" for TFT, whose design is covariate fusion. `Theta`'s per-origin cost is quadratic in record length (slope 2.2, r=0.995) because `_ForwardForecaster.predict` re-runs its recursion over the whole growing history. Every DL method runs univariate on the 8 of 12 cases where covariates are necessary, worth 19-36% MASE to the methods that have them.",
+      "tags": [
+        "method-cards",
+        "scorecard",
+        "cost",
+        "running-cost",
+        "exogenous",
+        "methodology",
+        "theta"
+      ]
+    },
     {
       "id": "2026-08-24-ensembles-fit-once",
       "date": "2026-08-24",
@@ -1666,6 +1682,21 @@
   ],
   "edges": [
     {
+      "source": "2026-08-26-scorecard-running-cost",
+      "target": "2026-07-29-method-scorecards",
+      "type": "supersedes"
+    },
+    {
+      "source": "2026-08-26-scorecard-running-cost",
+      "target": "2026-07-29-mlp-exo-variant",
+      "type": "follows-from"
+    },
+    {
+      "source": "2026-08-26-scorecard-running-cost",
+      "target": "2026-08-24-ensembles-fit-once",
+      "type": "follows-from"
+    },
+    {
       "source": "2026-08-24-ensembles-fit-once",
       "target": "2026-07-29-classical-fit-once",
       "type": "follows-from"
@@ -2280,8 +2311,7 @@
       "label": "Making the case and method-info panels resizable, and chasing the layout bugs that resizing introduced"
     }
   ]
-}
-</script>
+}</script>
 
 <script>
 (function () {

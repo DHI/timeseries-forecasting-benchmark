@@ -1,4 +1,32 @@
 ---
+id: 98
+date: "2026-08-26"
+title: "Method cards drop from six ratings to four"
+description: |
+  `fit_cost` and `inference_cost` are replaced by one `running_cost`: one fit plus 1,000
+  forecasts on a 100,000-point record. It bands Low under a minute, Medium to fifteen, High
+  beyond, and carries a `flat` / `linear` / `superlinear` word for how it scales. The old pair
+  banded raw seconds, which do not compare across cases spanning 3,052 to 214,476 points.
+  `Moirai-2.0` held the worst inference rating of the four foundation models. At 35ms per origin
+  it measures the fastest. `tests/test_method_scorecards.py` pins every declaration to
+  `results/pilot_metrics.parquet`.
+
+  `robustness_to_noise` is gone. It graded three structures on one Low/Medium/High scale and read
+  Medium for 25 of 33 methods. No measurement in the results separates fragility from inaccuracy.
+  Fragility notes moved into each method's `limitations`.
+
+  `Theta`'s per-origin cost is quadratic in record length (slope 2.2, r=0.995).
+  `_ForwardForecaster.predict` re-runs its recursion over the whole growing history at every
+  origin. Every DL method runs univariate on the 8 of 12 cases where covariates are necessary,
+  worth 19-36% MASE to the methods that have them. `PLAN_exogenous_expansion.md` carries the
+  unfinished tiers.
+commits:
+  - "a4c60c7": "Add a helper that reads running cost off the measured timings"
+  - "39446d6": "Replace three scorecard ratings with one measured running cost"
+  - "c6544f6": "Render the running-cost meter and its growth shape on the method cards"
+  - "9d80e09": "Correct two running-cost comments that named the wrong dominant term"
+---
+---
 id: 97
 date: "2026-08-24"
 title: "The ensembles are fit once per cell instead of refit at every rolling origin"

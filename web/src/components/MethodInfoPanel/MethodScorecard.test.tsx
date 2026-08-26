@@ -14,10 +14,8 @@ const capabilities: Capabilities = {
 const scorecard: Scorecard = {
   history_requirements: 'Low',
   interpretability: 'Low',
-  fit_cost: 'Low',
-  inference_cost: 'High',
+  running_cost: { level: 'High', growth: 'superlinear' },
   tuning_effort: 'Medium',
-  robustness_to_noise: 'High',
 };
 
 describe('CapabilityRow', () => {
@@ -36,10 +34,10 @@ describe('ScorecardMeters', () => {
     render(<ScorecardMeters scorecard={scorecard} />);
 
     // Low -> 1 of 3 filled, High -> 3, Medium -> 2. Length is magnitude, not goodness, so a
-    // Low fit cost draws the same single segment as a Low interpretability.
-    expect(screen.getAllByTestId('segment-fit_cost-filled')).toHaveLength(1);
+    // Low history requirement draws the same single segment as a Low interpretability.
+    expect(screen.getAllByTestId('segment-history_requirements-filled')).toHaveLength(1);
     expect(screen.getAllByTestId('segment-interpretability-filled')).toHaveLength(1);
-    expect(screen.getAllByTestId('segment-inference_cost-filled')).toHaveLength(3);
+    expect(screen.getAllByTestId('segment-running_cost-filled')).toHaveLength(3);
     expect(screen.getAllByTestId('segment-tuning_effort-filled')).toHaveLength(2);
   });
 
@@ -51,14 +49,22 @@ describe('ScorecardMeters', () => {
       return first!.style.background;
     };
 
-    // fit_cost is lowerIsBetter, interpretability is not — both are 'Low' here, so the two
-    // must not share a colour. This is the encoding the whole scorecard rests on.
-    expect(toneOf('fit_cost')).toBe('var(--level-good)');
+    // history_requirements is lowerIsBetter, interpretability is not — both are 'Low' here,
+    // so the two must not share a colour. This is the encoding the whole scorecard rests on.
+    expect(toneOf('history_requirements')).toBe('var(--level-good)');
     expect(toneOf('interpretability')).toBe('var(--level-poor)');
 
-    // And a High inference cost is the bad direction, unlike a High robustness.
-    expect(toneOf('inference_cost')).toBe('var(--level-poor)');
-    expect(toneOf('robustness_to_noise')).toBe('var(--level-good)');
+    // And a High running cost is the bad direction, unlike a High interpretability would be.
+    expect(toneOf('running_cost')).toBe('var(--level-poor)');
+  });
+
+  it('prints the growth shape beside the running-cost bar and nowhere else', () => {
+    render(<ScorecardMeters scorecard={scorecard} />);
+
+    // The level is read at one reference record size, so the bar alone can't separate a cost
+    // that ignores record length from one that outruns it.
+    expect(screen.getByTestId('growth-running_cost')).toHaveTextContent('superlinear');
+    expect(screen.queryByTestId('growth-tuning_effort')).not.toBeInTheDocument();
   });
 
   it('does not spell the level out as text — the bar carries it', () => {
@@ -72,7 +78,7 @@ describe('ScorecardMeters', () => {
   it('labels each meter with its field and level for screen readers', () => {
     render(<ScorecardMeters scorecard={scorecard} />);
 
-    expect(screen.getByLabelText('Inference cost: High')).toBeInTheDocument();
+    expect(screen.getByLabelText('Running cost: High')).toBeInTheDocument();
     expect(screen.getByLabelText('Tuning effort: Medium')).toBeInTheDocument();
   });
 });

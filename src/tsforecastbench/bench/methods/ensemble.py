@@ -21,7 +21,9 @@ from tsforecastbench.bench.methods.naive import (
 from tsforecastbench.bench.methods.scorecard import (
     Capabilities,
     ForecastStrategy,
+    GrowthShape,
     Level,
+    RunningCost,
     Scorecard,
 )
 from tsforecastbench.data.schema import Case
@@ -197,15 +199,13 @@ def ensemble_baselines() -> EnsembleForecaster:
         capabilities=Capabilities(
             trend=False, seasonality=True, multiple_seasonality=False, exogenous=False
         ),
-        # A per-step median across four members is what buys the robustness: an outlier has
-        # to fool most of them to move the forecast.
+        # Four naive members, none of which costs anything: a fit plus a thousand forecasts
+        # runs in under seven seconds on a 100,000-point record.
         scorecard=Scorecard(
             history_requirements=Level.MEDIUM,
             interpretability=Level.MEDIUM,
-            fit_cost=Level.LOW,
-            inference_cost=Level.LOW,
+            running_cost=RunningCost(level=Level.LOW, growth=GrowthShape.FLAT),
             tuning_effort=Level.LOW,
-            robustness_to_noise=Level.HIGH,
         ),
     )
 
@@ -219,17 +219,14 @@ def ensemble_baselines_theta() -> EnsembleForecaster:
         capabilities=Capabilities(
             trend=True, seasonality=True, multiple_seasonality=False, exogenous=False
         ),
-        # Theta is the only member with a real fit, and its cost dominates at both ends: the
-        # combination is not "under a second either way". `inference_cost` follows the
-        # rubric's measured-`predict_seconds` anchor — ~5s per origin on a 49,000-point
-        # record and ~110s on a 214,000-point one, which is High, and a composite cannot be
-        # cheaper than its most expensive member (Theta declares High too).
+        # Adding Theta costs three orders of magnitude: the four naive members together run
+        # in seconds, and Theta's quadratic roll-forward takes the combination to ~3 hours
+        # for a thousand forecasts on a 100,000-point record. A composite cannot be cheaper
+        # than its most expensive member, and it inherits that member's growth shape too.
         scorecard=Scorecard(
             history_requirements=Level.MEDIUM,
             interpretability=Level.MEDIUM,
-            fit_cost=Level.LOW,
-            inference_cost=Level.HIGH,
+            running_cost=RunningCost(level=Level.HIGH, growth=GrowthShape.SUPERLINEAR),
             tuning_effort=Level.LOW,
-            robustness_to_noise=Level.HIGH,
         ),
     )

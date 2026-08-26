@@ -23,7 +23,9 @@ from tsforecastbench.bench.methods.base import Forecaster
 from tsforecastbench.bench.methods.scorecard import (
     Capabilities,
     ForecastStrategy,
+    GrowthShape,
     Level,
+    RunningCost,
     Scorecard,
 )
 from tsforecastbench.data.schema import Case
@@ -273,15 +275,13 @@ class LightGBMForecaster(_WindowedMLBase):
     # mlforecast's default lag-feedback strategy: each step's prediction is fed back in as
     # the next step's lag input. A tree's leaf-bound output keeps this well-behaved.
     forecast_strategy = ForecastStrategy.RECURSIVE
-    # Feature importances make it inspectable but not readable; needs a lot of rows before
-    # the lag table is worth fitting, and n_estimators/learning_rate are real choices.
+    # Fit is seconds; the per-origin recursive prediction is what adds up, at ~7 minutes for a
+    # thousand forecasts on a 100,000-point record. Both terms track the record length.
     scorecard = Scorecard(
         history_requirements=Level.HIGH,
         interpretability=Level.MEDIUM,
-        fit_cost=Level.LOW,
-        inference_cost=Level.LOW,
+        running_cost=RunningCost(level=Level.MEDIUM, growth=GrowthShape.LINEAR),
         tuning_effort=Level.MEDIUM,
-        robustness_to_noise=Level.MEDIUM,
     )
 
     def _make_model(self):
@@ -326,13 +326,13 @@ class CatBoostForecaster(_WindowedMLBase):
     capabilities = _WindowedMLBase.capabilities.model_copy(update={"trend": False})
     # Same recursive lag-feedback strategy as LightGBM, same leaf-bound stability.
     forecast_strategy = ForecastStrategy.RECURSIVE
+    # Same shape as LightGBM and about a third cheaper to run -- a two-second fit against a
+    # per-origin recursion that grows with the record and accounts for nearly all of it.
     scorecard = Scorecard(
         history_requirements=Level.HIGH,
         interpretability=Level.MEDIUM,
-        fit_cost=Level.LOW,
-        inference_cost=Level.LOW,
+        running_cost=RunningCost(level=Level.MEDIUM, growth=GrowthShape.LINEAR),
         tuning_effort=Level.MEDIUM,
-        robustness_to_noise=Level.MEDIUM,
     )
 
     def _make_model(self):
@@ -372,15 +372,13 @@ class LinearLagsForecaster(_WindowedMLBase):
     # Same recursive lag-feedback strategy as LightGBM/CatBoost; Ridge's linearity keeps it
     # well-behaved instead of a leaf bound.
     forecast_strategy = ForecastStrategy.RECURSIVE
-    # Cheapest of the windowed models to fit, with one meaningful knob (alpha), and readable
-    # coefficients — though dozens of them, so inspectable rather than at-a-glance.
+    # A closed-form fit in under a second, so essentially all of its ~4 minutes for a thousand
+    # forecasts is the recursive prediction walking the lag features forward.
     scorecard = Scorecard(
         history_requirements=Level.MEDIUM,
         interpretability=Level.MEDIUM,
-        fit_cost=Level.LOW,
-        inference_cost=Level.LOW,
+        running_cost=RunningCost(level=Level.MEDIUM, growth=GrowthShape.LINEAR),
         tuning_effort=Level.LOW,
-        robustness_to_noise=Level.MEDIUM,
     )
 
     def _make_model(self):
@@ -414,8 +412,8 @@ class MLPForecaster(_WindowedMLBase):
     # roughly batch >= 2,000 *and* a 1,024-wide layer *and* ~500 features, all at once —
     # two of which sklearn and the feature table fix well below that. It also makes the fit
     # a stable measurement: unrestricted, four repeats of one fit ranged 2.72s to 0.38s as
-    # the thread pool warmed, while this holds steady, and `fit_cost` is meant to rest on
-    # measured `fit_seconds` (issue #97).
+    # the thread pool warmed, while this holds steady, and `running_cost` is meant to rest
+    # on measured `fit_seconds` (issue #97).
     blas_threads = 1
     library = "mlforecast + scikit-learn (MLPRegressor)"
     code_snippet = (
@@ -443,23 +441,13 @@ class MLPForecaster(_WindowedMLBase):
         "#       each future timestamp's covariate values (a perfect-forecast proxy here,\n"
         "#       not a real forecast of those covariates)"
     )
-    # No override needed: an MLP's linear output layer can extrapolate past the training
-    # range like the base's trend=True already claims, now that nothing clips it back.
-    # Several interacting knobs (layer sizes, iterations, early stopping, feature scaling),
-    # and among the more expensive fits in the benchmark: direct_horizon trains H models
-    # instead of one, and each scales with history, so cost is the product of the two. The
-    # measured curves are in `docs/results/train_cap_calibration.csv` — on a 24-step horizon
-    # the full 42,073-point `sewerlevel_bellinge` record costs 3.3 min, and on a 48-step one
-    # `surge_cuxhaven` reaches 20,000 points in 124s, extrapolating to roughly 20 min over
-    # its full 182,304 points. That is under Theta's 47-66 min, which #95 already accepted as
-    # affordable for a fit that happens once per case rather than once per origin.
+    # The heaviest fit of the windowed-ML family (~37s at 100,000 points) against a direct
+    # prediction, which keeps a thousand forecasts to ~4 minutes.
     scorecard = Scorecard(
         history_requirements=Level.HIGH,
         interpretability=Level.LOW,
-        fit_cost=Level.HIGH,
-        inference_cost=Level.LOW,
+        running_cost=RunningCost(level=Level.MEDIUM, growth=GrowthShape.LINEAR),
         tuning_effort=Level.HIGH,
-        robustness_to_noise=Level.LOW,
     )
 
     def _make_model(self):

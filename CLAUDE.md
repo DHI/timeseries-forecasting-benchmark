@@ -45,5 +45,5 @@ Before starting any non-trivial code change, consult the `japr-commit-preference
 
 ## Writing style
 
-Before producing any prose output (explanations, docs, comments, commit messages, summaries), consult the `japr-writing-skill` skill and apply it — even if this instruction doesn't look like a "writing" task on the surface.
+Before producing any prose output (explanations, docs, comments, commit messages, summaries), invoke the `no-jargon-thanks` and `to-the-point` skills and apply them.
 

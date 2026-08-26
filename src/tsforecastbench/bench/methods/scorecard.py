@@ -5,16 +5,24 @@ and read only by the results viewer's method-info panel (via `tsforecastbench.we
 None has any effect on fit/predict.
 
 `Capabilities` is a set of booleans: what structure the method can represent *at all*.
-`Scorecard` is six ordinal ratings: what the method costs to use. `ForecastStrategy` is a
+`Scorecard` is four ratings: what the method costs to use. `ForecastStrategy` is a
 one-of-three category: how the method turns one fit into a multi-step forecast. The split
 is deliberate — a graded rating answers "how much", a boolean answers "can it", a category
 answers "which", and forcing one of these into another's shape reads as precision that
 isn't there ("Medium seasonality" is not a thing, and neither is "70% recursive").
 
-**These ratings are the benchmark authors' judgement, not measurements.** They are meant to
-narrow a shortlist before you read the matrix, not to stand in for it. The one place judgement
-and measurement could contradict each other is cost, so the two cost fields are anchored to the
-`fit_seconds` / `predict_seconds` the eval loop actually records (see the rubric below).
+That argument is also why two earlier fields are gone. `robustness_to_noise` graded three
+different *structures* (a robust aggregate, a parametric fit, a single propagated outlier)
+on a Low/Medium/High scale, which is the "Medium seasonality" mistake in this very file; it
+read Medium for 25 of 33 methods, and no measurement here can validate it — every proxy
+tried ranks accuracy or flatness instead of fragility. What is genuinely known about a
+method's fragility now lives in its `limitations` prose, where it can be specific. And the
+`fit_cost`/`inference_cost` pair became the single `running_cost` below.
+
+**These ratings are the benchmark authors' judgement, not measurements** — except
+`running_cost`, which is read off the results and pinned by
+`tests/test_method_scorecards.py`. They are meant to narrow a shortlist before you read the
+matrix, not to stand in for it.
 
 Rubric — assign these consistently across methods, or the cards stop being comparable.
 
@@ -30,9 +38,16 @@ Capabilities (True/False):
                           not the benchmark column: plain `LightGBM` is True even though its
                           column feeds no covariates — `LightGBM+exo` is the same method with
                           them switched on. False only where there is no covariate pathway at
-                          all.
+                          all. Where a method supports covariates but this repo has not wired
+                          them up yet (the neuralforecast and torch architectures), the flag
+                          stays True and `limitations` says the column runs univariate.
 
-Scorecard (Low/Medium/High; the direction that is *better* is noted for each):
+    `trend`, `seasonality` and `multiple_seasonality` are the exception to that rule: they
+    describe the method **as configured in this benchmark**, not in principle. AutoETS and
+    AutoARIMA both declare `seasonality=False` because they run at `season_length=1` here,
+    not because exponential smoothing has no seasonal component. Their `limitations` say so.
+
+Scorecard:
 
     history_requirements  How much history before the method is worth using. Lower is better.
                           Low: usable from a handful of points, or needs no training data at
@@ -45,27 +60,28 @@ Scorecard (Low/Medium/High; the direction that is *better* is noted for each):
                           parameters. Medium: inspectable structure — a decomposition, feature
                           importances, attention you can plot. Low: a black box.
 
-    fit_cost              Cost of the one-off fit, anchored to the measured `fit_seconds`.
-                          Lower is better. Low: sub-second to a few seconds on CPU. Medium:
-                          tens of seconds to a couple of minutes on CPU. High: many minutes,
-                          or needs a GPU / large pretrained weights loaded to be practical.
+    running_cost          What it costs to actually use the method, as a `RunningCost` pair:
+                          a Low/Medium/High `level` and a `growth` shape. Lower is better.
+                          Both are read off the measured `fit_seconds`/`predict_seconds` — see
+                          `methods.cost` for how, and `tests/test_method_scorecards.py` for
+                          the guard that stops a declaration drifting from the results.
 
-    inference_cost        Cost per forecast origin, anchored to the measured `predict_seconds`.
-                          Lower is better. Low: milliseconds. Medium: ~0.1-1s. High: seconds or
-                          more per origin — which for a `is_global` method rolled over many
-                          origins dominates its total time.
+                          The level bands one fit plus 1,000 forecasts on a 100,000-point
+                          record: Low under a minute, Medium one to fifteen, High beyond.
+                          One field rather than a fit/inference pair because whichever term
+                          is larger dominates, so the fit-once-versus-pay-per-forecast split
+                          still reads off one number: TFT's 175s fit amortises to Medium,
+                          while MSTL-ETS's trivial fit and 4s-per-forecast cost lands High.
+
+                          Rate the base configuration, not the `+exo` one — a method and its
+                          `+exo` variant share one declaration, and covariates are a
+                          configuration of the same estimator.
 
     tuning_effort         How many choices you must get right before it works. Lower is better.
                           Low: nothing that matters, or auto-selected. Medium: a couple of
                           settings with obvious defaults (season_length, lag count). High:
                           several interacting hyperparameters (lookback, learning rate, epochs,
                           batch size, architecture) where a bad pick quietly costs accuracy.
-
-    robustness_to_noise   Tolerance to noise, outliers and gaps — the data-quality problems
-                          these cases actually have, not just white noise. Higher is better.
-                          High: an aggregate or robust statistic that barely moves for one bad
-                          point. Medium: a parametric fit that absorbs some of it. Low: fits
-                          the noise, or lets a single outlier propagate through the horizon.
 
 ForecastStrategy (Recursive / Direct / N/A):
 
@@ -76,8 +92,7 @@ ForecastStrategy (Recursive / Direct / N/A):
                 TBATS, Theta, the MSTL variants) alike, where an h-step forecast for h>1
                 substitutes the model's own prior forecast for the unobserved future
                 observation and reapplies the fitted recursion. These are the same mechanism,
-                not two different ones — whether a given method's recursion is well-behaved is
-                a separate question already covered by `robustness_to_noise`, not this field.
+                not two different ones.
 
     Direct      One model call produces the whole horizon at once; nothing computed for one
                 step feeds into computing another. Covers mlforecast's direct multi-horizon
@@ -109,6 +124,18 @@ class Level(StrEnum):
     HIGH = "High"
 
 
+class GrowthShape(StrEnum):
+    """How a method's cost moves with record length. Values double as display labels.
+
+    Lives here rather than in `methods.cost` so the declaration vocabulary sits in one
+    module and the measurement code can import it without a cycle.
+    """
+
+    FLAT = "flat"
+    LINEAR = "linear"
+    SUPERLINEAR = "superlinear"
+
+
 class ForecastStrategy(StrEnum):
     """How a method produces a multi-step forecast — see the module rubric."""
 
@@ -134,14 +161,26 @@ class Capabilities(BaseModel):
         return self
 
 
+class RunningCost(BaseModel):
+    """A cost rating and how it moves with record length — see the module rubric.
+
+    Two values on one field rather than two fields: the shape qualifies the level rather
+    than standing beside it, and a level without it misreads badly in both directions (TFT
+    is expensive at every size, Theta is free at small ones and quadratic beyond).
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    level: Level
+    growth: GrowthShape
+
+
 class Scorecard(BaseModel):
-    """What a method costs to use — see the module rubric for what each level means."""
+    """What a method costs to use — see the module rubric for what each field means."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     history_requirements: Level
     interpretability: Level
-    fit_cost: Level
-    inference_cost: Level
+    running_cost: RunningCost
     tuning_effort: Level
-    robustness_to_noise: Level

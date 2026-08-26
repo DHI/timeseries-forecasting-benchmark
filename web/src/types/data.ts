@@ -40,15 +40,26 @@ export type Capabilities = {
   gaps: boolean;
 };
 
-/** What a method costs to use. Mirrors the Python `Scorecard` model; hand-authored
- * judgement, not measured from the results. Field order here matches the model's. */
+/** How a method's cost moves with record length. Mirrors the Python `GrowthShape` enum. */
+export type GrowthShape = 'flat' | 'linear' | 'superlinear';
+
+/** A cost level and the shape that qualifies it. Mirrors the Python `RunningCost` model:
+ * two values on one field rather than two fields, because a level alone misreads badly in
+ * both directions — TFT is expensive at every record size, Theta is free at small ones and
+ * quadratic beyond. */
+export type RunningCost = {
+  level: ScorecardLevel;
+  growth: GrowthShape;
+};
+
+/** What a method costs to use. Mirrors the Python `Scorecard` model; field order here
+ * matches the model's. Hand-authored judgement, except `running_cost`, which is read off
+ * the measured timings and pinned by tests/test_method_scorecards.py. */
 export type Scorecard = {
   history_requirements: ScorecardLevel;
   interpretability: ScorecardLevel;
-  fit_cost: ScorecardLevel;
-  inference_cost: ScorecardLevel;
+  running_cost: RunningCost;
   tuning_effort: ScorecardLevel;
-  robustness_to_noise: ScorecardLevel;
 };
 
 export type MethodMeta = {

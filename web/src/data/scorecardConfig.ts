@@ -1,4 +1,10 @@
-import type { Capabilities, ForecastStrategy, Scorecard, ScorecardLevel } from '../types/data';
+import type {
+  Capabilities,
+  ForecastStrategy,
+  GrowthShape,
+  Scorecard,
+  ScorecardLevel,
+} from '../types/data';
 
 /** Display config for the method card's Handles row and Scorecard meters: labels, order,
  * polarity, and the tooltip text explaining each field. Same split of concerns as
@@ -23,17 +29,17 @@ export const CAPABILITY_FIELDS: readonly CapabilityField[] = [
   {
     key: 'seasonality',
     label: 'Seasonality',
-    help: 'Has a mechanism for a repeating within-period shape, whether an explicit seasonal term or a window long enough to learn one.',
+    help: 'Has a mechanism for a repeating within-period shape, whether an explicit seasonal term or a window long enough to learn one. Unlike Exogenous, this describes the method as configured in this benchmark — AutoETS and AutoARIMA run non-seasonally here (season_length=1), which is a choice about search cost, not a property of exponential smoothing.',
   },
   {
     key: 'multiple_seasonality',
     label: 'Multiple seasonality',
-    help: 'Handles several periods at once, e.g. a daily and a weekly cycle together.',
+    help: 'Handles several periods at once, e.g. a daily and a weekly cycle together. Like Seasonality, this describes the method as configured here.',
   },
   {
     key: 'exogenous',
     label: 'Exogenous',
-    help: 'Can consume covariates in principle. This describes the method, not this column — a method shown here without covariates may still support them (that is what its +exo column is).',
+    help: 'Can consume covariates in principle. This describes the method, not this column — a method shown here without covariates may still support them (that is what its +exo column is). Where this benchmark has not wired a method’s covariates up yet, the flag still reads yes and the method’s limitations say the column runs univariate.',
   },
   {
     key: 'gaps',
@@ -64,16 +70,10 @@ export const SCORECARD_FIELDS: readonly ScorecardField[] = [
     help: 'How readable the forecast’s reasoning is. High: it follows from a rule or a few named parameters. Medium: inspectable structure. Low: a black box.',
   },
   {
-    key: 'fit_cost',
-    label: 'Fit cost',
+    key: 'running_cost',
+    label: 'Running cost',
     lowerIsBetter: true,
-    help: 'Cost of the one-off fit, anchored to the fit_seconds this benchmark measures. Low: seconds on CPU. High: many minutes, or needs a GPU to be practical.',
-  },
-  {
-    key: 'inference_cost',
-    label: 'Inference cost',
-    lowerIsBetter: true,
-    help: 'Cost per forecast origin, anchored to the measured predict_seconds. Low: milliseconds. High: seconds or more per origin, which dominates the total time over a rolling run.',
+    help: 'What it costs to actually use the method: one fit plus 1,000 forecasts on a 100,000-point record, read off the fit and predict times this benchmark measures. Low: under a minute. Medium: one to fifteen minutes. High: beyond that. One field rather than a fit/inference pair because whichever term is larger dominates — an expensive fit amortises over many forecasts, an expensive forecast does not.',
   },
   {
     key: 'tuning_effort',
@@ -81,13 +81,17 @@ export const SCORECARD_FIELDS: readonly ScorecardField[] = [
     lowerIsBetter: true,
     help: 'How many choices you must get right before it works. Low: nothing that matters, or auto-selected. High: several interacting hyperparameters where a bad pick quietly costs accuracy.',
   },
-  {
-    key: 'robustness_to_noise',
-    label: 'Robustness to noise',
-    lowerIsBetter: false,
-    help: 'Tolerance to noise, outliers and gaps. High: barely moves for one bad point. Low: fits the noise, or lets a single outlier propagate across the horizon.',
-  },
 ];
+
+/** Per-value help text for the growth shape shown beside the running-cost meter. The level
+ * is read at one reference record size, so on its own it cannot tell a cost that ignores
+ * record length from one that outruns it — this is the word that does. */
+export const GROWTH_SHAPE_HELP: Record<GrowthShape, string> = {
+  flat: 'Cost barely moves with record length — these train to a step ceiling or run one pass over a fixed context, so a short record costs about what a long one does.',
+  linear: 'Cost tracks the record: roughly twice the data, roughly twice the time.',
+  superlinear:
+    'Cost outruns the record — doubling the data more than doubles the time, so a method that is free on a short record can dominate your run on a long one.',
+};
 
 /** Per-value help text for the Forecast strategy badge — see `ForecastStrategy` in
  * types/data.ts and the Python rubric it mirrors (scorecard.py). */

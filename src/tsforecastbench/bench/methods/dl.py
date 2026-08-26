@@ -22,7 +22,9 @@ from tsforecastbench.bench.methods.base import (
 from tsforecastbench.bench.methods.scorecard import (
     Capabilities,
     ForecastStrategy,
+    GrowthShape,
     Level,
+    RunningCost,
     Scorecard,
 )
 from tsforecastbench.data.schema import Case
@@ -75,15 +77,14 @@ class DLinearForecaster(Forecaster):
     # fit — no step's output feeds into computing another step.
     forecast_strategy = ForecastStrategy.DIRECT
     # The cheapest thing in the `dl` family by a wide margin: both linear maps collapse into
-    # one closed-form ridge fit, so there is no training loop and nothing to tune. Needs many
-    # windows though — under 10 it gives up and falls back to persistence.
+    # one closed-form ridge fit, so there is no training loop and nothing to tune, and a fit
+    # plus a thousand forecasts comes in at ~26s. Needs many windows though -- under 10 it
+    # gives up and falls back to persistence.
     scorecard = Scorecard(
         history_requirements=Level.HIGH,
         interpretability=Level.MEDIUM,
-        fit_cost=Level.LOW,
-        inference_cost=Level.LOW,
+        running_cost=RunningCost(level=Level.LOW, growth=GrowthShape.LINEAR),
         tuning_effort=Level.LOW,
-        robustness_to_noise=Level.MEDIUM,
     )
 
     def __init__(self, lookback: int | None = None, kernel: int = 25, alpha: float = 1.0):
