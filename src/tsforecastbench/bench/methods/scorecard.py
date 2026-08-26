@@ -109,6 +109,18 @@ class Level(StrEnum):
     HIGH = "High"
 
 
+class GrowthShape(StrEnum):
+    """How a method's cost moves with record length. Values double as display labels.
+
+    Lives here rather than in `methods.cost` so the declaration vocabulary sits in one
+    module and the measurement code can import it without a cycle.
+    """
+
+    FLAT = "flat"
+    LINEAR = "linear"
+    SUPERLINEAR = "superlinear"
+
+
 class ForecastStrategy(StrEnum):
     """How a method produces a multi-step forecast — see the module rubric."""
 
