@@ -1,26 +1,25 @@
 ---
 id: 98
 date: "2026-08-26"
-title: "Method cards drop to four ratings, with cost read off the measured timings"
+title: "Method cards drop from six ratings to four"
 description: |
-  The cards' `fit_cost` and `inference_cost` banded raw seconds, which are not comparable across
-  cases spanning 3,052 to 214,476 points: `Moirai-2.0` carried the worst inference rating of the
-  four foundation models while being the fastest at 35ms per origin. Both are replaced by one
-  `running_cost` -- one fit plus 1,000 forecasts on a 100,000-point record, banded Low under a
-  minute / Medium to fifteen / High beyond, with a `flat` / `linear` / `superlinear` word for how
-  it scales. One field replaces two because whichever term dominates already separates a costly
-  fit from a costly forecast. `tests/test_method_scorecards.py` pins every declaration to
+  `fit_cost` and `inference_cost` are replaced by one `running_cost`: one fit plus 1,000
+  forecasts on a 100,000-point record. It bands Low under a minute, Medium to fifteen, High
+  beyond, and carries a `flat` / `linear` / `superlinear` word for how it scales. The old pair
+  banded raw seconds, which do not compare across cases spanning 3,052 to 214,476 points.
+  `Moirai-2.0` held the worst inference rating of the four foundation models. At 35ms per origin
+  it measures the fastest. `tests/test_method_scorecards.py` pins every declaration to
   `results/pilot_metrics.parquet`.
 
-  `robustness_to_noise` was dropped rather than re-rated: it graded three structures on one scale,
-  read Medium for 25 of 33 methods, and no measurement here separates fragility from plain
-  inaccuracy. What is known about a method's fragility moved into its `limitations`.
+  `robustness_to_noise` is gone. It graded three structures on one Low/Medium/High scale and read
+  Medium for 25 of 33 methods. No measurement in the results separates fragility from inaccuracy.
+  Fragility notes moved into each method's `limitations`.
 
-  Two findings need separate work. `Theta`'s per-origin cost is quadratic in record length (slope
-  2.2, r=0.995), because `_ForwardForecaster.predict` re-runs its recursion over the whole growing
-  history at every origin. Every DL method runs univariate on the 8 of 12 cases where covariates
-  are necessary, worth 19-36% MASE to the methods that have them -- an unfinished item in
-  `PLAN_exogenous_expansion.md` rather than a design choice.
+  `Theta`'s per-origin cost is quadratic in record length (slope 2.2, r=0.995).
+  `_ForwardForecaster.predict` re-runs its recursion over the whole growing history at every
+  origin. Every DL method runs univariate on the 8 of 12 cases where covariates are necessary,
+  worth 19-36% MASE to the methods that have them. `PLAN_exogenous_expansion.md` carries the
+  unfinished tiers.
 commits:
   - "a4c60c7": "Add a helper that reads running cost off the measured timings"
   - "39446d6": "Replace three scorecard ratings with one measured running cost"
