@@ -84,6 +84,11 @@ def _lags_for(case: Case) -> list[int]:
     return sorted(set(ladder) | set(case.seasonalities))
 
 
+def _exo_cols(case: Case) -> list[str]:
+    """Declared covariates, de-duplicated (a column may be both historical and known-future)."""
+    return list(dict.fromkeys([*case.exogenous, *case.exogenous_known_future]))
+
+
 def segment_exo_arrays(train: pd.DataFrame, cols: list[str]) -> list[np.ndarray]:
     """Per-segment covariate arrays, aligned one-for-one with `segment_arrays`.
 
@@ -146,6 +151,58 @@ def build_windows_fut(
                 Xf[at : at + n, :, j] = ev[:n, L:]
         at += n
     return X, Xf, Y
+
+
+def future_exo_block(
+    cols: list[str],
+    history: pd.DataFrame,
+    horizon: int,
+    future_exog: pd.DataFrame | None,
+    fallback: dict[str, float],
+) -> np.ndarray:
+    """Covariate values over the forecast horizon, as ``(horizon, len(cols))``.
+
+    `future_exog` is the eval loop's perfect-forecast proxy -- the covariates' true future
+    values, standing in for a forecast of them (see `Forecaster.predict`). Same convention as
+    `methods/ml.py`'s `_future_X` and `methods/fm.py`'s `_future_covariate`: fall back to the
+    last observed value per column when the proxy is absent, short, or non-finite, so a
+    covariate gap never puts a NaN into the model's input.
+
+    `fallback` is the per-column last-observed value captured at fit. A column missing from
+    both the proxy and `fallback` becomes 0.0, which is the standardised mean once the caller
+    scales the block.
+    """
+    out = np.empty((horizon, len(cols)), dtype=float)
+    for j, c in enumerate(cols):
+        fill = fallback.get(c, 0.0)
+        if future_exog is not None and c in future_exog.columns:
+            vals = pd.to_numeric(future_exog[c], errors="coerce").to_numpy(dtype=float)
+            if len(vals) >= horizon:
+                vals = vals[:horizon]
+            else:
+                padded = np.full(horizon, fill, dtype=float)
+                padded[: len(vals)] = vals
+                vals = padded
+        else:
+            vals = np.full(horizon, fill, dtype=float)
+        out[:, j] = np.where(np.isfinite(vals), vals, fill)
+    return out
+
+
+def last_observed_exo(train: pd.DataFrame, cols: list[str]) -> dict[str, float]:
+    """Per-column last observed covariate value, the predict-time fallback for `future_exo_block`.
+
+    Not training gap-fill: the curated frame already delivers complete covariate columns
+    within the span (see `data/curate.py`). This only covers a horizon the proxy cannot fill.
+    """
+    out: dict[str, float] = {}
+    for c in cols:
+        if c in train.columns:
+            s = pd.to_numeric(train[c], errors="coerce")
+            out[c] = float(s.ffill().iloc[-1]) if s.notna().any() else 0.0
+        else:
+            out[c] = 0.0
+    return out
 
 
 def lookback_for(case: Case, h: int) -> int:

@@ -19,7 +19,7 @@ import pandas as pd
 from threadpoolctl import threadpool_limits
 
 from tsforecastbench.bench.eval.budget import MLP_MAX_EPOCHS, TRAIN_POINT_CEILING
-from tsforecastbench.bench.methods.base import Forecaster, _lags_for
+from tsforecastbench.bench.methods.base import Forecaster, _exo_cols, _lags_for
 from tsforecastbench.bench.methods.scorecard import (
     Capabilities,
     ForecastStrategy,
@@ -66,11 +66,6 @@ def _sincos_features_for(case: Case, y: np.ndarray) -> list:
     sin_feat.__name__ = f"sin{p}"
     cos_feat.__name__ = f"cos{p}"
     return [sin_feat, cos_feat]
-
-
-def _exo_cols(case: Case) -> list[str]:
-    """Declared covariates, de-duplicated (a column may be both historical and known-future)."""
-    return list(dict.fromkeys([*case.exogenous, *case.exogenous_known_future]))
 
 
 def _naive_ds(ds) -> pd.Series:
