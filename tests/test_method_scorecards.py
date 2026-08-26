@@ -17,9 +17,15 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from tsforecastbench.bench import methods as _methods  # noqa: E402
+from tsforecastbench.bench.methods.cost import (  # noqa: E402
+    cost_level,
+    growth_shape,
+    running_cost_seconds,
+)
 from tsforecastbench.bench.methods.scorecard import (  # noqa: E402
     Capabilities,
     ForecastStrategy,
+    GrowthShape,
     Level,
     Scorecard,
 )
@@ -36,11 +42,13 @@ EXPECTED_EXPORTED_CAPABILITY_FIELDS = (*EXPECTED_CAPABILITY_FIELDS, "gaps")
 EXPECTED_SCORECARD_FIELDS = (
     "history_requirements",
     "interpretability",
-    "fit_cost",
-    "inference_cost",
+    "running_cost",
     "tuning_effort",
-    "robustness_to_noise",
 )
+# `running_cost` is the one field that isn't a bare Level: it carries a banded level and the
+# measured growth shape together, because the shape qualifies the level rather than standing
+# beside it (see `RunningCost` in scorecard.py).
+EXPECTED_RUNNING_COST_FIELDS = ("level", "growth")
 
 
 def _exo_pairs() -> list[tuple[type, type]]:
@@ -92,7 +100,12 @@ def test_every_registered_method_declares_both():
         assert set(meta["capabilities"]) == set(EXPECTED_EXPORTED_CAPABILITY_FIELDS), name
         assert set(meta["scorecard"]) == set(EXPECTED_SCORECARD_FIELDS), name
         assert all(isinstance(v, bool) for v in meta["capabilities"].values()), name
-        assert all(v in set(Level) for v in meta["scorecard"].values()), name
+        graded = {k: v for k, v in meta["scorecard"].items() if k != "running_cost"}
+        assert all(v in set(Level) for v in graded.values()), name
+        cost = meta["scorecard"]["running_cost"]
+        assert set(cost) == set(EXPECTED_RUNNING_COST_FIELDS), name
+        assert cost["level"] in set(Level), name
+        assert cost["growth"] in set(GrowthShape), name
         assert meta["forecast_strategy"] in set(ForecastStrategy), name
 
 
@@ -160,3 +173,70 @@ def test_methods_that_consume_covariates_declare_the_capability():
     for name, meta in _method_registry().items():
         if meta["uses_exogenous"]:
             assert meta["capabilities"]["exogenous"] is True, name
+
+
+def _measured_running_costs() -> dict[str, tuple[Level, GrowthShape]]:
+    """Every method's running cost read off the pilot results, keyed by method name.
+
+    Empty when either input is missing, which is how this file stays runnable in a checkout
+    without results.
+    """
+    import json
+
+    metrics = REPO_ROOT / "results" / "pilot_metrics.parquet"
+    manifest = REPO_ROOT / "data" / "curated" / "manifest.json"
+    if not metrics.exists() or not manifest.exists():
+        return {}
+    import pandas as pd
+
+    rows = {case: meta["rows"] for case, meta in json.loads(manifest.read_text()).items()}
+    frame = pd.read_parquet(metrics).drop_duplicates(subset=["case_id", "method", "horizon"])
+    measured = {}
+    for method, group in frame.groupby("method"):
+        if not set(group["case_id"]).issubset(rows):
+            continue
+        sizes = [float(rows[c]) for c in group["case_id"]]
+        fits = [float(v) for v in group["fit_seconds"]]
+        predicts = [float(v) for v in group["predict_seconds"]]
+        measured[str(method)] = (
+            cost_level(running_cost_seconds(sizes, fits, predicts)),
+            growth_shape(sizes, fits, predicts),
+        )
+    return measured
+
+
+def test_declared_running_cost_matches_the_measured_results():
+    """The one rating on the card that is a measurement rather than a judgement, so it is
+    the one that can go stale silently — a method whose implementation gets faster or slower
+    keeps whatever level it was given until something checks.
+
+    Rated on the base configuration only: a method and its `+exo` variant share one
+    declaration (see `test_exo_variants_inherit_their_base_declarations`), so measuring the
+    `+exo` column would ask two different numbers to satisfy one field.
+    """
+    measured = _measured_running_costs()
+    if not measured:
+        pytest.skip("no pilot results in this checkout")
+    registry = _method_registry()
+    mismatches = []
+    for name, meta in registry.items():
+        if name.endswith("+exo") or name not in measured:
+            continue
+        level, growth = measured[name]
+        declared = meta["scorecard"]["running_cost"]
+        if declared["level"] != level or declared["growth"] != growth:
+            mismatches.append(
+                f"{name}: declared {declared['level']}/{declared['growth']}, "
+                f"measured {level}/{growth}"
+            )
+    assert not mismatches, "running_cost has drifted from the results:\n" + "\n".join(mismatches)
+
+
+def test_every_scored_method_is_covered_by_the_measurement():
+    """Guards the guard: if the results and the registry stop agreeing on method names, the
+    check above would pass by skipping everything it cannot match."""
+    measured = _measured_running_costs()
+    if not measured:
+        pytest.skip("no pilot results in this checkout")
+    uncovered = {n for n in _method_registry() if not n.endswith("+exo")} - set(measured)
+    assert not uncovered, f"declared but never measured: {sorted(uncovered)}"

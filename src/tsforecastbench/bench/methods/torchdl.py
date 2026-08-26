@@ -32,7 +32,9 @@ from tsforecastbench.bench.methods.base import (
 from tsforecastbench.bench.methods.scorecard import (
     Capabilities,
     ForecastStrategy,
+    GrowthShape,
     Level,
+    RunningCost,
     Scorecard,
 )
 from tsforecastbench.data.schema import Case
@@ -165,28 +167,22 @@ class _TorchDLBase(Forecaster):
         "rolling-origin counts modest when including them."
     )
     limitations = (
-        "Univariate — ignores exogenous inputs (the covariate story lives in the "
+        "Both architectures take covariates as published, but these compact torch ports "
+        "wire none up, so the column runs univariate (the covariate story lives in the "
         "windowed-ML +exo columns instead). Each window is instance-normalised "
         "(RevIN-style) before the model and de-normalised after, which is what makes "
         "the same architecture usable across very different series scales."
     )
     # Shared by N-HiTS and PatchTST: both learn a map from the whole lookback window to the
-    # whole horizon, so trend and several interacting periods are representable, and neither
-    # has a covariate pathway here (that story lives in the windowed-ML +exo columns).
+    # whole horizon, so trend and several interacting periods are representable. `exogenous`
+    # describes the architecture rather than this port of it (see the rubric) -- both papers
+    # take covariates, neither port passes any, and `limitations` above says so.
     capabilities = Capabilities(
-        trend=True, seasonality=True, multiple_seasonality=True, exogenous=False
+        trend=True, seasonality=True, multiple_seasonality=True, exogenous=True
     )
-    # Among the heaviest CPU fits in the benchmark — a training loop over sampled windows,
-    # run to convergence — against a single forward pass at predict. Per-window instance
-    # normalisation is what keeps robustness at Medium rather than Low despite the loop.
-    scorecard = Scorecard(
-        history_requirements=Level.HIGH,
-        interpretability=Level.LOW,
-        fit_cost=Level.HIGH,
-        inference_cost=Level.LOW,
-        tuning_effort=Level.HIGH,
-        robustness_to_noise=Level.MEDIUM,
-    )
+    # No shared `scorecard`: both fits train to a step ceiling and both predict in one
+    # forward pass, but which of the two terms dominates the running cost differs between
+    # them, and so does its growth shape. Each subclass declares its own.
 
     def _net(self, mods, L, H):
         raise NotImplementedError
@@ -327,6 +323,16 @@ class NHITSForecaster(_TorchDLBase):
     )
     # Each block's _interp produces its H-length contribution directly; forward() sums
     # them in one pass — no step's output feeds into computing another step.
+    # A training loop over sampled windows against a single forward pass at predict; a fit
+    # plus a thousand forecasts runs to ~28s on a 100,000-point record. Inference is the
+    # larger of the two terms and tracks the record, so the growth reads linear.
+    scorecard = Scorecard(
+        history_requirements=Level.HIGH,
+        interpretability=Level.LOW,
+        running_cost=RunningCost(level=Level.LOW, growth=GrowthShape.LINEAR),
+        tuning_effort=Level.HIGH,
+    )
+
     forecast_strategy = ForecastStrategy.DIRECT
 
     def _net(self, mods, L, H):
@@ -360,6 +366,16 @@ class PatchTSTForecaster(_TorchDLBase):
     )
     # The head is a single Linear projecting straight to the full H-length output —
     # no step's output feeds into computing another step.
+    # The heavier fit of the two (~27s at 100,000 points) against the same one-pass predict,
+    # so the fit dominates -- and it trains to a step ceiling, which makes the cost flat: a
+    # 3,000-point record costs about what a 150,000-point one does.
+    scorecard = Scorecard(
+        history_requirements=Level.HIGH,
+        interpretability=Level.LOW,
+        running_cost=RunningCost(level=Level.LOW, growth=GrowthShape.FLAT),
+        tuning_effort=Level.HIGH,
+    )
+
     forecast_strategy = ForecastStrategy.DIRECT
 
     def _net(self, mods, L, H):

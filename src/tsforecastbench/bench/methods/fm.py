@@ -35,7 +35,9 @@ from tsforecastbench.bench.methods.ml import _exo_cols, _fit_len, _naive_ds
 from tsforecastbench.bench.methods.scorecard import (
     Capabilities,
     ForecastStrategy,
+    GrowthShape,
     Level,
+    RunningCost,
     Scorecard,
 )
 from tsforecastbench.data.schema import Case
@@ -195,7 +197,10 @@ class ChronosForecaster(Forecaster):
     )
     limitations = (
         "Zero-shot: never learns anything case-specific, only what it picked up "
-        "from pretraining on other series. Univariate — ignores exogenous inputs. "
+        "from pretraining on other series. "
+        "Its running cost is inference alone, but standing it up means pulling "
+        "the pretrained weights down and holding them in memory. "
+        "Univariate — ignores exogenous inputs. "
         "Conditions on a fixed window sized to the case's pre-test history, capped at the "
         "most recent 2,048 points (context_length). Labeled Direct below because this "
         "benchmark issues one predict_quantiles() call for the full horizon — that "
@@ -220,15 +225,14 @@ class ChronosForecaster(Forecaster):
     )
     # See the limitations note: this describes this benchmark's one-call interface only.
     forecast_strategy = ForecastStrategy.DIRECT
-    # The zero-shot trade: nothing to fit and nothing to tune, so history need, fit cost
-    # and tuning effort are all Low — paid for by an opaque forward pass at every origin.
+    # Zero-shot, so there is no fit to pay for, and at ~55ms per forecast a thousand of them
+    # still come in under a minute -- the cheapest foundation model here to actually run.
+    # Flat: one forward pass over a fixed context, so record length barely enters.
     scorecard = Scorecard(
         history_requirements=Level.LOW,
         interpretability=Level.LOW,
-        fit_cost=Level.LOW,
-        inference_cost=Level.MEDIUM,
+        running_cost=RunningCost(level=Level.LOW, growth=GrowthShape.FLAT),
         tuning_effort=Level.LOW,
-        robustness_to_noise=Level.MEDIUM,
     )
 
     def __init__(self, model_name: str = "amazon/chronos-bolt-small", context_length: int = 2048):
@@ -291,7 +295,10 @@ class Chronos2Forecaster(Forecaster):
     )
     limitations = (
         "Zero-shot: never learns anything case-specific, only what it picked up from "
-        "pretraining on other series. Univariate by default — Chronos-2 supports "
+        "pretraining on other series. "
+        "Its running cost is inference alone, but standing it up means pulling "
+        "120M pretrained parameters down and holding them in memory. "
+        "Univariate by default — Chronos-2 supports "
         "covariates natively, and the +exo variant feeds the case's declared covariates "
         "to `predict_df` as past+future covariate columns, using a perfect-forecast "
         "proxy (not a real forecast of those covariates) for the future values. "
@@ -322,15 +329,14 @@ class Chronos2Forecaster(Forecaster):
     )
     # See the limitations note: this describes this benchmark's one-call interface only.
     forecast_strategy = ForecastStrategy.DIRECT
-    # The zero-shot trade: nothing to fit and nothing to tune, so history need, fit cost
-    # and tuning effort are all Low — paid for by an opaque forward pass at every origin.
+    # Zero-shot fit, but ~0.65s per forecast at 120M parameters, so a thousand forecasts cost
+    # ~11 minutes. All of the cost is inference, which is where a foundation model's bill
+    # lands.
     scorecard = Scorecard(
         history_requirements=Level.LOW,
         interpretability=Level.LOW,
-        fit_cost=Level.LOW,
-        inference_cost=Level.HIGH,
+        running_cost=RunningCost(level=Level.MEDIUM, growth=GrowthShape.FLAT),
         tuning_effort=Level.LOW,
-        robustness_to_noise=Level.MEDIUM,
     )
 
     use_exogenous: bool = False
@@ -411,7 +417,10 @@ class TimesFMForecaster(Forecaster):
     )
     limitations = (
         "Zero-shot: never learns anything case-specific, only what it picked up from "
-        "pretraining. Univariate by default — the +exo variant feeds the case's declared "
+        "pretraining. "
+        "Its running cost is inference alone, but standing it up means pulling "
+        "200M pretrained parameters down and holding them in memory. "
+        "Univariate by default — the +exo variant feeds the case's declared "
         "covariates to `forecast_with_covariates` as an xreg regressor fit alongside the "
         "TimesFM forecast, using a perfect-forecast proxy (not a real forecast of those "
         "covariates) for the future values. Conditions on a fixed window sized to the case's "
@@ -441,15 +450,13 @@ class TimesFMForecaster(Forecaster):
     )
     # See the limitations note: this describes this benchmark's one-call interface only.
     forecast_strategy = ForecastStrategy.DIRECT
-    # The zero-shot trade: nothing to fit and nothing to tune, so history need, fit cost
-    # and tuning effort are all Low — paid for by an opaque forward pass at every origin.
+    # Zero-shot fit, but the slowest inference in the foundation-model family at 200M
+    # parameters: ~1.1s per forecast, so a thousand of them run to ~18 minutes.
     scorecard = Scorecard(
         history_requirements=Level.LOW,
         interpretability=Level.LOW,
-        fit_cost=Level.LOW,
-        inference_cost=Level.HIGH,
+        running_cost=RunningCost(level=Level.HIGH, growth=GrowthShape.LINEAR),
         tuning_effort=Level.LOW,
-        robustness_to_noise=Level.MEDIUM,
     )
 
     use_exogenous: bool = False
@@ -543,7 +550,10 @@ class Moirai2Forecaster(Forecaster):
     )
     limitations = (
         "Zero-shot: never learns anything case-specific, only what it picked up from "
-        "pretraining on other series. Univariate by default — Moirai supports covariates "
+        "pretraining on other series. "
+        "Its running cost is inference alone, but standing it up means pulling "
+        "the pretrained weights down and holding them in memory. "
+        "Univariate by default — Moirai supports covariates "
         "natively, and the +exo variant feeds the case's declared covariates in as "
         "`feat_dynamic_real`, using a perfect-forecast proxy (not a real forecast of those "
         "covariates) for the future values. Conditions on a fixed window sized to the "
@@ -575,15 +585,13 @@ class Moirai2Forecaster(Forecaster):
     )
     # See the limitations note: this describes this benchmark's one-call interface only.
     forecast_strategy = ForecastStrategy.DIRECT
-    # The zero-shot trade: nothing to fit and nothing to tune, so history need, fit cost
-    # and tuning effort are all Low — paid for by an opaque forward pass at every origin.
+    # The cheapest foundation model to run: zero-shot fit and ~47ms per forecast, faster even
+    # than Chronos-Bolt, so a thousand forecasts stay under a minute.
     scorecard = Scorecard(
         history_requirements=Level.LOW,
         interpretability=Level.LOW,
-        fit_cost=Level.LOW,
-        inference_cost=Level.HIGH,
+        running_cost=RunningCost(level=Level.LOW, growth=GrowthShape.FLAT),
         tuning_effort=Level.LOW,
-        robustness_to_noise=Level.MEDIUM,
     )
 
     use_exogenous: bool = False

@@ -65,7 +65,12 @@ def test_methods_carry_capabilities_and_scorecard(tmp_path):
         assert isinstance(meta["capabilities"], dict), name
         assert isinstance(meta["scorecard"], dict), name
         assert all(isinstance(v, bool) for v in meta["capabilities"].values()), name
-        assert all(v in {"Low", "Medium", "High"} for v in meta["scorecard"].values()), name
+        graded = {k: v for k, v in meta["scorecard"].items() if k != "running_cost"}
+        assert all(v in {"Low", "Medium", "High"} for v in graded.values()), name
+        # `running_cost` is a level plus the measured growth shape, not a bare level.
+        cost = meta["scorecard"]["running_cost"]
+        assert cost["level"] in {"Low", "Medium", "High"}, name
+        assert cost["growth"] in {"flat", "linear", "superlinear"}, name
 
 
 def test_scores_have_no_nan_json_literal(tmp_path):

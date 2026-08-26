@@ -73,7 +73,9 @@ from tsforecastbench.bench.methods.base import Forecaster
 from tsforecastbench.bench.methods.scorecard import (
     Capabilities,
     ForecastStrategy,
+    GrowthShape,
     Level,
+    RunningCost,
     Scorecard,
 )
 from tsforecastbench.data.schema import Case
@@ -167,15 +169,14 @@ class AutoARIMAForecaster(_ForwardForecaster):
     # feed-forward mechanism as mlforecast's recursive strategy, kept stable by fitted
     # coefficients constrained to a stationary region rather than a leaf bound or linearity.
     forecast_strategy = ForecastStrategy.RECURSIVE
-    # Both costs Low on measured numbers: seconds for the one order search, ~0.03s per
-    # origin even on a 200,000-point history — the cheapest roll-forward of the classicals.
+    # One order search at fit, then a fixed-parameter forward pass per origin -- ~41s for a
+    # fit plus a thousand forecasts on a 100,000-point record. The forward pass walks that
+    # origin's whole history, so both terms grow with the record.
     scorecard = Scorecard(
         history_requirements=Level.MEDIUM,
         interpretability=Level.MEDIUM,
-        fit_cost=Level.LOW,
-        inference_cost=Level.LOW,
+        running_cost=RunningCost(level=Level.LOW, growth=GrowthShape.LINEAR),
         tuning_effort=Level.LOW,
-        robustness_to_noise=Level.MEDIUM,
     )
 
     def __init__(self, season_length: int = 1, max_train_steps: int = TRAIN_POINT_CEILING):
@@ -229,15 +230,13 @@ class AutoETSForecaster(_ForwardForecaster):
     # Same feed-forward recursion as AutoARIMA, just re-running the smoothing filter
     # instead of the ARIMA recursion — see AutoARIMAForecaster's comment.
     forecast_strategy = ForecastStrategy.RECURSIVE
-    # Named level/trend components make it the more readable of the two, and ~0.01s per
-    # origin makes it the cheapest to roll forward.
+    # The cheapest classical here at ~5s for a fit plus a thousand forecasts: the spec search
+    # is barely sensitive to record length and the smoothing filter is a single pass.
     scorecard = Scorecard(
         history_requirements=Level.MEDIUM,
         interpretability=Level.HIGH,
-        fit_cost=Level.LOW,
-        inference_cost=Level.LOW,
+        running_cost=RunningCost(level=Level.LOW, growth=GrowthShape.LINEAR),
         tuning_effort=Level.LOW,
-        robustness_to_noise=Level.MEDIUM,
     )
 
     def __init__(self, season_length: int = 1, max_train_steps: int = TRAIN_POINT_CEILING):
@@ -341,17 +340,13 @@ class TBATSForecaster(Forecaster):
     # recursion, kept stable by the fitted (damped-trend-eligible) coefficients rather than
     # a leaf bound or linearity.
     forecast_strategy = ForecastStrategy.RECURSIVE
-    # Now the same profile as AutoARIMA/AutoETS: an expensive one-time search, then a
-    # cheap fixed-coefficient roll-forward -- fit_cost is the heaviest of the classicals
-    # (a genuine multi-model AIC search, not just a stepwise/spec search), inference_cost
-    # is the cheapest (a plain linear recursion, no decomposition or filter re-derivation).
+    # A slow fit (~18s at 100,000 points) that then costs almost nothing per origin, so a
+    # thousand forecasts still come in under a minute -- the mirror image of Theta below.
     scorecard = Scorecard(
         history_requirements=Level.MEDIUM,
         interpretability=Level.MEDIUM,
-        fit_cost=Level.HIGH,
-        inference_cost=Level.LOW,
+        running_cost=RunningCost(level=Level.LOW, growth=GrowthShape.LINEAR),
         tuning_effort=Level.LOW,
-        robustness_to_noise=Level.MEDIUM,
     )
 
     def __init__(
@@ -499,15 +494,15 @@ class ThetaForecaster(_ForwardForecaster):
     )
     # Same feed-forward recursion as AutoARIMA/AutoETS — see AutoARIMAForecaster's comment.
     forecast_strategy = ForecastStrategy.RECURSIVE
-    # Superlinear in history length at both ends now that the fit sees the whole record:
-    # tens of minutes to fit a long one, and ~110s per origin at 200,000 points to predict it.
+    # The most expensive method in the benchmark to actually run, and the only one whose cost
+    # outruns its data: `forward` re-runs the recursion over the origin's whole growing
+    # history, which measures as quadratic in record length (slope 2.2). Six milliseconds per
+    # forecast on a 3,000-point record, ~16s on a 100,000-point one.
     scorecard = Scorecard(
         history_requirements=Level.MEDIUM,
         interpretability=Level.HIGH,
-        fit_cost=Level.LOW,
-        inference_cost=Level.HIGH,
+        running_cost=RunningCost(level=Level.HIGH, growth=GrowthShape.SUPERLINEAR),
         tuning_effort=Level.LOW,
-        robustness_to_noise=Level.MEDIUM,
     )
 
     def __init__(
@@ -579,16 +574,13 @@ class _MSTLBase(_ForwardForecaster):
     capabilities = Capabilities(
         trend=True, seasonality=True, multiple_seasonality=True, exogenous=False
     )
-    # Needs >=2 full cycles of every declared period before it will fit at all, and STL cost
-    # grows with history x period, so predict is the expensive half — ~0.7s per origin at
-    # 5,000 points up to ~28s at 200,000 for periods [24, 168].
+    # Cheap to fit and expensive to run: the decomposition is one pass, but every origin
+    # re-runs it over that origin's whole history, at ~4s each on a 100,000-point record.
     scorecard = Scorecard(
         history_requirements=Level.MEDIUM,
         interpretability=Level.MEDIUM,
-        fit_cost=Level.LOW,
-        inference_cost=Level.HIGH,
+        running_cost=RunningCost(level=Level.HIGH, growth=GrowthShape.LINEAR),
         tuning_effort=Level.LOW,
-        robustness_to_noise=Level.MEDIUM,
     )
 
     def _make_trend_forecaster(self):
