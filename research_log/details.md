@@ -1,4 +1,49 @@
 ---
+id: 98
+date: "2026-08-26"
+title: "The method cards' cost ratings were audited against the results and cut from six meters to four"
+description: |
+  An audit of all 33 method cards against `results/pilot_metrics.parquet` found the two cost
+  ratings contradicting the timings they claim to be anchored to. `Moirai-2.0` carried the worst
+  inference rating of the four foundation models while being the fastest of them (35ms per
+  origin); `Theta` drew a cheap fit bar and `N-HiTS` an expensive one, though at a fixed record
+  size Theta costs more; and `fit_cost` never used Medium at all, so a 7-second model and a
+  175-second one shared a bucket. The root cause is that both fields banded **raw seconds**,
+  which cannot be compared across cases spanning 3,052 to 214,476 points, and banded them at
+  thresholds no one would notice -- 0.3s per forecast was rated "Medium".
+
+  `fit_cost` and `inference_cost` are replaced by one `running_cost`: one fit plus 1,000
+  forecasts on a 100,000-point record, banded Low under a minute / Medium to fifteen / High
+  beyond, with a `flat` / `linear` / `superlinear` word for how that moves with record length.
+  One field suffices because whichever term dominates carries the fit-once-versus-pay-per-forecast
+  split anyway -- TFT's 175s fit amortises to Medium, MSTL-ETS's trivial fit and 4s-per-forecast
+  cost lands High. All three levels are now used (13/13/7), and `tests/test_method_scorecards.py`
+  pins every declaration to the results so it cannot drift again. The measurement also showed
+  Theta's per-origin cost is **quadratic** in record length (slope 2.2, r=0.995): its 161s on
+  `surge_cuxhaven` was never an outlier case, it is `_ForwardForecaster.predict` re-running the
+  recursion over the whole growing history, which is worth fixing on its own.
+
+  `robustness_to_noise` was dropped rather than re-rated. It graded three different *structures*
+  on one Low/Medium/High scale -- the "Medium seasonality" mistake `scorecard.py`'s own docstring
+  warns against -- read Medium for 25 of 33 methods, and nothing in the results can validate it:
+  worst-vs-typical MASE rewards being uniformly mediocre, and per-origin error spread ranks flat
+  predictors best. What is genuinely known about a method's fragility now lives in its
+  `limitations` prose.
+
+  Two capability fixes came out of the same audit. `exogenous` was being applied under opposite
+  rules -- "in principle" for LightGBM, "as wired here" for TFT, whose entire design is covariate
+  fusion -- and now follows the rubric's stated rule everywhere, with each unwired method saying
+  so in `limitations`. That exposed the larger finding: **every DL method runs univariate on the
+  8 of 12 cases where covariates are necessary**, worth 19-36% MASE to every method that has them,
+  which is why the whole DL zoo sits below `LightGBM+exo` there. That is an unfinished backlog
+  item (`PLAN_exogenous_expansion.md`, Tier 1 shipped, Tiers 2-3 never did) rather than a design
+  choice, and wiring it up is queued as separate work.
+commits:
+  - "a4c60c7": "Add a helper that reads running cost off the measured timings"
+  - "39446d6": "Replace three scorecard ratings with one measured running cost"
+  - "c6544f6": "Render the running-cost meter and its growth shape on the method cards"
+---
+---
 id: 97
 date: "2026-08-24"
 title: "The ensembles are fit once per cell instead of refit at every rolling origin"
