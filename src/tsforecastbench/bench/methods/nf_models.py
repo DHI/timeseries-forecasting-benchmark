@@ -81,11 +81,12 @@ class _NFBase(Forecaster):
         trend=True, seasonality=True, multiple_seasonality=True, exogenous=True
     )
     # A full pytorch_lightning training loop per case, run to convergence, against one forward
-    # pass at predict -- so the fit dominates and a thousand forecasts add little. Flat: these
-    # train to a step ceiling, so a 3,000-point record costs about what a 150,000-point one
-    # does. Tuning effort is High as the cost of doing it properly: they run on architecture
-    # defaults regardless of the series' scale or frequency, which is a limitation rather than
-    # an absence of knobs.
+    # pass at predict. The three land on the same rating from different directions: TFT's 159s
+    # fit outweighs its forecasts, while iTransformer's 7s fit is dwarfed by a thousand of
+    # them. All three read flat -- they train to a step ceiling, so a 3,000-point record costs
+    # about what a 150,000-point one does. Tuning effort is High as the cost of doing it
+    # properly: they run on architecture defaults regardless of the series' scale or
+    # frequency, which is a limitation rather than an absence of knobs.
     scorecard = Scorecard(
         history_requirements=Level.HIGH,
         interpretability=Level.LOW,

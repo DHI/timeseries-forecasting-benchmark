@@ -326,8 +326,8 @@ class CatBoostForecaster(_WindowedMLBase):
     capabilities = _WindowedMLBase.capabilities.model_copy(update={"trend": False})
     # Same recursive lag-feedback strategy as LightGBM, same leaf-bound stability.
     forecast_strategy = ForecastStrategy.RECURSIVE
-    # Same shape as LightGBM and about half the running cost -- a cheap fit against a
-    # per-origin recursion that grows with the record.
+    # Same shape as LightGBM and about a third cheaper to run -- a two-second fit against a
+    # per-origin recursion that grows with the record and accounts for nearly all of it.
     scorecard = Scorecard(
         history_requirements=Level.HIGH,
         interpretability=Level.MEDIUM,
