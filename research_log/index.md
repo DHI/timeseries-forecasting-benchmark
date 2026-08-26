@@ -7,6 +7,8 @@ entry and its commits. See `schema.md` for the format both files follow.
 <!-- Add new entries below this line, newest first, matching details.md. -->
 
 ### 2026-08-26
+- 100 — Every DL method gets a +exo column, on the same covariate contract as the ML ones
+- 99 — The DL lookback now reaches as far back as the ML lag ladder
 - 98 — Method cards drop from six ratings to four
 
 ### 2026-08-24
