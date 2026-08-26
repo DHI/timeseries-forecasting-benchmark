@@ -2,13 +2,20 @@ import { Fragment, memo } from 'react';
 import {
   CAPABILITY_FIELDS,
   FORECAST_STRATEGY_HELP,
+  GROWTH_SHAPE_HELP,
   LEVEL_SEGMENTS,
   SCORECARD_FIELDS,
   SEGMENT_COUNT,
   TONE_VAR,
   levelTone,
 } from '../../data/scorecardConfig';
-import type { Capabilities, ForecastStrategy, Scorecard } from '../../types/data';
+import type {
+  Capabilities,
+  ForecastStrategy,
+  GrowthShape,
+  Scorecard,
+  ScorecardLevel,
+} from '../../types/data';
 
 const ROW_LABEL_STYLE = {
   color: 'var(--text-secondary)',
@@ -27,6 +34,21 @@ const SEGMENT_BASE_STYLE = {
   height: 8,
   flex: '0 0 auto',
 } as const;
+
+const GROWTH_STYLE = {
+  color: 'var(--text-muted)',
+  fontSize: '0.9em',
+  whiteSpace: 'nowrap',
+} as const;
+
+/** `running_cost` carries a level plus a growth shape; every other field is a bare level.
+ * Reading them apart here keeps the meter loop uniform. */
+function readField(scorecard: Scorecard, key: keyof Scorecard) {
+  const value = scorecard[key];
+  return typeof value === 'string'
+    ? { level: value as ScorecardLevel, growth: undefined }
+    : { level: value.level, growth: value.growth as GrowthShape };
+}
 
 /** Always lists every capability, marked supported or not, so a method with no seasonal
  * mechanism reads as an explicit "no" rather than as an absence you have to notice. */
@@ -60,9 +82,13 @@ function CapabilityRowComponent({ capabilities }: { capabilities: Capabilities }
 
 /** One row per rating: label, then a three-segment bar. Bar length is the rating's magnitude
  * and bar colour is whether that magnitude is good for this field (see `levelTone`), so a Low
- * fit cost is a short green bar. The level isn't spelled out — length already distinguishes
+ * running cost is a short green bar. The level isn't spelled out — length already distinguishes
  * the three values on its own, so it stays legible without colour, and each bar carries the
- * level in its `aria-label` for screen readers. */
+ * level in its `aria-label` for screen readers.
+ *
+ * Running cost also prints its growth shape as a word after the bar. The bar is read at one
+ * reference record size, so without the word it can't separate a cost that ignores record
+ * length from one that outruns it. */
 function ScorecardMetersComponent({ scorecard }: { scorecard: Scorecard }) {
   return (
     <div
@@ -76,7 +102,7 @@ function ScorecardMetersComponent({ scorecard }: { scorecard: Scorecard }) {
       }}
     >
       {SCORECARD_FIELDS.map(({ key, label, lowerIsBetter, help }) => {
-        const level = scorecard[key];
+        const { level, growth } = readField(scorecard, key);
         const filled = LEVEL_SEGMENTS[level];
         const color = TONE_VAR[levelTone(level, lowerIsBetter)];
         // Cells are siblings of the grid rather than wrapped per row, so the two columns stay
@@ -86,23 +112,34 @@ function ScorecardMetersComponent({ scorecard }: { scorecard: Scorecard }) {
             <span title={help} style={ROW_LABEL_STYLE}>
               {label}
             </span>
-            <span
-              role="img"
-              aria-label={`${label}: ${level}`}
-              title={level}
-              style={{ display: 'inline-flex', gap: 2 }}
-            >
-              {Array.from({ length: SEGMENT_COUNT }, (_, i) => (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <span
+                role="img"
+                aria-label={`${label}: ${level}`}
+                title={level}
+                style={{ display: 'inline-flex', gap: 2 }}
+              >
+                {Array.from({ length: SEGMENT_COUNT }, (_, i) => (
+                  <span
+                    key={i}
+                    aria-hidden="true"
+                    data-testid={`segment-${key}-${i < filled ? 'filled' : 'empty'}`}
+                    style={{
+                      ...SEGMENT_BASE_STYLE,
+                      background: i < filled ? color : 'var(--level-empty)',
+                    }}
+                  />
+                ))}
+              </span>
+              {growth && (
                 <span
-                  key={i}
-                  aria-hidden="true"
-                  data-testid={`segment-${key}-${i < filled ? 'filled' : 'empty'}`}
-                  style={{
-                    ...SEGMENT_BASE_STYLE,
-                    background: i < filled ? color : 'var(--level-empty)',
-                  }}
-                />
-              ))}
+                  data-testid={`growth-${key}`}
+                  title={GROWTH_SHAPE_HELP[growth]}
+                  style={GROWTH_STYLE}
+                >
+                  {growth}
+                </span>
+              )}
             </span>
           </Fragment>
         );

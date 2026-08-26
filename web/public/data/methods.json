@@ -17,10 +17,11 @@
     "scorecard": {
       "history_requirements": "Medium",
       "interpretability": "Medium",
-      "fit_cost": "Low",
-      "inference_cost": "Low",
-      "tuning_effort": "Low",
-      "robustness_to_noise": "Medium"
+      "running_cost": {
+        "level": "Low",
+        "growth": "linear"
+      },
+      "tuning_effort": "Low"
     },
     "forecast_strategy": "Recursive"
   },
@@ -42,10 +43,11 @@
     "scorecard": {
       "history_requirements": "Medium",
       "interpretability": "High",
-      "fit_cost": "Low",
-      "inference_cost": "Low",
-      "tuning_effort": "Low",
-      "robustness_to_noise": "Medium"
+      "running_cost": {
+        "level": "Low",
+        "growth": "linear"
+      },
+      "tuning_effort": "Low"
     },
     "forecast_strategy": "Recursive"
   },
@@ -67,10 +69,11 @@
     "scorecard": {
       "history_requirements": "High",
       "interpretability": "Medium",
-      "fit_cost": "Low",
-      "inference_cost": "Low",
-      "tuning_effort": "Medium",
-      "robustness_to_noise": "Medium"
+      "running_cost": {
+        "level": "Medium",
+        "growth": "linear"
+      },
+      "tuning_effort": "Medium"
     },
     "forecast_strategy": "Recursive"
   },
@@ -92,10 +95,11 @@
     "scorecard": {
       "history_requirements": "High",
       "interpretability": "Medium",
-      "fit_cost": "Low",
-      "inference_cost": "Low",
-      "tuning_effort": "Medium",
-      "robustness_to_noise": "Medium"
+      "running_cost": {
+        "level": "Medium",
+        "growth": "linear"
+      },
+      "tuning_effort": "Medium"
     },
     "forecast_strategy": "Recursive"
   },
@@ -105,7 +109,7 @@
     "uses_exogenous": true,
     "library": "chronos-forecasting (Amazon Chronos-2) + torch",
     "compute_profile": "CPU-capable but slower than Chronos-Bolt (120M params); zero-shot, so there's no per-case training \u2014 one forward pass per prediction via the DataFrame API. The pretrained model is loaded once and cached across every case and origin.",
-    "limitations": "Zero-shot: never learns anything case-specific, only what it picked up from pretraining on other series. Univariate by default \u2014 Chronos-2 supports covariates natively, and the +exo variant feeds the case's declared covariates to `predict_df` as past+future covariate columns, using a perfect-forecast proxy (not a real forecast of those covariates) for the future values. Conditions on a fixed window sized to the case's pre-test history, capped at `context_length` points. Labeled Direct below because this benchmark issues one predict_df() call for the full horizon \u2014 that describes this calling interface only, not whether the pretrained decoder generates internally autoregressively, which isn't verified against the pinned chronos-forecasting version.",
+    "limitations": "Zero-shot: never learns anything case-specific, only what it picked up from pretraining on other series. Its running cost is inference alone, but standing it up means pulling 120M pretrained parameters down and holding them in memory. Univariate by default \u2014 Chronos-2 supports covariates natively, and the +exo variant feeds the case's declared covariates to `predict_df` as past+future covariate columns, using a perfect-forecast proxy (not a real forecast of those covariates) for the future values. Conditions on a fixed window sized to the case's pre-test history, capped at `context_length` points. Labeled Direct below because this benchmark issues one predict_df() call for the full horizon \u2014 that describes this calling interface only, not whether the pretrained decoder generates internally autoregressively, which isn't verified against the pinned chronos-forecasting version.",
     "code_snippet": "from chronos import Chronos2Pipeline\n\npipe = Chronos2Pipeline.from_pretrained(\"amazon/chronos-2\", device_map=\"cpu\")\npred = pipe.predict_df(\n    context_df,                      # id / timestamp / target (+ covariate) columns\n    future_df=future_df,             # +exo: future covariate values (id/timestamp/cols)\n    prediction_length=horizon,\n    quantile_levels=[0.1, 0.5, 0.9],\n    id_column=\"id\",\n    timestamp_column=\"timestamp\",\n    target=\"target\",\n)\ny_hat = pred[\"predictions\"]          # median",
     "capabilities": {
       "trend": true,
@@ -117,10 +121,11 @@
     "scorecard": {
       "history_requirements": "Low",
       "interpretability": "Low",
-      "fit_cost": "Low",
-      "inference_cost": "High",
-      "tuning_effort": "Low",
-      "robustness_to_noise": "Medium"
+      "running_cost": {
+        "level": "Medium",
+        "growth": "flat"
+      },
+      "tuning_effort": "Low"
     },
     "forecast_strategy": "Direct"
   },
@@ -130,7 +135,7 @@
     "uses_exogenous": false,
     "library": "chronos-forecasting (Amazon Chronos-2) + torch",
     "compute_profile": "CPU-capable but slower than Chronos-Bolt (120M params); zero-shot, so there's no per-case training \u2014 one forward pass per prediction via the DataFrame API. The pretrained model is loaded once and cached across every case and origin.",
-    "limitations": "Zero-shot: never learns anything case-specific, only what it picked up from pretraining on other series. Univariate by default \u2014 Chronos-2 supports covariates natively, and the +exo variant feeds the case's declared covariates to `predict_df` as past+future covariate columns, using a perfect-forecast proxy (not a real forecast of those covariates) for the future values. Conditions on a fixed window sized to the case's pre-test history, capped at `context_length` points. Labeled Direct below because this benchmark issues one predict_df() call for the full horizon \u2014 that describes this calling interface only, not whether the pretrained decoder generates internally autoregressively, which isn't verified against the pinned chronos-forecasting version.",
+    "limitations": "Zero-shot: never learns anything case-specific, only what it picked up from pretraining on other series. Its running cost is inference alone, but standing it up means pulling 120M pretrained parameters down and holding them in memory. Univariate by default \u2014 Chronos-2 supports covariates natively, and the +exo variant feeds the case's declared covariates to `predict_df` as past+future covariate columns, using a perfect-forecast proxy (not a real forecast of those covariates) for the future values. Conditions on a fixed window sized to the case's pre-test history, capped at `context_length` points. Labeled Direct below because this benchmark issues one predict_df() call for the full horizon \u2014 that describes this calling interface only, not whether the pretrained decoder generates internally autoregressively, which isn't verified against the pinned chronos-forecasting version.",
     "code_snippet": "from chronos import Chronos2Pipeline\n\npipe = Chronos2Pipeline.from_pretrained(\"amazon/chronos-2\", device_map=\"cpu\")\npred = pipe.predict_df(\n    context_df,                      # id / timestamp / target (+ covariate) columns\n    future_df=future_df,             # +exo: future covariate values (id/timestamp/cols)\n    prediction_length=horizon,\n    quantile_levels=[0.1, 0.5, 0.9],\n    id_column=\"id\",\n    timestamp_column=\"timestamp\",\n    target=\"target\",\n)\ny_hat = pred[\"predictions\"]          # median",
     "capabilities": {
       "trend": true,
@@ -142,10 +147,11 @@
     "scorecard": {
       "history_requirements": "Low",
       "interpretability": "Low",
-      "fit_cost": "Low",
-      "inference_cost": "High",
-      "tuning_effort": "Low",
-      "robustness_to_noise": "Medium"
+      "running_cost": {
+        "level": "Medium",
+        "growth": "flat"
+      },
+      "tuning_effort": "Low"
     },
     "forecast_strategy": "Direct"
   },
@@ -155,7 +161,7 @@
     "uses_exogenous": false,
     "library": "chronos-forecasting (Amazon Chronos-Bolt) + torch",
     "compute_profile": "CPU-capable; zero-shot, so there's no per-case training \u2014 one forward pass per prediction. The pretrained model is loaded once and cached across every case and origin.",
-    "limitations": "Zero-shot: never learns anything case-specific, only what it picked up from pretraining on other series. Univariate \u2014 ignores exogenous inputs. Conditions on a fixed window sized to the case's pre-test history, capped at the most recent 2,048 points (context_length). Labeled Direct below because this benchmark issues one predict_quantiles() call for the full horizon \u2014 that describes this calling interface only, not whether the pretrained decoder generates internally autoregressively, which isn't verified against the pinned chronos-forecasting version.",
+    "limitations": "Zero-shot: never learns anything case-specific, only what it picked up from pretraining on other series. Its running cost is inference alone, but standing it up means pulling the pretrained weights down and holding them in memory. Univariate \u2014 ignores exogenous inputs. Conditions on a fixed window sized to the case's pre-test history, capped at the most recent 2,048 points (context_length). Labeled Direct below because this benchmark issues one predict_quantiles() call for the full horizon \u2014 that describes this calling interface only, not whether the pretrained decoder generates internally autoregressively, which isn't verified against the pinned chronos-forecasting version.",
     "code_snippet": "from chronos import BaseChronosPipeline\n\npipe = BaseChronosPipeline.from_pretrained(\"amazon/chronos-bolt-small\", device_map=\"cpu\")\nquantiles, _mean = pipe.predict_quantiles(\n    inputs=context,                  # last 2048 observed values\n    prediction_length=horizon,\n    quantile_levels=[0.1, 0.5, 0.9],\n)\ny_hat = quantiles[..., 1]            # median",
     "capabilities": {
       "trend": true,
@@ -167,10 +173,11 @@
     "scorecard": {
       "history_requirements": "Low",
       "interpretability": "Low",
-      "fit_cost": "Low",
-      "inference_cost": "Medium",
-      "tuning_effort": "Low",
-      "robustness_to_noise": "Medium"
+      "running_cost": {
+        "level": "Low",
+        "growth": "flat"
+      },
+      "tuning_effort": "Low"
     },
     "forecast_strategy": "Direct"
   },
@@ -192,10 +199,11 @@
     "scorecard": {
       "history_requirements": "Medium",
       "interpretability": "High",
-      "fit_cost": "Low",
-      "inference_cost": "Low",
-      "tuning_effort": "Low",
-      "robustness_to_noise": "High"
+      "running_cost": {
+        "level": "Low",
+        "growth": "flat"
+      },
+      "tuning_effort": "Low"
     },
     "forecast_strategy": "N/A"
   },
@@ -217,10 +225,11 @@
     "scorecard": {
       "history_requirements": "High",
       "interpretability": "Medium",
-      "fit_cost": "Low",
-      "inference_cost": "Low",
-      "tuning_effort": "Low",
-      "robustness_to_noise": "Medium"
+      "running_cost": {
+        "level": "Low",
+        "growth": "linear"
+      },
+      "tuning_effort": "Low"
     },
     "forecast_strategy": "Direct"
   },
@@ -230,22 +239,23 @@
     "uses_exogenous": false,
     "library": "neuralforecast + pytorch_lightning",
     "compute_profile": "Uses a GPU automatically if one is available (accelerator='auto'), otherwise falls back to CPU; a heavier training loop (full pytorch_lightning trainer overhead, run until held-out loss stops improving rather than for a fixed number of steps) than the custom torch models in torchdl.py. Only available on Linux with Python <3.13 (the `nf` extra), since neuralforecast depends on `ray`.",
-    "limitations": "Univariate \u2014 ignores exogenous inputs. Trains a fresh model per case with no hyperparameter tuning, using the same architecture defaults regardless of the series' scale or frequency. On an extended-history fit, where the record is a panel of gap-separated segments, neuralforecast can only hold out an equal-length tail from every segment, so early stopping there watches a shorter holdout than the case's full validation split. Architecturally multivariate but fixed to a single series here (n_series=1), so unlike its siblings it can't pool the extra segments of an extended-history fit.",
+    "limitations": "Supports future covariates in neuralforecast, but this wrapper wires none of them up, so the column runs univariate. Trains a fresh model per case with no hyperparameter tuning, using the same architecture defaults regardless of the series' scale or frequency. On an extended-history fit, where the record is a panel of gap-separated segments, neuralforecast can only hold out an equal-length tail from every segment, so early stopping there watches a shorter holdout than the case's full validation split. Architecturally multivariate but fixed to a single series here (n_series=1), so unlike its siblings it can't pool the extra segments of an extended-history fit -- and that same pin leaves it without a covariate slot to wire, so it is the one architecture here whose univariate column is a property of the configuration rather than of unfinished plumbing.",
     "code_snippet": "from neuralforecast import NeuralForecast\nfrom neuralforecast.models import iTransformer\n\nmodel = iTransformer(h=horizon, input_size=lookback, n_series=1,\n                     early_stop_patience_steps=5)\nnf = NeuralForecast(models=[model], freq=case.freq)\nnf.fit(train_df, val_size=val_size)  # train_df: unique_id, ds, y\ny_hat = nf.predict()[\"iTransformer\"]",
     "capabilities": {
       "trend": true,
       "seasonality": true,
       "multiple_seasonality": true,
-      "exogenous": false,
+      "exogenous": true,
       "gaps": false
     },
     "scorecard": {
       "history_requirements": "High",
       "interpretability": "Low",
-      "fit_cost": "High",
-      "inference_cost": "Low",
-      "tuning_effort": "High",
-      "robustness_to_noise": "Medium"
+      "running_cost": {
+        "level": "Medium",
+        "growth": "flat"
+      },
+      "tuning_effort": "High"
     },
     "forecast_strategy": "Direct"
   },
@@ -267,10 +277,11 @@
     "scorecard": {
       "history_requirements": "High",
       "interpretability": "Medium",
-      "fit_cost": "Low",
-      "inference_cost": "Low",
-      "tuning_effort": "Medium",
-      "robustness_to_noise": "Medium"
+      "running_cost": {
+        "level": "Medium",
+        "growth": "linear"
+      },
+      "tuning_effort": "Medium"
     },
     "forecast_strategy": "Recursive"
   },
@@ -292,10 +303,11 @@
     "scorecard": {
       "history_requirements": "High",
       "interpretability": "Medium",
-      "fit_cost": "Low",
-      "inference_cost": "Low",
-      "tuning_effort": "Medium",
-      "robustness_to_noise": "Medium"
+      "running_cost": {
+        "level": "Medium",
+        "growth": "linear"
+      },
+      "tuning_effort": "Medium"
     },
     "forecast_strategy": "Recursive"
   },
@@ -317,10 +329,11 @@
     "scorecard": {
       "history_requirements": "Medium",
       "interpretability": "Medium",
-      "fit_cost": "Low",
-      "inference_cost": "Low",
-      "tuning_effort": "Low",
-      "robustness_to_noise": "Medium"
+      "running_cost": {
+        "level": "Medium",
+        "growth": "linear"
+      },
+      "tuning_effort": "Low"
     },
     "forecast_strategy": "Recursive"
   },
@@ -342,10 +355,11 @@
     "scorecard": {
       "history_requirements": "Medium",
       "interpretability": "Medium",
-      "fit_cost": "Low",
-      "inference_cost": "Low",
-      "tuning_effort": "Low",
-      "robustness_to_noise": "Medium"
+      "running_cost": {
+        "level": "Medium",
+        "growth": "linear"
+      },
+      "tuning_effort": "Low"
     },
     "forecast_strategy": "Recursive"
   },
@@ -367,10 +381,11 @@
     "scorecard": {
       "history_requirements": "High",
       "interpretability": "Low",
-      "fit_cost": "High",
-      "inference_cost": "Low",
-      "tuning_effort": "High",
-      "robustness_to_noise": "Low"
+      "running_cost": {
+        "level": "Medium",
+        "growth": "linear"
+      },
+      "tuning_effort": "High"
     },
     "forecast_strategy": "Direct"
   },
@@ -392,10 +407,11 @@
     "scorecard": {
       "history_requirements": "High",
       "interpretability": "Low",
-      "fit_cost": "High",
-      "inference_cost": "Low",
-      "tuning_effort": "High",
-      "robustness_to_noise": "Low"
+      "running_cost": {
+        "level": "Medium",
+        "growth": "linear"
+      },
+      "tuning_effort": "High"
     },
     "forecast_strategy": "Direct"
   },
@@ -417,10 +433,11 @@
     "scorecard": {
       "history_requirements": "Medium",
       "interpretability": "Medium",
-      "fit_cost": "Low",
-      "inference_cost": "High",
-      "tuning_effort": "Low",
-      "robustness_to_noise": "Medium"
+      "running_cost": {
+        "level": "High",
+        "growth": "linear"
+      },
+      "tuning_effort": "Low"
     },
     "forecast_strategy": "Recursive"
   },
@@ -442,10 +459,11 @@
     "scorecard": {
       "history_requirements": "Medium",
       "interpretability": "Medium",
-      "fit_cost": "Low",
-      "inference_cost": "High",
-      "tuning_effort": "Low",
-      "robustness_to_noise": "Medium"
+      "running_cost": {
+        "level": "High",
+        "growth": "linear"
+      },
+      "tuning_effort": "Low"
     },
     "forecast_strategy": "Recursive"
   },
@@ -467,10 +485,11 @@
     "scorecard": {
       "history_requirements": "Low",
       "interpretability": "High",
-      "fit_cost": "Low",
-      "inference_cost": "Low",
-      "tuning_effort": "Low",
-      "robustness_to_noise": "High"
+      "running_cost": {
+        "level": "Low",
+        "growth": "flat"
+      },
+      "tuning_effort": "Low"
     },
     "forecast_strategy": "N/A"
   },
@@ -480,7 +499,7 @@
     "uses_exogenous": true,
     "library": "uni2ts (Salesforce Moirai-2.0) + gluonts + torch",
     "compute_profile": "CPU-capable but slow; zero-shot, so there's no per-case training \u2014 one forward pass per prediction through the GluonTS predictor. The pretrained weights are loaded once and cached across every case and origin.",
-    "limitations": "Zero-shot: never learns anything case-specific, only what it picked up from pretraining on other series. Univariate by default \u2014 Moirai supports covariates natively, and the +exo variant feeds the case's declared covariates in as `feat_dynamic_real`, using a perfect-forecast proxy (not a real forecast of those covariates) for the future values. Conditions on a fixed window sized to the case's pre-test history, capped at the model's position-embedding cache size (max_seq_len * patch_size) \u2014 Salesforce hasn't published a trained max context length for this model. Labeled Direct below because this benchmark requests the full horizon from one predictor.predict() call \u2014 that describes this calling interface only, not whether the pretrained decoder generates internally autoregressively, which isn't verified against the pinned uni2ts version.",
+    "limitations": "Zero-shot: never learns anything case-specific, only what it picked up from pretraining on other series. Its running cost is inference alone, but standing it up means pulling the pretrained weights down and holding them in memory. Univariate by default \u2014 Moirai supports covariates natively, and the +exo variant feeds the case's declared covariates in as `feat_dynamic_real`, using a perfect-forecast proxy (not a real forecast of those covariates) for the future values. Conditions on a fixed window sized to the case's pre-test history, capped at the model's position-embedding cache size (max_seq_len * patch_size) \u2014 Salesforce hasn't published a trained max context length for this model. Labeled Direct below because this benchmark requests the full horizon from one predictor.predict() call \u2014 that describes this calling interface only, not whether the pretrained decoder generates internally autoregressively, which isn't verified against the pinned uni2ts version.",
     "code_snippet": "from gluonts.dataset.pandas import PandasDataset\nfrom uni2ts.model.moirai2 import Moirai2Forecast, Moirai2Module\n\nforecaster = Moirai2Forecast(\n    module=Moirai2Module.from_pretrained(\"Salesforce/moirai-2.0-R-small\"),\n    prediction_length=horizon, context_length=ctx_len,\n    target_dim=1, feat_dynamic_real_dim=0, past_feat_dynamic_real_dim=0,\n    # +exo: feat_dynamic_real_dim=len(exo_cols); dataset built with\n    # PandasDataset(df, feat_dynamic_real=exo_cols, future_length=horizon)\n)\npredictor = forecaster.create_predictor(batch_size=1)\nforecast = next(iter(predictor.predict(dataset)))\ny_hat = forecast.median",
     "capabilities": {
       "trend": true,
@@ -492,10 +511,11 @@
     "scorecard": {
       "history_requirements": "Low",
       "interpretability": "Low",
-      "fit_cost": "Low",
-      "inference_cost": "High",
-      "tuning_effort": "Low",
-      "robustness_to_noise": "Medium"
+      "running_cost": {
+        "level": "Low",
+        "growth": "flat"
+      },
+      "tuning_effort": "Low"
     },
     "forecast_strategy": "Direct"
   },
@@ -505,7 +525,7 @@
     "uses_exogenous": false,
     "library": "uni2ts (Salesforce Moirai-2.0) + gluonts + torch",
     "compute_profile": "CPU-capable but slow; zero-shot, so there's no per-case training \u2014 one forward pass per prediction through the GluonTS predictor. The pretrained weights are loaded once and cached across every case and origin.",
-    "limitations": "Zero-shot: never learns anything case-specific, only what it picked up from pretraining on other series. Univariate by default \u2014 Moirai supports covariates natively, and the +exo variant feeds the case's declared covariates in as `feat_dynamic_real`, using a perfect-forecast proxy (not a real forecast of those covariates) for the future values. Conditions on a fixed window sized to the case's pre-test history, capped at the model's position-embedding cache size (max_seq_len * patch_size) \u2014 Salesforce hasn't published a trained max context length for this model. Labeled Direct below because this benchmark requests the full horizon from one predictor.predict() call \u2014 that describes this calling interface only, not whether the pretrained decoder generates internally autoregressively, which isn't verified against the pinned uni2ts version.",
+    "limitations": "Zero-shot: never learns anything case-specific, only what it picked up from pretraining on other series. Its running cost is inference alone, but standing it up means pulling the pretrained weights down and holding them in memory. Univariate by default \u2014 Moirai supports covariates natively, and the +exo variant feeds the case's declared covariates in as `feat_dynamic_real`, using a perfect-forecast proxy (not a real forecast of those covariates) for the future values. Conditions on a fixed window sized to the case's pre-test history, capped at the model's position-embedding cache size (max_seq_len * patch_size) \u2014 Salesforce hasn't published a trained max context length for this model. Labeled Direct below because this benchmark requests the full horizon from one predictor.predict() call \u2014 that describes this calling interface only, not whether the pretrained decoder generates internally autoregressively, which isn't verified against the pinned uni2ts version.",
     "code_snippet": "from gluonts.dataset.pandas import PandasDataset\nfrom uni2ts.model.moirai2 import Moirai2Forecast, Moirai2Module\n\nforecaster = Moirai2Forecast(\n    module=Moirai2Module.from_pretrained(\"Salesforce/moirai-2.0-R-small\"),\n    prediction_length=horizon, context_length=ctx_len,\n    target_dim=1, feat_dynamic_real_dim=0, past_feat_dynamic_real_dim=0,\n    # +exo: feat_dynamic_real_dim=len(exo_cols); dataset built with\n    # PandasDataset(df, feat_dynamic_real=exo_cols, future_length=horizon)\n)\npredictor = forecaster.create_predictor(batch_size=1)\nforecast = next(iter(predictor.predict(dataset)))\ny_hat = forecast.median",
     "capabilities": {
       "trend": true,
@@ -517,10 +537,11 @@
     "scorecard": {
       "history_requirements": "Low",
       "interpretability": "Low",
-      "fit_cost": "Low",
-      "inference_cost": "High",
-      "tuning_effort": "Low",
-      "robustness_to_noise": "Medium"
+      "running_cost": {
+        "level": "Low",
+        "growth": "flat"
+      },
+      "tuning_effort": "Low"
     },
     "forecast_strategy": "Direct"
   },
@@ -530,22 +551,23 @@
     "uses_exogenous": false,
     "library": "torch (custom implementation, no ray/lightning)",
     "compute_profile": "CPU (no GPU dependency); trains a small network from scratch per case over randomly sampled windows, stopping when held-out loss stops improving rather than at a fixed step count, so training cost scales with how much the case has left to learn. Among the heaviest CPU methods in the benchmark; keep rolling-origin counts modest when including them.",
-    "limitations": "Univariate \u2014 ignores exogenous inputs (the covariate story lives in the windowed-ML +exo columns instead). Each window is instance-normalised (RevIN-style) before the model and de-normalised after, which is what makes the same architecture usable across very different series scales.",
+    "limitations": "Both architectures take covariates as published, but these compact torch ports wire none up, so the column runs univariate (the covariate story lives in the windowed-ML +exo columns instead). Each window is instance-normalised (RevIN-style) before the model and de-normalised after, which is what makes the same architecture usable across very different series scales.",
     "code_snippet": "class NHiTSBlock(nn.Module):        # one block at a given pooling rate\n    def __init__(self, L, H, pool_k, hidden, down):\n        self.pool = nn.AvgPool1d(pool_k, ceil_mode=True)     # coarsen the input\n        self.mlp = nn.Sequential(nn.Linear(L // pool_k, hidden), nn.ReLU(),\n                                  nn.Linear(hidden, hidden), nn.ReLU())\n        self.b_lin = nn.Linear(hidden, L // down)            # backcast basis\n        self.f_lin = nn.Linear(hidden, H // down)            # forecast basis\n\n    def forward(self, x):\n        h = self.mlp(self.pool(x))\n        back = interpolate(self.b_lin(h), size=L)  # upsample basis to input length\n        fore = interpolate(self.f_lin(h), size=H)  # upsample basis to horizon length\n        return back, fore\n\n# stack of blocks, coarse to fine (pool_k=8, 4, 1): each subtracts its backcast\n# from the residual the next block sees; forecasts from every block sum\nresidual, forecast = window, 0.0\nfor block in blocks:\n    back, fore = block(residual)\n    residual = residual - back\n    forecast = forecast + fore\n\n# training: per-window instance norm (RevIN-style), plain MSE + Adam\nmu, sd = window.mean(1), window.std(1)\npred = net((window - mu) / sd) * sd + mu\nloss = mse_loss(pred, target)",
     "capabilities": {
       "trend": true,
       "seasonality": true,
       "multiple_seasonality": true,
-      "exogenous": false,
+      "exogenous": true,
       "gaps": true
     },
     "scorecard": {
       "history_requirements": "High",
       "interpretability": "Low",
-      "fit_cost": "High",
-      "inference_cost": "Low",
-      "tuning_effort": "High",
-      "robustness_to_noise": "Medium"
+      "running_cost": {
+        "level": "Low",
+        "growth": "linear"
+      },
+      "tuning_effort": "High"
     },
     "forecast_strategy": "Direct"
   },
@@ -555,22 +577,23 @@
     "uses_exogenous": false,
     "library": "torch (custom implementation, no ray/lightning)",
     "compute_profile": "CPU (no GPU dependency); trains a small network from scratch per case over randomly sampled windows, stopping when held-out loss stops improving rather than at a fixed step count, so training cost scales with how much the case has left to learn. Among the heaviest CPU methods in the benchmark; keep rolling-origin counts modest when including them.",
-    "limitations": "Univariate \u2014 ignores exogenous inputs (the covariate story lives in the windowed-ML +exo columns instead). Each window is instance-normalised (RevIN-style) before the model and de-normalised after, which is what makes the same architecture usable across very different series scales.",
+    "limitations": "Both architectures take covariates as published, but these compact torch ports wire none up, so the column runs univariate (the covariate story lives in the windowed-ML +exo columns instead). Each window is instance-normalised (RevIN-style) before the model and de-normalised after, which is what makes the same architecture usable across very different series scales.",
     "code_snippet": "class PatchTSTNet(nn.Module):\n    def __init__(self, L, H, patch_len=16, stride=8, d_model=64, n_heads=4,\n                 n_layers=2):\n        self.embed = nn.Linear(patch_len, d_model)\n        self.pos = nn.Parameter(torch.randn(n_patches, d_model) * 0.02)\n        layer = nn.TransformerEncoderLayer(d_model, n_heads, dim_feedforward=128)\n        self.encoder = nn.TransformerEncoder(layer, n_layers)\n        self.head = nn.Sequential(nn.Flatten(), nn.Linear(n_patches * d_model, H))\n\n    def forward(self, x):                        # x: (B, L), already normalised\n        patches = x.unfold(1, self.patch_len, self.stride)  # (B, n_patches, patch_len)\n        z = self.encoder(self.embed(patches) + self.pos)\n        return self.head(z)                      # (B, H)\n\n# training: per-window instance norm (RevIN-style), plain MSE + Adam\nmu, sd = window.mean(1), window.std(1)\npred = net((window - mu) / sd) * sd + mu\nloss = mse_loss(pred, target)",
     "capabilities": {
       "trend": true,
       "seasonality": true,
       "multiple_seasonality": true,
-      "exogenous": false,
+      "exogenous": true,
       "gaps": true
     },
     "scorecard": {
       "history_requirements": "High",
       "interpretability": "Low",
-      "fit_cost": "High",
-      "inference_cost": "Low",
-      "tuning_effort": "High",
-      "robustness_to_noise": "Medium"
+      "running_cost": {
+        "level": "Low",
+        "growth": "flat"
+      },
+      "tuning_effort": "High"
     },
     "forecast_strategy": "Direct"
   },
@@ -592,10 +615,11 @@
     "scorecard": {
       "history_requirements": "Low",
       "interpretability": "High",
-      "fit_cost": "Low",
-      "inference_cost": "Low",
-      "tuning_effort": "Low",
-      "robustness_to_noise": "Low"
+      "running_cost": {
+        "level": "Low",
+        "growth": "flat"
+      },
+      "tuning_effort": "Low"
     },
     "forecast_strategy": "N/A"
   },
@@ -617,10 +641,11 @@
     "scorecard": {
       "history_requirements": "Medium",
       "interpretability": "High",
-      "fit_cost": "Low",
-      "inference_cost": "Low",
-      "tuning_effort": "Low",
-      "robustness_to_noise": "Low"
+      "running_cost": {
+        "level": "Low",
+        "growth": "flat"
+      },
+      "tuning_effort": "Low"
     },
     "forecast_strategy": "N/A"
   },
@@ -642,10 +667,11 @@
     "scorecard": {
       "history_requirements": "Medium",
       "interpretability": "Medium",
-      "fit_cost": "High",
-      "inference_cost": "Low",
-      "tuning_effort": "Low",
-      "robustness_to_noise": "Medium"
+      "running_cost": {
+        "level": "Low",
+        "growth": "linear"
+      },
+      "tuning_effort": "Low"
     },
     "forecast_strategy": "Recursive"
   },
@@ -655,22 +681,23 @@
     "uses_exogenous": false,
     "library": "neuralforecast + pytorch_lightning",
     "compute_profile": "Uses a GPU automatically if one is available (accelerator='auto'), otherwise falls back to CPU; a heavier training loop (full pytorch_lightning trainer overhead, run until held-out loss stops improving rather than for a fixed number of steps) than the custom torch models in torchdl.py. Only available on Linux with Python <3.13 (the `nf` extra), since neuralforecast depends on `ray`.",
-    "limitations": "Univariate \u2014 ignores exogenous inputs. Trains a fresh model per case with no hyperparameter tuning, using the same architecture defaults regardless of the series' scale or frequency. On an extended-history fit, where the record is a panel of gap-separated segments, neuralforecast can only hold out an equal-length tail from every segment, so early stopping there watches a shorter holdout than the case's full validation split.",
+    "limitations": "Supports future covariates in neuralforecast, but this wrapper wires none of them up, so the column runs univariate. Trains a fresh model per case with no hyperparameter tuning, using the same architecture defaults regardless of the series' scale or frequency. On an extended-history fit, where the record is a panel of gap-separated segments, neuralforecast can only hold out an equal-length tail from every segment, so early stopping there watches a shorter holdout than the case's full validation split.",
     "code_snippet": "from neuralforecast import NeuralForecast\nfrom neuralforecast.models import TFT\n\nmodel = TFT(h=horizon, input_size=lookback, early_stop_patience_steps=5)\nnf = NeuralForecast(models=[model], freq=case.freq)\nnf.fit(train_df, val_size=val_size)  # train_df: unique_id, ds, y\ny_hat = nf.predict()[\"TFT\"]",
     "capabilities": {
       "trend": true,
       "seasonality": true,
       "multiple_seasonality": true,
-      "exogenous": false,
+      "exogenous": true,
       "gaps": true
     },
     "scorecard": {
       "history_requirements": "High",
       "interpretability": "Low",
-      "fit_cost": "High",
-      "inference_cost": "Low",
-      "tuning_effort": "High",
-      "robustness_to_noise": "Medium"
+      "running_cost": {
+        "level": "Medium",
+        "growth": "flat"
+      },
+      "tuning_effort": "High"
     },
     "forecast_strategy": "Direct"
   },
@@ -692,10 +719,11 @@
     "scorecard": {
       "history_requirements": "Medium",
       "interpretability": "High",
-      "fit_cost": "Low",
-      "inference_cost": "High",
-      "tuning_effort": "Low",
-      "robustness_to_noise": "Medium"
+      "running_cost": {
+        "level": "High",
+        "growth": "superlinear"
+      },
+      "tuning_effort": "Low"
     },
     "forecast_strategy": "Recursive"
   },
@@ -705,7 +733,7 @@
     "uses_exogenous": true,
     "library": "timesfm (Google TimesFM 2.5, torch backend)",
     "compute_profile": "CPU-capable but slow (200M params); zero-shot, so there's no per-case training \u2014 one forward pass per prediction. The pretrained weights are loaded once per process; each distinct per-case context length gets its own cheap compiled variant (a shallow copy of the loaded model, not a reload), cached across every origin of that case.",
-    "limitations": "Zero-shot: never learns anything case-specific, only what it picked up from pretraining. Univariate by default \u2014 the +exo variant feeds the case's declared covariates to `forecast_with_covariates` as an xreg regressor fit alongside the TimesFM forecast, using a perfect-forecast proxy (not a real forecast of those covariates) for the future values. Conditions on a fixed window sized to the case's pre-test history, capped at the checkpoint's `context_limit`; horizons beyond `max_horizon` are not supported. Labeled Direct below because this benchmark requests the full horizon from one forecast() call \u2014 that describes this calling interface only, not whether the pretrained decoder generates internally autoregressively, which isn't verified against the pinned timesfm version.",
+    "limitations": "Zero-shot: never learns anything case-specific, only what it picked up from pretraining. Its running cost is inference alone, but standing it up means pulling 200M pretrained parameters down and holding them in memory. Univariate by default \u2014 the +exo variant feeds the case's declared covariates to `forecast_with_covariates` as an xreg regressor fit alongside the TimesFM forecast, using a perfect-forecast proxy (not a real forecast of those covariates) for the future values. Conditions on a fixed window sized to the case's pre-test history, capped at the checkpoint's `context_limit`; horizons beyond `max_horizon` are not supported. Labeled Direct below because this benchmark requests the full horizon from one forecast() call \u2014 that describes this calling interface only, not whether the pretrained decoder generates internally autoregressively, which isn't verified against the pinned timesfm version.",
     "code_snippet": "import timesfm\n\nmodel = timesfm.TimesFM_2p5_200M_torch.from_pretrained(\"google/timesfm-2.5-200m-pytorch\")\nmodel.compile(timesfm.ForecastConfig(max_context=1024, max_horizon=256,\n    normalize_inputs=True, use_continuous_quantile_head=True))\npoint_forecast, _quantiles = model.forecast(\n    horizon=horizon,\n    inputs=[context],                # list of 1D arrays, one per series\n)\ny_hat = point_forecast[0]\n# +exo: model.forecast_with_covariates(inputs=[context],\n#     dynamic_numerical_covariates={name: [context_and_horizon_values]})",
     "capabilities": {
       "trend": true,
@@ -717,10 +745,11 @@
     "scorecard": {
       "history_requirements": "Low",
       "interpretability": "Low",
-      "fit_cost": "Low",
-      "inference_cost": "High",
-      "tuning_effort": "Low",
-      "robustness_to_noise": "Medium"
+      "running_cost": {
+        "level": "High",
+        "growth": "linear"
+      },
+      "tuning_effort": "Low"
     },
     "forecast_strategy": "Direct"
   },
@@ -730,7 +759,7 @@
     "uses_exogenous": false,
     "library": "timesfm (Google TimesFM 2.5, torch backend)",
     "compute_profile": "CPU-capable but slow (200M params); zero-shot, so there's no per-case training \u2014 one forward pass per prediction. The pretrained weights are loaded once per process; each distinct per-case context length gets its own cheap compiled variant (a shallow copy of the loaded model, not a reload), cached across every origin of that case.",
-    "limitations": "Zero-shot: never learns anything case-specific, only what it picked up from pretraining. Univariate by default \u2014 the +exo variant feeds the case's declared covariates to `forecast_with_covariates` as an xreg regressor fit alongside the TimesFM forecast, using a perfect-forecast proxy (not a real forecast of those covariates) for the future values. Conditions on a fixed window sized to the case's pre-test history, capped at the checkpoint's `context_limit`; horizons beyond `max_horizon` are not supported. Labeled Direct below because this benchmark requests the full horizon from one forecast() call \u2014 that describes this calling interface only, not whether the pretrained decoder generates internally autoregressively, which isn't verified against the pinned timesfm version.",
+    "limitations": "Zero-shot: never learns anything case-specific, only what it picked up from pretraining. Its running cost is inference alone, but standing it up means pulling 200M pretrained parameters down and holding them in memory. Univariate by default \u2014 the +exo variant feeds the case's declared covariates to `forecast_with_covariates` as an xreg regressor fit alongside the TimesFM forecast, using a perfect-forecast proxy (not a real forecast of those covariates) for the future values. Conditions on a fixed window sized to the case's pre-test history, capped at the checkpoint's `context_limit`; horizons beyond `max_horizon` are not supported. Labeled Direct below because this benchmark requests the full horizon from one forecast() call \u2014 that describes this calling interface only, not whether the pretrained decoder generates internally autoregressively, which isn't verified against the pinned timesfm version.",
     "code_snippet": "import timesfm\n\nmodel = timesfm.TimesFM_2p5_200M_torch.from_pretrained(\"google/timesfm-2.5-200m-pytorch\")\nmodel.compile(timesfm.ForecastConfig(max_context=1024, max_horizon=256,\n    normalize_inputs=True, use_continuous_quantile_head=True))\npoint_forecast, _quantiles = model.forecast(\n    horizon=horizon,\n    inputs=[context],                # list of 1D arrays, one per series\n)\ny_hat = point_forecast[0]\n# +exo: model.forecast_with_covariates(inputs=[context],\n#     dynamic_numerical_covariates={name: [context_and_horizon_values]})",
     "capabilities": {
       "trend": true,
@@ -742,10 +771,11 @@
     "scorecard": {
       "history_requirements": "Low",
       "interpretability": "Low",
-      "fit_cost": "Low",
-      "inference_cost": "High",
-      "tuning_effort": "Low",
-      "robustness_to_noise": "Medium"
+      "running_cost": {
+        "level": "High",
+        "growth": "linear"
+      },
+      "tuning_effort": "Low"
     },
     "forecast_strategy": "Direct"
   },
@@ -755,22 +785,23 @@
     "uses_exogenous": false,
     "library": "neuralforecast + pytorch_lightning",
     "compute_profile": "Uses a GPU automatically if one is available (accelerator='auto'), otherwise falls back to CPU; a heavier training loop (full pytorch_lightning trainer overhead, run until held-out loss stops improving rather than for a fixed number of steps) than the custom torch models in torchdl.py. Only available on Linux with Python <3.13 (the `nf` extra), since neuralforecast depends on `ray`.",
-    "limitations": "Univariate \u2014 ignores exogenous inputs. Trains a fresh model per case with no hyperparameter tuning, using the same architecture defaults regardless of the series' scale or frequency. On an extended-history fit, where the record is a panel of gap-separated segments, neuralforecast can only hold out an equal-length tail from every segment, so early stopping there watches a shorter holdout than the case's full validation split.",
+    "limitations": "Supports future covariates in neuralforecast, but this wrapper wires none of them up, so the column runs univariate. Trains a fresh model per case with no hyperparameter tuning, using the same architecture defaults regardless of the series' scale or frequency. On an extended-history fit, where the record is a panel of gap-separated segments, neuralforecast can only hold out an equal-length tail from every segment, so early stopping there watches a shorter holdout than the case's full validation split.",
     "code_snippet": "from neuralforecast import NeuralForecast\nfrom neuralforecast.models import TimesNet\n\nmodel = TimesNet(h=horizon, input_size=lookback, early_stop_patience_steps=5)\nnf = NeuralForecast(models=[model], freq=case.freq)\nnf.fit(train_df, val_size=val_size)  # train_df: unique_id, ds, y\ny_hat = nf.predict()[\"TimesNet\"]",
     "capabilities": {
       "trend": true,
       "seasonality": true,
       "multiple_seasonality": true,
-      "exogenous": false,
+      "exogenous": true,
       "gaps": true
     },
     "scorecard": {
       "history_requirements": "High",
       "interpretability": "Low",
-      "fit_cost": "High",
-      "inference_cost": "Low",
-      "tuning_effort": "High",
-      "robustness_to_noise": "Medium"
+      "running_cost": {
+        "level": "Medium",
+        "growth": "flat"
+      },
+      "tuning_effort": "High"
     },
     "forecast_strategy": "Direct"
   },
@@ -792,10 +823,11 @@
     "scorecard": {
       "history_requirements": "Medium",
       "interpretability": "Medium",
-      "fit_cost": "Low",
-      "inference_cost": "Low",
-      "tuning_effort": "Low",
-      "robustness_to_noise": "High"
+      "running_cost": {
+        "level": "Low",
+        "growth": "flat"
+      },
+      "tuning_effort": "Low"
     },
     "forecast_strategy": "N/A"
   },
@@ -817,10 +849,11 @@
     "scorecard": {
       "history_requirements": "Medium",
       "interpretability": "Medium",
-      "fit_cost": "Low",
-      "inference_cost": "High",
-      "tuning_effort": "Low",
-      "robustness_to_noise": "High"
+      "running_cost": {
+        "level": "High",
+        "growth": "superlinear"
+      },
+      "tuning_effort": "Low"
     },
     "forecast_strategy": "N/A"
   }

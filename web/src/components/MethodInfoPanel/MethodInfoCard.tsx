@@ -8,7 +8,7 @@ import { CapabilityRow, ForecastStrategyBadge, ScorecardMeters } from './MethodS
 import type { CaseMeta, MethodMeta } from '../../types/data';
 
 const CARD_MIN_WIDTH = 220;
-// Tall enough for the description plus the Handles row and six meters without scrolling on
+// Tall enough for the description plus the Handles row and four meters without scrolling on
 // first open; the title bar is a drag handle, so a user can still resize from here.
 const DEFAULT_CONTENT_HEIGHT = 300;
 
@@ -160,10 +160,18 @@ function MethodInfoCardComponent({ method, index, caseMeta, methodMeta }: Props)
                 >
                   <p>
                     These ratings are the benchmark authors&rsquo; qualitative judgement of each
-                    method, not measurements taken from the results matrix. They are meant to narrow
-                    a shortlist before you read the matrix, not to stand in for it. The two cost
-                    ratings are anchored to the fit and predict times the benchmark actually
-                    records, so they should not contradict the training-time overlay.
+                    method, meant to narrow a shortlist before you read the matrix rather than to
+                    stand in for it. <strong>Running cost</strong> is the exception: it is read off
+                    the fit and predict times the benchmark measures, so it should not contradict
+                    the training-time overlay, and a test fails if it drifts from them.
+                  </p>
+                  <p>
+                    Running cost is one fit plus 1,000 forecasts on a 100,000-point record — what
+                    using the method actually costs, rather than seconds per phase. One field rather
+                    than a fit/inference pair because whichever term is larger dominates: an
+                    expensive fit amortises over many forecasts, an expensive forecast does not. The
+                    word beside its bar is how that cost moves with record length, which the bar
+                    alone cannot say, since it is read at one record size.
                   </p>
                   <p>
                     A bar&rsquo;s <strong>length</strong> is the size of the rating and its{' '}
@@ -174,9 +182,13 @@ function MethodInfoCardComponent({ method, index, caseMeta, methodMeta }: Props)
                   <p>
                     <strong>Handles</strong> above is a separate question — whether the method has a
                     mechanism for that structure at all. Exogenous there describes the method rather
-                    than this column, so a method shown without covariates may still support them.
-                    Gaps is similar: it only shows a difference in the extended-history matrix,
-                    since the shared local matrix is always gap-free by the time any method sees it.
+                    than this column, so a method shown without covariates may still support them;
+                    where this benchmark has not wired a method&rsquo;s covariates up yet, the
+                    method&rsquo;s limitations say so. Trend and seasonality go the other way and
+                    describe the method <em>as configured here</em>, which is why AutoETS reads no
+                    seasonality: it runs at season_length=1 in this benchmark. Gaps only shows a
+                    difference in the extended-history matrix, since the shared local matrix is
+                    always gap-free by the time any method sees it.
                   </p>
                 </InfoModal>
               </div>
