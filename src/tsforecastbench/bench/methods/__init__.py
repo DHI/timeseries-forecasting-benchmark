@@ -9,7 +9,7 @@ from tsforecastbench.bench.methods.classical import (
     TBATSForecaster,
     ThetaForecaster,
 )
-from tsforecastbench.bench.methods.dl import DLinearForecaster
+from tsforecastbench.bench.methods.dl import DLinearExoForecaster, DLinearForecaster
 from tsforecastbench.bench.methods.ensemble import (
     EnsembleForecaster,
     ensemble_baselines,
@@ -56,6 +56,7 @@ __all__ = [
     "Chronos2Forecaster",
     "ChronosForecaster",
     "Climatology",
+    "DLinearExoForecaster",
     "DLinearForecaster",
     "EnsembleForecaster",
     "Forecaster",

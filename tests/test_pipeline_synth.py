@@ -19,6 +19,7 @@ from tsforecastbench.bench.methods import (  # noqa: E402
     CatBoostExoForecaster,
     CatBoostForecaster,
     Climatology,
+    DLinearExoForecaster,
     LightGBMExoForecaster,
     LightGBMForecaster,
     LinearLagsExoForecaster,
@@ -285,13 +286,14 @@ def test_rolling_matrix_runs():
 
 @pytest.mark.parametrize("cid", ["surge_cuxhaven", "waves_oregon", "discharge_lowland_denmark"])
 def test_exogenous_methods_run(cid):
-    """Exogenous-aware windowed ML runs on every case that declares covariates."""
+    """Every exogenous-aware method runs on every case that declares covariates."""
     case = get_case(cid)
     methods = [
         LinearLagsExoForecaster(),
         LightGBMExoForecaster(),
         CatBoostExoForecaster(),
         MLPExoForecaster(),
+        DLinearExoForecaster(),
     ]
     res = run_case(case, methods, prefer_synth=True)
     assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()

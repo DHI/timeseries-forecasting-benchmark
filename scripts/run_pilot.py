@@ -36,6 +36,7 @@ from tsforecastbench.bench.methods import (
     CatBoostExoForecaster,
     CatBoostForecaster,
     Climatology,
+    DLinearExoForecaster,
     DLinearForecaster,
     LightGBMExoForecaster,
     LightGBMForecaster,
@@ -88,6 +89,7 @@ def build_methods():
         LightGBMExoForecaster(),
         CatBoostExoForecaster(),
         MLPExoForecaster(),
+        DLinearExoForecaster(),
     ]
 
 
