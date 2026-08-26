@@ -73,6 +73,17 @@ def build_windows(
     return X, Y
 
 
+def _lags_for(case: Case) -> list[int]:
+    """Uniform geometric memory ladder plus the case's declared seasonal periods.
+
+    The ladder is recent autoregressive state, identical for every case and frequency —
+    it makes no cycle claim (the regressor is free to ignore any lag). Seasonal structure
+    enters only through the declared periods, keeping the case.toml the single source of
+    seasonal configuration."""
+    ladder = [1, 2, 4, 8, 16, 32]
+    return sorted(set(ladder) | set(case.seasonalities))
+
+
 def lookback_for(freq: str, h: int) -> int:
     """Default lookback window length for a windowed DL/ML forecaster.
 
