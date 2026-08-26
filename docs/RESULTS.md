@@ -123,12 +123,16 @@ needs `ray`, which has no Python-3.13 wheels. A focused 4-case probe (rolling, 5
 | discharge_flashy_catskills (1d) | −0.05 | +0.05 | +0.24 | +0.90 |
 | watertemp_james (1d) | −1.59 | −1.19 | −0.53 | +0.65 |
 
-On the **hourly** cases (lookback 168 h covers the dynamics) N-HiTS/PatchTST beat persistence
-and match univariate LightGBM (PatchTST best of the univariate methods on surge). On
-**daily** cases the CPU-capped 64-day lookback can't see the annual cycle, and they are the
-heaviest methods (PatchTST ~400 s/cell). Lookback + compute are the binding constraints a
-**GPU (WSL)** would relax; full-coverage DL is deferred there. The neuralforecast zoo
-(TFT/iTransformer/TimesNet, `--with-nf`) is wired and waiting for the WSL move.
+On the **hourly** cases N-HiTS/PatchTST beat persistence and match univariate LightGBM
+(PatchTST best of the univariate methods on surge). On **daily** cases they could not see the
+annual cycle, and they are the heaviest methods (PatchTST ~400 s/cell).
+
+**These numbers predate the lookback rule.** They were produced when `lookback_for` returned a
+frequency-keyed constant — 64 steps daily, 168 hourly — which left the DL methods reaching less
+far back than the windowed-ML lag ladder on the daily cases and further on several hourly ones.
+The lookback is now `max(max(_lags_for(case)), 2*h)`, so both families reach equally far back:
+365 on the daily cases, 96 on surge, 48 on the 24-hour-horizon hourly cases. Every DL cell
+above is superseded and awaiting a re-run.
 
 ## Caveats
 
@@ -139,7 +143,7 @@ heaviest methods (PatchTST ~400 s/cell). Lookback + compute are the binding cons
   value; real skill depends on NWP forecast quality.
 - **Rolling-origin cells are empirical estimates** that shift modestly with origin count;
   the qualitative ranking is stable. This whole matrix is one 12-origin pass.
-- **CPU method set.** DLinear/N-HiTS/PatchTST run but with capped lookback/training budget;
+- **CPU method set.** DLinear/N-HiTS/PatchTST ran here on CPU with a capped training budget;
   GPU (WSL) + the neuralforecast zoo + covariate-capable/fine-tuned FMs are next.
 - **One primary horizon per case** here; the lead-time curves (`scripts/run_leadtime.py`,
   per-case reports) show how the ranking shifts as lead grows.
