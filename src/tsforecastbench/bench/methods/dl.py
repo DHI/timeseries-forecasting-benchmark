@@ -156,12 +156,15 @@ class DLinearForecaster(Forecaster):
         feats = self._decompose(X)
         if not self._exo or Xf is None or Xf.shape[2] == 0:
             return feats
-        # NaN would propagate through the ridge solve; a covariate the curated frame left
-        # empty falls back to its last observed value, as it does at predict time.
-        flat = Xf.reshape(len(Xf), -1).astype(feats.dtype, copy=False)
-        fill = np.array([self._last_exo.get(c, 0.0) for c in self._exo], dtype=feats.dtype)
-        flat = np.where(np.isfinite(flat), flat, np.tile(fill, Xf.shape[1]))
-        return np.concatenate([feats, flat], axis=1)
+        # Raw, on the covariates' own scales, matching the raw target window beside them.
+        # Standardising them first is the textbook move and it measured far worse: the ridge
+        # penalty is absolute, so unit-variance columns need coefficients large enough that
+        # `alpha=1` stops restraining the near-duplicate horizon columns a smooth covariate
+        # produces. On `waves_oregon` that took MASE from 0.85 to ~3.7e6; on the other four
+        # covariate cases tried it changed nothing to three decimals.
+        flat = Xf.reshape(len(Xf), -1)
+        flat = np.where(np.isfinite(flat), flat, 0.0)
+        return np.concatenate([feats, flat.astype(feats.dtype, copy=False)], axis=1)
 
     def predict(
         self,
