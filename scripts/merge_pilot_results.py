@@ -6,6 +6,27 @@ Usage (run once every tagged file has been pulled onto one machine):
     uv run python scripts/merge_pilot_results.py \\
         docs/results/partial/pilot_metrics_gpu_dl_nf.parquet \\
         docs/results/partial/pilot_metrics_local.parquet
+
+`--drop TAG:METHOD[,METHOD...]` (repeatable) leaves one method out of one input file, for a
+run whose column is known bad — the file stays on disk with its rows intact, and an earlier
+file's version of that method (if any) wins instead. It applies to the tagged file's metrics
+and its snapshots alike, so a dropped method's forecast lines never outlive its scores.
+
+The nine partials that make up the published matrix as of 2026-08-28, in precedence order
+(research log entry 101 — `baselines_v5` and `gpu_fm_nf_dl_v5` are retired: they predate the
+seed-median scoring of #107 and every cell they hold is superseded):
+
+    uv run python scripts/merge_pilot_results.py \\
+        docs/results/partial/pilot_metrics_first_six.parquet \\
+        docs/results/partial/pilot_metrics_remaining_no_nf.parquet \\
+        docs/results/partial/pilot_metrics_remaining_b.parquet \\
+        docs/results/partial/pilot_metrics_surge_full.parquet \\
+        docs/results/partial/pilot_metrics_nf_all.parquet \\
+        docs/results/partial/pilot_metrics_ensembles_fitonce.parquet \\
+        docs/results/partial/pilot_metrics_exo_new.parquet \\
+        docs/results/partial/pilot_metrics_lookback_v2.parquet \\
+        docs/results/partial/pilot_metrics_wm_full.parquet \\
+        --drop exo_new:TFT+exo --drop lookback_v2:TFT --drop wm_full:TFT,TFT+exo
 """
 
 from __future__ import annotations
@@ -30,6 +51,41 @@ def _snapshots_path(metrics_path: Path) -> Path:
     return metrics_path.with_name(metrics_path.name.replace("pilot_metrics", "pilot_snapshots"))
 
 
+def _tag(metrics_path: Path) -> str:
+    """The `run_pilot.py --tag` name a partial was written under, from its filename."""
+    return metrics_path.stem.replace("pilot_metrics_", "", 1)
+
+
+def _parse_drops(specs: list[str], tags: list[str]) -> dict[str, set[str]]:
+    """`["lookback_v2:TFT", "wm_full:TFT,TFT+exo"]` -> `{"lookback_v2": {"TFT"}, ...}`.
+
+    An unknown tag is an error rather than a no-op: a mistyped `--drop` would otherwise
+    silently republish the very column it was meant to hold back.
+    """
+    drops: dict[str, set[str]] = {}
+    for spec in specs:
+        tag, _, methods = spec.partition(":")
+        if not tag or not methods:
+            raise SystemExit(f"--drop expects TAG:METHOD[,METHOD...], got {spec!r}")
+        if tag not in tags:
+            raise SystemExit(
+                f"--drop {spec!r}: no input file tagged {tag!r} (have: {', '.join(tags)})"
+            )
+        drops.setdefault(tag, set()).update(m.strip() for m in methods.split(","))
+    return drops
+
+
+def _apply_drops(df: pd.DataFrame, tag: str, methods: set[str], label: str) -> pd.DataFrame:
+    """Remove `methods` from one input frame, reporting the row count per method."""
+    kept = df[~df["method"].isin(methods)]
+    for method in sorted(methods):
+        n = int((df["method"] == method).sum())
+        if n == 0:
+            raise SystemExit(f"--drop {tag}:{method}: that file has no {method} {label} rows")
+        print(f"[merge_pilot_results] dropped {n} {method} {label} row(s) from {tag}")
+    return kept
+
+
 def _merge(frames: list[pd.DataFrame], key: list[str], label: str) -> pd.DataFrame:
     combined = pd.concat(frames, ignore_index=True)
     dupes = combined.duplicated(subset=key, keep=False)
@@ -51,13 +107,28 @@ def main(argv: list[str] | None = None) -> int:
         help="Tagged pilot_metrics_*.parquet files, in precedence order (a later file "
         "wins on a duplicate case/method/metric key).",
     )
+    parser.add_argument(
+        "--drop",
+        action="append",
+        default=[],
+        metavar="TAG:METHOD[,METHOD...]",
+        help="Leave a method out of one input file (repeatable), for a run whose column is "
+        "known bad -- an earlier file's version of that method wins instead. Applies to that "
+        "file's snapshots too.",
+    )
     args = parser.parse_args(argv)
+
+    drops = _parse_drops(args.drop, [_tag(p) for p in args.metrics_paths])
 
     metrics_frames = []
     snapshot_frames = []
     method_order: list[str] = []
     for path in args.metrics_paths:
+        tag = _tag(path)
+        dropped = drops.get(tag, set())
         df = pd.read_parquet(path)
+        if dropped:
+            df = _apply_drops(df, tag, dropped, "metrics")
         metrics_frames.append(df)
         for method in df["method"].unique():
             if method not in method_order:
@@ -65,7 +136,10 @@ def main(argv: list[str] | None = None) -> int:
 
         snap_path = _snapshots_path(path)
         if snap_path.exists():
-            snapshot_frames.append(pd.read_parquet(snap_path))
+            snaps = pd.read_parquet(snap_path)
+            if dropped:
+                snaps = _apply_drops(snaps, tag, dropped, "snapshot")
+            snapshot_frames.append(snaps)
         else:
             print(f"[merge_pilot_results] no snapshots at {snap_path}, skipping")
 
