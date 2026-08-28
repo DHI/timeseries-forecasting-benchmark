@@ -82,8 +82,8 @@ export function AppInstructions({ maxWidth }: { maxWidth?: number }) {
         ML, DL, and foundation-model families, plus all of the classical ones (AutoARIMA, AutoETS,
         Theta, MSTL, TBATS) and the ensembles. The naive baselines are refit at every origin, so
         there&apos;s no separate &quot;trained model&quot; to extend, and this checkbox has no
-        effect on them. It has none on the ensembles either: their members take a single
-        contiguous series, so there is no full-history variant to fit.
+        effect on them. It has none on the ensembles either: their members take a single contiguous
+        series, so there is no full-history variant to fit.
       </p>
       <p>
         Among global methods, this benchmark currently only scores the full-history fit for those
@@ -109,17 +109,23 @@ export function AppInstructions({ maxWidth }: { maxWidth?: number }) {
         model alongside the target series&apos; own history, on top of what it would use otherwise.
       </p>
       <p>
-        Some methods (a subset of ML and foundation-model methods) have a second variant trained to
-        also use these external variables. Turning this checkbox on swaps a method&apos;s cell over
-        to that variant&apos;s score, but only where both sides support it: the method needs to have
-        that alternate variant, and the case needs to actually provide exogenous columns. Methods
-        without an exogenous-aware variant, and cases without any exogenous data, are unaffected.
+        Some methods (a subset of the ML, DL and foundation-model methods) have a second variant
+        trained to also use these external variables. Turning this checkbox on swaps a method&apos;s
+        cell over to that variant&apos;s score, but only where both sides support it: the method
+        needs to have that alternate variant, and the case needs to actually provide exogenous
+        columns. Methods without an exogenous-aware variant, and cases without any exogenous data,
+        are unaffected.
       </p>
       <p>
         Swapped cells get a small teal triangle in the opposite corner from the training-history
         marker, so the two never collide on the same cell. If you have method cards or the snapshot
         panel open, toggling this checkbox also swaps what they show — the same method now displays
         the exogenous variant&apos;s description and forecasts instead of the base version.
+      </p>
+      <p>
+        With both checkboxes on, a cell shows the exogenous variant fit on the full history, and
+        carries both corner triangles. Where that variant has no full-history fit of its own, the
+        cell falls back to its curated-span score and drops the pink triangle.
       </p>
       <h4>&quot;Show training time&quot; button</h4>
       <p>
@@ -132,15 +138,14 @@ export function AppInstructions({ maxWidth }: { maxWidth?: number }) {
       </p>
       <p>
         The number shown is fit time (if the method needs fitting) plus predict time. The naive
-        baselines are refit at every rolling origin, so their fit time reflects one such
-        refit; the fit-once methods (ML, DL, and the classical ones) report that single fit; an
-        ensemble reports the one fit of its trained members, with its naive members&apos;
-        per-origin cost falling under predict time instead;
-        zero-shot foundation models have no case-specific training at all, so their number is
-        essentially inference time. Predict time is not uniformly small either — Theta and MSTL
-        re-derive a seasonal decomposition over the whole history at every origin, so on the longest
-        records their predict cost dominates their fit cost by a wide margin. Hover a cell while
-        holding to see the fit/predict split.
+        baselines are refit at every rolling origin, so their fit time reflects one such refit; the
+        fit-once methods (ML, DL, and the classical ones) report that single fit; an ensemble
+        reports the one fit of its trained members, with its naive members&apos; per-origin cost
+        falling under predict time instead; zero-shot foundation models have no case-specific
+        training at all, so their number is essentially inference time. Predict time is not
+        uniformly small either — Theta and MSTL re-derive a seasonal decomposition over the whole
+        history at every origin, so on the longest records their predict cost dominates their fit
+        cost by a wide margin. Hover a cell while holding to see the fit/predict split.
       </p>
     </div>
   );
