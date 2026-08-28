@@ -38,9 +38,7 @@ Capabilities (True/False):
                           not the benchmark column: plain `LightGBM` is True even though its
                           column feeds no covariates — `LightGBM+exo` is the same method with
                           them switched on. False only where there is no covariate pathway at
-                          all. Where a method supports covariates but this repo has not wired
-                          them up yet (the neuralforecast and torch architectures), the flag
-                          stays True and `limitations` says the column runs univariate.
+                          all.
 
     `trend`, `seasonality` and `multiple_seasonality` are the exception to that rule: they
     describe the method **as configured in this benchmark**, not in principle. AutoETS and

@@ -182,13 +182,12 @@ function MethodInfoCardComponent({ method, index, caseMeta, methodMeta }: Props)
                   <p>
                     <strong>Handles</strong> above is a separate question — whether the method has a
                     mechanism for that structure at all. Exogenous there describes the method rather
-                    than this column, so a method shown without covariates may still support them;
-                    where this benchmark has not wired a method&rsquo;s covariates up yet, the
-                    method&rsquo;s limitations say so. Trend and seasonality go the other way and
-                    describe the method <em>as configured here</em>, which is why AutoETS reads no
-                    seasonality: it runs at season_length=1 in this benchmark. Gaps only shows a
-                    difference in the extended-history matrix, since the shared local matrix is
-                    always gap-free by the time any method sees it.
+                    than this column, so a method shown without covariates may still support them.
+                    Trend and seasonality go the other way and describe the method{' '}
+                    <em>as configured here</em>, which is why AutoETS reads no seasonality: it runs
+                    at season_length=1 in this benchmark. Gaps only shows a difference in the
+                    extended-history matrix, since the shared local matrix is always gap-free by the
+                    time any method sees it.
                   </p>
                 </InfoModal>
               </div>
