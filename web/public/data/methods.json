@@ -207,19 +207,45 @@
     },
     "forecast_strategy": "N/A"
   },
+  "DLinear+exo": {
+    "family": "dl",
+    "description": "DLinear with the case's declared covariates over the forecast horizon appended to the\n    decomposed window.",
+    "uses_exogenous": true,
+    "library": "scikit-learn (Ridge) \u2014 no deep-learning framework",
+    "compute_profile": "CPU only, fast; both linear maps collapse into a single closed-form ridge fit on the decomposed window, so there's no gradient-descent training loop.",
+    "limitations": "The trend/remainder decomposition is a fixed moving average, not learned, so an unusually shaped trend can leak into the remainder term. Its kernel is a constant 25 steps while the lookback now runs from 48 to 365 depending on the case, so the split between trend and remainder is sharper on a short window than a long one. The univariate variant ignores exogenous inputs; the +exo variant sees the covariate values over the forecast horizon and not their history.",
+    "code_snippet": "from sklearn.linear_model import Ridge\n\ntrend = moving_average(window, kernel)\nremainder = window - trend\nmodel = Ridge(alpha=alpha).fit(concat([trend, remainder]), target_window)\ny_hat = model.predict(concat([trend, remainder]))",
+    "capabilities": {
+      "trend": true,
+      "seasonality": true,
+      "multiple_seasonality": true,
+      "exogenous": true,
+      "gaps": true
+    },
+    "scorecard": {
+      "history_requirements": "High",
+      "interpretability": "Medium",
+      "running_cost": {
+        "level": "Low",
+        "growth": "linear"
+      },
+      "tuning_effort": "Low"
+    },
+    "forecast_strategy": "Direct"
+  },
   "DLinear": {
     "family": "dl",
     "description": "Decomposes the lookback window into a moving-average trend and remainder, fits a\n    separate linear map from each to the full horizon, and sums them.",
     "uses_exogenous": false,
     "library": "scikit-learn (Ridge) \u2014 no deep-learning framework",
     "compute_profile": "CPU only, fast; both linear maps collapse into a single closed-form ridge fit on the decomposed window, so there's no gradient-descent training loop.",
-    "limitations": "Univariate \u2014 ignores exogenous inputs. The trend/remainder decomposition is a fixed moving average, not learned, so an unusually shaped trend can leak into the remainder term.",
+    "limitations": "The trend/remainder decomposition is a fixed moving average, not learned, so an unusually shaped trend can leak into the remainder term. Its kernel is a constant 25 steps while the lookback now runs from 48 to 365 depending on the case, so the split between trend and remainder is sharper on a short window than a long one. The univariate variant ignores exogenous inputs; the +exo variant sees the covariate values over the forecast horizon and not their history.",
     "code_snippet": "from sklearn.linear_model import Ridge\n\ntrend = moving_average(window, kernel)\nremainder = window - trend\nmodel = Ridge(alpha=alpha).fit(concat([trend, remainder]), target_window)\ny_hat = model.predict(concat([trend, remainder]))",
     "capabilities": {
       "trend": true,
       "seasonality": true,
       "multiple_seasonality": true,
-      "exogenous": false,
+      "exogenous": true,
       "gaps": true
     },
     "scorecard": {
@@ -239,7 +265,7 @@
     "uses_exogenous": false,
     "library": "neuralforecast + pytorch_lightning",
     "compute_profile": "Uses a GPU automatically if one is available (accelerator='auto'), otherwise falls back to CPU; a heavier training loop (full pytorch_lightning trainer overhead, run until held-out loss stops improving rather than for a fixed number of steps) than the custom torch models in torchdl.py. Only available on Linux with Python <3.13 (the `nf` extra), since neuralforecast depends on `ray`.",
-    "limitations": "Supports future covariates in neuralforecast, but this wrapper wires none of them up, so the column runs univariate. Trains a fresh model per case with no hyperparameter tuning, using the same architecture defaults regardless of the series' scale or frequency. On an extended-history fit, where the record is a panel of gap-separated segments, neuralforecast can only hold out an equal-length tail from every segment, so early stopping there watches a shorter holdout than the case's full validation split. Architecturally multivariate but fixed to a single series here (n_series=1), so unlike its siblings it can't pool the extra segments of an extended-history fit -- and that same pin leaves it without a covariate slot to wire, so it is the one architecture here whose univariate column is a property of the configuration rather than of unfinished plumbing.",
+    "limitations": "The univariate variant ignores exogenous inputs. The +exo variant feeds the case's covariates through neuralforecast's `futr_exog_list`, which hands the model those columns over the lookback window as well as the horizon -- so unlike this benchmark's other +exo columns, which see a covariate only at the step being predicted, these two also see its recent history. The library offers no horizon-only mode, so that is a property of the covariate mechanism rather than a choice; the three foundation-model +exo columns deviate the same way for the same reason. Trains a fresh model per case with no hyperparameter tuning, using the same architecture defaults regardless of the series' scale or frequency. On an extended-history fit, where the record is a panel of gap-separated segments, neuralforecast can only hold out an equal-length tail from every segment, so early stopping there watches a shorter holdout than the case's full validation split. Architecturally multivariate but fixed to a single series here (n_series=1), so unlike its siblings it can't pool the extra segments of an extended-history fit -- and that same pin leaves it without a covariate slot, which is why it is the one architecture in this module with no +exo column.",
     "code_snippet": "from neuralforecast import NeuralForecast\nfrom neuralforecast.models import iTransformer\n\nmodel = iTransformer(h=horizon, input_size=lookback, n_series=1,\n                     early_stop_patience_steps=5)\nnf = NeuralForecast(models=[model], freq=case.freq)\nnf.fit(train_df, val_size=val_size)  # train_df: unique_id, ds, y\ny_hat = nf.predict()[\"iTransformer\"]",
     "capabilities": {
       "trend": true,
@@ -545,13 +571,13 @@
     },
     "forecast_strategy": "Direct"
   },
-  "N-HiTS": {
+  "N-HiTS+exo": {
     "family": "dl",
-    "description": "Stack of MLP blocks at increasingly coarse pooling rates; each block predicts a\n    backcast (subtracted from the residual passed to the next block) and a forecast\n    contribution, and the stack's contributions sum to the final forecast.",
-    "uses_exogenous": false,
+    "description": "N-HiTS with the case's declared covariates over the forecast horizon added as a further\n    contribution to the block stack's summed forecast.",
+    "uses_exogenous": true,
     "library": "torch (custom implementation, no ray/lightning)",
     "compute_profile": "CPU (no GPU dependency); trains a small network from scratch per case over randomly sampled windows, stopping when held-out loss stops improving rather than at a fixed step count, so training cost scales with how much the case has left to learn. Among the heaviest CPU methods in the benchmark; keep rolling-origin counts modest when including them.",
-    "limitations": "Both architectures take covariates as published, but these compact torch ports wire none up, so the column runs univariate (the covariate story lives in the windowed-ML +exo columns instead). Each window is instance-normalised (RevIN-style) before the model and de-normalised after, which is what makes the same architecture usable across very different series scales.",
+    "limitations": "The univariate variant ignores exogenous inputs; the +exo variant sees the covariate values over the forecast horizon and not their history, which is the same contract the windowed-ML +exo columns use. Each target window is instance-normalised (RevIN-style) before the model and de-normalised after, which is what makes the same architecture usable across very different series scales; covariates are standardised once on the training pool instead, since they carry no relation to the target's window scale.",
     "code_snippet": "class NHiTSBlock(nn.Module):        # one block at a given pooling rate\n    def __init__(self, L, H, pool_k, hidden, down):\n        self.pool = nn.AvgPool1d(pool_k, ceil_mode=True)     # coarsen the input\n        self.mlp = nn.Sequential(nn.Linear(L // pool_k, hidden), nn.ReLU(),\n                                  nn.Linear(hidden, hidden), nn.ReLU())\n        self.b_lin = nn.Linear(hidden, L // down)            # backcast basis\n        self.f_lin = nn.Linear(hidden, H // down)            # forecast basis\n\n    def forward(self, x):\n        h = self.mlp(self.pool(x))\n        back = interpolate(self.b_lin(h), size=L)  # upsample basis to input length\n        fore = interpolate(self.f_lin(h), size=H)  # upsample basis to horizon length\n        return back, fore\n\n# stack of blocks, coarse to fine (pool_k=8, 4, 1): each subtracts its backcast\n# from the residual the next block sees; forecasts from every block sum\nresidual, forecast = window, 0.0\nfor block in blocks:\n    back, fore = block(residual)\n    residual = residual - back\n    forecast = forecast + fore\n\n# training: per-window instance norm (RevIN-style), plain MSE + Adam\nmu, sd = window.mean(1), window.std(1)\npred = net((window - mu) / sd) * sd + mu\nloss = mse_loss(pred, target)",
     "capabilities": {
       "trend": true,
@@ -571,13 +597,65 @@
     },
     "forecast_strategy": "Direct"
   },
+  "N-HiTS": {
+    "family": "dl",
+    "description": "Stack of MLP blocks at increasingly coarse pooling rates; each block predicts a\n    backcast (subtracted from the residual passed to the next block) and a forecast\n    contribution, and the stack's contributions sum to the final forecast.",
+    "uses_exogenous": false,
+    "library": "torch (custom implementation, no ray/lightning)",
+    "compute_profile": "CPU (no GPU dependency); trains a small network from scratch per case over randomly sampled windows, stopping when held-out loss stops improving rather than at a fixed step count, so training cost scales with how much the case has left to learn. Among the heaviest CPU methods in the benchmark; keep rolling-origin counts modest when including them.",
+    "limitations": "The univariate variant ignores exogenous inputs; the +exo variant sees the covariate values over the forecast horizon and not their history, which is the same contract the windowed-ML +exo columns use. Each target window is instance-normalised (RevIN-style) before the model and de-normalised after, which is what makes the same architecture usable across very different series scales; covariates are standardised once on the training pool instead, since they carry no relation to the target's window scale.",
+    "code_snippet": "class NHiTSBlock(nn.Module):        # one block at a given pooling rate\n    def __init__(self, L, H, pool_k, hidden, down):\n        self.pool = nn.AvgPool1d(pool_k, ceil_mode=True)     # coarsen the input\n        self.mlp = nn.Sequential(nn.Linear(L // pool_k, hidden), nn.ReLU(),\n                                  nn.Linear(hidden, hidden), nn.ReLU())\n        self.b_lin = nn.Linear(hidden, L // down)            # backcast basis\n        self.f_lin = nn.Linear(hidden, H // down)            # forecast basis\n\n    def forward(self, x):\n        h = self.mlp(self.pool(x))\n        back = interpolate(self.b_lin(h), size=L)  # upsample basis to input length\n        fore = interpolate(self.f_lin(h), size=H)  # upsample basis to horizon length\n        return back, fore\n\n# stack of blocks, coarse to fine (pool_k=8, 4, 1): each subtracts its backcast\n# from the residual the next block sees; forecasts from every block sum\nresidual, forecast = window, 0.0\nfor block in blocks:\n    back, fore = block(residual)\n    residual = residual - back\n    forecast = forecast + fore\n\n# training: per-window instance norm (RevIN-style), plain MSE + Adam\nmu, sd = window.mean(1), window.std(1)\npred = net((window - mu) / sd) * sd + mu\nloss = mse_loss(pred, target)",
+    "capabilities": {
+      "trend": true,
+      "seasonality": true,
+      "multiple_seasonality": true,
+      "exogenous": true,
+      "gaps": true
+    },
+    "scorecard": {
+      "history_requirements": "High",
+      "interpretability": "Low",
+      "running_cost": {
+        "level": "Low",
+        "growth": "linear"
+      },
+      "tuning_effort": "High"
+    },
+    "forecast_strategy": "Direct"
+  },
+  "PatchTST+exo": {
+    "family": "dl",
+    "description": "PatchTST with the case's declared covariates over the forecast horizon concatenated\n    into the prediction head alongside the encoded patches.",
+    "uses_exogenous": true,
+    "library": "torch (custom implementation, no ray/lightning)",
+    "compute_profile": "CPU (no GPU dependency); trains a small network from scratch per case over randomly sampled windows, stopping when held-out loss stops improving rather than at a fixed step count, so training cost scales with how much the case has left to learn. Among the heaviest CPU methods in the benchmark; keep rolling-origin counts modest when including them.",
+    "limitations": "The univariate variant ignores exogenous inputs; the +exo variant sees the covariate values over the forecast horizon and not their history, which is the same contract the windowed-ML +exo columns use. Each target window is instance-normalised (RevIN-style) before the model and de-normalised after, which is what makes the same architecture usable across very different series scales; covariates are standardised once on the training pool instead, since they carry no relation to the target's window scale.",
+    "code_snippet": "class PatchTSTNet(nn.Module):\n    def __init__(self, L, H, patch_len=16, stride=8, d_model=64, n_heads=4,\n                 n_layers=2):\n        self.embed = nn.Linear(patch_len, d_model)\n        self.pos = nn.Parameter(torch.randn(n_patches, d_model) * 0.02)\n        layer = nn.TransformerEncoderLayer(d_model, n_heads, dim_feedforward=128)\n        self.encoder = nn.TransformerEncoder(layer, n_layers)\n        self.head = nn.Sequential(nn.Flatten(), nn.Linear(n_patches * d_model, H))\n\n    def forward(self, x):                        # x: (B, L), already normalised\n        patches = x.unfold(1, self.patch_len, self.stride)  # (B, n_patches, patch_len)\n        z = self.encoder(self.embed(patches) + self.pos)\n        return self.head(z)                      # (B, H)\n\n# training: per-window instance norm (RevIN-style), plain MSE + Adam\nmu, sd = window.mean(1), window.std(1)\npred = net((window - mu) / sd) * sd + mu\nloss = mse_loss(pred, target)",
+    "capabilities": {
+      "trend": true,
+      "seasonality": true,
+      "multiple_seasonality": true,
+      "exogenous": true,
+      "gaps": true
+    },
+    "scorecard": {
+      "history_requirements": "High",
+      "interpretability": "Low",
+      "running_cost": {
+        "level": "Low",
+        "growth": "flat"
+      },
+      "tuning_effort": "High"
+    },
+    "forecast_strategy": "Direct"
+  },
   "PatchTST": {
     "family": "dl",
     "description": "Splits the lookback window into overlapping patches, embeds and positionally\n    encodes them, and runs them through a transformer encoder before a linear head\n    projects to the full horizon.",
     "uses_exogenous": false,
     "library": "torch (custom implementation, no ray/lightning)",
     "compute_profile": "CPU (no GPU dependency); trains a small network from scratch per case over randomly sampled windows, stopping when held-out loss stops improving rather than at a fixed step count, so training cost scales with how much the case has left to learn. Among the heaviest CPU methods in the benchmark; keep rolling-origin counts modest when including them.",
-    "limitations": "Both architectures take covariates as published, but these compact torch ports wire none up, so the column runs univariate (the covariate story lives in the windowed-ML +exo columns instead). Each window is instance-normalised (RevIN-style) before the model and de-normalised after, which is what makes the same architecture usable across very different series scales.",
+    "limitations": "The univariate variant ignores exogenous inputs; the +exo variant sees the covariate values over the forecast horizon and not their history, which is the same contract the windowed-ML +exo columns use. Each target window is instance-normalised (RevIN-style) before the model and de-normalised after, which is what makes the same architecture usable across very different series scales; covariates are standardised once on the training pool instead, since they carry no relation to the target's window scale.",
     "code_snippet": "class PatchTSTNet(nn.Module):\n    def __init__(self, L, H, patch_len=16, stride=8, d_model=64, n_heads=4,\n                 n_layers=2):\n        self.embed = nn.Linear(patch_len, d_model)\n        self.pos = nn.Parameter(torch.randn(n_patches, d_model) * 0.02)\n        layer = nn.TransformerEncoderLayer(d_model, n_heads, dim_feedforward=128)\n        self.encoder = nn.TransformerEncoder(layer, n_layers)\n        self.head = nn.Sequential(nn.Flatten(), nn.Linear(n_patches * d_model, H))\n\n    def forward(self, x):                        # x: (B, L), already normalised\n        patches = x.unfold(1, self.patch_len, self.stride)  # (B, n_patches, patch_len)\n        z = self.encoder(self.embed(patches) + self.pos)\n        return self.head(z)                      # (B, H)\n\n# training: per-window instance norm (RevIN-style), plain MSE + Adam\nmu, sd = window.mean(1), window.std(1)\npred = net((window - mu) / sd) * sd + mu\nloss = mse_loss(pred, target)",
     "capabilities": {
       "trend": true,
@@ -675,13 +753,39 @@
     },
     "forecast_strategy": "Recursive"
   },
+  "TFT+exo": {
+    "family": "dl",
+    "description": "TFT with the case's declared covariates fed through neuralforecast's future-covariate\n    slot, which the architecture is built around.",
+    "uses_exogenous": true,
+    "library": "neuralforecast + pytorch_lightning",
+    "compute_profile": "Uses a GPU automatically if one is available (accelerator='auto'), otherwise falls back to CPU; a heavier training loop (full pytorch_lightning trainer overhead, run until held-out loss stops improving rather than for a fixed number of steps) than the custom torch models in torchdl.py. Only available on Linux with Python <3.13 (the `nf` extra), since neuralforecast depends on `ray`.",
+    "limitations": "The univariate variant ignores exogenous inputs. The +exo variant feeds the case's covariates through neuralforecast's `futr_exog_list`, which hands the model those columns over the lookback window as well as the horizon -- so unlike this benchmark's other +exo columns, which see a covariate only at the step being predicted, these two also see its recent history. The library offers no horizon-only mode, so that is a property of the covariate mechanism rather than a choice; the three foundation-model +exo columns deviate the same way for the same reason. Trains a fresh model per case with no hyperparameter tuning, using the same architecture defaults regardless of the series' scale or frequency. On an extended-history fit, where the record is a panel of gap-separated segments, neuralforecast can only hold out an equal-length tail from every segment, so early stopping there watches a shorter holdout than the case's full validation split.",
+    "code_snippet": "from neuralforecast import NeuralForecast\nfrom neuralforecast.models import TFT\n\nmodel = TFT(h=horizon, input_size=lookback, early_stop_patience_steps=5)\nnf = NeuralForecast(models=[model], freq=case.freq)\nnf.fit(train_df, val_size=val_size)  # train_df: unique_id, ds, y\ny_hat = nf.predict()[\"TFT\"]",
+    "capabilities": {
+      "trend": true,
+      "seasonality": true,
+      "multiple_seasonality": true,
+      "exogenous": true,
+      "gaps": true
+    },
+    "scorecard": {
+      "history_requirements": "High",
+      "interpretability": "Low",
+      "running_cost": {
+        "level": "Medium",
+        "growth": "flat"
+      },
+      "tuning_effort": "High"
+    },
+    "forecast_strategy": "Direct"
+  },
   "TFT": {
     "family": "dl",
     "description": "Temporal Fusion Transformer: an LSTM encoder-decoder combined with multi-head\n    attention over the lookback window.",
     "uses_exogenous": false,
     "library": "neuralforecast + pytorch_lightning",
     "compute_profile": "Uses a GPU automatically if one is available (accelerator='auto'), otherwise falls back to CPU; a heavier training loop (full pytorch_lightning trainer overhead, run until held-out loss stops improving rather than for a fixed number of steps) than the custom torch models in torchdl.py. Only available on Linux with Python <3.13 (the `nf` extra), since neuralforecast depends on `ray`.",
-    "limitations": "Supports future covariates in neuralforecast, but this wrapper wires none of them up, so the column runs univariate. Trains a fresh model per case with no hyperparameter tuning, using the same architecture defaults regardless of the series' scale or frequency. On an extended-history fit, where the record is a panel of gap-separated segments, neuralforecast can only hold out an equal-length tail from every segment, so early stopping there watches a shorter holdout than the case's full validation split.",
+    "limitations": "The univariate variant ignores exogenous inputs. The +exo variant feeds the case's covariates through neuralforecast's `futr_exog_list`, which hands the model those columns over the lookback window as well as the horizon -- so unlike this benchmark's other +exo columns, which see a covariate only at the step being predicted, these two also see its recent history. The library offers no horizon-only mode, so that is a property of the covariate mechanism rather than a choice; the three foundation-model +exo columns deviate the same way for the same reason. Trains a fresh model per case with no hyperparameter tuning, using the same architecture defaults regardless of the series' scale or frequency. On an extended-history fit, where the record is a panel of gap-separated segments, neuralforecast can only hold out an equal-length tail from every segment, so early stopping there watches a shorter holdout than the case's full validation split.",
     "code_snippet": "from neuralforecast import NeuralForecast\nfrom neuralforecast.models import TFT\n\nmodel = TFT(h=horizon, input_size=lookback, early_stop_patience_steps=5)\nnf = NeuralForecast(models=[model], freq=case.freq)\nnf.fit(train_df, val_size=val_size)  # train_df: unique_id, ds, y\ny_hat = nf.predict()[\"TFT\"]",
     "capabilities": {
       "trend": true,
@@ -779,13 +883,39 @@
     },
     "forecast_strategy": "Direct"
   },
+  "TimesNet+exo": {
+    "family": "dl",
+    "description": "TimesNet with the case's declared covariates fed through neuralforecast's\n    future-covariate slot.",
+    "uses_exogenous": true,
+    "library": "neuralforecast + pytorch_lightning",
+    "compute_profile": "Uses a GPU automatically if one is available (accelerator='auto'), otherwise falls back to CPU; a heavier training loop (full pytorch_lightning trainer overhead, run until held-out loss stops improving rather than for a fixed number of steps) than the custom torch models in torchdl.py. Only available on Linux with Python <3.13 (the `nf` extra), since neuralforecast depends on `ray`.",
+    "limitations": "The univariate variant ignores exogenous inputs. The +exo variant feeds the case's covariates through neuralforecast's `futr_exog_list`, which hands the model those columns over the lookback window as well as the horizon -- so unlike this benchmark's other +exo columns, which see a covariate only at the step being predicted, these two also see its recent history. The library offers no horizon-only mode, so that is a property of the covariate mechanism rather than a choice; the three foundation-model +exo columns deviate the same way for the same reason. Trains a fresh model per case with no hyperparameter tuning, using the same architecture defaults regardless of the series' scale or frequency. On an extended-history fit, where the record is a panel of gap-separated segments, neuralforecast can only hold out an equal-length tail from every segment, so early stopping there watches a shorter holdout than the case's full validation split.",
+    "code_snippet": "from neuralforecast import NeuralForecast\nfrom neuralforecast.models import TimesNet\n\nmodel = TimesNet(h=horizon, input_size=lookback, early_stop_patience_steps=5)\nnf = NeuralForecast(models=[model], freq=case.freq)\nnf.fit(train_df, val_size=val_size)  # train_df: unique_id, ds, y\ny_hat = nf.predict()[\"TimesNet\"]",
+    "capabilities": {
+      "trend": true,
+      "seasonality": true,
+      "multiple_seasonality": true,
+      "exogenous": true,
+      "gaps": true
+    },
+    "scorecard": {
+      "history_requirements": "High",
+      "interpretability": "Low",
+      "running_cost": {
+        "level": "Medium",
+        "growth": "flat"
+      },
+      "tuning_effort": "High"
+    },
+    "forecast_strategy": "Direct"
+  },
   "TimesNet": {
     "family": "dl",
     "description": "Reshapes the series into 2D tensors by its dominant periods and applies\n    convolutional blocks to capture both within-period and across-period patterns.",
     "uses_exogenous": false,
     "library": "neuralforecast + pytorch_lightning",
     "compute_profile": "Uses a GPU automatically if one is available (accelerator='auto'), otherwise falls back to CPU; a heavier training loop (full pytorch_lightning trainer overhead, run until held-out loss stops improving rather than for a fixed number of steps) than the custom torch models in torchdl.py. Only available on Linux with Python <3.13 (the `nf` extra), since neuralforecast depends on `ray`.",
-    "limitations": "Supports future covariates in neuralforecast, but this wrapper wires none of them up, so the column runs univariate. Trains a fresh model per case with no hyperparameter tuning, using the same architecture defaults regardless of the series' scale or frequency. On an extended-history fit, where the record is a panel of gap-separated segments, neuralforecast can only hold out an equal-length tail from every segment, so early stopping there watches a shorter holdout than the case's full validation split.",
+    "limitations": "The univariate variant ignores exogenous inputs. The +exo variant feeds the case's covariates through neuralforecast's `futr_exog_list`, which hands the model those columns over the lookback window as well as the horizon -- so unlike this benchmark's other +exo columns, which see a covariate only at the step being predicted, these two also see its recent history. The library offers no horizon-only mode, so that is a property of the covariate mechanism rather than a choice; the three foundation-model +exo columns deviate the same way for the same reason. Trains a fresh model per case with no hyperparameter tuning, using the same architecture defaults regardless of the series' scale or frequency. On an extended-history fit, where the record is a panel of gap-separated segments, neuralforecast can only hold out an equal-length tail from every segment, so early stopping there watches a shorter holdout than the case's full validation split.",
     "code_snippet": "from neuralforecast import NeuralForecast\nfrom neuralforecast.models import TimesNet\n\nmodel = TimesNet(h=horizon, input_size=lookback, early_stop_patience_steps=5)\nnf = NeuralForecast(models=[model], freq=case.freq)\nnf.fit(train_df, val_size=val_size)  # train_df: unique_id, ds, y\ny_hat = nf.predict()[\"TimesNet\"]",
     "capabilities": {
       "trend": true,
