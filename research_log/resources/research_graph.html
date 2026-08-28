@@ -341,6 +341,22 @@
 <script type="application/json" id="graph-data">{
   "nodes": [
     {
+      "id": "2026-08-28-exo-swap-clobbers-full-history",
+      "date": "2026-08-28",
+      "title": "The exogenous swap was silently undoing the full-history swap in the viewer matrix",
+      "category": "bug-fix",
+      "summary": "A +exo method has no column of its own, so both viewer swaps write the same cell -- and the exogenous one, running second, read only the curated-span rows. With both checkboxes on it overwrote the full-history score while keeping the pink triangle that claims one. Dead cells went 16 of 45 on main to 32 of 45 once entry 101 added four more +exo DL columns.",
+      "detail": "Checking the published matrix in the app turned up cells that ignored the \"Score on full training history\" checkbox, and more of them than on `main`. The published data is fine -- it is a strict superset of `main`, nothing was lost in the merge. The fault is in the viewer: a `+exo` method has no column of its own, so both the full-history swap and the exogenous swap write the same cell, and the exogenous swap, which runs second, read only the curated-span rows. With both checkboxes on it therefore overwrote the full-history score with the sibling's curated-span one, while the cell kept the pink triangle that claims a full-history value.\n\nCounting MASE cells the checkbox can move with the exogenous toggle on, 16 of 45 were dead on `main` and 32 of 45 here -- entry 101's four new `+exo` DL columns widened a bug that was already there from 4 base columns to 8. The exogenous swap now picks the sibling's full-history row when both toggles are on, and drops the pink marker where that row does not exist. `SnapshotGrid` had always resolved the pair in that order, so the matrix was the only surface in the app disagreeing with the rest.\n\nEvery existing test of the two swaps set at most one toggle, which is why the overlap shipped broken; the four added cases cover it, three of them failing against the previous code.",
+      "tags": [
+        "react",
+        "ui",
+        "matrix-overlay",
+        "exogenous",
+        "is-global",
+        "testing"
+      ]
+    },
+    {
       "id": "2026-08-28-publish-lookback-exo-results",
       "date": "2026-08-28",
       "title": "The lookback and DL-exo re-runs are published; both TFT columns are held back",
@@ -1731,6 +1747,21 @@
     }
   ],
   "edges": [
+    {
+      "source": "2026-08-28-exo-swap-clobbers-full-history",
+      "target": "2026-07-14-exo-toggle-folded",
+      "type": "fixes-bug-in"
+    },
+    {
+      "source": "2026-08-28-exo-swap-clobbers-full-history",
+      "target": "2026-07-10-extended-history-viewer-toggle",
+      "type": "relates-to"
+    },
+    {
+      "source": "2026-08-28-exo-swap-clobbers-full-history",
+      "target": "2026-08-28-publish-lookback-exo-results",
+      "type": "follows-from"
+    },
     {
       "source": "2026-08-28-publish-lookback-exo-results",
       "target": "2026-08-26-dl-exo-columns",

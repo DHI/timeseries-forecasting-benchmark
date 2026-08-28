@@ -1,4 +1,24 @@
 ---
+id: 102
+date: "2026-08-28"
+title: "The exogenous swap was silently undoing the full-history swap in the viewer matrix"
+description: |
+  Checking the published matrix in the app turned up cells that ignored the "Score on full
+  training history" checkbox, and more of them than on `main`. The published data is fine -- it is
+  a strict superset of `main`, nothing was lost in the merge. The fault is in the viewer: a `+exo`
+  method has no column of its own, so both the full-history swap and the exogenous swap write the
+  same cell, and the exogenous swap, which runs second, read only the curated-span rows. With both
+  checkboxes on it therefore overwrote the full-history score with the sibling's curated-span one,
+  while the cell kept the pink triangle that claims a full-history value. Counting MASE cells the
+  checkbox can move with the exogenous toggle on, 16 of 45 were dead on `main` and 32 of 45 here --
+  entry 101's four new `+exo` DL columns widened a bug that was already there from 4 base columns
+  to 8. The exogenous swap now picks the sibling's full-history row when both toggles are on, and
+  drops the pink marker where that row does not exist.
+commits:
+  - b58bfa3: "Let the exogenous overlay carry the full-history swap"
+  - e054458: "Cover the extended-history and exogenous swaps together"
+  - 8798358: "Say what the two swap checkboxes do together"
+---
 id: 101
 date: "2026-08-28"
 title: "The lookback and DL-exo re-runs are published; both TFT columns are held back"
