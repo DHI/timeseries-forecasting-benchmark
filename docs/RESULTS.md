@@ -127,12 +127,19 @@ On the **hourly** cases N-HiTS/PatchTST beat persistence and match univariate Li
 (PatchTST best of the univariate methods on surge). On **daily** cases they could not see the
 annual cycle, and they are the heaviest methods (PatchTST ~400 s/cell).
 
-**These numbers predate the lookback rule.** They were produced when `lookback_for` returned a
-frequency-keyed constant — 64 steps daily, 168 hourly — which left the DL methods reaching less
-far back than the windowed-ML lag ladder on the daily cases and further on several hourly ones.
-The lookback is now `max(max(_lags_for(case)), 2*h)`, so both families reach equally far back:
-365 on the daily cases, 96 on surge, 48 on the 24-hour-horizon hourly cases. Every DL cell
-above is superseded and awaiting a re-run.
+**These numbers predate the lookback rule, and the re-run has landed.** They were produced when
+`lookback_for` returned a frequency-keyed constant — 64 steps daily, 168 hourly — which left the
+DL methods reaching less far back than the windowed-ML lag ladder on the daily cases and further
+on several hourly ones. It is now `max(max(_lags_for(case)), 2*h)`: 365 on the daily cases, 96 on
+surge, 48 on the 24-hour-horizon hourly cases. The whole DL family was re-scored under that rule
+at 100 origins, and every method now also has a `+exo` column, so read those cells from the
+regenerated matrix figure at the top of this page rather than from the 5-origin probe above.
+
+The two `TFT` columns are the exception. `TFT` is still at the old lookback on the eleven cases
+whose lookback changed, because it runs out of CUDA memory at 365 steps ([#109]), and `TFT+exo`
+is absent altogether for the same reason.
+
+[#109]: https://github.com/DHI-Internal/timeseries-forecasting-benchmark/issues/109
 
 ## Caveats
 
