@@ -97,7 +97,7 @@ below. This is now consistent with the case doc.)
 
 ### `wwtp_influent_n2o_350k` — hourly influent flow, 24-hour horizon
 
-Cembrowicz et al. (2024) N₂O WWTP dataset (hosted on Mendeley Data); target is `INLET.Q value`, the plant inlet totaliser.
+Hansen et al. (2024) N₂O WWTP dataset (hosted on Mendeley Data); target is `INLET.Q value`, the plant inlet totaliser.
 
 - Is influent flow the right primary target for a wastewater case? *(Per Rocco: keep it on the **influent** side — influent flow or, to better differentiate from Bellinge, an influent **concentration**. Effluent NH₄ / N₂O is a different task that belongs in mechanistic tools like WEST, so we **drop** the effluent secondary targets.)*
 - 24-hour horizon for aeration optimisation — agree? *(Per Rocco: 6 h, or both 6 h and 24 h. `horizons_eval` is `["6h","24h"]`; 6 h is the more defensible control horizon.)*

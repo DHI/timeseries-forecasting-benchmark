@@ -1,12 +1,12 @@
 # `wwtp_influent_n2o_350k` — influent flow into a wastewater treatment plant
 
-**Domain**: Wastewater treatment · **Target**: hourly influent flow rate · **Horizon**: 6–24 hours · **Data**: Cembrowicz et al. (2024) N₂O WWTP dataset
+**Domain**: Wastewater treatment · **Target**: hourly influent flow rate · **Horizon**: 6–24 hours · **Data**: Hansen et al. (2024) N₂O WWTP dataset
 
 ## What this is
 
 A WWTP receives the urban sewer catchment's output and removes pollutants before discharging to a river or the sea. **Influent flow** is the most important driver of plant operation: underloads waste energy, overloads cause biomass washout and permit excursions. Short-range influent forecasts feed energy-intensive aeration control (~50 % of plant electricity).
 
-The dataset (Cembrowicz et al., 2024 — published as the "N₂O WWTP" time-series dataset and *hosted* on Mendeley Data; "Mendeley" is the platform, not the plant) is **two years of high-resolution data from a single line of a 350,000-PE municipal plant** (June 2022 — June 2024). Native sampling is 2-minute; **49 columns** cover the influent, biological-tank measurements (NH₄, NO₃, PO₄, DO, suspended solids, temperature, N₂O), aeration airflows, valves, and process phase. *(Naming corrected per Rocco, PR #2.)*
+The dataset (Hansen et al., 2024 — published as the "N₂O WWTP" time-series dataset and *hosted* on Mendeley Data; "Mendeley" is the platform, not the plant) is **two years of high-resolution data from a single line of a 350,000-PE municipal plant** (June 2022 — June 2024). Native sampling is 2-minute; **49 columns** cover the influent, biological-tank measurements (NH₄, NO₃, PO₄, DO, suspended solids, temperature, N₂O), aeration airflows, valves, and process phase. *(Named by author rather than by host per Rocco, PR #2; the author name itself was corrected from "Cembrowicz" to Hansen et al. against arXiv:2407.05959 — gh #37.)*
 
 ```mermaid
 flowchart LR
@@ -60,4 +60,4 @@ Aeration energy optimisation (5–15 % savings = six-figure annual on a 350k-PE 
 
 ## References
 
-- Cembrowicz et al. (2024). *Time Series Dataset for Modeling and Forecasting of N₂O in Wastewater Treatment.* arXiv:2407.05959 · hosted on Mendeley Data: [xmbxhscgpr/1](https://data.mendeley.com/datasets/xmbxhscgpr/1)
+- Hansen, Rani, Stokholm-Bjerregaard, Stentoft, Arroyo & Durdevic (2024). *Time Series Dataset for Modeling and Forecasting of N₂O in Wastewater Treatment.* arXiv:2407.05959 · hosted on Mendeley Data: [xmbxhscgpr/1](https://data.mendeley.com/datasets/xmbxhscgpr/1)

@@ -78,7 +78,7 @@ point via the Open-Meteo archive API — no CDS account needed. See
 | `watertemp_james` | water quality | river temperature | daily | 7 d | USGS NWIS |
 | `sewerlevel_bellinge` | urban drainage | sewer level | 15 min | 6 h | Bellinge (DTU) |
 | `demand_ltown` | water distribution | network demand | hourly | 24 h | BattLeDIM L-Town |
-| `wwtp_influent_n2o_350k` | wastewater | influent flow | hourly | 24 h | N₂O WWTP (Cembrowicz) |
+| `wwtp_influent_n2o_350k` | wastewater | influent flow | hourly | 24 h | N₂O WWTP (Hansen et al.) |
 | `surge_cuxhaven` | storm surge | non-tidal residual | hourly | 48 h | GESLA-3 + ERA5 |
 | `waves_oregon` | spectral waves (swell) | significant wave height | hourly | 24 h | NOAA NDBC 46050 |
 | `waves_massachusetts` | spectral waves (wind-sea) | significant wave height | hourly | 24 h | NOAA NDBC 44013 |

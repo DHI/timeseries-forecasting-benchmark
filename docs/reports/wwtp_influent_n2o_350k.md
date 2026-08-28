@@ -6,7 +6,7 @@
 
 ## Data
 
-- Source: Mendeley N2O WWTP — https://data.mendeley.com/datasets/xmbxhscgpr/1
+- Source: Hansen et al. (2024) N2O WWTP — https://data.mendeley.com/datasets/xmbxhscgpr/1
 - Record span: 730 days, 15,132 observed of 17,544 rows (86%)
 - Splits (fraction): train→2023-06-30, val→2023-12-31, test→2024-06-30
 - Exogenous: none
