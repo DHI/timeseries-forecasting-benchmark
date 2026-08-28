@@ -25,8 +25,8 @@ val_end = 2023-12-31
 test_end = 2024-06-30
 
 [source]
-name = "Mendeley N2O WWTP"
+name = "Hansen et al. (2024) N2O WWTP"
 doi = "10.17632/xmbxhscgpr.1"
 url = "https://data.mendeley.com/datasets/xmbxhscgpr/1"
 license = "CC BY 4.0"
-citation = "Time Series Dataset for Modeling and Forecasting of N2O in Wastewater Treatment (2024)"
+citation = "Hansen et al. (2024). Time Series Dataset for Modeling and Forecasting of N2O in Wastewater Treatment. arXiv:2407.05959"
