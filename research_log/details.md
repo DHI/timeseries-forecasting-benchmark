@@ -1,4 +1,43 @@
 ---
+id: 101
+date: "2026-08-28"
+title: "The lookback and DL-exo re-runs are published; both TFT columns are held back"
+description: |
+  The three re-runs entries 99 and 100 called for are merged and published: the matrix is now 37
+  methods x 12 cases with every cell filled, adding `DLinear+exo`, `N-HiTS+exo`, `PatchTST+exo`
+  and `TimesNet+exo` and re-scoring the six univariate DL columns under the widened lookback.
+  Across the nine covariate cases the horizon-covariate contract pays: mean MASE against each
+  method's own univariate base is -13.3% for `DLinear+exo` (better on 6 of 9), -9.6% for
+  `N-HiTS+exo` (7 of 9) and -9.5% for `PatchTST+exo` (6 of 9), the largest single gains being
+  `watertemp_james` -53% and `surge_cuxhaven` -31% for `DLinear+exo`. `TimesNet+exo` is the
+  exception at -0.5% (4 of 9) -- and it is also the one of the four that takes covariates through
+  neuralforecast's `futr_exog_list`, which supplies the covariate over the lookback as well as the
+  horizon, so it is the only one seeing covariate history rather than the horizon value alone.
+
+  `TFT` and `TFT+exo` are held back rather than published. Both fail with CUDA out-of-memory on
+  all six daily cases, whose lookback widened 64 -> 365: TFT takes neuralforecast's default
+  `windows_batch_size` of 1,024, against 32 for iTransformer and 64 for TimesNet (gh #109). The
+  six `TFT+exo` cells that did run are parked in the partial file rather than shipped as half a
+  column, because on `wwtp_influent_n2o_350k` -- which declares no covariates, so `+exo` equals
+  univariate by construction -- it would have read 0.696 beside a `TFT` of 0.657, the two
+  disagreeing only because `TFT` is held at the old lookback. So the published `TFT` column is at
+  the old lookback on the eleven cases whose lookback changed, and `TFT+exo` is absent, until #109
+  is fixed and both are re-run on all 12 cases: capping the batch changes TFT's optimisation
+  everywhere, not only where it failed.
+
+  Two consequences for the merge itself. `merge_pilot_results.py` gained
+  `--drop TAG:METHOD[,METHOD]`, which is what makes holding one column back possible without
+  discarding a whole partial file, and its docstring now records which partials are live.
+  `pilot_metrics_baselines_v5` and `pilot_metrics_gpu_fm_nf_dl_v5` are retired from that list,
+  leaving nine inputs: they predate #107's seed-median scoring and contribute zero surviving
+  metric rows, but their snapshots ran 39 origins numbered 1-39 against the current 100 numbered
+  0-99, so none of their rows collided on the snapshot dedupe key and all 379,113 of them had been
+  surviving into `pilot_snapshots.parquet` -- two runs' forecast windows sharing one `origin_id`.
+commits:
+  - "bd4f88a": "Let merge_pilot_results.py hold one method back from one partial"
+  - "13fc702": "Publish the lookback and DL-exo re-runs: 37 methods, complete matrix"
+  - "34ad78e": "Point RESULTS.md's DL section at the published matrix"
+---
 id: 100
 date: "2026-08-26"
 title: "Every DL method gets a +exo column, on the same covariate contract as the ML ones"
