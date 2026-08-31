@@ -1,14 +1,15 @@
 id = "surge_cuxhaven"
 domain = "storm_surge"
-notes = "Hourly non-tidal residual (observed sea level minus tide prediction) at the Cuxhaven Steubenhoft GESLA gauge (German Bight). Exogenous: ERA5 mean sea-level pressure + 10-m wind components, fetched at the station point via Open-Meteo (credential-free). Wind and pressure are the physical surge drivers and are listed as known-future: at forecast time they would come from an NWP forecast; here the reanalysis is used as a perfect-forecast proxy. Record trimmed to 2000-2024 so ERA5 forcing covers the whole series. Necessary exogenous: mslp, u10, v10 (all three, per the driver statement above); no optional exogenous inputs. Dominant seasonality: neither declared period is supported by evidence (single-sinusoid R2 0.00001 for 24, 0.000003 for 12 - both indistinguishable from zero), so 24 is pinned on physical grounds. The target is sea level minus tide prediction, so the semi-diurnal band is exactly what de-tiding subtracts and any surviving 12h energy is tide-prediction error rather than a cycle; a 24h signal at least has a mechanism (diurnal wind forcing). Provisional - revisit with the dominance evidence panel, including whether this case is honestly non-seasonal."
+notes = "Hourly non-tidal residual (observed sea level minus tide prediction) at the Cuxhaven Steubenhoft GESLA gauge (German Bight). Exogenous: ERA5 mean sea-level pressure + 10-m wind components, fetched at the station point via Open-Meteo (credential-free). Wind and pressure are the physical surge drivers and are listed as known-future: at forecast time they would come from an NWP forecast; here the reanalysis is used as a perfect-forecast proxy. Record trimmed to 2000-2024 so ERA5 forcing covers the whole series. Necessary exogenous: mslp, u10, v10 (all three, per the driver statement above); no optional exogenous inputs. Dominant seasonality: 12, on periodogram evidence - a peak 523x the surrounding spectral band, ACF 0.64 and MSTL strength 0.60, accepted by detection, against 6.9 for period 24, which detection rejects. Single-sinusoid R2 reads 0.00001 for 24 and 0.000003 for 12, i.e. it prefers 24, but it measures share of total variance and this target's variance is dominated by broadband storm energy, so it collapses to ~0 for every candidate here and cannot rank them. Worth revisiting whether the 12h peak is a forecastable cycle or the residual of the tide prediction that was subtracted to build this target - a baseline arguably should not key on the latter - and whether the case is honestly non-seasonal."
 
 target = "residual_m"
 target_unit = "m"
 
 freq = "1h"
 seasonalities = [12,24]
-# Pinned dominance (R2 0.00001 vs 0.000003 for 12 - neither is evidence; 24 pinned on physical grounds, see notes); see notebooks/seasonality.py.
-dominant_seasonality = 24
+# Pinned dominance: power ratio 523 for 12 vs 6.9 for 24, and detection rejects 24. Single-sinusoid
+# R2 disagrees but is unusable on this broadband target -- see notes; notebooks/seasonality.py.
+dominant_seasonality = 12
 horizon_primary = "48h"
 horizons_eval = ["6h", "24h", "48h"]
 
