@@ -19,7 +19,7 @@ def main() -> int:
         # is_global methods carry two rows per cell (local + extended fit); the matrices
         # below are the local fit, so every method is on the same curated span.
         local = df[~df["used_extended_history"]] if "used_extended_history" in df else df
-        print("\n=== Pilot matrix: MASE (lower is better; 1.0 = seasonal naive) ===")
+        print("\n=== Pilot matrix: MASE (lower is better; 1.0 = seasonal naive in-sample) ===")
         print(
             local[local["metric"] == "MASE"]
             .pivot(index="case_id", columns="method", values="value")

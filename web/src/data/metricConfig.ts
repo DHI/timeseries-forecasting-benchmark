@@ -28,7 +28,7 @@ export const METRIC_CONFIG: Record<string, MetricConfig> = {
     center: 1.0,
     vlo: 0.0,
     vhi: 2.0,
-    label: 'MASE (lower=better; 1 = seasonal naive; colour clamped to [0, 2])',
+    label: 'MASE (lower=better; 1 = seasonal naive in-sample; colour clamped to [0, 2])',
     format: '.2f',
     unit: 'unitless',
     lowerIsBetter: true,

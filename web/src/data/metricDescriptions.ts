@@ -6,7 +6,7 @@ export const METRIC_DESCRIPTIONS: { key: string; description: string }[] = [
   {
     key: 'MASE',
     description:
-      "Mean Absolute Scaled Error: error scaled by a seasonal-naive baseline's error. 1.0 means no better than that baseline; below 1 means better. Lower is better.",
+      "Mean Absolute Scaled Error: test-window error divided by the error a seasonal-naive forecast makes on the case's own history, at the period pinned in case.toml. Below 1 beats that reference. The SeasonalNaive row is not fixed at 1.0 — it is scored on the test window, against its error on history, and the two differ. Lower is better.",
   },
   {
     key: 'Skill_vs_Persistence',
