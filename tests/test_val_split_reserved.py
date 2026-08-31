@@ -156,7 +156,7 @@ def test_val_windows_target_only_the_val_split():
     val_y = np.arange(1000, 1240, dtype=np.float32)
     L, H = 168, 24
 
-    X, Y = _build_val_windows(train_tail, val_y, L, H)
+    X, _Xf, Y = _build_val_windows(train_tail, val_y, L, H)
 
     assert (Y >= 1000).all()
     assert len(X) == len(val_y) // H  # disjoint targets tiling the val split

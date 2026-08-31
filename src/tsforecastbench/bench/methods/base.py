@@ -73,16 +73,204 @@ def build_windows(
     return X, Y
 
 
-def lookback_for(freq: str, h: int) -> int:
-    """Default lookback window length for a windowed DL/ML forecaster.
+def _lags_for(case: Case) -> list[int]:
+    """Uniform geometric memory ladder plus the case's declared seasonal periods.
 
-    Frequency-tuned base, floored at 2*h so the window always covers at least two
-    horizons even at large h (freqs not listed default to 4*h).
+    The ladder is recent autoregressive state, identical for every case and frequency —
+    it makes no cycle claim (the regressor is free to ignore any lag). Seasonal structure
+    enters only through the declared periods, keeping the case.toml the single source of
+    seasonal configuration."""
+    ladder = [1, 2, 4, 8, 16, 32]
+    return sorted(set(ladder) | set(case.seasonalities))
+
+
+def _exo_cols(case: Case) -> list[str]:
+    """Declared covariates, de-duplicated (a column may be both historical and known-future)."""
+    return list(dict.fromkeys([*case.exogenous, *case.exogenous_known_future]))
+
+
+def segment_exo_arrays(train: pd.DataFrame, cols: list[str]) -> list[np.ndarray]:
+    """Per-segment covariate arrays, aligned one-for-one with `segment_arrays`.
+
+    Returns one ``(len(segment), len(cols))`` array per ``unique_id``, in the same
+    first-appearance order `segment_arrays` uses, so window `i` of the target lines up with
+    window `i` of the covariates. A missing column becomes all-NaN rather than shifting the
+    remaining ones left, which would silently pair a window with the wrong covariate.
     """
-    f = freq.lower()
-    f = {"d": "1d", "h": "1h", "15t": "15min", "w": "1w"}.get(f, f)
-    base = {"1d": 64, "1h": 168, "15min": 192, "1w": 52}.get(f, 4 * h)
-    return max(base, 2 * h)
+    out = []
+    for _, g in train.groupby("unique_id", sort=False):
+        block = np.empty((len(g), len(cols)), dtype=float)
+        for j, c in enumerate(cols):
+            if c in g.columns:
+                block[:, j] = pd.to_numeric(g[c], errors="coerce").to_numpy(dtype=float)
+            else:
+                block[:, j] = np.nan
+        out.append(block)
+    return out
+
+
+def build_windows_fut(
+    segs: list[np.ndarray], exo_segs: list[np.ndarray] | None, L: int, H: int
+) -> tuple[np.ndarray, np.ndarray, np.ndarray] | tuple[None, None, None]:
+    """`build_windows`, plus each window's horizon-aligned covariate block.
+
+    Returns ``(X, Xf, Y)`` with ``X`` shaped ``(N, L)``, ``Y`` shaped ``(N, H)`` -- both
+    identical to what `build_windows` returns for the same input -- and ``Xf`` shaped
+    ``(N, H, n_exo)`` holding the covariate values at the *same* timestamps as ``Y``. That is
+    the covariate contract the windowed-ML `+exo` methods use: the value at the step being
+    predicted, not the covariate's history (see `methods/ml.py`).
+
+    All three come out of one function so the window ordering cannot drift between the target
+    and its covariates. An off-by-one in ``Xf`` would shift covariates against the target and
+    still train to convergence, so there is nothing to catch it downstream.
+
+    `exo_segs` is `None` (or a list of width-0 blocks) on a case with no covariates, and then
+    ``Xf`` is ``(N, H, 0)`` and the caller's model reduces to univariate.
+    """
+    counts = [max(0, len(y) - L - H + 1) for y in segs]
+    total = sum(counts)
+    if total <= 10:
+        return None, None, None
+    n_exo = 0 if exo_segs is None else (exo_segs[0].shape[1] if exo_segs else 0)
+    X = np.empty((total, L), dtype=np.float32)
+    Y = np.empty((total, H), dtype=np.float32)
+    Xf = np.empty((total, H, n_exo), dtype=np.float32)
+    at = 0
+    for k, (y, n) in enumerate(zip(segs, counts, strict=True)):
+        if n <= 0:
+            continue
+        view = np.lib.stride_tricks.sliding_window_view(y, L + H)
+        X[at : at + n] = view[:, :L]
+        Y[at : at + n] = view[:, L:]
+        if n_exo:
+            # One strided view per covariate column over the same segment, sliced to the
+            # horizon span [L, L+H) -- the timestamps Y covers.
+            e = exo_segs[k]
+            for j in range(n_exo):
+                ev = np.lib.stride_tricks.sliding_window_view(e[:, j], L + H)
+                Xf[at : at + n, :, j] = ev[:n, L:]
+        at += n
+    return X, Xf, Y
+
+
+def future_exo_block(
+    cols: list[str],
+    history: pd.DataFrame,
+    horizon: int,
+    future_exog: pd.DataFrame | None,
+    fallback: dict[str, float],
+) -> np.ndarray:
+    """Covariate values over the forecast horizon, as ``(horizon, len(cols))``.
+
+    `future_exog` is the eval loop's perfect-forecast proxy -- the covariates' true future
+    values, standing in for a forecast of them (see `Forecaster.predict`). Same convention as
+    `methods/ml.py`'s `_future_X` and `methods/fm.py`'s `_future_covariate`: fall back to the
+    last observed value per column when the proxy is absent, short, or non-finite, so a
+    covariate gap never puts a NaN into the model's input.
+
+    `fallback` is the per-column last-observed value captured at fit. A column missing from
+    both the proxy and `fallback` becomes 0.0, which is the standardised mean once the caller
+    scales the block.
+    """
+    out = np.empty((horizon, len(cols)), dtype=float)
+    for j, c in enumerate(cols):
+        fill = fallback.get(c, 0.0)
+        if future_exog is not None and c in future_exog.columns:
+            vals = pd.to_numeric(future_exog[c], errors="coerce").to_numpy(dtype=float)
+            if len(vals) >= horizon:
+                vals = vals[:horizon]
+            else:
+                padded = np.full(horizon, fill, dtype=float)
+                padded[: len(vals)] = vals
+                vals = padded
+        else:
+            vals = np.full(horizon, fill, dtype=float)
+        out[:, j] = np.where(np.isfinite(vals), vals, fill)
+    return out
+
+
+def last_observed_exo(train: pd.DataFrame, cols: list[str]) -> dict[str, float]:
+    """Per-column last observed covariate value, the predict-time fallback for `future_exo_block`.
+
+    Not training gap-fill: the curated frame already delivers complete covariate columns
+    within the span (see `data/curate.py`). This only covers a horizon the proxy cannot fill.
+    """
+    out: dict[str, float] = {}
+    for c in cols:
+        if c in train.columns:
+            s = pd.to_numeric(train[c], errors="coerce")
+            out[c] = float(s.ffill().iloc[-1]) if s.notna().any() else 0.0
+        else:
+            out[c] = 0.0
+    return out
+
+
+class ExoScaler:
+    """Per-column covariate standardisation, fitted once on the training pool.
+
+    For the torch models, whose RevIN rescales the *target* window by its own statistics. A
+    covariate has no relation to that scale -- `waves_oregon` mixes air pressure near
+    1,000 hPa with wind speed near 5 m/s against a target near 1 m -- so a small network fed
+    raw values on those scales saturates before it learns anything.
+
+    Not for a ridge: `methods/dl.py` feeds its covariates raw on purpose, because a ridge
+    penalty is absolute and unit-variance columns need coefficients large enough that
+    `alpha=1` stops restraining them (measured, see that module).
+
+    A zero-variance column maps to zeros, which is the honest encoding of a covariate that
+    carries no information.
+    """
+
+    def __init__(self, mean: np.ndarray, std: np.ndarray) -> None:
+        self.mean = mean
+        self.std = std
+
+    @classmethod
+    def fit(cls, exo_segs: list[np.ndarray] | None, n_exo: int) -> ExoScaler:
+        if not n_exo or not exo_segs:
+            return cls(np.zeros(0), np.ones(0))
+        stacked = np.concatenate(exo_segs, axis=0)
+        mean = np.nanmean(stacked, axis=0)
+        std = np.nanstd(stacked, axis=0)
+        mean = np.where(np.isfinite(mean), mean, 0.0)
+        # A constant column must divide by 1.0, so it standardises to 0 and drops out. The
+        # test has to be *relative* to the column's magnitude: `waves_oregon`'s `atmp` is
+        # 12.7 at every one of its 17,176 training points, and the std of that comes back as
+        # 1.8e-15 from a contiguous 1-D slice but 3.4e-12 from the axis reduction over the
+        # strided 2-D column -- the reduction's own rounding error. Any absolute epsilon
+        # small enough to look safe sits inside that spread, and dividing a real covariate
+        # deviation by 3.4e-12 put 1e12 into the network.
+        floor = 1e-8 * np.maximum(np.abs(mean), 1.0)
+        std = np.where(np.isfinite(std) & (std > floor), std, 1.0)
+        return cls(mean, std)
+
+    def transform(self, block: np.ndarray) -> np.ndarray:
+        """Standardise a `(..., n_exo)` block, sending non-finite values to the column mean."""
+        if block.shape[-1] == 0:
+            return block
+        out = (block - self.mean) / self.std
+        return np.where(np.isfinite(out), out, 0.0)
+
+
+def lookback_for(case: Case, h: int) -> int:
+    """Lookback window length for a windowed DL forecaster: the ML lag reach, floored at 2*h.
+
+    A DL method sees a contiguous window and the windowed-ML pipeline sees the sparse
+    `_lags_for` ladder, so the two can never take the same input. What they can share is how
+    far back the earliest input sits, and that is what this matches: `max(_lags_for(case))`.
+    The pair used to disagree in both directions -- a frequency-keyed constant (64 daily, 168
+    hourly, 192 15-min, 52 weekly, introduced with no rationale in 573ec28 and never
+    revisited) left the DL methods unable to see the annual cycle the six daily cases declare,
+    while reaching further than the ML ladder does on five others.
+
+    The `2*h` floor stays, so the window always covers at least two horizons. It binds on the
+    four hourly cases whose declared periods are short (largest lag 32), which is where the DL
+    reach is still wider than the ML one -- exact on the other eight.
+
+    `_lags_for` always contains the [1,2,4,8,16,32] ladder, so this never returns less than 32
+    and needs no frequency fallback.
+    """
+    return max(max(_lags_for(case)), 2 * h)
 
 
 class Forecaster(ABC):

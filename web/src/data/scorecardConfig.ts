@@ -39,7 +39,7 @@ export const CAPABILITY_FIELDS: readonly CapabilityField[] = [
   {
     key: 'exogenous',
     label: 'Exogenous',
-    help: 'Can consume covariates in principle. This describes the method, not this column — a method shown here without covariates may still support them (that is what its +exo column is). Where this benchmark has not wired a method’s covariates up yet, the flag still reads yes and the method’s limitations say the column runs univariate.',
+    help: 'Can consume covariates in principle. This describes the method, not this column — a method shown here without covariates may still support them (that is what its +exo column is).',
   },
   {
     key: 'gaps',

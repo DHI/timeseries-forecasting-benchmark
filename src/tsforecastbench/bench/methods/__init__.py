@@ -9,7 +9,7 @@ from tsforecastbench.bench.methods.classical import (
     TBATSForecaster,
     ThetaForecaster,
 )
-from tsforecastbench.bench.methods.dl import DLinearForecaster
+from tsforecastbench.bench.methods.dl import DLinearExoForecaster, DLinearForecaster
 from tsforecastbench.bench.methods.ensemble import (
     EnsembleForecaster,
     ensemble_baselines,
@@ -42,10 +42,17 @@ from tsforecastbench.bench.methods.naive import (
 )
 from tsforecastbench.bench.methods.nf_models import (
     ITransformerForecaster,
+    TFTExoForecaster,
     TFTForecaster,
+    TimesNetExoForecaster,
     TimesNetForecaster,
 )
-from tsforecastbench.bench.methods.torchdl import NHITSForecaster, PatchTSTForecaster
+from tsforecastbench.bench.methods.torchdl import (
+    NHITSExoForecaster,
+    NHITSForecaster,
+    PatchTSTExoForecaster,
+    PatchTSTForecaster,
+)
 
 __all__ = [
     "AutoARIMAForecaster",
@@ -56,6 +63,7 @@ __all__ = [
     "Chronos2Forecaster",
     "ChronosForecaster",
     "Climatology",
+    "DLinearExoForecaster",
     "DLinearForecaster",
     "EnsembleForecaster",
     "Forecaster",
@@ -71,15 +79,19 @@ __all__ = [
     "MeanBaseline",
     "Moirai2ExoForecaster",
     "Moirai2Forecaster",
+    "NHITSExoForecaster",
     "NHITSForecaster",
+    "PatchTSTExoForecaster",
     "PatchTSTForecaster",
     "Persistence",
     "SeasonalNaive",
     "TBATSForecaster",
+    "TFTExoForecaster",
     "TFTForecaster",
     "ThetaForecaster",
     "TimesFMExoForecaster",
     "TimesFMForecaster",
+    "TimesNetExoForecaster",
     "TimesNetForecaster",
     "ensemble_baselines",
     "ensemble_baselines_theta",

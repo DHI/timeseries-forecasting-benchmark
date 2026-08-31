@@ -111,6 +111,68 @@ describe('useMatrixFigure — exogenous swap', () => {
   });
 });
 
+// Both swaps write the same cell — the +exo sibling has no column of its own — so the
+// exogenous swap, which runs second, used to overwrite the extended-history value with
+// the sibling's local one and leave the full-history checkbox with nothing to change.
+describe('useMatrixFigure — extended-history and exogenous swaps together', () => {
+  const globalExo = (overrides: Partial<ScoreRow>) =>
+    row({ is_global: true, case_exo_tier: 'necessary', ...overrides });
+
+  const rows = [
+    globalExo({ method: 'LightGBM', used_extended_history: false, value: 1.0 }),
+    globalExo({ method: 'LightGBM', used_extended_history: true, value: 9.0 }),
+    globalExo({ method: 'LightGBM+exo', used_extended_history: false, value: 0.5 }),
+    globalExo({ method: 'LightGBM+exo', used_extended_history: true, value: 0.25 }),
+  ];
+
+  const fillcolors = (result: { layout: { shapes?: Array<{ fillcolor?: unknown }> } }) =>
+    (result.layout.shapes ?? []).map((s) => s.fillcolor);
+
+  it('shows the +exo sibling’s extended value and marks both swaps', () => {
+    const { result } = renderHook(() =>
+      useMatrixFigure(rows, 'MAE', EMPTY_SELECTION, true, true, false),
+    );
+    const heatmap = result.current!.data[0] as { z: number[][] };
+    expect(heatmap.z).toEqual([[Math.log10(0.25)]]);
+    expect(fillcolors(result.current!)).toEqual(expect.arrayContaining(['#FF1493', '#0B7285']));
+  });
+
+  it('falls back to the +exo local value and drops the pink marker when the sibling has no extended row', () => {
+    const noExoExtended = rows.filter(
+      (r) => !(r.method === 'LightGBM+exo' && r.used_extended_history),
+    );
+    const { result } = renderHook(() =>
+      useMatrixFigure(noExoExtended, 'MAE', EMPTY_SELECTION, true, true, false),
+    );
+    const heatmap = result.current!.data[0] as { z: number[][] };
+    expect(heatmap.z).toEqual([[Math.log10(0.5)]]);
+    expect(fillcolors(result.current!)).toEqual(['#0B7285']);
+  });
+
+  it('leaves the base method’s extended value in place for a case with no exogenous data', () => {
+    const noExoCase = rows.map((r) => ({ ...r, case_exo_tier: 'none' }));
+    const { result } = renderHook(() =>
+      useMatrixFigure(noExoCase, 'MAE', EMPTY_SELECTION, true, true, false),
+    );
+    const heatmap = result.current!.data[0] as { z: number[][] };
+    expect(heatmap.z).toEqual([[Math.log10(9.0)]]);
+    expect(fillcolors(result.current!)).toEqual(['#FF1493']);
+  });
+
+  it('pivots the combined swap-in cell on training time too', () => {
+    const timed = rows.map((r) =>
+      r.method === 'LightGBM+exo' && r.used_extended_history
+        ? { ...r, fit_seconds: 8.6, predict_seconds: 0.4 }
+        : r,
+    );
+    const { result } = renderHook(() =>
+      useMatrixFigure(timed, 'MAE', EMPTY_SELECTION, true, true, true),
+    );
+    const heatmap = result.current!.data[0] as { z: number[][] };
+    expect(heatmap.z).toEqual([[Math.log10(10.0)]]);
+  });
+});
+
 describe('useMatrixFigure — colorbar title', () => {
   function heatmapOf(result: { data: unknown[] }) {
     return result.data[0] as { colorbar: { title: { text: string } } };

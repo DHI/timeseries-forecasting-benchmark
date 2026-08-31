@@ -36,6 +36,7 @@ from tsforecastbench.bench.methods import (
     CatBoostExoForecaster,
     CatBoostForecaster,
     Climatology,
+    DLinearExoForecaster,
     DLinearForecaster,
     LightGBMExoForecaster,
     LightGBMForecaster,
@@ -88,6 +89,7 @@ def build_methods():
         LightGBMExoForecaster(),
         CatBoostExoForecaster(),
         MLPExoForecaster(),
+        DLinearExoForecaster(),
     ]
 
 
@@ -160,13 +162,15 @@ def main() -> int:
     p.add_argument(
         "--with-dl",
         action="store_true",
-        help="Add the torch deep-learning models (N-HiTS, PatchTST; needs the 'dl' extra). "
+        help="Add the torch deep-learning models (N-HiTS, PatchTST and their +exo variants; "
+        "needs the 'dl' extra). "
         "Heavy on CPU — pair with a small --origins.",
     )
     p.add_argument(
         "--with-nf",
         action="store_true",
-        help="Add the neuralforecast zoo (TFT, iTransformer, TimesNet; needs the 'nf' "
+        help="Add the neuralforecast zoo (TFT, iTransformer, TimesNet, plus TFT+exo and "
+        "TimesNet+exo; needs the 'nf' "
         "extra — Linux/WSL only). GPU-accelerated when available.",
     )
     p.add_argument(
@@ -207,17 +211,35 @@ def main() -> int:
 
     methods = [] if args.skip_baseline else build_methods()
     if args.with_dl:
-        from tsforecastbench.bench.methods import NHITSForecaster, PatchTSTForecaster
+        from tsforecastbench.bench.methods import (
+            NHITSExoForecaster,
+            NHITSForecaster,
+            PatchTSTExoForecaster,
+            PatchTSTForecaster,
+        )
 
-        methods += [NHITSForecaster(), PatchTSTForecaster()]
+        methods += [
+            NHITSForecaster(),
+            PatchTSTForecaster(),
+            NHITSExoForecaster(),
+            PatchTSTExoForecaster(),
+        ]
     if args.with_nf:
         from tsforecastbench.bench.methods import (
             ITransformerForecaster,
+            TFTExoForecaster,
             TFTForecaster,
+            TimesNetExoForecaster,
             TimesNetForecaster,
         )
 
-        methods += [TFTForecaster(), ITransformerForecaster(), TimesNetForecaster()]
+        methods += [
+            TFTForecaster(),
+            ITransformerForecaster(),
+            TimesNetForecaster(),
+            TFTExoForecaster(),
+            TimesNetExoForecaster(),
+        ]
     if args.with_fm:
         from tsforecastbench.bench.methods import (
             Chronos2ExoForecaster,

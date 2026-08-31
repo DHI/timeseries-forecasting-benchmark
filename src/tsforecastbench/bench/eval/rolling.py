@@ -185,7 +185,7 @@ def run_case_rolling(
                 "is_global methods use the curated span only."
             )
         else:
-            segs = _segment_extended(extended, case.id, case.freq, H)
+            segs = _segment_extended(extended, case, H)
             if len(segs) >= 2:
                 ext_segments = segs
             else:

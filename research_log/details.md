@@ -1,4 +1,141 @@
 ---
+id: 102
+date: "2026-08-28"
+title: "The exogenous swap was silently undoing the full-history swap in the viewer matrix"
+description: |
+  Checking the published matrix in the app turned up cells that ignored the "Score on full
+  training history" checkbox, and more of them than on `main`. The published data is fine -- it is
+  a strict superset of `main`, nothing was lost in the merge. The fault is in the viewer: a `+exo`
+  method has no column of its own, so both the full-history swap and the exogenous swap write the
+  same cell, and the exogenous swap, which runs second, read only the curated-span rows. With both
+  checkboxes on it therefore overwrote the full-history score with the sibling's curated-span one,
+  while the cell kept the pink triangle that claims a full-history value. Counting MASE cells the
+  checkbox can move with the exogenous toggle on, 16 of 45 were dead on `main` and 32 of 45 here --
+  entry 101's four new `+exo` DL columns widened a bug that was already there from 4 base columns
+  to 8. The exogenous swap now picks the sibling's full-history row when both toggles are on, and
+  drops the pink marker where that row does not exist.
+commits:
+  - b58bfa3: "Let the exogenous overlay carry the full-history swap"
+  - e054458: "Cover the extended-history and exogenous swaps together"
+  - 8798358: "Say what the two swap checkboxes do together"
+---
+id: 101
+date: "2026-08-28"
+title: "The lookback and DL-exo re-runs are published; both TFT columns are held back"
+description: |
+  The three re-runs entries 99 and 100 called for are merged and published: the matrix is now 37
+  methods x 12 cases with every cell filled, adding `DLinear+exo`, `N-HiTS+exo`, `PatchTST+exo`
+  and `TimesNet+exo` and re-scoring the six univariate DL columns under the widened lookback.
+  Across the nine covariate cases the horizon-covariate contract pays: mean MASE against each
+  method's own univariate base is -13.3% for `DLinear+exo` (better on 6 of 9), -9.6% for
+  `N-HiTS+exo` (7 of 9) and -9.5% for `PatchTST+exo` (6 of 9), the largest single gains being
+  `watertemp_james` -53% and `surge_cuxhaven` -31% for `DLinear+exo`. `TimesNet+exo` is the
+  exception at -0.5% (4 of 9) -- and it is also the one of the four that takes covariates through
+  neuralforecast's `futr_exog_list`, which supplies the covariate over the lookback as well as the
+  horizon, so it is the only one seeing covariate history rather than the horizon value alone.
+
+  `TFT` and `TFT+exo` are held back rather than published. Both fail with CUDA out-of-memory on
+  all six daily cases, whose lookback widened 64 -> 365: TFT takes neuralforecast's default
+  `windows_batch_size` of 1,024, against 32 for iTransformer and 64 for TimesNet (gh #109). The
+  six `TFT+exo` cells that did run are parked in the partial file rather than shipped as half a
+  column, because on `wwtp_influent_n2o_350k` -- which declares no covariates, so `+exo` equals
+  univariate by construction -- it would have read 0.696 beside a `TFT` of 0.657, the two
+  disagreeing only because `TFT` is held at the old lookback. So the published `TFT` column is at
+  the old lookback on the eleven cases whose lookback changed, and `TFT+exo` is absent, until #109
+  is fixed and both are re-run on all 12 cases: capping the batch changes TFT's optimisation
+  everywhere, not only where it failed.
+
+  Two consequences for the merge itself. `merge_pilot_results.py` gained
+  `--drop TAG:METHOD[,METHOD]`, which is what makes holding one column back possible without
+  discarding a whole partial file, and its docstring now records which partials are live.
+  `pilot_metrics_baselines_v5` and `pilot_metrics_gpu_fm_nf_dl_v5` are retired from that list,
+  leaving nine inputs: they predate #107's seed-median scoring and contribute zero surviving
+  metric rows, but their snapshots ran 39 origins numbered 1-39 against the current 100 numbered
+  0-99, so none of their rows collided on the snapshot dedupe key and all 379,113 of them had been
+  surviving into `pilot_snapshots.parquet` -- two runs' forecast windows sharing one `origin_id`.
+commits:
+  - "bd4f88a": "Let merge_pilot_results.py hold one method back from one partial"
+  - "13fc702": "Publish the lookback and DL-exo re-runs: 37 methods, complete matrix"
+  - "34ad78e": "Point RESULTS.md's DL section at the published matrix"
+---
+id: 100
+date: "2026-08-26"
+title: "Every DL method gets a +exo column, on the same covariate contract as the ML ones"
+description: |
+  `DLinear+exo`, `N-HiTS+exo`, `PatchTST+exo`, `TFT+exo` and `TimesNet+exo` close the gap entry
+  98 recorded: five methods declared `capabilities.exogenous` and fed no covariates. They copy
+  the contract the windowed-ML `+exo` columns already use -- the covariate value at the step
+  being predicted, not its history -- because mlforecast's `lags=` is target-only, so
+  `LightGBM+exo` sees `rain[t+h]` and nothing else about rain. Giving the ML methods covariate
+  history instead would open how far back to look per covariate, which is its own study.
+
+  The torch pair needed three things past the plumbing, each measured over 40 disjoint origins
+  after a single horizon proved too noisy to decide on: the covariate term is added outside RevIN
+  (inside, its coefficient would have to move with each window's volatility), scaled by the
+  target's training-pool standard deviation (without it the layer needs weights around 180, which
+  Adam cannot reach before early stopping), and zero-initialised at ten times the backbone's
+  learning rate (the default init put +-68 of noise into every forecast). Drop any one and the
+  `+exo` column measures no better than univariate.
+
+  `TFT+exo` and `TimesNet+exo` deviate: neuralforecast's `futr_exog_list` supplies a covariate
+  over the lookback as well as the horizon, with no horizon-only mode, so those two also see its
+  recent history -- the same deviation the three foundation-model `+exo` columns carry, for the
+  same reason. Neither has run: `neuralforecast` is the Linux-only extra. `iTransformer` gets no
+  variant, since its `n_series=1` pin leaves no covariate slot.
+
+  20-origin MASE against the univariate base, as a sanity read rather than a result:
+  `waves_massachusetts` N-HiTS -37% and PatchTST -45%, `surge_cuxhaven` N-HiTS -13% and
+  PatchTST -17%. `DLinear+exo` helps on 7 of 9 covariate cases and hurts on two daily ones.
+  All five columns need a pilot run at 100 origins.
+
+  `PLAN_exogenous_expansion.md`, which entry 98 points at, is deleted. Its Tier 1 shipped in
+  entry 87, and its Tier 2 and 3 designs gave the covariates a channel dimension over the
+  lookback -- covariate history, which is not the contract chosen here.
+commits:
+  - "6637ebb": "Add a window builder that carries horizon-aligned covariates"
+  - "a9483b3": "Feed horizon covariates to DLinear's ridge"
+  - "ca7c729": "Register DLinear+exo"
+  - "d219080": "Keep DLinear's covariate block on its raw scale"
+  - "7c5a6a5": "Give the torch nets a horizon-covariate input"
+  - "3113ed0": "Feed horizon covariates to N-HiTS and PatchTST"
+  - "66ba49c": "Wire neuralforecast's future-covariate slot for TFT and TimesNet"
+---
+id: 99
+date: "2026-08-26"
+title: "The DL lookback now reaches as far back as the ML lag ladder"
+description: |
+  `lookback_for` returned a frequency-keyed constant -- 64 daily, 168 hourly, 192 fifteen-minute,
+  52 weekly -- introduced with no comment in `573ec28` and never revisited, while `_lags_for`
+  gives the windowed-ML methods the `[1,2,4,8,16,32]` ladder unioned with the case's declared
+  periods. The two disagreed in both directions: on the six daily cases the ML methods lag on the
+  declared 365-step cycle and the DL methods stopped at 64, and on five other cases the DL window
+  reached further back than the ladder does. It is now `max(max(_lags_for(case)), 2*h)`, so both
+  families reach equally far back even though one reads a sparse ladder and the other a
+  contiguous window.
+
+  Eleven of twelve cases move: the six daily ones widen 64 to 365, `sewerlevel_bellinge` narrows
+  192 to 96, `surge_cuxhaven` 168 to 96, and the three 24-hour-horizon hourly cases 168 to 48.
+  `demand_ltown` is unchanged, its 168 already being the lag reach, which makes it the control.
+  The `2*h` floor stays and binds on the four hourly cases whose declared periods are short, so
+  exact equality lands on eight of twelve. Measured before the change: nothing falls below
+  `build_windows`'s 11-window floor (smallest pool 1,163), no case trips the validation-window
+  guard, and both nets stay non-degenerate at every new size.
+
+  All six univariate DL columns are superseded on those eleven cases and need a re-run --
+  `iTransformer` included, which is easy to miss: it does not pool segments, but it shares
+  `_NFBase.fit` and so takes the same window as its siblings. So are the extended-history rows of
+  every pooling method on `waves_massachusetts`, the ML ones included: `_segment_extended` drops a
+  gap-bounded segment shorter than `lookback + horizon`, and that case goes from 9 surviving
+  segments to 11. `docs/RESULTS.md` attributed the DL family's
+  weak daily-case showing to the 64-day window, so those cells should improve; `surge_cuxhaven`,
+  where PatchTST was the best univariate method at 168, is where a narrowed window may cost
+  accuracy. DLinear's moving-average kernel stays a constant 25 while the lookback now spans 48
+  to 365, so its trend/remainder split is sharper on a short window than a long one.
+commits:
+  - "822ebc7": "Move _lags_for from ml.py into base.py"
+  - "ae6d9f2": "Derive the DL lookback from the case's ML lag reach"
+  - "4327f3b": "Stop RESULTS.md describing the lookback as a frequency constant"
+---
 id: 98
 date: "2026-08-26"
 title: "Method cards drop from six ratings to four"

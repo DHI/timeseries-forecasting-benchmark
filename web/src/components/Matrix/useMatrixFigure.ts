@@ -146,10 +146,12 @@ export function useMatrixFigure(
     // score and marked with a corner triangle — they're fit on more data than the rest
     // of the row and aren't directly comparable. Port of app/app.py's `show_global`
     // branch (render_matrix lines 262-273).
-    const globalOverlayCells: Array<[string, string]> = [];
+    let globalOverlayCells: Array<[string, string]> = [];
+    const extendedRowOf = new Map<string, ScoreRow>();
     if (showGlobal) {
       for (const row of rows) {
         if (!row.used_extended_history || !row.is_global) continue;
+        extendedRowOf.set(`${row.case_id}|${row.method}`, row);
         const r = rowOrder.indexOf(row.case_id);
         const c = colOrder.indexOf(row.method);
         const v = valueOf(row);
@@ -163,7 +165,14 @@ export function useMatrixFigure(
     // shown as a single column. When `showExo` is on, cases with real exogenous data
     // (case_exo_tier != "none") get that sibling's score swapped in and marked with a
     // teal corner. Port of app/app.py's `show_exo` branch (render_matrix lines 275-293).
+    //
+    // This runs after the `showGlobal` block and writes the same cells, so with both
+    // toggles on it has to pick the sibling's extended-history row itself — reading only
+    // `dfLocal` here would silently undo the swap above and leave the pink triangle
+    // claiming a full-history value the cell isn't showing. Where the sibling has no
+    // extended row, the local one is used and that cell's pink marker is dropped.
     const exoOverlayCells: Array<[string, string]> = [];
+    const exoCellsWithoutExtended = new Set<string>();
     if (showExo) {
       const localMethods = new Set(dfLocal.map((r) => r.method));
       const exoPairs = new Map(
@@ -180,13 +189,21 @@ export function useMatrixFigure(
           const base = row.method.slice(0, -'+exo'.length);
           const r = rowOrder.indexOf(row.case_id);
           const c = colOrder.indexOf(base);
-          const v = valueOf(row);
+          const extRow = extendedRowOf.get(`${row.case_id}|${row.method}`);
+          const extValue = extRow ? valueOf(extRow) : null;
+          const v = extValue ?? valueOf(row);
           if (r === -1 || c === -1 || v === null) continue;
           if ((tierOf.get(row.case_id) ?? 'none') === 'none') continue;
           values[r]![c] = v;
           exoOverlayCells.push([row.case_id, base]);
+          if (extValue === null) exoCellsWithoutExtended.add(`${row.case_id}|${base}`);
         }
       }
+    }
+    if (exoCellsWithoutExtended.size > 0) {
+      globalOverlayCells = globalOverlayCells.filter(
+        ([caseId, method]) => !exoCellsWithoutExtended.has(`${caseId}|${method}`),
+      );
     }
 
     // Training time is heavy-tailed (most methods are fast, a few much slower), so cell

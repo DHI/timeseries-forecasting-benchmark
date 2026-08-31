@@ -24,7 +24,13 @@ from tsforecastbench.bench.eval.budget import (
     dl_step_ceiling,
     nf_val_size,
 )
-from tsforecastbench.bench.methods.base import Forecaster, lookback_for
+from tsforecastbench.bench.methods.base import (
+    Forecaster,
+    _exo_cols,
+    future_exo_block,
+    last_observed_exo,
+    lookback_for,
+)
 from tsforecastbench.bench.methods.scorecard import (
     Capabilities,
     ForecastStrategy,
@@ -54,6 +60,7 @@ class _NFBase(Forecaster):
     # so a different seed is a different fit.
     is_stochastic = True
     model_name = "NHITS"  # neuralforecast.models class name
+    use_exogenous: bool = False
     extra_kwargs: ClassVar[dict] = {}
     library = "neuralforecast + pytorch_lightning"
     compute_profile = (
@@ -65,18 +72,23 @@ class _NFBase(Forecaster):
         "depends on `ray`."
     )
     limitations = (
-        "Supports future covariates in neuralforecast, but this wrapper wires none of "
-        "them up, so the column runs univariate. Trains a fresh model per case with "
-        "no hyperparameter tuning, using the same architecture defaults regardless "
-        "of the series' scale or frequency. On an extended-history fit, where the record "
-        "is a panel of gap-separated segments, neuralforecast can only hold out an "
-        "equal-length tail from every segment, so early stopping there watches a shorter "
-        "holdout than the case's full validation split."
+        "The univariate variant ignores exogenous inputs. The +exo variant feeds the case's "
+        "covariates through neuralforecast's `futr_exog_list`, which hands the model those "
+        "columns over the lookback window as well as the horizon -- so unlike this "
+        "benchmark's other +exo columns, which see a covariate only at the step being "
+        "predicted, these two also see its recent history. The library offers no "
+        "horizon-only mode, so that is a property of the covariate mechanism rather than a "
+        "choice; the three foundation-model +exo columns deviate the same way for the same "
+        "reason. Trains a fresh model per case with no hyperparameter tuning, using the same "
+        "architecture defaults regardless of the series' scale or frequency. On an "
+        "extended-history fit, where the record is a panel of gap-separated segments, "
+        "neuralforecast can only hold out an equal-length tail from every segment, so early "
+        "stopping there watches a shorter holdout than the case's full validation split."
     )
     # Shared by all three: window models that learn trend and several interacting periods
-    # from the lookback. `exogenous` describes the architecture, not the wiring (see the
-    # rubric): neuralforecast takes future covariates for these, this wrapper passes none,
-    # and `limitations` above is what says so.
+    # from the lookback. `exogenous` describes the architecture rather than a given column:
+    # neuralforecast takes future covariates for these, and `use_exogenous` is all the +exo
+    # variant switches.
     capabilities = Capabilities(
         trend=True, seasonality=True, multiple_seasonality=True, exogenous=True
     )
@@ -94,6 +106,22 @@ class _NFBase(Forecaster):
         tuning_effort=Level.HIGH,
     )
 
+    def __init__(self) -> None:
+        self.uses_exogenous = self.use_exogenous
+        self._exo: list[str] = []
+        self._last_exo: dict[str, float] = {}
+
+    def _numeric_exo(self, frame: pd.DataFrame) -> pd.DataFrame:
+        """Coerce the covariate columns in place, filling anything non-finite.
+
+        neuralforecast raises on a NaN in a `futr_exog` column rather than imputing, and the
+        curated frame is already gap-filled inside the span, so this only covers the edges.
+        """
+        for c in self._exo:
+            vals = pd.to_numeric(frame.get(c), errors="coerce")
+            frame[c] = vals.fillna(self._last_exo.get(c, 0.0))
+        return frame
+
     def fit(self, case: Case, train: pd.DataFrame, val: pd.DataFrame) -> None:
         import neuralforecast.models as nfm
         import pytorch_lightning as pl
@@ -103,7 +131,9 @@ class _NFBase(Forecaster):
 
         pl.seed_everything(self.seed)
         self._h = h = _horizon_to_steps(case.horizon_primary, case.freq)
-        df = train[["unique_id", "ds", "y"]].copy()
+        self._exo = _exo_cols(case) if self.use_exogenous else []
+        self._last_exo = last_observed_exo(train, self._exo)
+        df = train[["unique_id", "ds", "y", *self._exo]].copy()
         # The extended-history frame carries one unique_id per contiguous segment;
         # neuralforecast fits them as a panel, so no window spans a gap. The tail segment
         # (latest ds, always the last row) is the series we forecast at predict.
@@ -111,8 +141,9 @@ class _NFBase(Forecaster):
         # No truncation: the whole record is trained on (issue #95).
         df["ds"] = _naive_ds(df["ds"]).to_numpy()
         df["y"] = pd.to_numeric(df["y"], errors="coerce")
+        df = self._numeric_exo(df)
 
-        lookback = lookback_for(case.freq, h)
+        lookback = lookback_for(case, h)
         # Early stopping runs on the declared val split (gh #99). neuralforecast holds out
         # the last `val_size` steps of every series in the panel, so the target series is
         # handed its train rows plus that many val rows: the cut then lands exactly on val
@@ -136,9 +167,10 @@ class _NFBase(Forecaster):
             if uid == self._target_uid or n >= lookback + h + val_size
         ]
         df = df[df["unique_id"].isin(keep)]
-        val_head = val_target.iloc[:val_size][["unique_id", "ds", "y"]].copy()
+        val_head = val_target.iloc[:val_size][["unique_id", "ds", "y", *self._exo]].copy()
         val_head["ds"] = _naive_ds(val_head["ds"]).to_numpy()
         val_head["y"] = pd.to_numeric(val_head["y"], errors="coerce")
+        val_head = self._numeric_exo(val_head)
         # Sorted explicitly rather than relying on the frame arriving in order: the val rows
         # are appended after every segment, and `val_size` counts back from each series' last
         # row, so a panel left in append order would put another segment's rows there.
@@ -158,6 +190,9 @@ class _NFBase(Forecaster):
         # per architecture (32 for iTransformer, 64 for TimesNet, 1,024 for TFT), so the
         # epoch has to be measured against the model's own value rather than a shared one.
         windows_per_step = inspect.signature(model_cls).parameters["windows_batch_size"].default
+        # Only passed when there are covariates: an architecture without a `futr_exog_list`
+        # slot must keep working as the univariate column it already is.
+        exo_kwargs = {"futr_exog_list": list(self._exo)} if self._exo else {}
         model = model_cls(
             h=h,
             input_size=lookback,
@@ -172,6 +207,7 @@ class _NFBase(Forecaster):
             # neuralforecast reseeds torch from its own `random_seed` when the model is
             # built, which would undo the `seed_everything` above if left at its default.
             random_seed=self.seed,
+            **exo_kwargs,
             **self.extra_kwargs,
             **_TRAINER_KW,
         )
@@ -198,10 +234,28 @@ class _NFBase(Forecaster):
         # handed in at this origin (neuralforecast's `df=`), never the frame captured at
         # fit — so one fit serves every rolling origin.
         sub = history[history["unique_id"] == self._target_uid]
-        new_df = sub[["unique_id", "ds", "y"]].copy()
+        new_df = sub[["unique_id", "ds", "y", *self._exo]].copy()
         new_df["ds"] = _naive_ds(new_df["ds"]).to_numpy()
         new_df["y"] = pd.to_numeric(new_df["y"], errors="coerce")
-        preds = self._nf.predict(df=new_df)
+        new_df = self._numeric_exo(new_df)
+        if self._exo:
+            # Exactly `self._h` rows per series, the horizon the model was built for -- which
+            # is not necessarily the `horizon` asked for here, and neuralforecast rejects a
+            # `futr_df` of any other length.
+            block = future_exo_block(self._exo, history, self._h, future_exog, self._last_exo)
+            futr = pd.DataFrame(
+                {
+                    "unique_id": self._target_uid,
+                    "ds": _naive_ds(
+                        pd.Series(self._future_index(case, history["ds"].max(), self._h))
+                    ).to_numpy(),
+                }
+            )
+            for j, c in enumerate(self._exo):
+                futr[c] = block[:, j]
+            preds = self._nf.predict(df=new_df, futr_df=futr)
+        else:
+            preds = self._nf.predict(df=new_df)
         if "unique_id" not in preds.columns:
             preds = preds.reset_index()  # some nf versions return unique_id as the index
         preds = preds[preds["unique_id"] == self._target_uid]
@@ -254,9 +308,8 @@ class ITransformerForecaster(_NFBase):
         _NFBase.limitations
         + " Architecturally multivariate but fixed to a single series here (n_series=1), "
         "so unlike its siblings it can't pool the extra segments of an extended-history "
-        "fit -- and that same pin leaves it without a covariate slot to wire, so it is the "
-        "one architecture here whose univariate column is a property of the configuration "
-        "rather than of unfinished plumbing."
+        "fit -- and that same pin leaves it without a covariate slot, which is why it is "
+        "the one architecture in this module with no +exo column."
     )
     # Same one-call, full-horizon-at-once prediction as its siblings — see TFTForecaster.
     forecast_strategy = ForecastStrategy.DIRECT
@@ -278,3 +331,19 @@ class TimesNetForecaster(_NFBase):
     )
     # Same one-call, full-horizon-at-once prediction as its siblings — see TFTForecaster.
     forecast_strategy = ForecastStrategy.DIRECT
+
+
+class TFTExoForecaster(TFTForecaster):
+    """TFT with the case's declared covariates fed through neuralforecast's future-covariate
+    slot, which the architecture is built around."""
+
+    name = "TFT+exo"
+    use_exogenous = True
+
+
+class TimesNetExoForecaster(TimesNetForecaster):
+    """TimesNet with the case's declared covariates fed through neuralforecast's
+    future-covariate slot."""
+
+    name = "TimesNet+exo"
+    use_exogenous = True
