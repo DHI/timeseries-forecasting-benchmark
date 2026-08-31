@@ -15,7 +15,14 @@ from typing import Literal
 
 import numpy as np
 import pandas as pd
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DATA_RAW = REPO_ROOT / "data" / "raw"
@@ -73,13 +80,22 @@ class Case(BaseModel):
     target: str
     target_unit: str = ""
     freq: str
-    # Seasonal periods in steps of `freq`, dominant first (ranked by detection prominence,
-    # not by period length — the longest period is not necessarily first); [] = non-seasonal.
-    # The single source of truth for seasonality in the train/predict cycle (methods and the
-    # MASE season all resolve from here — there is no frequency-based fallback). Values are
-    # fixed once at curation time from train-split evidence (notebooks/seasonality.py);
-    # deviations from the detection proposal need a justification in `notes`.
+    # The set of seasonal periods this case carries, in steps of `freq`; [] = non-seasonal.
+    # Order is how curation emits them (most prominent first) and carries no meaning to any
+    # consumer: everything that needs one period reads `dominant_seasonality` instead, and
+    # the consumers that take the whole set (the ML lag ladder, MSTL) are order-independent.
+    # The single source of truth for seasonality in the train/predict cycle — there is no
+    # frequency-based fallback. Values are fixed once at curation time from train-split
+    # evidence (notebooks/seasonality.py); deviations from the detection proposal need a
+    # justification in `notes`.
     seasonalities: list[int]
+    # The one period every dominant-keyed consumer resolves to: SeasonalNaive, Climatology,
+    # the ML sin/cos feature, TBATS and Theta's `season_length`, and the MASE denominator.
+    # Pinned at curation time, never re-derived at fit time. It used to be recomputed from
+    # the fit window by variance explained while the MASE season took the first declared
+    # period instead, so the metric and the methods could resolve different periods on the
+    # same case (research log id 103). 1 when `seasonalities` is empty.
+    dominant_seasonality: int
     horizon_primary: str
     horizons_eval: list[str] = Field(default_factory=list)
     exogenous: list[str] = Field(default_factory=list)
@@ -113,6 +129,28 @@ class Case(BaseModel):
             raise ValueError(f"seasonalities must all be >= 2 steps, got {v}")
         if len(set(v)) != len(v):
             raise ValueError(f"seasonalities must be unique, got {v}")
+        return v
+
+    @field_validator("dominant_seasonality")
+    @classmethod
+    def _dominant_seasonality_declared(cls, v: int, info: ValidationInfo) -> int:
+        declared = info.data.get("seasonalities")
+        if declared is None:
+            # `seasonalities` itself failed validation; let that error stand alone.
+            return v
+        if not declared:
+            if v != 1:
+                raise ValueError(
+                    f"dominant_seasonality must be 1 on a case declared non-seasonal "
+                    f"(seasonalities = []), got {v}"
+                )
+            return v
+        if v not in declared:
+            raise ValueError(
+                f"dominant_seasonality {v} is not one of the declared seasonalities "
+                f"{declared} — it names which declared period the dominant-keyed methods "
+                f"and the MASE denominator use, not a period of its own"
+            )
         return v
 
     @field_validator("domain_metrics")

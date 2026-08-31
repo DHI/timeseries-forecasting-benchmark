@@ -7,6 +7,8 @@ target_unit = "m3/s"
 
 freq = "1D"
 seasonalities = [365]
+# Pinned dominance (only declared period; R2 0.193); see notebooks/seasonality.py.
+dominant_seasonality = 365
 horizon_primary = "30D"
 horizons_eval = ["7D", "14D", "30D"]
 

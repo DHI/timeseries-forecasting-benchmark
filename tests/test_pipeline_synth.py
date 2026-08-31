@@ -118,6 +118,7 @@ def test_climatology_on_nonseasonal_case_is_global_mean():
         target="y",
         freq="1h",
         seasonalities=[],
+        dominant_seasonality=1,
         horizon_primary="6h",
         splits={"train_end": "2020-01-01", "val_end": "2021-01-01", "test_end": "2022-01-01"},
         source={"name": "test"},
@@ -340,7 +341,9 @@ def test_mstl_is_honestly_inapplicable_on_declared_nonseasonal_case():
     # itself inapplicable rather than degenerating into the plain non-seasonal trend model.
     from tsforecastbench.bench.methods import MSTLAutoETSForecaster
 
-    case = get_case("discharge_flashy_catskills").model_copy(update={"seasonalities": []})
+    case = get_case("discharge_flashy_catskills").model_copy(
+        update={"seasonalities": [], "dominant_seasonality": 1}
+    )
     res = run_case(case, [MSTLAutoETSForecaster()], prefer_synth=True)
     assert res["status"].str.contains("MSTL inapplicable").all()
 

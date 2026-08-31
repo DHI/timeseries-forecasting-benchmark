@@ -1,12 +1,14 @@
 id = "surge_cuxhaven"
 domain = "storm_surge"
-notes = "Hourly non-tidal residual (observed sea level minus tide prediction) at the Cuxhaven Steubenhoft GESLA gauge (German Bight). Exogenous: ERA5 mean sea-level pressure + 10-m wind components, fetched at the station point via Open-Meteo (credential-free). Wind and pressure are the physical surge drivers and are listed as known-future: at forecast time they would come from an NWP forecast; here the reanalysis is used as a perfect-forecast proxy. Record trimmed to 2000-2024 so ERA5 forcing covers the whole series. Necessary exogenous: mslp, u10, v10 (all three, per the driver statement above); no optional exogenous inputs."
+notes = "Hourly non-tidal residual (observed sea level minus tide prediction) at the Cuxhaven Steubenhoft GESLA gauge (German Bight). Exogenous: ERA5 mean sea-level pressure + 10-m wind components, fetched at the station point via Open-Meteo (credential-free). Wind and pressure are the physical surge drivers and are listed as known-future: at forecast time they would come from an NWP forecast; here the reanalysis is used as a perfect-forecast proxy. Record trimmed to 2000-2024 so ERA5 forcing covers the whole series. Necessary exogenous: mslp, u10, v10 (all three, per the driver statement above); no optional exogenous inputs. Dominant seasonality: neither declared period is supported by evidence (single-sinusoid R2 0.00001 for 24, 0.000003 for 12 - both indistinguishable from zero), so 24 is pinned on physical grounds. The target is sea level minus tide prediction, so the semi-diurnal band is exactly what de-tiding subtracts and any surviving 12h energy is tide-prediction error rather than a cycle; a 24h signal at least has a mechanism (diurnal wind forcing). Provisional - revisit with the dominance evidence panel, including whether this case is honestly non-seasonal."
 
 target = "residual_m"
 target_unit = "m"
 
 freq = "1h"
 seasonalities = [12,24]
+# Pinned dominance (R2 0.00001 vs 0.000003 for 12 - neither is evidence; 24 pinned on physical grounds, see notes); see notebooks/seasonality.py.
+dominant_seasonality = 24
 horizon_primary = "48h"
 horizons_eval = ["6h", "24h", "48h"]
 

@@ -117,6 +117,7 @@ def _seasonality_case(seasonalities):
         target="y",
         freq="1h",
         seasonalities=seasonalities,
+        dominant_seasonality=seasonalities[0] if seasonalities else 1,
         horizon_primary="24h",
         splits={"train_end": "2019-04-01", "val_end": "2019-04-15", "test_end": "2019-05-01"},
         source={"name": "test"},

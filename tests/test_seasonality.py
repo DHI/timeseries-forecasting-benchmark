@@ -31,6 +31,7 @@ def _case_kwargs(**overrides) -> dict:
         target="y",
         freq="1h",
         seasonalities=[24, 168],
+        dominant_seasonality=24,
         horizon_primary="24h",
         splits={"train_end": "2020-01-01", "val_end": "2021-01-01", "test_end": "2022-01-01"},
         source={"name": "test"},
@@ -98,7 +99,9 @@ def test_case_accepts_declared_seasonalities():
 def test_case_accepts_explicitly_nonseasonal():
     from tsforecastbench.data.schema import Case
 
-    assert Case(**_case_kwargs(seasonalities=[])).seasonalities == []
+    case = Case(**_case_kwargs(seasonalities=[], dominant_seasonality=1))
+    assert case.seasonalities == []
+    assert case.dominant_seasonality == 1
 
 
 def test_case_requires_seasonalities():
@@ -130,10 +133,43 @@ def test_case_rejects_duplicate_periods():
         Case(**_case_kwargs(seasonalities=[24, 24]))
 
 
-def test_declared_order_is_preserved_dominant_first():
+def test_declared_order_is_preserved_verbatim():
+    """The list is stored as given. Its order carries no meaning — dominance is
+    `dominant_seasonality` — but consumers that take the whole set shouldn't see it
+    silently reordered either."""
     from tsforecastbench.data.schema import Case
 
-    assert Case(**_case_kwargs(seasonalities=[365, 7])).seasonalities == [365, 7]
+    case = Case(**_case_kwargs(seasonalities=[365, 7], dominant_seasonality=365))
+    assert case.seasonalities == [365, 7]
+
+
+def test_case_rejects_dominant_seasonality_outside_declared():
+    import pytest
+
+    from tsforecastbench.data.schema import Case
+
+    with pytest.raises(ValueError, match="not one of the declared seasonalities"):
+        Case(**_case_kwargs(seasonalities=[24, 168], dominant_seasonality=12))
+
+
+def test_case_rejects_nonseasonal_case_claiming_a_dominant_period():
+    import pytest
+
+    from tsforecastbench.data.schema import Case
+
+    with pytest.raises(ValueError, match="must be 1 on a case declared non-seasonal"):
+        Case(**_case_kwargs(seasonalities=[], dominant_seasonality=24))
+
+
+def test_case_requires_dominant_seasonality():
+    import pytest
+
+    from tsforecastbench.data.schema import Case
+
+    kwargs = _case_kwargs()
+    del kwargs["dominant_seasonality"]
+    with pytest.raises(ValueError):
+        Case(**kwargs)
 
 
 def _sine(n: int, period: float, amp: float = 1.0) -> np.ndarray:

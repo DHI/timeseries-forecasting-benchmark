@@ -59,6 +59,7 @@ def _case(seasonalities: list[int]) -> Case:
         target="y",
         freq="1h",
         seasonalities=seasonalities,
+        dominant_seasonality=seasonalities[0] if seasonalities else 1,
         horizon_primary="6h",
         splits={"train_end": "2020-01-01", "val_end": "2021-01-01", "test_end": "2022-01-01"},
         source={"name": "test"},
