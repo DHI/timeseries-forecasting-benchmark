@@ -15,7 +15,7 @@ from tsforecastbench.bench.methods.scorecard import (
     Scorecard,
 )
 from tsforecastbench.data.schema import Case
-from tsforecastbench.data.seasonality import dominant_period, position_in_cycle
+from tsforecastbench.data.seasonality import position_in_cycle
 
 
 class MeanBaseline(Forecaster):
@@ -134,7 +134,7 @@ class SeasonalNaive(Forecaster):
         self.season_length = season_length
 
     def fit(self, case: Case, train: pd.DataFrame, val: pd.DataFrame) -> None:
-        self._s = self.season_length or dominant_period(case.seasonalities, train["y"].to_numpy())
+        self._s = self.season_length or case.dominant_seasonality
         if self._s == 1:
             raise ValueError(
                 f"Case {case.id} is declared non-seasonal (seasonalities = []) — "
@@ -206,7 +206,7 @@ class Climatology(Forecaster):
 
     def fit(self, case: Case, train: pd.DataFrame, val: pd.DataFrame) -> None:
         self._freq = case.freq
-        self._period = dominant_period(case.seasonalities, train["y"].to_numpy())
+        self._period = case.dominant_seasonality
         idx = pd.DatetimeIndex(pd.to_datetime(train["ds"]))
         keys = self._key(idx)
         s = pd.Series(pd.to_numeric(train["y"], errors="coerce").to_numpy())

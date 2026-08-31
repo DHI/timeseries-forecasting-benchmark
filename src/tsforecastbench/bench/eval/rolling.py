@@ -65,7 +65,6 @@ from tsforecastbench.bench.eval.loop import (
 from tsforecastbench.bench.eval.metrics import kge, mape, nse, smape
 from tsforecastbench.bench.methods.base import Forecaster
 from tsforecastbench.data.schema import Case
-from tsforecastbench.data.seasonality import mase_season_for
 
 
 def _select_rolling_origins(
@@ -164,8 +163,16 @@ def run_case_rolling(
     local_val_frame = full_fit.iloc[val_start:test_start]
 
     def _naive_scale(y_pre: np.ndarray) -> float:
-        s = mase_season_for(case.seasonalities, len(y_pre))
-        return float(np.mean(np.abs(y_pre[s:] - y_pre[:-s]))) if len(y_pre) > s else float("nan")
+        """In-sample MAE of a seasonal-naive forecast at the case's pinned dominant period
+        -- the MASE denominator. Reading the pinned field is what keeps this anchored on the
+        same period `SeasonalNaive` forecasts with (research log id 103)."""
+        s = case.dominant_seasonality
+        if len(y_pre) <= s:
+            raise ValueError(
+                f"Case {case.id}: {len(y_pre)} pre-test points cannot support a "
+                f"seasonal-naive scale at the pinned dominant_seasonality {s}"
+            )
+        return float(np.mean(np.abs(y_pre[s:] - y_pre[:-s])))
 
     naive_scale = _naive_scale(full_fit["y"].iloc[:test_start].to_numpy(dtype=float))
 
