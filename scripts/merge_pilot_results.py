@@ -17,7 +17,7 @@ run whose column is known bad — the file stays on disk with its rows intact, a
 file's version of that method (if any) wins instead. It applies to the tagged file's metrics
 and its snapshots alike, so a dropped method's forecast lines never outlive its scores.
 
-The nine partials that make up the published matrix as of 2026-08-28, in precedence order
+The ten partials that make up the published matrix as of 2026-08-31, in precedence order
 (research log entry 101 — `baselines_v5` and `gpu_fm_nf_dl_v5` are retired: they predate the
 seed-median scoring of #107 and every cell they hold is superseded):
 
@@ -31,7 +31,13 @@ seed-median scoring of #107 and every cell they hold is superseded):
         docs/results/partial/pilot_metrics_exo_new.parquet \\
         docs/results/partial/pilot_metrics_lookback_v2.parquet \\
         docs/results/partial/pilot_metrics_wm_full.parquet \\
+        docs/results/partial/pilot_metrics_surge_pin12_a.parquet \\
         --drop exo_new:TFT+exo --drop lookback_v2:TFT --drop wm_full:TFT,TFT+exo
+
+`surge_pin12_a` re-ran nine `surge_cuxhaven` cells after that case's dominant period was
+corrected from 24 to 12 (entry 103). Five cells in `surge_full` still carry the old period —
+`TBATS`, `MLP`, `MLP+exo`, `Theta`, `EnsembleBaselinesTheta` — measured at under 3% MAE from
+the re-run ones, so they are left rather than re-fitted for 13 h.
 """
 
 from __future__ import annotations
