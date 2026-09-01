@@ -1,8 +1,8 @@
 name: AdaLab probe
 
-# TEMPORARY — delete before merging. Read-only. Dumps what AdaLab thinks the app's
-# routing is, plus the container's own log, to find out which path the container
-# actually receives for /assets/*.js.
+# TEMPORARY — delete before merging. Applies the access_level from .adalab/app.json to
+# the live app, which the deploy workflow does not do: dhi_adalab reads access_level
+# only when creating an app, so a later edit to app.json never reaches AdaLab.
 
 on:
   push:
@@ -13,7 +13,9 @@ jobs:
   probe:
     runs-on: [self-hosted, adalab]
     steps:
-      - name: Inspect app routing and container log
+      - uses: actions/checkout@v4
+
+      - name: Apply access_level and report
         env:
           PAT: ${{ secrets.ADALAB_PAT }}
         run: |
@@ -29,19 +31,17 @@ jobs:
           )
           import adalib.apps as apps
 
-          APP_ID = "349d1a49-cf02-468c-9a4b-cf56f9bce2a8"
+          spec = json.loads(open(".adalab/app.json").read())
+          app_id, want = spec["app_id"], spec["access_level"]
 
-          print("=== get_app ===")
-          info = apps.get_app(APP_ID)
-          print(json.dumps(info, indent=2, default=str)[:4000])
+          before = apps.get_app(app_id)["acls"]
+          print("before:", json.dumps(before))
 
-          print("\n=== container log ===")
-          try:
-              logs = apps.get_app_logs(APP_ID, source="container")
-          except Exception as exc:
-              print("container log failed:", exc)
-              logs = None
-          if logs:
-              text = logs if isinstance(logs, str) else json.dumps(logs, default=str)
-              print(text[-6000:])
+          if any(a["acl_type"] != want for a in before):
+              apps.edit_app(app_id=app_id, acl_type=want, acl_list=[])
+              print(f"edit_app -> acl_type={want}")
+          else:
+              print("already correct, no change")
+
+          print("after: ", json.dumps(apps.get_app(app_id)["acls"]))
           PY
