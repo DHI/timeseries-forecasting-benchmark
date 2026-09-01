@@ -29,7 +29,7 @@ from tsforecastbench.bench.methods.scorecard import (
     Scorecard,
 )
 from tsforecastbench.data.schema import Case
-from tsforecastbench.data.seasonality import dominant_period, position_in_cycle
+from tsforecastbench.data.seasonality import position_in_cycle
 
 
 def _date_features_for(freq: str) -> list[str]:
@@ -43,16 +43,14 @@ def _date_features_for(freq: str) -> list[str]:
     return ["dayofweek", "month"]
 
 
-def _sincos_features_for(case: Case, y: np.ndarray) -> list:
-    """Sin/cos encoding of the case's dominant period ([] -> no cyclic features). The
-    dominant period is chosen from the declared seasonalities by variance explained on the
-    fit-window target `y` (see `dominant_period`).
+def _sincos_features_for(case: Case) -> list:
+    """Sin/cos encoding of the case's pinned dominant period (1 -> no cyclic features).
 
     MLForecast passes a DatetimeIndex to each callable (no .dt accessor) and names the
     feature column after the callable's __name__. Position within the cycle comes from
     the shared `position_in_cycle` helper, the same rule the Climatology baseline keys on.
     """
-    p = dominant_period(case.seasonalities, y)
+    p = case.dominant_seasonality
     if p == 1:
         return []
     freq = case.freq
@@ -161,7 +159,7 @@ class _WindowedMLBase(Forecaster):
 
         date_feats = [
             *_date_features_for(case.freq),
-            *_sincos_features_for(case, df["y"].to_numpy()),
+            *_sincos_features_for(case),
         ]
 
         self._fcst = MLForecast(

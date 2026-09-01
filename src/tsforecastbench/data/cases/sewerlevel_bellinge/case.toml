@@ -7,6 +7,8 @@ target_unit = "m"
 
 freq = "15min"
 seasonalities = [16,96]
+# Pinned dominance (R2 0.009 vs 0.000001 for 16); see notebooks/seasonality.py.
+dominant_seasonality = 96
 horizon_primary = "6h"
 horizons_eval = ["1h", "6h", "24h"]
 

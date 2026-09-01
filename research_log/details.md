@@ -1,4 +1,49 @@
 ---
+id: 103
+date: "2026-08-31"
+title: "One pinned dominant period per case, ending a two-way split in what \"dominant\" meant"
+description: |
+  Two code paths resolved a case's dominant seasonal period by different criteria, so on 4 of 12
+  cases the MASE denominator was a seasonal-naive forecast at a different period than the one the
+  `SeasonalNaive` column ran at. Entry 17 had made `case.seasonalities` the single source for both;
+  entry 22 then moved `dominant_period` to per-fit-window single-sinusoid R² and left the MASE
+  helper on the old rule. R² is the wrong statistic for the job: it measures share of *total*
+  variance, so on a series whose variance is mostly broadband it collapses towards zero for every
+  candidate and ranks noise -- on `surge_cuxhaven` it read 1e-5 for period 24 against 3e-6 for 12,
+  while the periodogram puts 12 at 523x the surrounding spectral band (accepted) and 24 at 6.9
+  (rejected).
+
+  `dominant_seasonality` is now a required field in every `case.toml`, pinned once from the
+  curation evidence's power ratio and never re-derived at fit time; `dominant_period` and
+  `mase_season_for` are both deleted, leaving `position_in_cycle` as the only seasonality logic in
+  the train/predict cycle. `seasonalities` keeps its contents and stops carrying dominance in its
+  order. Nothing was re-fitted to republish: MASE is a row's MAE over one per-case constant, so
+  `merge_pilot_results.py` recomputes every MASE row from its MAE row at merge time, which also
+  makes any future merge self-healing whatever checkout wrote its partials. Published MASE moves on
+  three cases only -- `groundwater_yorktown` x1.296, `wwtp_influent_n2o_350k` x1.332,
+  `sewerlevel_bellinge` x0.846 -- and since the factor is constant within a row, no within-row
+  ranking or bolded winner changes anywhere.
+
+  `SeasonalNaive` does not read 1.00, and should not be expected to: textbook MASE divides
+  test-window error by that method's error on the case's own history, and the column spans 0.55 to
+  1.50. Every label claiming "1 = seasonal naive" now says what the anchor is. Two consequences to
+  act on. `surge_cuxhaven`'s pin corrected 24 -> 12, so its eleven fit-once cells had run at the
+  other period; a 9-cell re-run measured the difference at 3.1% MAE worst case (CatBoost) and under
+  1.3% elsewhere, which is the grounds for leaving `MLP`, `MLP+exo`, `Theta` and
+  `EnsembleBaselinesTheta` at the old period rather than spending 13 h of fitting. And the notebook,
+  which now proposes the pin, flags two cases whose declaration it disagrees with: `waves_oregon`
+  declares 14 where the menu accepts only 12, and `discharge_flashy_catskills` declares 365 where
+  fresh detection accepts nothing at all.
+commits:
+  - 9f55208: "Pin each case's dominant seasonal period in case.toml"
+  - d8bbcdd: "Read the pinned dominant period instead of re-deriving it"
+  - 408d961: "Delete both runtime derivations of the dominant period"
+  - 42006c9: "Recompute MASE at merge time from each row's MAE"
+  - ead55f8: "Republish the app's data under the pinned periods"
+  - e1e09fc: "Correct surge_cuxhaven's pinned period to 12"
+  - 4b542cd: "Say what MASE's 1.0 actually anchors on"
+  - 3cdbb55: "Have the curation notebook propose the dominant period"
+---
 id: 102
 date: "2026-08-28"
 title: "The exogenous swap was silently undoing the full-history swap in the viewer matrix"

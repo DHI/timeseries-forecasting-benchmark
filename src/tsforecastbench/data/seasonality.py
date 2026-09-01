@@ -1,20 +1,24 @@
-"""Per-case seasonality: resolution helpers and offline detection evidence.
+"""Per-case seasonality: position-in-cycle resolution and offline detection evidence.
 
-The benchmark has a single source of truth for seasonal periods: the `seasonalities`
-field each case declares in its case.toml (periods in steps of the case frequency,
-curated most-prominent first, `[]` = non-seasonal). Which declared period dominates a
-given training window is re-selected at fit time by variance explained (see
-`dominant_period`); the committed order is what curation records and what
-`mase_season_for` walks. The resolution helpers here are the only seasonality logic that
-runs during the method train/predict cycle.
+The benchmark has a single source of truth for seasonal periods, and it is entirely
+declarative: the `seasonalities` field each case declares in its case.toml (the set of
+periods it carries, in steps of the case frequency, `[]` = non-seasonal) plus
+`dominant_seasonality`, the one period every consumer that needs a single season reads.
+Nothing here re-derives either at fit time. That used to happen — the dominant period was
+re-selected per fit window by variance explained while the MASE denominator took the first
+declared period instead, so the metric and the methods could resolve different periods for
+one case (research log id 103). `position_in_cycle` is now the only seasonality logic left
+in the train/predict cycle.
 
-The detection half is curation tooling, run once per case when the field is set (see
+The detection half is curation tooling, run once per case when the fields are set (see
 notebooks/seasonality.py): candidates come from a fixed, physically motivated menu per
 frequency and are accepted or rejected by evidence measured on the training split — a
 periodogram peak prominent against its local spectral neighborhood (robust to the red
 spectra typical of environmental series), corroborated by either the autocorrelation at
-that lag or an MSTL seasonal-strength score. The human reviews the evidence table and
-commits the accepted periods; nothing here is consulted at fit/predict time.
+that lag or an MSTL seasonal-strength score. `_variance_explained` scores a single sinusoid
+at a candidate period, which is one input to the dominance choice the reviewer makes there.
+The human reviews the evidence and commits both fields; nothing here is consulted at
+fit/predict time.
 """
 
 from __future__ import annotations
@@ -143,28 +147,6 @@ def _variance_explained(yd: np.ndarray, period: int) -> float:
     return 1.0 - float(resid @ resid) / ss_tot
 
 
-def dominant_period(seasonalities: list[int], y: np.ndarray) -> int:
-    """Dominant declared period, chosen at fit time by variance explained on `y`; 1 if
-    non-seasonal. Among the periods a case declares, the dominant one is whichever sinusoid
-    of that period explains the most variance of the detrended training target — measured
-    per fold, so each training window keys on the cycle it actually shows most strongly
-    rather than on a fixed order baked in at curation time. Ties break to the earlier
-    declared period (the curated most-prominent order). Callers guarantee every declared
-    period is supported by the window; an unsupportable period must not be declared in the
-    case.toml. Falls back to the first declared period when the target is too degenerate to
-    detrend."""
-    if not seasonalities:
-        return 1
-    if len(seasonalities) == 1:
-        return int(seasonalities[0])
-    try:
-        yd = fill_and_detrend(y)
-    except ValueError:
-        return int(seasonalities[0])
-    scores = [_variance_explained(yd, p) for p in seasonalities]
-    return int(seasonalities[int(np.argmax(scores))])
-
-
 # Position-in-cycle from calendar fields for the canonical (freq, period) pairs: exact
 # across DST-free naive timestamps. For the 365-day "annual" cycle, drop Feb 29 in leap
 # years so positions stay in 0..364.
@@ -201,17 +183,6 @@ def position_in_cycle(freq: str, period: int, idx: pd.DatetimeIndex) -> np.ndarr
         return np.asarray(calendar_pos(idx))
     step_ns = pd.Timedelta(pd.tseries.frequencies.to_offset(freq)).value
     return (idx.asi8 // step_ns) % period
-
-
-def mase_season_for(seasonalities: list[int], n_train: int) -> int:
-    """Season for the MASE denominator: the first declared period the training series
-    can support (>= 2 full cycles), walking the list dominant-first; 1 (persistence
-    scaling) when none fits or the case is non-seasonal. The denominator is therefore
-    always a real season or the unit lag, never an arbitrary truncated one."""
-    for p in seasonalities:
-        if n_train >= 2 * p:
-            return int(p)
-    return 1
 
 
 class CandidateEvidence(TypedDict):

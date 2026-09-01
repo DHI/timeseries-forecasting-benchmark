@@ -361,13 +361,9 @@ class TBATSForecaster(Forecaster):
         from sklearn.preprocessing import PowerTransformer
         from statsforecast.tbats import tbats_selection
 
-        from tsforecastbench.data.seasonality import dominant_period
-
         df = _prepare_train(train, self.max_train_steps)
         season_length = (
-            self.season_length
-            if self.season_length is not None
-            else dominant_period(case.seasonalities, df["y"].to_numpy())
+            self.season_length if self.season_length is not None else case.dominant_seasonality
         )
         seasonal_periods = (
             [season_length] if isinstance(season_length, int) else list(season_length)
@@ -514,12 +510,8 @@ class ThetaForecaster(_ForwardForecaster):
     def _make_model(self, case: Case, df: pd.DataFrame):
         from statsforecast.models import AutoTheta
 
-        from tsforecastbench.data.seasonality import dominant_period
-
         season_length = (
-            self.season_length
-            if self.season_length is not None
-            else dominant_period(case.seasonalities, df["y"].to_numpy())
+            self.season_length if self.season_length is not None else case.dominant_seasonality
         )
         return AutoTheta(season_length=season_length)
 

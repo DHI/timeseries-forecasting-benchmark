@@ -80,6 +80,7 @@ def _minimal_case_kwargs(**overrides):
         target="y",
         freq="1D",
         seasonalities=[365],
+        dominant_seasonality=365,
         horizon_primary="7D",
         splits={"train_end": "2020-01-01", "val_end": "2020-06-01", "test_end": "2020-12-01"},
         source={"name": "test"},

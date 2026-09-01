@@ -33,7 +33,6 @@ from tsforecastbench.bench.methods import (  # noqa: E402
 )
 from tsforecastbench.bench.viz import plot_leadtime_curve, render_matrix  # noqa: E402
 from tsforecastbench.data.registry import discover_cases, get_case  # noqa: E402
-from tsforecastbench.data.seasonality import dominant_period  # noqa: E402
 
 ALL_CASES = list(discover_cases())
 
@@ -92,13 +91,12 @@ def test_baselines_run(cid):
 
 
 def test_climatology_forecast_is_periodic_in_declared_dominant_period():
-    # Climatology keys on the case's dominant period, so its forecast repeats with that
-    # period regardless of frequency (issue #54). demand_ltown is hourly; its strong
-    # hour-of-day swing makes 24 the period that explains the most variance, so
-    # dominant_period selects 24 and the forecast cycles cleanly every 24 steps.
+    # Climatology keys on the case's pinned dominant period, so its forecast repeats with
+    # that period regardless of frequency (issue #54). demand_ltown is hourly and pins 24,
+    # so the forecast cycles cleanly every 24 steps.
     case = get_case("demand_ltown")
     train = case.split_frame(case.synth())["train"]
-    period = dominant_period(case.seasonalities, train["y"].to_numpy())
+    period = case.dominant_seasonality
 
     clim = Climatology()
     clim.fit(case, train, NO_VAL)
@@ -118,6 +116,7 @@ def test_climatology_on_nonseasonal_case_is_global_mean():
         target="y",
         freq="1h",
         seasonalities=[],
+        dominant_seasonality=1,
         horizon_primary="6h",
         splits={"train_end": "2020-01-01", "val_end": "2021-01-01", "test_end": "2022-01-01"},
         source={"name": "test"},
@@ -340,7 +339,9 @@ def test_mstl_is_honestly_inapplicable_on_declared_nonseasonal_case():
     # itself inapplicable rather than degenerating into the plain non-seasonal trend model.
     from tsforecastbench.bench.methods import MSTLAutoETSForecaster
 
-    case = get_case("discharge_flashy_catskills").model_copy(update={"seasonalities": []})
+    case = get_case("discharge_flashy_catskills").model_copy(
+        update={"seasonalities": [], "dominant_seasonality": 1}
+    )
     res = run_case(case, [MSTLAutoETSForecaster()], prefer_synth=True)
     assert res["status"].str.contains("MSTL inapplicable").all()
 

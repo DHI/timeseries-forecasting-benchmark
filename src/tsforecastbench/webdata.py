@@ -28,7 +28,7 @@ from tsforecastbench.bench.eval.metrics import rmse as _rmse_score
 from tsforecastbench.bench.eval.metrics import skill_score as _skill_score
 from tsforecastbench.bench.eval.metrics import smape as _smape
 from tsforecastbench.data.registry import get_case
-from tsforecastbench.data.seasonality import fill_and_detrend, mase_season_for
+from tsforecastbench.data.seasonality import fill_and_detrend
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 METRICS_PATH = REPO_ROOT / "docs" / "results" / "scores.parquet"
@@ -215,7 +215,7 @@ def _detrended_observed_tail(
     removed -- shared across every declared period's seasonal-pattern subplot, since
     detrending doesn't depend on which period is being viewed. Two cycles with the same
     shape but offset by drift land on the same baseline this way. Reuses the same
-    `fill_and_detrend` convention `dominant_period` uses to pick a case's dominant season.
+    `fill_and_detrend` convention the seasonality curation notebook uses.
     None if there isn't enough data to detrend (fewer than 3 finite training points).
     """
     tail = load_case_training_tail(case_id, TRAINING_TAIL_N, extended=extended)
@@ -253,15 +253,15 @@ def _observed_actual_series(case_id: str) -> pd.Series:
 
 @cache
 def _mase_context(case_id: str) -> tuple[np.ndarray, int]:
-    """(train+val `y`, seasonal period) for this case's MASE denominator -- mirrors the
-    once-per-case `naive_scale` in `bench.eval.rolling.run_case_rolling`, so a per-origin
+    """(train+val `y`, pinned dominant period) for this case's MASE denominator -- mirrors
+    the once-per-case `naive_scale` in `bench.eval.rolling.run_case_rolling`, so a per-origin
     MASE uses the same fixed scale as the matrix's pooled MASE rather than a per-origin
     one."""
     case = get_case(case_id)
     df = case.load(curated=True)
     splits = case.split_frame(df)
     y_train = pd.concat([splits["train"], splits["val"]])["y"].to_numpy(dtype=float)
-    return y_train, mase_season_for(case.seasonalities, len(y_train))
+    return y_train, case.dominant_seasonality
 
 
 def _horizon_steps(case) -> int:

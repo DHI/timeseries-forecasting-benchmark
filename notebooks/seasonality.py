@@ -86,15 +86,22 @@ def _(mo):
     mo.md("""
     # Seasonality curation
 
-    One-time tooling for the `seasonalities` field in each case.toml — the **single
-    source of truth** for seasonal periods during the benchmark train/predict cycle
-    (periods in steps, dominant first, `[]` = non-seasonal).
+    One-time tooling for the two seasonality fields in each case.toml — the **single
+    source of truth** during the benchmark train/predict cycle, since nothing is
+    re-derived at fit time:
+
+    - `seasonalities` — every period the case carries, in steps; `[]` = non-seasonal.
+      The order carries no meaning.
+    - `dominant_seasonality` — the one period read by SeasonalNaive, Climatology, the
+      ML sin/cos feature, TBATS, Theta and the MASE denominator; `1` when the list is
+      empty.
 
     Candidates come from a fixed physically motivated menu per frequency; the evidence
     below (periodogram prominence, corroborated by ACF at lag and/or MSTL seasonal
-    strength, computed on the **train split only**) accepts or rejects each. Review
-    the evidence, then commit the proposed line — or deviate from it with a written
-    justification in the case notes.
+    strength, computed on the **train split only**) accepts or rejects each, and the
+    most prominent accepted period is the proposed dominant one. Review the evidence,
+    then commit both proposed lines — or deviate from them with a written justification
+    in the case notes.
     """)
     return
 
@@ -386,7 +393,7 @@ def _(final_input):
 
 
 @app.cell
-def _(case, evidence, filled_frac, mo, pd, proposed):
+def _(case, evidence, fill_and_detrend, filled_frac, mo, pd, proposed, train, variance_explained):
     declared = getattr(case, "seasonalities", None)
     _table = pd.DataFrame(evidence)[
         ["period", "n_cycles", "power_ratio", "acf", "mstl_strength", "accepted"]
@@ -398,13 +405,61 @@ def _(case, evidence, filled_frac, mo, pd, proposed):
         if filled_frac > 0.01
         else f"{filled_frac:.2%} of the train split is gap-filled."
     )
+    # `dominant_seasonality` is the one period every consumer needing a single season reads:
+    # SeasonalNaive, Climatology, the ML sin/cos feature, TBATS and Theta's `season_length`,
+    # and the MASE denominator. It is pinned by hand here and never re-derived at fit time,
+    # so this cell has to say which candidate wins and on what evidence.
+    #
+    # Pin on `power_ratio` — how far the periodogram peak at that period stands above the
+    # surrounding spectral band. `sinusoid_r2` sits beside it as a diagnostic only: it is the
+    # share of *total* variance one sinusoid at that period explains, so on a series whose
+    # variance is mostly broadband it collapses towards zero for every candidate and cannot
+    # rank them. Read it for "is there a cycle here worth modelling at all", never for
+    # "which cycle wins" — ranking on it is what produced the divergence in research log
+    # entry 103.
+    _declared_dominant = getattr(case, "dominant_seasonality", None)
+    if proposed:
+        _yd = fill_and_detrend(train["y"].to_numpy())
+        _table["sinusoid_r2"] = [variance_explained(_yd, p) for p in _table["period"]]
+        _ratio = _table.set_index("period")["power_ratio"].to_dict()
+        _pin = proposed[0]
+        _rest = ", ".join(f"{p} at {_ratio[p]:.3g}" for p in proposed[1:])
+        _dominance = (
+            f"Pin **`dominant_seasonality = {_pin}`** — power ratio **{_ratio[_pin]:.3g}**"
+            + (f", against {_rest}.  \n" if _rest else ", the only accepted period.  \n")
+        )
+        if len(proposed) > 1 and _ratio[_pin] < 2 * _ratio[proposed[1]]:
+            _dominance += (
+                f"⚠️ {_pin} leads by under 2x, so this is a judgement call — record the "
+                "reason in the case's `notes`.  \n"
+            )
+        _top_r2 = float(_table["sinusoid_r2"].max())
+        if _top_r2 < 1e-3:
+            _dominance += (
+                f"The `sinusoid_r2` column tops out at {_top_r2:.2g}: this target's variance "
+                "is broadband, so the column is uninformative here and must not be used to "
+                "override the ranking above.  \n"
+            )
+    else:
+        _dominance = (
+            "No candidate is accepted, so this case is non-seasonal: `seasonalities = []` "
+            "and `dominant_seasonality = 1`.  \n"
+        )
+        _pin = 1
+
     mo.vstack(
         [
             mo.md(f"**{case.id}** ({case.freq}) — {_fill_note}"),
-            mo.ui.table(_table.round(3), selection=None, label="Candidate evidence"),
+            mo.ui.table(_table.round(6), selection=None, label="Candidate evidence"),
+            mo.md(_dominance),
             mo.md(
-                f"Proposed (dominant first): `seasonalities = {proposed}`  \n"
+                "Copy both fields into the case.toml — the list's order carries no meaning, "
+                "dominance is the second field:  \n"
+                f"`seasonalities = {proposed}`  \n"
+                f"`dominant_seasonality = {_pin}`  \n"
                 f"Currently declared: `{declared if declared is not None else 'not declared yet'}`"
+                f" / `dominant_seasonality = "
+                f"{_declared_dominant if _declared_dominant is not None else 'not declared yet'}`"
             ),
         ]
     )

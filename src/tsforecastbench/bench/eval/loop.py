@@ -35,7 +35,6 @@ from tsforecastbench.bench.eval.config import DEFAULT_SEEDS
 from tsforecastbench.bench.eval.metrics import kge, mae, mape, mase, nse, rmse, skill_score, smape
 from tsforecastbench.bench.methods.base import Forecaster, lookback_for
 from tsforecastbench.data.schema import Case, _observed_mask
-from tsforecastbench.data.seasonality import mase_season_for
 
 
 def _horizon_to_steps(horizon: str, freq: str) -> int:
@@ -207,10 +206,10 @@ def run_case(
         training must not move them.
         """
         y_train = history_df["y"].to_numpy(dtype=float)
-        # Declared dominant period the train series can support (>= 2 cycles), else the
-        # next declared period, else 1 — a real season or honest persistence scaling,
-        # never an arbitrary truncated lag.
-        season = mase_season_for(case.seasonalities, len(y_train))
+        # The case's pinned dominant period, the same one `SeasonalNaive` forecasts with
+        # -- never re-derived here, or the metric and the methods can disagree about what
+        # "seasonal naive" means (research log id 103).
+        season = case.dominant_seasonality
         ref_persistence = np.full(horizon_steps, float(history_df["y"].iloc[-1]))
         ref_mean = np.full(horizon_steps, float(np.nanmean(y_train)))
         return y_train, season, ref_persistence, ref_mean

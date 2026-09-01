@@ -7,12 +7,17 @@ Usage (run once every tagged file has been pulled onto one machine):
         docs/results/partial/pilot_metrics_gpu_dl_nf.parquet \\
         docs/results/partial/pilot_metrics_local.parquet
 
+Every `MASE` row is recomputed from its `MAE` row and the case's current pinned
+`dominant_seasonality`, so a partial written under a different pin (or before the field
+existed) does not carry a stale denominator into the published matrix. No model is re-fitted:
+MASE is MAE over one per-case constant. See `_recompute_mase`.
+
 `--drop TAG:METHOD[,METHOD...]` (repeatable) leaves one method out of one input file, for a
 run whose column is known bad — the file stays on disk with its rows intact, and an earlier
 file's version of that method (if any) wins instead. It applies to the tagged file's metrics
 and its snapshots alike, so a dropped method's forecast lines never outlive its scores.
 
-The nine partials that make up the published matrix as of 2026-08-28, in precedence order
+The ten partials that make up the published matrix as of 2026-08-31, in precedence order
 (research log entry 101 — `baselines_v5` and `gpu_fm_nf_dl_v5` are retired: they predate the
 seed-median scoring of #107 and every cell they hold is superseded):
 
@@ -26,7 +31,13 @@ seed-median scoring of #107 and every cell they hold is superseded):
         docs/results/partial/pilot_metrics_exo_new.parquet \\
         docs/results/partial/pilot_metrics_lookback_v2.parquet \\
         docs/results/partial/pilot_metrics_wm_full.parquet \\
+        docs/results/partial/pilot_metrics_surge_pin12_a.parquet \\
         --drop exo_new:TFT+exo --drop lookback_v2:TFT --drop wm_full:TFT,TFT+exo
+
+`surge_pin12_a` re-ran nine `surge_cuxhaven` cells after that case's dominant period was
+corrected from 24 to 12 (entry 103). Five cells in `surge_full` still carry the old period —
+`TBATS`, `MLP`, `MLP+exo`, `Theta`, `EnsembleBaselinesTheta` — measured at under 3% MAE from
+the re-run ones, so they are left rather than re-fitted for 13 h.
 """
 
 from __future__ import annotations
@@ -44,6 +55,8 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 from tsforecastbench.bench.report import write_pilot_artifacts  # noqa: E402
 
 METRICS_KEY = ["case_id", "method", "used_extended_history", "metric"]
+# A metric row's identity minus the metric itself -- pairs a MASE row with its MAE row.
+MAE_KEY = ["case_id", "method", "used_extended_history"]
 SNAPSHOT_KEY = ["case_id", "method", "used_extended_history", "origin_id", "ds"]
 
 
@@ -84,6 +97,51 @@ def _apply_drops(df: pd.DataFrame, tag: str, methods: set[str], label: str) -> p
             raise SystemExit(f"--drop {tag}:{method}: that file has no {method} {label} rows")
         print(f"[merge_pilot_results] dropped {n} {method} {label} row(s) from {tag}")
     return kept
+
+
+def _recompute_mase(results: pd.DataFrame) -> pd.DataFrame:
+    """Rescale every `MASE` row to the case's current pinned dominant period.
+
+    MASE is that row's `MAE` over one per-case constant: the in-sample MAE of a
+    seasonal-naive forecast at `case.dominant_seasonality`, over the pre-test history.
+    Nothing about it depends on the model, so a partial written before the period was
+    pinned (or under a different pin) carries a stale denominator that this corrects
+    without re-fitting anything. Doing it here rather than in a one-off migration keeps
+    every future merge self-healing, whatever checkout produced the inputs.
+
+    The extended-history rows reuse the local scale, matching `eval.rolling`, which
+    computes it once per case and shares it across both fits.
+    """
+    from tsforecastbench.data.registry import get_case
+
+    mase = results["metric"] == "MASE"
+    mae = results[results["metric"] == "MAE"].set_index(MAE_KEY)["value"]
+    for case_id in sorted(results.loc[mase, "case_id"].unique()):
+        case = get_case(case_id)
+        splits = case.split_frame(case.load(curated=True))
+        y = pd.concat([splits["train"], splits["val"]])["y"].to_numpy(dtype=float)
+        s = case.dominant_seasonality
+        if len(y) <= s:
+            raise SystemExit(
+                f"{case_id}: {len(y)} pre-test points cannot support a seasonal-naive "
+                f"scale at dominant_seasonality {s}"
+            )
+        scale = float(pd.Series(abs(y[s:] - y[:-s])).mean())
+        rows = mase & (results["case_id"] == case_id)
+        keys = pd.MultiIndex.from_frame(results.loc[rows, MAE_KEY])
+        missing = ~keys.isin(mae.index)
+        if missing.any():
+            raise SystemExit(f"{case_id}: {int(missing.sum())} MASE row(s) with no MAE row")
+        before = results.loc[rows, "value"].to_numpy(dtype=float)
+        results.loc[rows, "value"] = mae.reindex(keys).to_numpy(dtype=float) / scale
+        after = results.loc[rows, "value"].to_numpy(dtype=float)
+        factor = float((after / before)[0]) if len(before) else 1.0
+        note = "unchanged" if abs(factor - 1.0) < 1e-9 else f"x{factor:.4g}"
+        print(
+            f"[merge_pilot_results] {case_id}: MASE scale {scale:.6g} "
+            f"at period {s} ({len(before)} row(s), {note})"
+        )
+    return results
 
 
 def _merge(frames: list[pd.DataFrame], key: list[str], label: str) -> pd.DataFrame:
@@ -143,7 +201,7 @@ def main(argv: list[str] | None = None) -> int:
         else:
             print(f"[merge_pilot_results] no snapshots at {snap_path}, skipping")
 
-    results = _merge(metrics_frames, METRICS_KEY, "metrics")
+    results = _recompute_mase(_merge(metrics_frames, METRICS_KEY, "metrics"))
     snapshots = [_merge(snapshot_frames, SNAPSHOT_KEY, "snapshot")] if snapshot_frames else []
 
     write_pilot_artifacts(results, snapshots, method_order)

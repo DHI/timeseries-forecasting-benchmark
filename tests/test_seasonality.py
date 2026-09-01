@@ -14,8 +14,6 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from tsforecastbench.data.seasonality import (  # noqa: E402
     detect_candidates,
-    dominant_period,
-    mase_season_for,
     position_in_cycle,
     proposed_seasonalities,
     suggest_peak_candidates,
@@ -31,6 +29,7 @@ def _case_kwargs(**overrides) -> dict:
         target="y",
         freq="1h",
         seasonalities=[24, 168],
+        dominant_seasonality=24,
         horizon_primary="24h",
         splits={"train_end": "2020-01-01", "val_end": "2021-01-01", "test_end": "2022-01-01"},
         source={"name": "test"},
@@ -98,7 +97,9 @@ def test_case_accepts_declared_seasonalities():
 def test_case_accepts_explicitly_nonseasonal():
     from tsforecastbench.data.schema import Case
 
-    assert Case(**_case_kwargs(seasonalities=[])).seasonalities == []
+    case = Case(**_case_kwargs(seasonalities=[], dominant_seasonality=1))
+    assert case.seasonalities == []
+    assert case.dominant_seasonality == 1
 
 
 def test_case_requires_seasonalities():
@@ -130,10 +131,43 @@ def test_case_rejects_duplicate_periods():
         Case(**_case_kwargs(seasonalities=[24, 24]))
 
 
-def test_declared_order_is_preserved_dominant_first():
+def test_declared_order_is_preserved_verbatim():
+    """The list is stored as given. Its order carries no meaning — dominance is
+    `dominant_seasonality` — but consumers that take the whole set shouldn't see it
+    silently reordered either."""
     from tsforecastbench.data.schema import Case
 
-    assert Case(**_case_kwargs(seasonalities=[365, 7])).seasonalities == [365, 7]
+    case = Case(**_case_kwargs(seasonalities=[365, 7], dominant_seasonality=365))
+    assert case.seasonalities == [365, 7]
+
+
+def test_case_rejects_dominant_seasonality_outside_declared():
+    import pytest
+
+    from tsforecastbench.data.schema import Case
+
+    with pytest.raises(ValueError, match="not one of the declared seasonalities"):
+        Case(**_case_kwargs(seasonalities=[24, 168], dominant_seasonality=12))
+
+
+def test_case_rejects_nonseasonal_case_claiming_a_dominant_period():
+    import pytest
+
+    from tsforecastbench.data.schema import Case
+
+    with pytest.raises(ValueError, match="must be 1 on a case declared non-seasonal"):
+        Case(**_case_kwargs(seasonalities=[], dominant_seasonality=24))
+
+
+def test_case_requires_dominant_seasonality():
+    import pytest
+
+    from tsforecastbench.data.schema import Case
+
+    kwargs = _case_kwargs()
+    del kwargs["dominant_seasonality"]
+    with pytest.raises(ValueError):
+        Case(**kwargs)
 
 
 def _sine(n: int, period: float, amp: float = 1.0) -> np.ndarray:
@@ -141,49 +175,6 @@ def _sine(n: int, period: float, amp: float = 1.0) -> np.ndarray:
 
 
 # --- resolution -------------------------------------------------------------
-
-
-def test_dominant_period_picks_period_that_explains_most_variance():
-    n = 24 * 60
-    y = _sine(n, period=168, amp=3.0) + _sine(n, period=24, amp=0.5)
-    # 168 dominates even though 24 is declared first.
-    assert dominant_period([24, 168], y) == 168
-
-
-def test_dominant_period_picks_first_when_it_explains_most_variance():
-    n = 24 * 60
-    y = _sine(n, period=24, amp=3.0) + _sine(n, period=168, amp=0.5)
-    assert dominant_period([24, 168], y) == 24
-
-
-def test_dominant_period_of_single_declared_period_is_that_period():
-    # A lone declared period is returned without scoring, whatever the target looks like.
-    assert dominant_period([24], RNG.standard_normal(500)) == 24
-
-
-def test_dominant_period_of_nonseasonal_case_is_one():
-    assert dominant_period([], RNG.standard_normal(500)) == 1
-
-
-def test_dominant_period_falls_back_to_first_when_target_is_degenerate():
-    # Too few finite points to detrend -> keep the curated most-prominent-first order.
-    assert dominant_period([24, 168], np.array([1.0, 2.0])) == 24
-
-
-def test_mase_season_uses_dominant_when_train_holds_two_cycles():
-    assert mase_season_for([365, 7], n_train=800) == 365
-
-
-def test_mase_season_falls_through_to_next_period_on_short_train():
-    assert mase_season_for([365, 7], n_train=400) == 7
-
-
-def test_mase_season_is_one_when_no_period_fits():
-    assert mase_season_for([365], n_train=400) == 1
-
-
-def test_mase_season_is_one_for_nonseasonal_case():
-    assert mase_season_for([], n_train=10_000) == 1
 
 
 # --- detection --------------------------------------------------------------
@@ -571,3 +562,54 @@ def test_discovery_is_fast_on_a_long_series():
     start = time.perf_counter()
     robust_period_candidates(y, "1h")
     assert time.perf_counter() - start < 15.0
+
+
+# --- one period per case ----------------------------------------------------
+#
+# The regression guard for research log id 103: the MASE denominator and the methods that
+# key on a single season used to resolve it by two different rules, so a case could be
+# scored against a naive forecast at one period while the SeasonalNaive column forecast at
+# another. Both now read `case.dominant_seasonality`, and these tests pin that.
+
+
+def test_every_committed_case_pins_a_declared_dominant_period():
+    from tsforecastbench.data.registry import discover_cases
+
+    for case in discover_cases().values():
+        if case.seasonalities:
+            assert case.dominant_seasonality in case.seasonalities, case.id
+        else:
+            assert case.dominant_seasonality == 1, case.id
+
+
+def test_mase_denominator_and_seasonal_naive_agree_on_the_period():
+    """The MASE scale and SeasonalNaive resolve the same period on every committed case."""
+    import pandas as pd
+
+    from tsforecastbench.bench.methods.naive import SeasonalNaive
+    from tsforecastbench.data.registry import discover_cases
+
+    empty = pd.DataFrame({"unique_id": [], "ds": [], "y": []})
+    for case in discover_cases().values():
+        if not case.seasonalities:
+            continue
+        train = case.split_frame(case.synth())["train"]
+        method = SeasonalNaive()
+        method.fit(case, train, empty)
+        # `_s` is what the column forecasts with; the pinned field is what the MASE
+        # denominator lags by. One value, or the metric's anchor is not the column.
+        assert method._s == case.dominant_seasonality, case.id
+
+
+def test_climatology_keys_on_the_same_period_as_the_mase_denominator():
+    import pandas as pd
+
+    from tsforecastbench.bench.methods.naive import Climatology
+    from tsforecastbench.data.registry import discover_cases
+
+    empty = pd.DataFrame({"unique_id": [], "ds": [], "y": []})
+    for case in discover_cases().values():
+        train = case.split_frame(case.synth())["train"]
+        method = Climatology()
+        method.fit(case, train, empty)
+        assert method._period == case.dominant_seasonality, case.id

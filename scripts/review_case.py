@@ -404,7 +404,8 @@ def check_forecastable(case: Case, prefer_synth: bool) -> tuple[list[Check], pd.
         )
         return checks, res
 
-    # Does any real method beat persistence (positive skill) and seasonal-naive (MASE<1)?
+    # Does any real method beat persistence (positive skill) and seasonal naive's in-sample
+    # error (MASE<1)?
     best_skill = float(wide.get("Skill_vs_Persistence", pd.Series(dtype=float)).max())
     best_mase = float(wide.get("MASE", pd.Series(dtype=float)).min())
     if np.isfinite(best_skill) and best_skill > 0.05:
@@ -415,7 +416,8 @@ def check_forecastable(case: Case, prefer_synth: bool) -> tuple[list[Check], pd.
     elif np.isfinite(best_mase) and best_mase < 1.0:
         flvl, fmsg = (
             PASS,
-            f"{n_ok}/{len(methods)} methods ran; best MASE {best_mase:.2f} (beats seasonal-naive).",
+            f"{n_ok}/{len(methods)} methods ran; best MASE {best_mase:.2f} "
+            "(beats seasonal naive's in-sample error).",
         )
     else:
         flvl, fmsg = (
