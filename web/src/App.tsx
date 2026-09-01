@@ -472,7 +472,7 @@ function MainLayout({
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <h1 style={{ margin: 0 }}>Timeseries Forecasting Benchmark</h1>
+            <h1 style={{ margin: 0 }}>Time Series Forecasting Benchmark</h1>
             <InstructionsModal />
           </div>
           <div style={{ position: 'relative' }}>
