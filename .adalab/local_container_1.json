@@ -2,13 +2,13 @@
   "uid": 1,
   "container_image_name": "tsforecast-benchmark-web",
   "image_version": {
-    "current_image_version": "e078672ddf520cef39c0bc55a42136955a22c2e2",
-    "next_image_version": "e078672ddf520cef39c0bc55a42136955a22c2e2"
+    "current_image_version": "c9597cc47f416450c1130c702dfad7a662ce476e",
+    "next_image_version": "c9597cc47f416450c1130c702dfad7a662ce476e"
   },
   "container_description": "nginx serving the built React results-matrix app.",
   "container_file": "./Containerfile",
   "build_context": "./",
-  "metadata_id": 420,
+  "metadata_id": 426,
   "primary_container": true,
   "port": 8080,
   "test_serving_port": 8080,
