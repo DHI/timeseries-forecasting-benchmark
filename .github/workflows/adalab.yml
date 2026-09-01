@@ -35,6 +35,12 @@ jobs:
     permissions:
       contents: write
     with:
+      # Gates the deploy behind the adalab_deploy environment, which carries a
+      # required reviewer, and exposes that environment's own ADALAB_PAT to the
+      # callee. This belongs under `with:` rather than on the job: a job calling a
+      # reusable workflow via `uses:` cannot also set `environment:` — GitHub
+      # switches schema variants and rejects the combination (dhi_adalab#72).
+      environment: adalab_deploy
       # Publish under the commit SHA. Re-running with a tag Harbor already has is a
       # silent no-op rebuild, which is what would happen if next_image_version in
       # .adalab/local_container_1.json were left to be bumped by hand.
