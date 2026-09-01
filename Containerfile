@@ -21,10 +21,12 @@ RUN npm ci
 
 COPY web/ ./
 
-# Path the app is served under. '/' is right while app.json keeps stripped_prefix=true,
-# which makes AdaLab strip /apps/<app_url> before proxying. Build with
-# --build-arg APP_BASE=/apps/<app_url>/ if that ever changes.
-ARG APP_BASE=/
+# Path the browser requests the app under. AdaLab strips /apps/<app_url> on the way in
+# (app.json sets stripped_prefix=true), which is why nginx below still serves from the
+# root. Stripping does not help the URLs baked into index.html: those are what the
+# browser asks for, and a bare /assets/... resolves against the AdaLab root and never
+# reaches this container. Keep in step with app_url in .adalab/app.json.
+ARG APP_BASE=/apps/tsforecast-benchmark/
 ENV APP_BASE=$APP_BASE
 RUN npm run build
 
