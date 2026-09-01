@@ -1,8 +1,8 @@
 name: AdaLab probe
 
-# TEMPORARY — delete before merging. Deploys nothing. Answers the two things that
-# cannot be checked from a laptop: whether a [self-hosted, adalab] runner picks up jobs
-# from this repository, and whether that runner can reach AdaLab's internal API.
+# TEMPORARY — delete before merging. Read-only. Dumps what AdaLab thinks the app's
+# routing is, plus the container's own log, to find out which path the container
+# actually receives for /assets/*.js.
 
 on:
   push:
@@ -13,21 +13,35 @@ jobs:
   probe:
     runs-on: [self-hosted, adalab]
     steps:
-      - name: Runner identity and reachability
-        run: |
-          echo "runner=$RUNNER_NAME os=$RUNNER_OS arch=$RUNNER_ARCH"
-          curl -s -o /dev/null -w "adaboard api: %{http_code}\n" --max-time 15 \
-            https://adalab.dhigroup.com/adaboard/api/ || echo "adaboard: unreachable"
-          curl -s -o /dev/null -w "harbor:       %{http_code}\n" --max-time 15 \
-            https://harbor.adalab.dhigroup.com/api/v2.0/systeminfo || echo "harbor: unreachable"
-
-      - name: Secret is populated
+      - name: Inspect app routing and container log
         env:
           PAT: ${{ secrets.ADALAB_PAT }}
         run: |
-          if [ -n "$PAT" ]; then
-            echo "ADALAB_PAT is set (${#PAT} characters)"
-          else
-            echo "ADALAB_PAT is empty"
-            exit 1
-          fi
+          python3 -m venv /tmp/adaprobe
+          /tmp/adaprobe/bin/pip install -q --upgrade pip adalib
+          /tmp/adaprobe/bin/python - <<'PY'
+          import json, os
+          from adalib_auth.config import get_config
+
+          get_config(
+              adaboard_api_url="https://adalab.dhigroup.com/adaboard/api",
+              token=os.environ["PAT"],
+          )
+          import adalib.apps as apps
+
+          APP_ID = "349d1a49-cf02-468c-9a4b-cf56f9bce2a8"
+
+          print("=== get_app ===")
+          info = apps.get_app(APP_ID)
+          print(json.dumps(info, indent=2, default=str)[:4000])
+
+          print("\n=== container log ===")
+          try:
+              logs = apps.get_app_logs(APP_ID, source="container")
+          except Exception as exc:
+              print("container log failed:", exc)
+              logs = None
+          if logs:
+              text = logs if isinstance(logs, str) else json.dumps(logs, default=str)
+              print(text[-6000:])
+          PY
