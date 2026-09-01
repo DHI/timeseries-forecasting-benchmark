@@ -17,6 +17,14 @@ deploys. That environment carries a required reviewer, so **a deploy pauses in t
 tab until someone approves it**, and it holds its own `ADALAB_PAT` — the callee reads the
 environment's copy rather than the repository-wide one.
 
+**The environment's `ADALAB_PAT` is the one that matters.** An environment secret
+overrides a repository secret of the same name, so a stale or placeholder value in
+`adalab_deploy` fails every deploy even while a perfectly good repository-level copy sits
+there unused — the failure reads `AssertionError: Failed to authenticate with external
+credentials`, which does not point at the secret at all. Set it with
+`gh secret set ADALAB_PAT --env adalab_deploy --repo <org>/<repo>`. There is deliberately
+no repository-level copy.
+
 The environment has no deployment-branch policy, so any branch may still deploy to it and
 read its secret. Restricting it to `main` needs repository Admin.
 
