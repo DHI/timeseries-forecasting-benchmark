@@ -4,7 +4,7 @@
   "app_description": "Interactive results matrix for DHI's time series forecasting benchmark: forecasting methods scored across water-domain cases.",
   "app_url": "tsforecast-benchmark",
   "stripped_prefix": true,
-  "access_level": "public",
+  "access_level": "logged_in",
   "acl_userlist": [],
   "acl_group_names": [],
   "idp_enabled": false,

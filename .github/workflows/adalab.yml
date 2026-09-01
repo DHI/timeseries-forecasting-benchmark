@@ -14,7 +14,7 @@ name: AdaLab
 
 on:
   push:
-    branches: [main]
+    branches: [main, adalab-deploy]  # TEMPORARY: adalab-deploy, strip before merging
     paths:
       - "web/**"
       - "Containerfile"
