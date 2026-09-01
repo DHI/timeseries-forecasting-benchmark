@@ -1,0 +1,42 @@
+name: AdaLab
+
+# Mirrors the results-matrix app to AdaLab, so people without a GitHub account can
+# reach it. GitHub Pages keeps publishing the same app independently (pages.yml) —
+# neither target replaces the other.
+#
+# Nothing is built or pushed here: AdaLab's own build server clones this repo at the
+# triggering commit and builds Containerfile itself, so no Docker daemon and no Harbor
+# credentials are needed. What to deploy comes entirely from .adalab/.
+#
+# The reusable workflow runs on [self-hosted, adalab], the only runner that can reach
+# the internal adaboard API. If no such runner is available to this repository the job
+# queues and never starts.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "web/**"
+      - "Containerfile"
+      - "deploy/nginx.conf"
+      - ".adalab/**"
+      - ".github/workflows/adalab.yml"
+  workflow_dispatch:
+
+# One deploy at a time; don't cancel an in-progress run mid-rollout.
+concurrency:
+  group: adalab
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    uses: DHI-Internal/dhi_adalab/.github/workflows/adalab-app-deploy.yml@main
+    # The callee commits the app_id and image ids it gets back into .adalab/.
+    permissions:
+      contents: write
+    with:
+      # Publish under the commit SHA. Re-running with a tag Harbor already has is a
+      # silent no-op rebuild, which is what would happen if next_image_version in
+      # .adalab/local_container_1.json were left to be bumped by hand.
+      next-image-versions: '{"tsforecast-benchmark-web": "${{ github.sha }}"}'
+    secrets: inherit
