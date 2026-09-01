@@ -1,0 +1,49 @@
+name: AdaLab probe
+
+# TEMPORARY — delete once the ADALAB_PAT question is settled. Reads nothing but the
+# length of the secret it is handed, to tell the environment's copy apart from the
+# repository-level one. Never prints a token.
+
+on:
+  push:
+    branches: [adalab-deploy]
+  workflow_dispatch:
+
+jobs:
+  repo_secret:
+    runs-on: [self-hosted, adalab]
+    steps:
+      - name: Repository-level ADALAB_PAT
+        env:
+          PAT: ${{ secrets.ADALAB_PAT }}
+        run: echo "repo-level ADALAB_PAT length = ${#PAT}"
+
+  environment_secret:
+    runs-on: [self-hosted, adalab]
+    environment: adalab_deploy
+    steps:
+      - name: Environment ADALAB_PAT
+        env:
+          PAT: ${{ secrets.ADALAB_PAT }}
+        run: echo "adalab_deploy ADALAB_PAT length = ${#PAT}"
+
+      - name: Does it authenticate?
+        env:
+          PAT: ${{ secrets.ADALAB_PAT }}
+        run: |
+          python3 -m venv /tmp/adaprobe
+          /tmp/adaprobe/bin/pip install -q --upgrade pip adalib
+          /tmp/adaprobe/bin/python - <<'PY'
+          import os
+          from adalib_auth.config import get_config
+          try:
+              get_config(
+                  adaboard_api_url="https://adalab.dhigroup.com/adaboard/api",
+                  token=os.environ["PAT"],
+              )
+              import adalib.lab as lab
+              print("authenticated as:", lab.who_am_i())
+          except Exception as exc:
+              print("authentication FAILED:", type(exc).__name__, exc)
+              raise SystemExit(1)
+          PY
