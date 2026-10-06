@@ -15,6 +15,9 @@ flowchart LR
 
 ![EDA](../figures/cases/watertemp_james_eda.png)
 
+*EDA panel: daily water temperature (°C) at the gauge, with ERA5 air temperature
+overlaid — the two track closely, which is the point of this case.*
+
 ## The forecasting problem
 
 Forecast **water temperature**, **daily**, **7 days** ahead. The diurnal-to-seasonal cycle is set by air temperature; skill at multi-day lead comes almost entirely from the **air-temperature forecast** (here a perfect-forecast proxy). On the data, water temperature correlates with air temperature at Spearman ≈ 0.96 and adding the covariate cuts one-step error ~30%.

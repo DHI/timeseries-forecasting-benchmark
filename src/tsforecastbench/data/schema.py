@@ -15,13 +15,29 @@ from typing import Literal
 
 import numpy as np
 import pandas as pd
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DATA_RAW = REPO_ROOT / "data" / "raw"
 DATA_PROCESSED = REPO_ROOT / "data" / "processed"
+DATA_CURATED = REPO_ROOT / "data" / "curated"
+# Extended-history frames for `Forecaster.is_global` methods (schema.py:Case.load_extended).
+DATA_CURATED_EXTENDED = REPO_ROOT / "data" / "curated_extended"
 
 REQUIRED_COLS = ("unique_id", "ds", "y")
+
+# Metrics whose meaning depends on the case's domain (e.g. NSE/KGE assume a flow/level
+# quantity), so they only apply to cases that opt in via `Case.domain_metrics`. Every other
+# metric the eval loops compute (MAE, RMSE, MASE, Skill_vs_*, MAPE, sMAPE) applies to every
+# case and needs no such declaration.
+DOMAIN_RESTRICTED_METRICS = frozenset({"NSE", "KGE"})
 
 
 class Splits(BaseModel):
@@ -64,12 +80,37 @@ class Case(BaseModel):
     target: str
     target_unit: str = ""
     freq: str
+    # The set of seasonal periods this case carries, in steps of `freq`; [] = non-seasonal.
+    # Order is how curation emits them (most prominent first) and carries no meaning to any
+    # consumer: everything that needs one period reads `dominant_seasonality` instead, and
+    # the consumers that take the whole set (the ML lag ladder, MSTL) are order-independent.
+    # The single source of truth for seasonality in the train/predict cycle — there is no
+    # frequency-based fallback. Values are fixed once at curation time from train-split
+    # evidence (notebooks/seasonality.py); deviations from the detection proposal need a
+    # justification in `notes`.
+    seasonalities: list[int]
+    # The one period every dominant-keyed consumer resolves to: SeasonalNaive, Climatology,
+    # the ML sin/cos feature, TBATS and Theta's `season_length`, and the MASE denominator.
+    # Pinned at curation time, never re-derived at fit time. It used to be recomputed from
+    # the fit window by variance explained while the MASE season took the first declared
+    # period instead, so the metric and the methods could resolve different periods on the
+    # same case (research log id 103). 1 when `seasonalities` is empty.
+    dominant_seasonality: int
     horizon_primary: str
     horizons_eval: list[str] = Field(default_factory=list)
-    input_window: str
     exogenous: list[str] = Field(default_factory=list)
     exogenous_known_future: list[str] = Field(default_factory=list)
+    # Domain-expert judgment, not derivable from measured skill: which exogenous columns
+    # are necessary for a meaningful forecast (e.g. rain for a flood case). Everything
+    # else in `exogenous`/`exogenous_known_future` is implicitly optional — see
+    # `optional_exogenous` below and research_log/details.md id 9 (2026-07-02).
+    necessary_exogenous: list[str] = Field(default_factory=list)
     static_attrs: list[str] = Field(default_factory=list)
+    # Domain-expert judgment, like `necessary_exogenous`: which domain-restricted metrics
+    # (see `DOMAIN_RESTRICTED_METRICS`) are meaningful for this case. The app uses this to
+    # restrict a domain metric's matrix rows to only the cases that declare it, so e.g. NSE
+    # never appears against a wave-height case.
+    domain_metrics: list[str] = Field(default_factory=list)
     splits: Splits
     source: Source
     data_type: Literal["observed", "simulated", "mixed"] = "observed"
@@ -81,20 +122,157 @@ class Case(BaseModel):
     split_mode: Literal["calendar", "fraction"] = "calendar"
     split_fraction: list[float] = Field(default_factory=lambda: [0.7, 0.85])
 
+    @field_validator("seasonalities")
+    @classmethod
+    def _seasonalities_valid(cls, v: list[int]) -> list[int]:
+        if any(p < 2 for p in v):
+            raise ValueError(f"seasonalities must all be >= 2 steps, got {v}")
+        if len(set(v)) != len(v):
+            raise ValueError(f"seasonalities must be unique, got {v}")
+        return v
+
+    @field_validator("dominant_seasonality")
+    @classmethod
+    def _dominant_seasonality_declared(cls, v: int, info: ValidationInfo) -> int:
+        declared = info.data.get("seasonalities")
+        if declared is None:
+            # `seasonalities` itself failed validation; let that error stand alone.
+            return v
+        if not declared:
+            if v != 1:
+                raise ValueError(
+                    f"dominant_seasonality must be 1 on a case declared non-seasonal "
+                    f"(seasonalities = []), got {v}"
+                )
+            return v
+        if v not in declared:
+            raise ValueError(
+                f"dominant_seasonality {v} is not one of the declared seasonalities "
+                f"{declared} — it names which declared period the dominant-keyed methods "
+                f"and the MASE denominator use, not a period of its own"
+            )
+        return v
+
+    @field_validator("domain_metrics")
+    @classmethod
+    def _domain_metrics_known(cls, v: list[str]) -> list[str]:
+        unknown = set(v) - DOMAIN_RESTRICTED_METRICS
+        if unknown:
+            raise ValueError(
+                f"domain_metrics has unknown metric(s) {sorted(unknown)}; "
+                f"must be a subset of {sorted(DOMAIN_RESTRICTED_METRICS)}"
+            )
+        return v
+
+    @model_validator(mode="after")
+    def _necessary_exogenous_is_available(self) -> Case:
+        available = set(self.exogenous) | set(self.exogenous_known_future)
+        unavailable = set(self.necessary_exogenous) - available
+        if unavailable:
+            raise ValueError(
+                f"Case {self.id}: necessary_exogenous references {sorted(unavailable)}, "
+                "not present in exogenous/exogenous_known_future"
+            )
+        return self
+
+    @property
+    def optional_exogenous(self) -> list[str]:
+        """Exogenous columns not marked necessary — i.e. enrichment, not prerequisite."""
+        available = set(self.exogenous) | set(self.exogenous_known_future)
+        return sorted(available - set(self.necessary_exogenous))
+
+    @property
+    def exo_tier(self) -> Literal["none", "optional", "necessary"]:
+        """Domain-expert judgment of how essential exogenous input is to this case.
+
+        "necessary": at least one exogenous column is required for a meaningful forecast.
+        "optional": exogenous columns exist but are enrichments, not prerequisites.
+        "none": the case has no exogenous columns at all.
+        """
+        if self.necessary_exogenous:
+            return "necessary"
+        if self.optional_exogenous:
+            return "optional"
+        return "none"
+
     @property
     def parquet_path(self) -> Path:
         return DATA_PROCESSED / f"{self.id}.parquet"
 
     @property
+    def curated_path(self) -> Path:
+        return DATA_CURATED / f"{self.id}.parquet"
+
+    @property
+    def curated_extended_path(self) -> Path:
+        return DATA_CURATED_EXTENDED / f"{self.id}.parquet"
+
+    @property
     def raw_dir(self) -> Path:
         return DATA_RAW / self.id
 
-    def load(self, prefer_synth: bool = False) -> pd.DataFrame:
+    def load(self, prefer_synth: bool = False, curated: bool = False) -> pd.DataFrame:
+        """Load the case frame.
+
+        `curated=True` returns the benchmark-ready series (tail contiguous span,
+        small gaps filled, `y_observed` mask) that the eval loops consume: it reads
+        `data/curated/<id>.parquet` when present, else applies the gap policy on the
+        fly. The default (`curated=False`) returns the raw series in
+        `data/processed/`, gaps and all, for EDA and case review.
+        """
+        if curated:
+            return self._load_curated(prefer_synth=prefer_synth)
         if prefer_synth or not self.parquet_path.exists():
             return self.synth()
         df = pd.read_parquet(self.parquet_path)
         _validate_frame(self, df)
         return df
+
+    def _load_curated(self, prefer_synth: bool = False) -> pd.DataFrame:
+        from tsforecastbench.data.curate import curate_frame
+
+        if not prefer_synth and self.curated_path.exists():
+            return pd.read_parquet(self.curated_path)
+        raw = self.load(prefer_synth=prefer_synth)
+        exog = list(dict.fromkeys([*self.exogenous, *self.exogenous_known_future]))
+        curated, _ = curate_frame(
+            raw,
+            self.freq,
+            seasonalities=self.seasonalities,
+            horizon_primary=self.horizon_primary,
+            split_fraction=self.split_fraction,
+            exog=exog,
+        )
+        return curated
+
+    def load_extended(self, prefer_synth: bool = False) -> pd.DataFrame:
+        """Full single-series history for `Forecaster.is_global` methods.
+
+        Gap-filled the same way as `load(curated=True)` (small gaps <= the per-case
+        ACF-derived cap), but without trimming to the tail segment: every observation
+        at or before the tail segment's `val_end` is kept, gaps larger than the cap
+        included and marked unobserved rather than used as a trim boundary. Cutting off
+        at `val_end` — not the raw series' end — keeps this frame strictly before the
+        test window every method (local or global) is scored on, so it adds history,
+        never leaks it.
+        """
+        from tsforecastbench.data.curate import curate_frame, extend_frame
+
+        if not prefer_synth and self.curated_extended_path.exists():
+            return pd.read_parquet(self.curated_extended_path)
+        raw = self.load(prefer_synth=prefer_synth)
+        exog = list(dict.fromkeys([*self.exogenous, *self.exogenous_known_future]))
+        curated, _ = curate_frame(
+            raw,
+            self.freq,
+            seasonalities=self.seasonalities,
+            horizon_primary=self.horizon_primary,
+            split_fraction=self.split_fraction,
+            exog=exog,
+        )
+        _, val_end, _ = self.split_bounds(curated)
+        extended, _ = extend_frame(raw, self.freq, cutoff=val_end, exog=exog)
+        return extended
 
     def synth(self) -> pd.DataFrame:
         mod = importlib.import_module(f"tsforecastbench.data.cases.{self.id}.synth")
@@ -103,7 +281,7 @@ class Case(BaseModel):
         return df
 
     def _fraction_split_dates(self, df: pd.DataFrame) -> tuple[pd.Timestamp, pd.Timestamp]:
-        obs = pd.to_datetime(df.loc[df["y"].notna(), "ds"])
+        obs = pd.to_datetime(df.loc[_observed_mask(df), "ds"])
         if obs.empty:
             raise ValueError(f"Case {self.id}: no observed y values to split on")
         ns = obs.astype("int64").to_numpy()
@@ -112,24 +290,41 @@ class Case(BaseModel):
         t1 = pd.Timestamp(int(np.quantile(ns, f1)))
         return t0, t1
 
-    def split_frame(self, df: pd.DataFrame) -> dict[str, pd.DataFrame]:
+    def split_bounds(self, df: pd.DataFrame) -> tuple[pd.Timestamp, pd.Timestamp, pd.Timestamp]:
+        """(train_end, val_end, test_end), tz-naive UTC, from `split_mode`."""
         ds_cmp = pd.to_datetime(df["ds"])
         if ds_cmp.dt.tz is not None:
             ds_cmp = ds_cmp.dt.tz_convert("UTC").dt.tz_localize(None)
 
         if self.split_mode == "fraction":
             train_end, val_end = self._fraction_split_dates(df.assign(ds=ds_cmp))
-            test_end = ds_cmp.max()
+            obs_ds = ds_cmp[_observed_mask(df)]
+            test_end = obs_ds.max() if not obs_ds.empty else ds_cmp.max()
         else:
             train_end = pd.Timestamp(self.splits.train_end)
             val_end = pd.Timestamp(self.splits.val_end)
             test_end = pd.Timestamp(self.splits.test_end)
+        return train_end, val_end, test_end
+
+    def split_frame(self, df: pd.DataFrame) -> dict[str, pd.DataFrame]:
+        ds_cmp = pd.to_datetime(df["ds"])
+        if ds_cmp.dt.tz is not None:
+            ds_cmp = ds_cmp.dt.tz_convert("UTC").dt.tz_localize(None)
+        train_end, val_end, test_end = self.split_bounds(df)
 
         return {
             "train": df[ds_cmp <= train_end].reset_index(drop=True),
             "val": df[(ds_cmp > train_end) & (ds_cmp <= val_end)].reset_index(drop=True),
             "test": df[(ds_cmp > val_end) & (ds_cmp <= test_end)].reset_index(drop=True),
         }
+
+
+def _observed_mask(df: pd.DataFrame) -> pd.Series:
+    """Genuine-observation mask. On a curated frame `y` is gap-filled, so the truth of
+    what was measured lives in `y_observed`; on a raw frame it is simply `y` non-NaN."""
+    if "y_observed" in df.columns:
+        return df["y_observed"].astype(bool)
+    return df["y"].notna()
 
 
 def _validate_frame(case: Case, df: pd.DataFrame) -> None:

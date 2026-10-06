@@ -42,7 +42,6 @@ from tsforecastbench.bench.methods.naive import (  # noqa: E402
     MeanBaseline,
     Persistence,
     SeasonalNaive,
-    _default_season_length,
 )
 from tsforecastbench.data.registry import discover_cases  # noqa: E402
 from tsforecastbench.data.schema import Case  # noqa: E402
@@ -98,16 +97,22 @@ def check_fullness(case: Case, df: pd.DataFrame, max_gap: pd.Timedelta) -> list[
     lead_trail = n - n_span
 
     lvl = PASS if frac >= 0.8 else WARN if frac >= 0.5 else FAIL
-    span_note = f" (+{lead_trail:,} forcing-only rows outside the gauge record)" if lead_trail else ""
+    span_note = (
+        f" (+{lead_trail:,} forcing-only rows outside the gauge record)" if lead_trail else ""
+    )
     checks.append(
         Check(
             "observed_fraction",
             lvl,
             f"{frac:.0%} observed within the {n_span:,}-row record span "
             f"({n_span_obs:,} finite){span_note}.",
-            {"observed_fraction_in_span": frac, "n_rows_span": n_span,
-             "n_obs_span": n_span_obs, "lead_trail_nan_rows": lead_trail,
-             "observed_fraction_all_rows": n_obs / n if n else 0.0},
+            {
+                "observed_fraction_in_span": frac,
+                "n_rows_span": n_span,
+                "n_obs_span": n_span_obs,
+                "lead_trail_nan_rows": lead_trail,
+                "observed_fraction_all_rows": n_obs / n if n else 0.0,
+            },
         )
     )
 
@@ -142,8 +147,7 @@ def check_fullness(case: Case, df: pd.DataFrame, max_gap: pd.Timedelta) -> list[
             Check(
                 "target_gaps",
                 gap_lvl,
-                f"{n_gaps:,} gap(s) in the target; largest {largest} "
-                f"(threshold {max_gap}).",
+                f"{n_gaps:,} gap(s) in the target; largest {largest} (threshold {max_gap}).",
                 {
                     "n_gaps": n_gaps,
                     "largest_gap": str(largest),
@@ -177,12 +181,15 @@ def check_fullness(case: Case, df: pd.DataFrame, max_gap: pd.Timedelta) -> list[
         elif per_split["train"]["obs_frac"] < 0.5:
             tlvl, tmsg = WARN, f"Train split only {per_split['train']['obs_frac']:.0%} observed."
         else:
-            tlvl, tmsg = PASS, (
-                f"train/val/test obs: "
-                f"{per_split['train']['obs_frac']:.0%}/"
-                f"{per_split['val']['obs_frac']:.0%}/"
-                f"{per_split['test']['obs_frac']:.0%}; "
-                f"test has {test_obs:,} finite points."
+            tlvl, tmsg = (
+                PASS,
+                (
+                    f"train/val/test obs: "
+                    f"{per_split['train']['obs_frac']:.0%}/"
+                    f"{per_split['val']['obs_frac']:.0%}/"
+                    f"{per_split['test']['obs_frac']:.0%}; "
+                    f"test has {test_obs:,} finite points."
+                ),
             )
         checks.append(Check("split_coverage", tlvl, tmsg, per_split))
     except Exception as exc:
@@ -211,7 +218,11 @@ def check_exogenous(case: Case, df: pd.DataFrame) -> list[Check]:
     y = pd.to_numeric(df["y"], errors="coerce")
     for col in exo:
         if col not in df.columns:
-            checks.append(Check(f"exo[{col}]", FAIL, f"Declared exogenous '{col}' is MISSING from the data.", {}))
+            checks.append(
+                Check(
+                    f"exo[{col}]", FAIL, f"Declared exogenous '{col}' is MISSING from the data.", {}
+                )
+            )
             continue
         v = pd.to_numeric(df[col], errors="coerce")
         finite = float(v.notna().mean())
@@ -219,8 +230,12 @@ def check_exogenous(case: Case, df: pd.DataFrame) -> list[Check]:
         std = float(v.std(skipna=True))
         if finite == 0.0 or std == 0.0:
             checks.append(
-                Check(f"exo[{col}]", FAIL, f"'{col}' is empty or constant (finite={finite:.0%}, std={std:.3g}).",
-                      {"finite_frac": finite, "nonzero_frac": nonzero, "std": std})
+                Check(
+                    f"exo[{col}]",
+                    FAIL,
+                    f"'{col}' is empty or constant (finite={finite:.0%}, std={std:.3g}).",
+                    {"finite_frac": finite, "nonzero_frac": nonzero, "std": std},
+                )
             )
             continue
         # Spearman (rank) corr is robust to nonlinearity/scale. Use contemporaneous and a
@@ -235,8 +250,13 @@ def check_exogenous(case: Case, df: pd.DataFrame) -> list[Check]:
                 clvl,
                 f"'{col}': finite {finite:.0%}, nonzero {nonzero:.0%}, "
                 f"best |Spearman| {acorr:.2f} at lag {best_lag} step(s).",
-                {"finite_frac": finite, "nonzero_frac": nonzero, "std": std,
-                 "best_abs_spearman": acorr, "best_lag_steps": best_lag},
+                {
+                    "finite_frac": finite,
+                    "nonzero_frac": nonzero,
+                    "std": std,
+                    "best_abs_spearman": acorr,
+                    "best_lag_steps": best_lag,
+                },
             )
         )
 
@@ -365,37 +385,68 @@ def check_forecastable(case: Case, prefer_synth: bool) -> tuple[list[Check], pd.
     try:
         res = run_case(case, methods, prefer_synth=prefer_synth)
     except Exception as exc:
-        return [Check("forecastable", FAIL, f"Evaluation loop crashed: {exc!r}", {})], pd.DataFrame()
+        return [
+            Check("forecastable", FAIL, f"Evaluation loop crashed: {exc!r}", {})
+        ], pd.DataFrame()
 
     checks: list[Check] = []
     wide = res.pivot_table(index="method", columns="metric", values="value", aggfunc="first")
     status = res.groupby("method")["status"].first()
     n_ok = int((status == "ok").sum())
     if n_ok == 0:
-        checks.append(Check("forecastable", FAIL, "Every method errored — case is not forecastable as configured.",
-                            {"statuses": status.to_dict()}))
+        checks.append(
+            Check(
+                "forecastable",
+                FAIL,
+                "Every method errored — case is not forecastable as configured.",
+                {"statuses": status.to_dict()},
+            )
+        )
         return checks, res
 
-    # Does any real method beat persistence (positive skill) and seasonal-naive (MASE<1)?
+    # Does any real method beat persistence (positive skill) and seasonal naive's in-sample
+    # error (MASE<1)?
     best_skill = float(wide.get("Skill_vs_Persistence", pd.Series(dtype=float)).max())
     best_mase = float(wide.get("MASE", pd.Series(dtype=float)).min())
     if np.isfinite(best_skill) and best_skill > 0.05:
-        flvl, fmsg = PASS, f"{n_ok}/{len(methods)} methods ran; best skill-vs-persistence {best_skill:+.2f}, best MASE {best_mase:.2f}."
-    elif np.isfinite(best_mase) and best_mase < 1.0:
-        flvl, fmsg = PASS, f"{n_ok}/{len(methods)} methods ran; best MASE {best_mase:.2f} (beats seasonal-naive)."
-    else:
-        flvl, fmsg = WARN, (
-            f"{n_ok}/{len(methods)} methods ran but none clearly beat the naive floor "
-            f"(best skill {best_skill:+.2f}, best MASE {best_mase:.2f}) — check the target choice."
+        flvl, fmsg = (
+            PASS,
+            f"{n_ok}/{len(methods)} methods ran; best skill-vs-persistence {best_skill:+.2f}, best MASE {best_mase:.2f}.",
         )
-    checks.append(Check("forecastable", flvl, fmsg,
-                        {"n_methods_ok": n_ok, "best_skill_vs_persistence": best_skill, "best_mase": best_mase}))
+    elif np.isfinite(best_mase) and best_mase < 1.0:
+        flvl, fmsg = (
+            PASS,
+            f"{n_ok}/{len(methods)} methods ran; best MASE {best_mase:.2f} "
+            "(beats seasonal naive's in-sample error).",
+        )
+    else:
+        flvl, fmsg = (
+            WARN,
+            (
+                f"{n_ok}/{len(methods)} methods ran but none clearly beat the naive floor "
+                f"(best skill {best_skill:+.2f}, best MASE {best_mase:.2f}) — check the target choice."
+            ),
+        )
+    checks.append(
+        Check(
+            "forecastable",
+            flvl,
+            fmsg,
+            {"n_methods_ok": n_ok, "best_skill_vs_persistence": best_skill, "best_mase": best_mase},
+        )
+    )
 
     # surface the observed fraction of the scored test window
     frac = float(res["frac_finite_test"].iloc[0]) if len(res) else 0.0
     if frac < 1.0:
-        checks.append(Check("test_window_observed", WARN if frac >= 0.5 else FAIL,
-                            f"Scored test window is only {frac:.0%} observed.", {"frac_finite_test": frac}))
+        checks.append(
+            Check(
+                "test_window_observed",
+                WARN if frac >= 0.5 else FAIL,
+                f"Scored test window is only {frac:.0%} observed.",
+                {"frac_finite_test": frac},
+            )
+        )
     return checks, res
 
 
@@ -406,11 +457,15 @@ def check_config(case: Case, df: pd.DataFrame) -> list[Check]:
     checks: list[Check] = []
     # horizon must fit the test window
     horizon_steps = _horizon_to_steps(case.horizon_primary, case.freq)
-    season = _default_season_length(case.freq)
+    seasons = case.seasonalities
     checks.append(
-        Check("horizon", PASS,
-              f"Primary horizon {case.horizon_primary} = {horizon_steps} steps; "
-              f"default season {season} steps.", {"horizon_steps": horizon_steps, "season": season})
+        Check(
+            "horizon",
+            PASS,
+            f"Primary horizon {case.horizon_primary} = {horizon_steps} steps; "
+            f"declared seasonalities {seasons if seasons else '[] (non-seasonal)'}.",
+            {"horizon_steps": horizon_steps, "seasonalities": seasons},
+        )
     )
     # required columns
     missing = [c for c in ("unique_id", "ds", "y") if c not in df.columns]
@@ -419,13 +474,84 @@ def check_config(case: Case, df: pd.DataFrame) -> list[Check]:
     # single series expectation (pilot is one series per case)
     n_series = df["unique_id"].nunique() if "unique_id" in df.columns else 0
     if n_series != 1:
-        checks.append(Check("series_count", WARN, f"{n_series} unique_id series (pilot expects 1).",
-                            {"n_series": n_series}))
+        checks.append(
+            Check(
+                "series_count",
+                WARN,
+                f"{n_series} unique_id series (pilot expects 1).",
+                {"n_series": n_series},
+            )
+        )
     # doc presence
     doc = REPO_ROOT / "docs" / "cases" / f"{case.id}.md"
-    checks.append(Check("case_doc", PASS if doc.exists() else WARN,
-                        f"Case doc {'found' if doc.exists() else 'MISSING'} at docs/cases/{case.id}.md.",
-                        {"doc_path": str(doc.relative_to(REPO_ROOT)) if doc.exists() else None}))
+    checks.append(
+        Check(
+            "case_doc",
+            PASS if doc.exists() else WARN,
+            f"Case doc {'found' if doc.exists() else 'MISSING'} at docs/cases/{case.id}.md.",
+            {"doc_path": str(doc.relative_to(REPO_ROOT)) if doc.exists() else None},
+        )
+    )
+    return checks
+
+
+# ---------------------------------------------------------------------------------
+# 5. Seasonality: declared values vs train-split evidence (advisory drift alarm)
+# ---------------------------------------------------------------------------------
+def check_seasonality(case: Case, df: pd.DataFrame) -> list[Check]:
+    """Advisory only: recompute the detection evidence and compare with the declared
+    `seasonalities`. The declared field remains the single source of truth for the
+    train/predict cycle — a WARN here means the data drifted since curation, or a
+    deviation from the evidence that should be justified in the case notes."""
+    from tsforecastbench.data.seasonality import detect_candidates, proposed_seasonalities
+
+    try:
+        data = case.load(curated=True)
+    except Exception:
+        data = df  # synthetic-only case: evidence is indicative at best
+    try:
+        train = case.split_frame(data)["train"]
+        # Declared off-menu periods are added as candidates so each gets evidence too.
+        evidence = detect_candidates(
+            train["y"].to_numpy(), case.freq, extra_candidates=tuple(case.seasonalities)
+        )
+    except Exception as exc:
+        return [Check("seasonality_evidence", WARN, f"could not evaluate: {exc}", {})]
+
+    proposed = proposed_seasonalities(evidence)
+    by_period = {e["period"]: e for e in evidence}
+    declared = case.seasonalities
+    detail = {"declared": declared, "proposed": proposed, "evidence": evidence}
+
+    checks: list[Check] = []
+    unsupported = [p for p in declared if not by_period[p]["accepted"]]
+    undeclared = [p for p in proposed if p not in declared]
+    if unsupported:
+        checks.append(
+            Check(
+                "seasonality_declared_unsupported",
+                WARN,
+                f"Declared period(s) {unsupported} lack train-split evidence "
+                "(see notebooks/seasonality.py); justify the deviation in the case notes.",
+                detail,
+            )
+        )
+    if undeclared:
+        checks.append(
+            Check(
+                "seasonality_undeclared",
+                WARN,
+                f"Evidence supports period(s) {undeclared} that the case does not declare.",
+                detail,
+            )
+        )
+    if not checks:
+        msg = (
+            "Explicitly non-seasonal, confirmed: no candidate period has evidence."
+            if not declared
+            else f"Declared seasonalities {declared} consistent with train-split evidence."
+        )
+        checks.append(Check("seasonality", PASS, msg, detail))
     return checks
 
 
@@ -441,6 +567,7 @@ def review(case: Case, max_gap: pd.Timedelta) -> dict:
         "config": check_config(case, df),
         "fullness": check_fullness(case, df, max_gap),
         "exogenous": check_exogenous(case, df),
+        "seasonality": check_seasonality(case, df),
     }
     fc_checks, fc_res = check_forecastable(case, prefer_synth=not has_parquet)
     sections["forecastable"] = fc_checks
@@ -449,7 +576,12 @@ def review(case: Case, max_gap: pd.Timedelta) -> dict:
     verdict = _worst(all_checks)
     if not has_parquet:
         all_checks.append(
-            Check("data_source", WARN, "No processed Parquet — reviewed on SYNTHETIC data; rerun after download.", {})
+            Check(
+                "data_source",
+                WARN,
+                "No processed Parquet — reviewed on SYNTHETIC data; rerun after download.",
+                {},
+            )
         )
         sections.setdefault("config", []).append(all_checks[-1])
         verdict = _worst(all_checks)
@@ -465,8 +597,11 @@ def review(case: Case, max_gap: pd.Timedelta) -> dict:
         "sections": {k: [c.__dict__ for c in v] for k, v in sections.items()},
         "metrics_preview": (
             fc_res.pivot_table(index="method", columns="metric", values="value", aggfunc="first")
-            .round(4).reset_index().to_dict(orient="records")
-            if len(fc_res) else []
+            .round(4)
+            .reset_index()
+            .to_dict(orient="records")
+            if len(fc_res)
+            else []
         ),
     }
 
@@ -477,8 +612,10 @@ _ICON = {PASS: "PASS", WARN: "WARN", FAIL: "FAIL"}
 def print_report(result: dict) -> None:
     print("=" * 78)
     print(f"CASE REVIEW · {result['case_id']}  [{result['verdict']}]")
-    print(f"  {result['domain']} · target={result['target']} · {result['freq']} · "
-          f"horizon {result['horizon_primary']} · data={result['data_source']}")
+    print(
+        f"  {result['domain']} · target={result['target']} · {result['freq']} · "
+        f"horizon {result['horizon_primary']} · data={result['data_source']}"
+    )
     print("=" * 78)
     for checks in result["sections"].values():
         seen = set()
@@ -493,10 +630,12 @@ def print_report(result: dict) -> None:
         print("  Baseline metrics (single hold-out):")
         for row in result["metrics_preview"]:
             m = row.get("method", "?")
-            print(f"    {m:>14s}  "
-                  f"MASE={_fmt(row.get('MASE'))}  "
-                  f"skill_vs_pers={_fmt(row.get('Skill_vs_Persistence'))}  "
-                  f"RMSE={_fmt(row.get('RMSE'))}")
+            print(
+                f"    {m:>14s}  "
+                f"MASE={_fmt(row.get('MASE'))}  "
+                f"skill_vs_pers={_fmt(row.get('Skill_vs_Persistence'))}  "
+                f"RMSE={_fmt(row.get('RMSE'))}"
+            )
     print("=" * 78)
     print(f"  VERDICT: {result['verdict']}")
     print("=" * 78)
@@ -516,7 +655,9 @@ def write_reports(result: dict) -> tuple[Path, Path]:
 
     lines = [f"# Case review — `{result['case_id']}`  ·  **{result['verdict']}**", ""]
     lines.append(f"- domain: {result['domain']}")
-    lines.append(f"- target: `{result['target']}` · freq: `{result['freq']}` · horizon: `{result['horizon_primary']}`")
+    lines.append(
+        f"- target: `{result['target']}` · freq: `{result['freq']}` · horizon: `{result['horizon_primary']}`"
+    )
     lines.append(f"- data source: **{result['data_source']}**")
     lines.append("")
     for section, checks in result["sections"].items():
@@ -536,7 +677,7 @@ def write_reports(result: dict) -> tuple[Path, Path]:
         lines.append("|---|---|---|---|---|")
         for row in result["metrics_preview"]:
             lines.append(
-                f"| {row.get('method','?')} | {_fmt(row.get('MASE'))} | "
+                f"| {row.get('method', '?')} | {_fmt(row.get('MASE'))} | "
                 f"{_fmt(row.get('Skill_vs_Persistence'))} | {_fmt(row.get('RMSE'))} | {_fmt(row.get('MAE'))} |"
             )
         lines.append("")
@@ -548,10 +689,15 @@ def write_reports(result: dict) -> tuple[Path, Path]:
 def main() -> int:
     p = argparse.ArgumentParser(description="Automated quality review for one benchmark case.")
     p.add_argument("--case", required=True, help="case id (see src/tsforecastbench/cases/)")
-    p.add_argument("--max-gap", default=None,
-                   help="largest tolerable target gap, e.g. '24h', '7D'. Default scales with horizon.")
+    p.add_argument(
+        "--max-gap",
+        default=None,
+        help="largest tolerable target gap, e.g. '24h', '7D'. Default scales with horizon.",
+    )
     p.add_argument("--strict", action="store_true", help="exit non-zero on WARN as well as FAIL.")
-    p.add_argument("--json-only", action="store_true", help="suppress the text report; just write files.")
+    p.add_argument(
+        "--json-only", action="store_true", help="suppress the text report; just write files."
+    )
     args = p.parse_args()
 
     cases = discover_cases()

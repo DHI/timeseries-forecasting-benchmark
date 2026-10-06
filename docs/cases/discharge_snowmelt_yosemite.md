@@ -28,6 +28,10 @@ flowchart LR
 
 ![EDA](../figures/cases/discharge_snowmelt_yosemite_eda.png)
 
+*EDA panel: daily discharge (m³/s) at the gauge, with ERA5 air temperature overlaid —
+the melt-timing driver. The zoom window is centred on the year with the most dynamic
+spring freshet.*
+
 ## The forecasting problem
 
 Forecast **discharge**, **daily**, **7 days** ahead. The smooth melt hydrograph makes

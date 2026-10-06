@@ -35,7 +35,7 @@ from tsforecastbench.bench.eval import (  # noqa: E402
     run_case_rolling,
     run_leadtime_curve,
 )
-from tsforecastbench.bench.eval.loop import _complete_for_fit, _horizon_to_steps  # noqa: E402
+from tsforecastbench.bench.eval.loop import _horizon_to_steps, _raw_y  # noqa: E402
 from tsforecastbench.bench.methods import (  # noqa: E402
     DLinearForecaster,
     Persistence,
@@ -57,6 +57,7 @@ def _methods(with_fm: bool):
     if with_fm:
         try:
             from tsforecastbench.bench.methods import ChronosForecaster
+
             ms.append(ChronosForecaster())
         except Exception:
             pass
@@ -65,13 +66,13 @@ def _methods(with_fm: bool):
 
 def _example_figure(case, methods, out_path: Path) -> str:
     """Fit each method at one observed test origin and plot the forecast vs the truth."""
-    df = case.load().sort_values("ds").reset_index(drop=True)
+    df = case.load(curated=True).sort_values("ds").reset_index(drop=True)
     splits = case.split_frame(df)
     train_val = pd.concat([splits["train"], splits["val"]], ignore_index=True)
     full = pd.concat([train_val, splits["test"]], ignore_index=True)
     exo = list(dict.fromkeys([*case.exogenous, *case.exogenous_known_future]))
-    full_fit = _complete_for_fit(full, ["y", *exo])
-    raw_y = full["y"].to_numpy(dtype=float)
+    full_fit = full  # curated: the target is already complete within the span
+    raw_y = _raw_y(full)
     H = _horizon_to_steps(case.horizon_primary, case.freq)
 
     # pick a dense, dynamic origin in the test span (max std of the horizon window)
@@ -85,19 +86,35 @@ def _example_figure(case, methods, out_path: Path) -> str:
     o = best_o
     ctx = min(3 * H, o)
     hist = full_fit.iloc[:o]
-    fexog = full_fit.iloc[o : o + H][["ds", *[c for c in exo if c in full_fit.columns]]] if exo else None
+    fexog = (
+        full_fit.iloc[o : o + H][["ds", *[c for c in exo if c in full_fit.columns]]]
+        if exo
+        else None
+    )
     fig, ax = plt.subplots(figsize=(9, 4.5))
-    ax.plot(full["ds"].iloc[o - ctx : o], raw_y[o - ctx : o], color="#333", lw=1.0, label="observed (history)")
-    ax.plot(full["ds"].iloc[o : o + H], raw_y[o : o + H], color="#333", lw=1.8, label="observed (truth)")
+    ax.plot(
+        full["ds"].iloc[o - ctx : o],
+        raw_y[o - ctx : o],
+        color="#333",
+        lw=1.0,
+        label="observed (history)",
+    )
+    ax.plot(
+        full["ds"].iloc[o : o + H], raw_y[o : o + H], color="#333", lw=1.8, label="observed (truth)"
+    )
     for m in methods:
         try:
-            m.fit(case, hist)
+            # Empty holdout: none of the illustrated methods trains iteratively, so none
+            # of them reads it (see `Forecaster.fit`).
+            m.fit(case, hist, hist.iloc[:0])
             yh = m.predict(case, hist, H, future_exog=fexog)["y_hat"].to_numpy(float)
             ax.plot(full["ds"].iloc[o : o + H], yh, lw=1.2, alpha=0.9, label=m.name)
         except Exception:
             continue
     ax.axvline(full["ds"].iloc[o], color="grey", ls="--", lw=0.8)
-    ax.set_title(f"{case.id}: example {case.horizon_primary} forecast from {full['ds'].iloc[o].date()}")
+    ax.set_title(
+        f"{case.id}: example {case.horizon_primary} forecast from {full['ds'].iloc[o].date()}"
+    )
     ax.set_ylabel(case.target)
     ax.grid(True, alpha=0.25)
     ax.legend(fontsize=8, ncol=2)
@@ -112,55 +129,86 @@ def make_report(case_id: str, with_fm: bool, origins: int) -> Path:
     case = get_case(case_id)
     methods = _methods(with_fm)
     print(f"[report] {case_id}: scoring {len(methods)} methods over {origins} origins ...")
-    scores = run_case_rolling(case, methods, n_origins=origins)
+    scores, _ = run_case_rolling(case, methods, n_origins=origins)
     wide = scores.pivot_table(index="method", columns="metric", values="value")
 
     print(f"[report] {case_id}: lead-time curve ...")
     curve = run_leadtime_curve(case, methods, n_origins=origins)
     lt_metric = "RMSE"
     lt_fig = FIG_DIR / f"{case_id}_leadtime.png"
-    plot_leadtime_curve(curve, metric=lt_metric, out_path=lt_fig,
-                        title=f"{case_id}: {lt_metric} vs lead time",
-                        freq_label=FREQ_LABEL.get(case.freq, "steps"))
+    plot_leadtime_curve(
+        curve,
+        metric=lt_metric,
+        out_path=lt_fig,
+        title=f"{case_id}: {lt_metric} vs lead time",
+        freq_label=FREQ_LABEL.get(case.freq, "steps"),
+    )
     _example_figure(case, methods, FIG_DIR / f"{case_id}_example.png")
 
     df = case.load()
     y = pd.to_numeric(df["y"], errors="coerce")
     span_days = (pd.to_datetime(df["ds"]).max() - pd.to_datetime(df["ds"]).min()).days
+    _train_end, _val_end, _test_end = case.split_bounds(df)
 
-    order = ["Persistence", "SeasonalNaive", "Theta", "DLinear", "LightGBM",
-             "LightGBM+exo", "Chronos-Bolt"]
+    order = [
+        "Persistence",
+        "SeasonalNaive",
+        "Theta",
+        "DLinear",
+        "LightGBM",
+        "LightGBM+exo",
+        "Chronos-Bolt",
+    ]
     rows = [m for m in order if m in wide.index]
     lines = [
-        f"# Case report — `{case_id}`", "",
+        f"# Case report — `{case_id}`",
+        "",
         f"**Domain** {case.domain} · **Target** `{case.target}` ({case.target_unit}) · "
-        f"**Freq** `{case.freq}` · **Horizon** `{case.horizon_primary}`", "",
-        f"*{case.notes}*", "",
-        "## Data", "",
+        f"**Freq** `{case.freq}` · **Horizon** `{case.horizon_primary}`",
+        "",
+        f"*{case.notes}*",
+        "",
+        "## Data",
+        "",
         f"- Source: {case.source.name}" + (f" — {case.source.url}" if case.source.url else ""),
         f"- Record span: {span_days} days, {int(y.notna().sum()):,} observed of {len(df):,} rows "
         f"({y.notna().mean():.0%})",
-        f"- Splits ({case.split_mode}): train→{case.splits.train_end}, val→{case.splits.val_end}, "
-        f"test→{case.splits.test_end}",
+        # The bounds actually used, not `case.splits`: in fraction mode those calendar dates
+        # are inert and printing them described a split the run never used.
+        f"- Splits ({case.split_mode}): train→{_train_end.date()}, val→{_val_end.date()}, "
+        f"test→{_test_end.date()}",
         f"- Exogenous: {', '.join(case.exogenous) or 'none'}"
-        + (f" (known-future: {', '.join(case.exogenous_known_future)})" if case.exogenous_known_future else ""),
-        "", "## Scores (rolling-origin, pooled over origins x leads)", "",
+        + (
+            f" (known-future: {', '.join(case.exogenous_known_future)})"
+            if case.exogenous_known_future
+            else ""
+        ),
+        "",
+        "## Scores (rolling-origin, pooled over origins x leads)",
+        "",
         "| method | MASE | skill vs persistence | skill vs mean |",
         "|---|---|---|---|",
     ]
     for m in rows:
         r = wide.loc[m]
-        lines.append(f"| {m} | {r.get('MASE', float('nan')):.3f} | "
-                     f"{r.get('Skill_vs_Persistence', float('nan')):+.3f} | "
-                     f"{r.get('Skill_vs_Mean', float('nan')):+.3f} |")
+        lines.append(
+            f"| {m} | {r.get('MASE', float('nan')):.3f} | "
+            f"{r.get('Skill_vs_Persistence', float('nan')):+.3f} | "
+            f"{r.get('Skill_vs_Mean', float('nan')):+.3f} |"
+        )
     # report lives in docs/reports/, figures in docs/figures/reports/ — link is file-relative
     rel_ex = Path("../figures/reports") / f"{case_id}_example.png"
     rel_lt = Path("../figures/reports") / f"{case_id}_leadtime.png"
     lines += [
-        "", "## Example forecast", "",
-        f"![example]({rel_ex.as_posix()})", "",
-        "## Error vs lead time", "",
-        f"![leadtime]({rel_lt.as_posix()})", "",
+        "",
+        "## Example forecast",
+        "",
+        f"![example]({rel_ex.as_posix()})",
+        "",
+        "## Error vs lead time",
+        "",
+        f"![leadtime]({rel_lt.as_posix()})",
+        "",
         "_Generated by `scripts/case_report.py`._",
     ]
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
@@ -174,8 +222,12 @@ def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--case", help="single case id; default: all")
     p.add_argument("--with-fm", action="store_true", help="include Chronos-Bolt")
-    p.add_argument("--origins", type=int, default=DEFAULT_ORIGINS,
-                   help=f"rolling origins (default {DEFAULT_ORIGINS}; override with TSFB_ORIGINS)")
+    p.add_argument(
+        "--origins",
+        type=int,
+        default=DEFAULT_ORIGINS,
+        help=f"rolling origins (default {DEFAULT_ORIGINS}; override with TSFB_ORIGINS)",
+    )
     args = p.parse_args()
     ids = [args.case] if args.case else list(discover_cases())
     for cid in ids:

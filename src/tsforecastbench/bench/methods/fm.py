@@ -4,10 +4,25 @@ Wraps pretrained TSFMs behind the common Forecaster interface. These answer the 
 question directly: does a model pretrained on huge corpora, with *no* case-specific
 training, compete with the tuned baselines?
 
-Chronos-Bolt (Amazon) is the laptop-friendly entry: encoder-decoder, CPU-capable, fast.
-The dependency is optional — `uv pip install chronos-forecasting` (or the `fm` extra) —
-and the wrapper imports it lazily so the rest of the benchmark runs without it. The model
-is loaded once and cached across cases/origins.
+Each model's dependency is optional and imported lazily, so the rest of the benchmark
+runs without any of them; a method whose library is absent is skipped (status=error) by
+the eval loop rather than breaking the run. Pretrained weights are loaded once and cached
+across every case and origin. Each wrapper conditions only on the target's recent history
+by default. Chronos-2, TimesFM-2.5 and Moirai-2.0 also ship a `+exo` variant
+(`use_exogenous=True`) that additionally feeds the case's declared covariates to the
+model's native covariate mechanism, mirroring the windowed-ML `+exo` pair in `ml.py` —
+future covariate values are a perfect-forecast proxy supplied by the eval loop, not a real
+forecast of those covariates. Chronos-Bolt has no covariate mechanism, so it stays
+univariate-only.
+
+  - Chronos-Bolt / Chronos-2 (Amazon) — `chronos-forecasting`.
+  - TimesFM 2.5 (Google) — `timesfm`.
+  - Moirai-2.0 (Salesforce) — `uni2ts`.
+
+All three libraries install together via the single `fm` extra (`uv sync --extra fm`); see
+`pyproject.toml` for why that extra caps the project at Python < 3.13. All four models are
+CPU-capable; the larger three are slow on CPU, so pair them with a small `--origins` when
+running without a GPU.
 """
 
 from __future__ import annotations
@@ -16,9 +31,40 @@ import numpy as np
 import pandas as pd
 
 from tsforecastbench.bench.methods.base import Forecaster
+from tsforecastbench.bench.methods.ml import _exo_cols, _fit_len, _naive_ds
+from tsforecastbench.bench.methods.scorecard import (
+    Capabilities,
+    ForecastStrategy,
+    GrowthShape,
+    Level,
+    RunningCost,
+    Scorecard,
+)
 from tsforecastbench.data.schema import Case
 
 _PIPELINE_CACHE: dict = {}
+_TIMESFM_CACHE: dict = {}
+_MOIRAI_CACHE: dict = {}
+
+
+def _future_covariate(
+    col: str, hist_series: pd.Series, horizon: int, future_exog: pd.DataFrame | None
+) -> np.ndarray:
+    """Perfect-forecast-proxy future values for one declared covariate.
+
+    Same convention `_WindowedMLBase._future_X` uses: `future_exog` (supplied by the eval
+    loop) stands in for a real forecast of the covariate, falling back to the last
+    observed value when the column is absent or too short.
+    """
+    numeric = pd.to_numeric(hist_series, errors="coerce")
+    fallback = float(numeric.ffill().iloc[-1]) if numeric.notna().any() else 0.0
+    if future_exog is not None and col in future_exog.columns:
+        vals = _fit_len(
+            pd.to_numeric(future_exog[col], errors="coerce").to_numpy(), horizon, fallback
+        )
+    else:
+        vals = np.full(horizon, fallback)
+    return np.where(np.isfinite(vals), vals, fallback)
 
 
 def _load_pipeline(model_name: str):
@@ -27,9 +73,106 @@ def _load_pipeline(model_name: str):
         from chronos import BaseChronosPipeline
 
         _PIPELINE_CACHE[model_name] = BaseChronosPipeline.from_pretrained(
-            model_name, device_map="cpu", torch_dtype=torch.float32,
+            model_name,
+            device_map="cpu",
+            torch_dtype=torch.float32,
         )
     return _PIPELINE_CACHE[model_name]
+
+
+def _load_chronos2_pipeline(model_name: str):
+    if model_name not in _PIPELINE_CACHE:
+        import torch
+        from chronos import Chronos2Pipeline
+
+        _PIPELINE_CACHE[model_name] = Chronos2Pipeline.from_pretrained(
+            model_name,
+            device_map="cpu",
+            torch_dtype=torch.float32,
+        )
+    return _PIPELINE_CACHE[model_name]
+
+
+_TIMESFM_MODEL_CACHE: dict = {}
+
+
+def _load_timesfm_model(model_name: str):
+    # The expensive step: reads the checkpoint's weights. Kept separate from .compile()
+    # below so a new per-case context length never forces a reload.
+    if model_name not in _TIMESFM_MODEL_CACHE:
+        import timesfm
+
+        _TIMESFM_MODEL_CACHE[model_name] = timesfm.TimesFM_2p5_200M_torch.from_pretrained(
+            model_name
+        )
+    return _TIMESFM_MODEL_CACHE[model_name]
+
+
+def _round_to_patch(n: int, patch: int, cap: int) -> int:
+    """Round `n` up to a whole multiple of `patch` -- compile() does this internally and
+    silently (verified: requesting max_context=336 with patch=32 compiles a shape of
+    352), so rounding here keeps the array sliced for `inputs` in sync with the exact
+    shape compile() actually bakes in. Rounds down instead if rounding up would exceed
+    `cap` (compile() requires max_context + max_horizon <= context_limit).
+    """
+    rounded_up = -(-n // patch) * patch
+    return rounded_up if rounded_up <= cap else (cap // patch) * patch
+
+
+def _timesfm_context_len(model, n_available: int, max_horizon: int) -> int:
+    # Full available history, capped at the model's real limit (compile() requires
+    # max_context + max_horizon <= context_limit). Rounding up can overshoot the available
+    # length by at most patch-1 steps -- well under the full-patch (32-step) shortfall that
+    # makes compile()'s baked-in shape return all-NaN, so it stays safe.
+    cap = model.model.config.context_limit - max_horizon
+    target = min(n_available, cap)
+    return _round_to_patch(target, model.model.config.input_patch_len, cap)
+
+
+def _load_timesfm(
+    model_name: str, max_context: int, max_horizon: int, return_backcast: bool = False
+):
+    # Compilation bakes in the context/horizon caps, so cache per (model, caps) bucket --
+    # one bucket per distinct per-case context length now, rather than one shared bucket.
+    # `return_backcast` is a separate bucket dimension: `forecast_with_covariates` requires
+    # it True to fit the xreg regressor, but turning it on changes what plain `forecast()`
+    # returns (backcast prepended to the horizon, not just the horizon) — so the
+    # covariate-fitting model must never be reused for a univariate call, and vice versa.
+    # Each bucket miss is a `copy.copy` of the shared loaded model (weights stay shared,
+    # verified empirically: two copies compiled at different shapes coexist and produce
+    # correct, non-cross-contaminating results) plus a fresh `.compile()`, not a checkpoint
+    # reload -- so a 12-case pilot costs ~12-24 cheap compiles, not 12-24 full reloads.
+    key = (model_name, max_context, max_horizon, return_backcast)
+    if key not in _TIMESFM_CACHE:
+        import copy
+
+        import timesfm
+
+        variant = copy.copy(_load_timesfm_model(model_name))
+        variant.compile(
+            timesfm.ForecastConfig(
+                max_context=max_context,
+                max_horizon=max_horizon,
+                normalize_inputs=True,
+                use_continuous_quantile_head=True,
+                force_flip_invariance=True,
+                infer_is_positive=True,
+                fix_quantile_crossing=True,
+                return_backcast=return_backcast,
+            )
+        )
+        _TIMESFM_CACHE[key] = variant
+    return _TIMESFM_CACHE[key]
+
+
+def _load_moirai_module(model_name: str):
+    # Only the pretrained weights are cached; the Moirai2Forecast wrapper bakes in the
+    # prediction length, so it is rebuilt per predict call (cheap next to the weights).
+    if model_name not in _MOIRAI_CACHE:
+        from uni2ts.model.moirai2 import Moirai2Module
+
+        _MOIRAI_CACHE[model_name] = Moirai2Module.from_pretrained(model_name)
+    return _MOIRAI_CACHE[model_name]
 
 
 class ChronosForecaster(Forecaster):
@@ -41,27 +184,502 @@ class ChronosForecaster(Forecaster):
     """
 
     name = "Chronos-Bolt"
+    family = "fm"
     is_probabilistic = True
+    # Zero-shot: there's no fit-time benefit, but a longer history helps up to
+    # `context_length` if the shared curated span is shorter than that.
+    is_global = True
+    library = "chronos-forecasting (Amazon Chronos-Bolt) + torch"
+    compute_profile = (
+        "CPU-capable; zero-shot, so there's no per-case training — one forward "
+        "pass per prediction. The pretrained model is loaded once and cached "
+        "across every case and origin."
+    )
+    limitations = (
+        "Zero-shot: never learns anything case-specific, only what it picked up "
+        "from pretraining on other series. "
+        "Its running cost is inference alone, but standing it up means pulling "
+        "the pretrained weights down and holding them in memory. "
+        "Univariate — ignores exogenous inputs. "
+        "Conditions on a fixed window sized to the case's pre-test history, capped at the "
+        "most recent 2,048 points (context_length). Labeled Direct below because this "
+        "benchmark issues one predict_quantiles() call for the full horizon — that "
+        "describes this calling interface only, not whether the pretrained decoder "
+        "generates internally autoregressively, which isn't verified against the pinned "
+        "chronos-forecasting version."
+    )
+    code_snippet = (
+        "from chronos import BaseChronosPipeline\n\n"
+        'pipe = BaseChronosPipeline.from_pretrained("amazon/chronos-bolt-small", device_map="cpu")\n'
+        "quantiles, _mean = pipe.predict_quantiles(\n"
+        "    inputs=context,                  # last 2048 observed values\n"
+        "    prediction_length=horizon,\n"
+        "    quantile_levels=[0.1, 0.5, 0.9],\n"
+        ")\n"
+        "y_hat = quantiles[..., 1]            # median"
+    )
+
+    # No covariate mechanism at all, unlike the other three — Chronos-Bolt stays univariate.
+    capabilities = Capabilities(
+        trend=True, seasonality=True, multiple_seasonality=True, exogenous=False
+    )
+    # See the limitations note: this describes this benchmark's one-call interface only.
+    forecast_strategy = ForecastStrategy.DIRECT
+    # Zero-shot, so there is no fit to pay for, and at ~55ms per forecast a thousand of them
+    # still come in under a minute -- the cheapest foundation model here to actually run.
+    # Flat: one forward pass over a fixed context, so record length barely enters.
+    scorecard = Scorecard(
+        history_requirements=Level.LOW,
+        interpretability=Level.LOW,
+        running_cost=RunningCost(level=Level.LOW, growth=GrowthShape.FLAT),
+        tuning_effort=Level.LOW,
+    )
 
     def __init__(self, model_name: str = "amazon/chronos-bolt-small", context_length: int = 2048):
         self.model_name = model_name
+        # Chronos-Bolt's real context_length -- unlike Chronos-2/TimesFM/Moirai it isn't read
+        # from the library since 2048 already matches the checkpoint.
         self.context_length = context_length
 
-    def fit(self, case: Case, train: pd.DataFrame) -> None:
-        # Zero-shot: no training. Keep the recent observed context for predict.
-        y = pd.to_numeric(train["y"], errors="coerce").ffill().bfill().to_numpy(dtype=float)
-        self._context = y[-self.context_length :]
+    def fit(self, case: Case, train: pd.DataFrame, val: pd.DataFrame) -> None:
+        # Zero-shot: no case-specific training. The only fit-time state is the pre-test
+        # history length, which pins the context to a fixed width (see predict) so it stays
+        # constant across rolling origins instead of growing with each one.
+        self._n_fit = len(train)
 
-    def predict(self, case: Case, history: pd.DataFrame, horizon: int,
-                future_exog: pd.DataFrame | None = None) -> pd.DataFrame:
+    def predict(
+        self,
+        case: Case,
+        history: pd.DataFrame,
+        horizon: int,
+        future_exog: pd.DataFrame | None = None,
+    ) -> pd.DataFrame:
         import torch
 
+        y = pd.to_numeric(history["y"], errors="coerce").ffill().bfill().to_numpy(dtype=float)
+        # Fixed width sized at fit time, sliding to the most recent points of each origin.
+        ctx_len = min(self._n_fit, self.context_length)
+        context = y[-ctx_len:]
         pipe = _load_pipeline(self.model_name)
-        ctx = torch.tensor(self._context, dtype=torch.float32)
+        ctx = torch.tensor(context, dtype=torch.float32)
         # predict_quantiles -> (quantiles [B, H, Q], mean [B, H]); take the median quantile
         quantiles, _mean = pipe.predict_quantiles(
-            inputs=ctx, prediction_length=horizon, quantile_levels=[0.1, 0.5, 0.9],
+            inputs=ctx,
+            prediction_length=horizon,
+            quantile_levels=[0.1, 0.5, 0.9],
         )
         y_hat = quantiles[0, :, 1].cpu().numpy().astype(np.float64)
         future = self._future_index(case, history["ds"].max(), horizon)
         return pd.DataFrame({"ds": future, "y_hat": y_hat})
+
+
+class Chronos2Forecaster(Forecaster):
+    """Zero-shot Chronos-2 point forecast (predictive median).
+
+    The successor to Chronos-Bolt: a single encoder-only model that natively handles
+    univariate, multivariate and covariate-informed forecasting. Here it runs univariate,
+    conditioning only on the target's recent context. Requires the optional
+    `chronos-forecasting` dependency (same `fm` extra as Chronos-Bolt); methods are
+    skipped (status=error) by the eval loop if it is not installed.
+    """
+
+    name = "Chronos-2"
+    family = "fm"
+    is_probabilistic = True
+    is_global = True
+    library = "chronos-forecasting (Amazon Chronos-2) + torch"
+    compute_profile = (
+        "CPU-capable but slower than Chronos-Bolt (120M params); zero-shot, so there's "
+        "no per-case training — one forward pass per prediction via the DataFrame API. "
+        "The pretrained model is loaded once and cached across every case and origin."
+    )
+    limitations = (
+        "Zero-shot: never learns anything case-specific, only what it picked up from "
+        "pretraining on other series. "
+        "Its running cost is inference alone, but standing it up means pulling "
+        "120M pretrained parameters down and holding them in memory. "
+        "Univariate by default — Chronos-2 supports "
+        "covariates natively, and the +exo variant feeds the case's declared covariates "
+        "to `predict_df` as past+future covariate columns, using a perfect-forecast "
+        "proxy (not a real forecast of those covariates) for the future values. "
+        "Conditions on a fixed window sized to the case's pre-test history, capped at "
+        "`context_length` points. Labeled Direct below because this benchmark issues one "
+        "predict_df() call for the full horizon — that describes this calling interface "
+        "only, not whether the pretrained decoder generates internally autoregressively, "
+        "which isn't verified against the pinned chronos-forecasting version."
+    )
+    code_snippet = (
+        "from chronos import Chronos2Pipeline\n\n"
+        'pipe = Chronos2Pipeline.from_pretrained("amazon/chronos-2", device_map="cpu")\n'
+        "pred = pipe.predict_df(\n"
+        "    context_df,                      # id / timestamp / target (+ covariate) columns\n"
+        "    future_df=future_df,             # +exo: future covariate values (id/timestamp/cols)\n"
+        "    prediction_length=horizon,\n"
+        "    quantile_levels=[0.1, 0.5, 0.9],\n"
+        '    id_column="id",\n'
+        '    timestamp_column="timestamp",\n'
+        '    target="target",\n'
+        ")\n"
+        'y_hat = pred["predictions"]          # median'
+    )
+
+    # Supports covariates natively; the +exo variant switches them on.
+    capabilities = Capabilities(
+        trend=True, seasonality=True, multiple_seasonality=True, exogenous=True
+    )
+    # See the limitations note: this describes this benchmark's one-call interface only.
+    forecast_strategy = ForecastStrategy.DIRECT
+    # Zero-shot fit, but ~0.65s per forecast at 120M parameters, so a thousand forecasts cost
+    # ~11 minutes. All of the cost is inference, which is where a foundation model's bill
+    # lands.
+    scorecard = Scorecard(
+        history_requirements=Level.LOW,
+        interpretability=Level.LOW,
+        running_cost=RunningCost(level=Level.MEDIUM, growth=GrowthShape.FLAT),
+        tuning_effort=Level.LOW,
+    )
+
+    use_exogenous: bool = False
+
+    def __init__(self, model_name: str = "amazon/chronos-2", context_length: int | None = None):
+        self.model_name = model_name
+        # None resolves to the loaded checkpoint's real context_length (predict()),
+        # rather than guessing a number that may go stale across checkpoint releases.
+        self.context_length = context_length
+        self.uses_exogenous = self.use_exogenous
+
+    def fit(self, case: Case, train: pd.DataFrame, val: pd.DataFrame) -> None:
+        # Records the pre-test history length to pin a fixed context width (see
+        # ChronosForecaster.fit); no case-specific training.
+        self._n_fit = len(train)
+
+    def predict(
+        self,
+        case: Case,
+        history: pd.DataFrame,
+        horizon: int,
+        future_exog: pd.DataFrame | None = None,
+    ) -> pd.DataFrame:
+        pipe = _load_chronos2_pipeline(self.model_name)
+        cap = self.context_length or pipe.model_context_length
+        ctx_len = min(self._n_fit, cap)
+        y = pd.to_numeric(history["y"], errors="coerce").ffill().bfill().to_numpy(dtype=float)
+        ds = pd.DatetimeIndex(history["ds"])
+        context_df = pd.DataFrame(
+            {
+                "id": 0,
+                "timestamp": ds[-ctx_len:],
+                "target": y[-ctx_len:],
+            }
+        )
+        exo = [c for c in _exo_cols(case) if c in history.columns] if self.use_exogenous else []
+        future = self._future_index(case, history["ds"].max(), horizon)
+        future_df = None
+        if exo:
+            tail = history.iloc[-ctx_len:]
+            for c in exo:
+                context_df[c] = pd.to_numeric(tail[c], errors="coerce").to_numpy()
+            future_df = pd.DataFrame({"id": 0, "timestamp": future})
+            for c in exo:
+                future_df[c] = _future_covariate(c, history[c], horizon, future_exog)
+        pred = pipe.predict_df(
+            context_df,
+            future_df=future_df,
+            prediction_length=horizon,
+            quantile_levels=[0.1, 0.5, 0.9],
+            id_column="id",
+            timestamp_column="timestamp",
+            target="target",
+        )
+        y_hat = pred["predictions"].to_numpy(dtype=np.float64)[:horizon]
+        return pd.DataFrame({"ds": future, "y_hat": y_hat})
+
+
+class TimesFMForecaster(Forecaster):
+    """Zero-shot TimesFM 2.5 point forecast.
+
+    Google's patch-based decoder foundation model (200M params). Univariate — conditions
+    on the target's recent context only. Requires the optional `timesfm` dependency (the
+    `timesfm` extra); skipped (status=error) by the eval loop if it is not installed.
+    """
+
+    name = "TimesFM-2.5"
+    family = "fm"
+    is_probabilistic = True
+    is_global = True
+    library = "timesfm (Google TimesFM 2.5, torch backend)"
+    compute_profile = (
+        "CPU-capable but slow (200M params); zero-shot, so there's no per-case training — "
+        "one forward pass per prediction. The pretrained weights are loaded once per "
+        "process; each distinct per-case context length gets its own cheap compiled "
+        "variant (a shallow copy of the loaded model, not a reload), cached across every "
+        "origin of that case."
+    )
+    limitations = (
+        "Zero-shot: never learns anything case-specific, only what it picked up from "
+        "pretraining. "
+        "Its running cost is inference alone, but standing it up means pulling "
+        "200M pretrained parameters down and holding them in memory. "
+        "Univariate by default — the +exo variant feeds the case's declared "
+        "covariates to `forecast_with_covariates` as an xreg regressor fit alongside the "
+        "TimesFM forecast, using a perfect-forecast proxy (not a real forecast of those "
+        "covariates) for the future values. Conditions on a fixed window sized to the case's "
+        "pre-test history, capped at the checkpoint's `context_limit`; horizons beyond "
+        "`max_horizon` are not supported. Labeled Direct below because this benchmark "
+        "requests the full horizon from one forecast() call — that describes this calling "
+        "interface only, not whether the pretrained decoder generates internally "
+        "autoregressively, which isn't verified against the pinned timesfm version."
+    )
+    code_snippet = (
+        "import timesfm\n\n"
+        'model = timesfm.TimesFM_2p5_200M_torch.from_pretrained("google/timesfm-2.5-200m-pytorch")\n'
+        "model.compile(timesfm.ForecastConfig(max_context=1024, max_horizon=256,\n"
+        "    normalize_inputs=True, use_continuous_quantile_head=True))\n"
+        "point_forecast, _quantiles = model.forecast(\n"
+        "    horizon=horizon,\n"
+        "    inputs=[context],                # list of 1D arrays, one per series\n"
+        ")\n"
+        "y_hat = point_forecast[0]\n"
+        "# +exo: model.forecast_with_covariates(inputs=[context],\n"
+        "#     dynamic_numerical_covariates={name: [context_and_horizon_values]})"
+    )
+
+    # Supports covariates natively; the +exo variant switches them on.
+    capabilities = Capabilities(
+        trend=True, seasonality=True, multiple_seasonality=True, exogenous=True
+    )
+    # See the limitations note: this describes this benchmark's one-call interface only.
+    forecast_strategy = ForecastStrategy.DIRECT
+    # Zero-shot fit, but the slowest inference in the foundation-model family at 200M
+    # parameters: ~1.1s per forecast, so a thousand of them run to ~18 minutes.
+    scorecard = Scorecard(
+        history_requirements=Level.LOW,
+        interpretability=Level.LOW,
+        running_cost=RunningCost(level=Level.HIGH, growth=GrowthShape.LINEAR),
+        tuning_effort=Level.LOW,
+    )
+
+    use_exogenous: bool = False
+
+    def __init__(
+        self,
+        model_name: str = "google/timesfm-2.5-200m-pytorch",
+        max_context: int | None = None,
+    ):
+        self.model_name = model_name
+        # None resolves per-origin in predict() to the available history, capped at the
+        # checkpoint's real context_limit (see _timesfm_context_len); set explicitly to
+        # force a fixed value.
+        self.max_context = max_context
+        self.uses_exogenous = self.use_exogenous
+
+    def fit(self, case: Case, train: pd.DataFrame, val: pd.DataFrame) -> None:
+        # Records the pre-test history length to pin a fixed context width (see
+        # ChronosForecaster.fit); no case-specific training. Sizing the context from this
+        # fixed length rather than the growing per-origin history means one compiled shape
+        # per case instead of one per origin.
+        self._n_fit = len(train)
+
+    def predict(
+        self,
+        case: Case,
+        history: pd.DataFrame,
+        horizon: int,
+        future_exog: pd.DataFrame | None = None,
+    ) -> pd.DataFrame:
+        y = pd.to_numeric(history["y"], errors="coerce").ffill().bfill().to_numpy(dtype=float)
+        # max_horizon must cover the horizon; bucket to a stable value so the compiled
+        # model is reused across origins rather than recompiled each call.
+        max_horizon = max(256, horizon)
+        base_model = _load_timesfm_model(self.model_name)
+        # Fixed width from the pre-test history, so the compiled shape is stable per case.
+        ctx_len = self.max_context or _timesfm_context_len(base_model, self._n_fit, max_horizon)
+        exo = [c for c in _exo_cols(case) if c in history.columns] if self.use_exogenous else []
+        if exo:
+            # forecast_with_covariates needs return_backcast=True to fit the xreg
+            # regressor; that changes what plain forecast() returns, so this must be a
+            # separately cached compiled model, never the univariate one.
+            model = _load_timesfm(self.model_name, ctx_len, max_horizon, return_backcast=True)
+            context = y[-ctx_len:]
+            n = len(context)
+            covariates = {
+                c: [
+                    np.concatenate(
+                        [
+                            pd.to_numeric(history[c], errors="coerce")
+                            .ffill()
+                            .bfill()
+                            .to_numpy(dtype=float)[-n:],
+                            _future_covariate(c, history[c], horizon, future_exog),
+                        ]
+                    ).tolist()
+                ]
+                for c in exo
+            }
+            outputs, _xreg = model.forecast_with_covariates(
+                inputs=[context], dynamic_numerical_covariates=covariates
+            )
+            y_hat = np.asarray(outputs[0], dtype=np.float64)[-horizon:]
+        else:
+            model = _load_timesfm(self.model_name, ctx_len, max_horizon)
+            context = y[-ctx_len:]
+            point_forecast, _quantiles = model.forecast(horizon=horizon, inputs=[context])
+            y_hat = np.asarray(point_forecast[0], dtype=np.float64)[:horizon]
+        future = self._future_index(case, history["ds"].max(), horizon)
+        return pd.DataFrame({"ds": future, "y_hat": y_hat})
+
+
+class Moirai2Forecaster(Forecaster):
+    """Zero-shot Moirai-2.0 point forecast (predictive median).
+
+    Salesforce's decoder-only, quantile foundation model, run through its GluonTS
+    predictor. Univariate — conditions on the target's recent context only. Requires the
+    optional `uni2ts` dependency (the `moirai` extra); skipped (status=error) by the eval
+    loop if it is not installed.
+    """
+
+    name = "Moirai-2.0"
+    family = "fm"
+    is_probabilistic = True
+    is_global = True
+    library = "uni2ts (Salesforce Moirai-2.0) + gluonts + torch"
+    compute_profile = (
+        "CPU-capable but slow; zero-shot, so there's no per-case training — one forward "
+        "pass per prediction through the GluonTS predictor. The pretrained weights are "
+        "loaded once and cached across every case and origin."
+    )
+    limitations = (
+        "Zero-shot: never learns anything case-specific, only what it picked up from "
+        "pretraining on other series. "
+        "Its running cost is inference alone, but standing it up means pulling "
+        "the pretrained weights down and holding them in memory. "
+        "Univariate by default — Moirai supports covariates "
+        "natively, and the +exo variant feeds the case's declared covariates in as "
+        "`feat_dynamic_real`, using a perfect-forecast proxy (not a real forecast of those "
+        "covariates) for the future values. Conditions on a fixed window sized to the "
+        "case's pre-test history, capped at the model's position-embedding cache size "
+        "(max_seq_len * patch_size) — Salesforce hasn't published a trained max context "
+        "length for this model. Labeled Direct below because this benchmark requests the "
+        "full horizon from one predictor.predict() call — that describes this calling "
+        "interface only, not whether the pretrained decoder generates internally "
+        "autoregressively, which isn't verified against the pinned uni2ts version."
+    )
+    code_snippet = (
+        "from gluonts.dataset.pandas import PandasDataset\n"
+        "from uni2ts.model.moirai2 import Moirai2Forecast, Moirai2Module\n\n"
+        "forecaster = Moirai2Forecast(\n"
+        '    module=Moirai2Module.from_pretrained("Salesforce/moirai-2.0-R-small"),\n'
+        "    prediction_length=horizon, context_length=ctx_len,\n"
+        "    target_dim=1, feat_dynamic_real_dim=0, past_feat_dynamic_real_dim=0,\n"
+        "    # +exo: feat_dynamic_real_dim=len(exo_cols); dataset built with\n"
+        "    # PandasDataset(df, feat_dynamic_real=exo_cols, future_length=horizon)\n"
+        ")\n"
+        "predictor = forecaster.create_predictor(batch_size=1)\n"
+        "forecast = next(iter(predictor.predict(dataset)))\n"
+        "y_hat = forecast.median"
+    )
+
+    # Supports covariates natively; the +exo variant switches them on.
+    capabilities = Capabilities(
+        trend=True, seasonality=True, multiple_seasonality=True, exogenous=True
+    )
+    # See the limitations note: this describes this benchmark's one-call interface only.
+    forecast_strategy = ForecastStrategy.DIRECT
+    # The cheapest foundation model to run: zero-shot fit and ~47ms per forecast, faster even
+    # than Chronos-Bolt, so a thousand forecasts stay under a minute.
+    scorecard = Scorecard(
+        history_requirements=Level.LOW,
+        interpretability=Level.LOW,
+        running_cost=RunningCost(level=Level.LOW, growth=GrowthShape.FLAT),
+        tuning_effort=Level.LOW,
+    )
+
+    use_exogenous: bool = False
+
+    def __init__(
+        self,
+        model_name: str = "Salesforce/moirai-2.0-R-small",
+        context_length: int | None = None,
+    ):
+        self.model_name = model_name
+        # None resolves in predict() to the full available history, capped at the
+        # loaded module's position-embedding cache size — Salesforce has never
+        # published a trained max context length for this model to read instead.
+        self.context_length = context_length
+        self.uses_exogenous = self.use_exogenous
+
+    def fit(self, case: Case, train: pd.DataFrame, val: pd.DataFrame) -> None:
+        # Records the pre-test history length to pin a fixed context width (see
+        # ChronosForecaster.fit); no case-specific training.
+        self._n_fit = len(train)
+
+    def predict(
+        self,
+        case: Case,
+        history: pd.DataFrame,
+        horizon: int,
+        future_exog: pd.DataFrame | None = None,
+    ) -> pd.DataFrame:
+        from gluonts.dataset.pandas import PandasDataset
+        from uni2ts.model.moirai2 import Moirai2Forecast
+
+        y = pd.to_numeric(history["y"], errors="coerce").ffill().bfill().to_numpy(dtype=float)
+        module = _load_moirai_module(self.model_name)
+        # Position-embedding cache size: the point past which the module has to
+        # dynamically resize its rotary cache rather than use what it was built with.
+        cache_cap = module.max_seq_len * module.patch_size
+        cap = min(self.context_length or cache_cap, cache_cap)
+        ctx_len = min(self._n_fit, cap)
+        exo = [c for c in _exo_cols(case) if c in history.columns] if self.use_exogenous else []
+        forecaster = Moirai2Forecast(
+            module=module,
+            prediction_length=horizon,
+            context_length=ctx_len,
+            target_dim=1,
+            feat_dynamic_real_dim=len(exo),
+            past_feat_dynamic_real_dim=0,
+        )
+        predictor = forecaster.create_predictor(batch_size=1)
+        future = self._future_index(case, history["ds"].max(), horizon)
+        # gluonts converts the index to a PeriodArray at case.freq internally, which warns
+        # and drops tz info if given tz-aware timestamps -- strip it ourselves first, same
+        # as every other method family's library boundary (ml.py/classical.py/nf_models.py).
+        hist_ds = pd.DatetimeIndex(_naive_ds(history["ds"]))
+        if exo:
+            future_ds = pd.DatetimeIndex(_naive_ds(pd.Series(future)))
+            data = {"target": np.concatenate([y, np.zeros(horizon)])}
+            for c in exo:
+                hist_vals = (
+                    pd.to_numeric(history[c], errors="coerce").ffill().bfill().to_numpy(dtype=float)
+                )
+                future_vals = _future_covariate(c, history[c], horizon, future_exog)
+                data[c] = np.concatenate([hist_vals, future_vals])
+            full_df = pd.DataFrame(data, index=hist_ds.append(future_ds))
+            dataset = PandasDataset(
+                full_df,
+                target="target",
+                feat_dynamic_real=exo,
+                freq=case.freq,
+                future_length=horizon,
+            )
+        else:
+            hist = pd.DataFrame({"target": y}, index=hist_ds)
+            dataset = PandasDataset(hist, target="target", freq=case.freq)
+        forecast = next(iter(predictor.predict(dataset)))
+        y_hat = np.asarray(forecast.median, dtype=np.float64)[:horizon]
+        return pd.DataFrame({"ds": future, "y_hat": y_hat})
+
+
+class Chronos2ExoForecaster(Chronos2Forecaster):
+    name = "Chronos-2+exo"
+    use_exogenous = True
+
+
+class TimesFMExoForecaster(TimesFMForecaster):
+    name = "TimesFM-2.5+exo"
+    use_exogenous = True
+
+
+class Moirai2ExoForecaster(Moirai2Forecaster):
+    name = "Moirai-2.0+exo"
+    use_exogenous = True

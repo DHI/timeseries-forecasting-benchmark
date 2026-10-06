@@ -3,6 +3,7 @@
 | Document | Purpose |
 |---|---|
 | [`RESULTS.md`](RESULTS.md) | Headline cross-case findings: the cases × methods skill matrix and analysis |
+| [`research_graph.html`](../research_log/resources/research_graph.html) | Interactive node-link graph of the decisions in [`research_log/details.md`](../research_log/details.md) — open directly in a browser |
 | [`cases/`](cases/) | One doc per case — domain context, drivers, exogenous, why this station/sensor, operational use |
 | [`reports/`](reports/) | Auto-generated per-case reports (data summary, scores, example forecasts) — `scripts/case_report.py` |
 | [`SCOPING.md`](SCOPING.md) | *Historical* — the original scoping-review request to Rocco (see [`review_responses_pr2.md`](review_responses_pr2.md)) |
@@ -15,6 +16,7 @@
 | [`discharge_lowland_denmark`](cases/discharge_lowland_denmark.md) | hydrology (groundwater-fed) | river discharge | daily | 7 d |
 | [`discharge_flashy_catskills`](cases/discharge_flashy_catskills.md) | hydrology (flashy) | river discharge | daily | 7 d |
 | [`discharge_snowmelt_yosemite`](cases/discharge_snowmelt_yosemite.md) | hydrology (snowmelt) | river discharge | daily | 7 d |
+| [`discharge_saugeen`](cases/discharge_saugeen.md) | hydrology (univariate benchmark) | river discharge | daily | 30 d |
 | [`groundwater_yorktown`](cases/groundwater_yorktown.md) | groundwater | depth to water | daily | 30 d |
 | [`watertemp_james`](cases/watertemp_james.md) | water quality | river water temperature | daily | 7 d |
 | [`sewerlevel_bellinge`](cases/sewerlevel_bellinge.md) | urban drainage | sewer water level | 15 min | 6 h |
@@ -24,9 +26,10 @@
 | [`waves_oregon`](cases/waves_oregon.md) | spectral waves (swell) | significant wave height | hourly | 24 h |
 | [`waves_massachusetts`](cases/waves_massachusetts.md) | spectral waves (wind-sea) | significant wave height | hourly | 24 h |
 
-The three hydrology cases share the same target and horizon by design — a groundwater /
-flashy / snowmelt contrast that tests whether method ranking is regime-robust. Likewise the
-two wave cases (swell vs wind-sea).
+The three 7-day hydrology cases share the same target and horizon by design — a groundwater /
+flashy / snowmelt contrast that tests whether method ranking is regime-robust. `discharge_saugeen`
+is a fourth, deliberately exogenous-free discharge case (30 d horizon) used as a univariate
+control against those three. Likewise the two wave cases (swell vs wind-sea).
 
 Each case doc covers the domain, the physical drivers, exogenous covariate candidates, why
 the specific catchment/sensor/station was chosen, and the operational use of the forecast.

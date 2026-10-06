@@ -1,17 +1,20 @@
 id = "waves_oregon"
 domain = "spectral_waves"
-notes = "Significant wave height at a NOAA NDBC buoy (default 46050, Stonewall Bank, Oregon). Hourly. Exogenous from the same buoy's standard met record: wind speed, pressure, air + water temperature. ERA5/GFS wind *forecasts* as known-future covariates can be added later."
+notes = "Significant wave height at a NOAA NDBC buoy (default 46050, Stonewall Bank, Oregon). Hourly. Exogenous from the same buoy's standard met record: wind speed, pressure, air + water temperature. ERA5/GFS wind *forecasts* as known-future covariates can be added later. Necessary exogenous: wspd; optional: pres, atmp, wtmp — same reasoning as waves_massachusetts. Assumption, not yet validated against measured skill."
 
 target = "wvht"
 target_unit = "m"
 
 freq = "1h"
+seasonalities = [14]
+# Pinned dominance (only declared period; R2 0.000002 - provisional); see notebooks/seasonality.py.
+dominant_seasonality = 14
 horizon_primary = "24h"
 horizons_eval = ["6h", "24h", "48h"]
-input_window = "14D"
 
 exogenous = ["wspd", "pres", "atmp", "wtmp"]
 exogenous_known_future = []
+necessary_exogenous = ["wspd"]
 static_attrs = ["lat", "lon"]
 data_type = "observed"
 split_mode = "fraction"

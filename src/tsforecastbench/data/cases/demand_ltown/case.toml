@@ -1,24 +1,27 @@
 id = "demand_ltown"
 domain = "water_distribution"
-notes = "Inlet flow into the L-Town water distribution network (BattLeDIM 2020). Synthetic SCADA generated from EPANET simulations of a real Cyprus network, 2018 historical + 2019 evaluation. 5-min sampling resampled to hourly. Demand is strongly diurnal/weekly; calendar features dominate."
+notes = "Inlet flow into the L-Town water distribution network (BattLeDIM 2020). Synthetic SCADA generated from EPANET simulations of a real Cyprus network, 2018 historical + 2019 evaluation. 5-min sampling resampled to hourly. Demand is strongly diurnal/weekly; calendar features dominate. Original BattLeDIM 2020 competition used Jan–Sep 2018 as training and all of 2019 as evaluation; split changed to fraction [0.7, 0.85] for benchmark consistency — the competition-aligned split is no longer reproduced."
 
 target = "inlet_flow"
 target_unit = "L/s"
 
 freq = "1h"
+seasonalities = [24, 168]
+# Pinned dominance (R2 0.068 vs 0.004 for 168); see notebooks/seasonality.py.
+dominant_seasonality = 24
 horizon_primary = "24h"
 horizons_eval = ["6h", "24h", "168h"]
-input_window = "14D"
 
 exogenous = []
 exogenous_known_future = []
 static_attrs = []
 data_type = "simulated"
-split_mode = "calendar"
+split_mode = "fraction"
+split_fraction = [0.7, 0.85]
 
 [splits]
-train_end = 2018-09-30
-val_end = 2018-12-31
+train_end = 2019-05-26
+val_end = 2019-09-13
 test_end = 2019-12-31
 
 [source]

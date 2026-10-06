@@ -6,13 +6,17 @@ target = "influent_flow"
 target_unit = "m3/h"
 
 freq = "1h"
+seasonalities = [12,24]
+# Pinned dominance (R2 0.040 vs 0.006 for 12); see notebooks/seasonality.py.
+dominant_seasonality = 24
 horizon_primary = "24h"
 horizons_eval = ["6h", "24h"]
-input_window = "14D"
 
 exogenous = []
 exogenous_known_future = []
 static_attrs = []
+# NSE/KGE are hydrology-standard for flow/level; consider enabling them for this case once validated.
+
 data_type = "observed"
 split_mode = "fraction"
 split_fraction = [0.7, 0.85]
@@ -23,8 +27,8 @@ val_end = 2023-12-31
 test_end = 2024-06-30
 
 [source]
-name = "Mendeley N2O WWTP"
+name = "Hansen et al. (2024) N2O WWTP"
 doi = "10.17632/xmbxhscgpr.1"
 url = "https://data.mendeley.com/datasets/xmbxhscgpr/1"
 license = "CC BY 4.0"
-citation = "Time Series Dataset for Modeling and Forecasting of N2O in Wastewater Treatment (2024)"
+citation = "Hansen et al. (2024). Time Series Dataset for Modeling and Forecasting of N2O in Wastewater Treatment. arXiv:2407.05959"

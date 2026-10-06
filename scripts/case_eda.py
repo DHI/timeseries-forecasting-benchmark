@@ -34,17 +34,90 @@ FIG_DIR = REPO_ROOT / "docs" / "figures" / "cases"
 
 # Per-case visualisation hints: which exogenous to overlay, zoom window length.
 CASE_HINTS = {
-    "discharge_lowland_denmark":  {"overlay": "precip",            "overlay_kind": "rain",  "zoom": "365D", "target_label": "Discharge (mm/d)"},
-    "discharge_flashy_catskills": {"overlay": "precip",            "overlay_kind": "rain",  "zoom": "365D", "target_label": "Discharge (m3/s)"},
-    "groundwater_yorktown":     {"overlay": "precip",            "overlay_kind": "rain",  "zoom": "365D", "target_label": "Depth to water (m)"},
-    "discharge_snowmelt_yosemite": {"overlay": "temp_air",       "overlay_kind": "line",  "zoom": "365D", "target_label": "Discharge (m3/s)"},
-    "watertemp_james":     {"overlay": "temp_air",          "overlay_kind": "line",  "zoom": "365D", "target_label": "Water temp (C)"},
-    "sewerlevel_bellinge": {"overlay": "rain_gauge",        "overlay_kind": "rain",  "zoom": "14D",  "target_label": "Sewer level (m)"},
-    "demand_ltown":         {"overlay": None,                "overlay_kind": None,    "zoom": "14D",  "target_label": "Inlet flow (L/s)"},
-    "wwtp_influent_n2o_350k":        {"overlay": None,                "overlay_kind": None,    "zoom": "14D",  "target_label": "Influent flow"},
-    "surge_cuxhaven":    {"overlay": "mslp",              "overlay_kind": "line",  "zoom": "30D",  "target_label": "Residual (m)"},
-    "waves_oregon":           {"overlay": "wspd",              "overlay_kind": "line",  "zoom": "30D",  "target_label": "H_s (m)"},
-    "waves_massachusetts":  {"overlay": "wspd",              "overlay_kind": "line",  "zoom": "30D",  "target_label": "H_s (m)"},
+    "discharge_lowland_denmark": {
+        "overlay": "precip",
+        "overlay_kind": "rain",
+        "overlay_label": "Precip (mm/d)",
+        "zoom": "365D",
+        "target_label": "Discharge (mm/d)",
+    },
+    "discharge_flashy_catskills": {
+        "overlay": "precip",
+        "overlay_kind": "rain",
+        "overlay_label": "Precip (mm/d)",
+        "zoom": "365D",
+        "target_label": "Discharge (m3/s)",
+    },
+    "groundwater_yorktown": {
+        "overlay": "precip",
+        "overlay_kind": "rain",
+        "overlay_label": "Precip (mm/d)",
+        "zoom": "365D",
+        "target_label": "Depth to water (m)",
+    },
+    "discharge_snowmelt_yosemite": {
+        "overlay": "temp_air",
+        "overlay_kind": "line",
+        "overlay_label": "Air temp (degC)",
+        "zoom": "365D",
+        "target_label": "Discharge (m3/s)",
+    },
+    "watertemp_james": {
+        "overlay": "temp_air",
+        "overlay_kind": "line",
+        "overlay_label": "Air temp (degC)",
+        "zoom": "365D",
+        "target_label": "Water temp (C)",
+    },
+    "sewerlevel_bellinge": {
+        "overlay": "rain_gauge",
+        "overlay_kind": "rain",
+        "overlay_label": "Rain gauge (mm)",
+        "zoom": "14D",
+        "target_label": "Sewer level (m)",
+    },
+    "demand_ltown": {
+        "overlay": None,
+        "overlay_kind": None,
+        "overlay_label": None,
+        "zoom": "14D",
+        "target_label": "Inlet flow (L/s)",
+    },
+    "discharge_saugeen": {
+        "overlay": None,
+        "overlay_kind": None,
+        "overlay_label": None,
+        "zoom": "730D",
+        "target_label": "Discharge (m3/s)",
+    },
+    "wwtp_influent_n2o_350k": {
+        "overlay": None,
+        "overlay_kind": None,
+        "overlay_label": None,
+        "zoom": "14D",
+        "target_label": "Influent flow (m3/h)",
+    },
+    "surge_cuxhaven": {
+        "overlay": "mslp",
+        "overlay_kind": "line",
+        "overlay_label": "MSLP (hPa)",
+        "zoom": "30D",
+        "target_label": "Residual (m)",
+    },
+    "waves_oregon": {
+        "overlay": "wspd",
+        "overlay_kind": "line",
+        "overlay_label": "Wind speed (m/s)",
+        "zoom": "30D",
+        "target_label": "H_s (m)",
+    },
+    "waves_massachusetts": {
+        "overlay": "wspd",
+        "overlay_kind": "line",
+        "overlay_label": "Wind speed (m/s)",
+        "zoom": "30D",
+        "target_label": "H_s (m)",
+    },
 }
 
 
@@ -119,15 +192,27 @@ def make_eda(case_id: str) -> Path:
     ax_zoom = fig.add_subplot(gs[2])
 
     # --- availability strip ---
-    ax_av.fill_between(df["ds"], 0, mask.astype(float),
-                       step="mid", color="#2c7fb8", alpha=0.85, linewidth=0)
+    ax_av.fill_between(
+        df["ds"], 0, mask.astype(float), step="mid", color="#2c7fb8", alpha=0.85, linewidth=0
+    )
     ax_av.set_ylim(0, 1.1)
     ax_av.set_yticks([])
     ax_av.set_xlim(df["ds"].iloc[0], df["ds"].iloc[-1])
-    ax_av.set_title(f"{case_id} · {case.domain} · {case.freq} · horizon {case.horizon_primary}",
-                    loc="left", fontsize=11)
-    ax_av.text(0.99, 0.5, f"observed: {n_obs/n:.0%}  ·  {n_obs:,} of {n:,} rows",
-               transform=ax_av.transAxes, ha="right", va="center", fontsize=9, color="#555")
+    ax_av.set_title(
+        f"{case_id} · {case.domain} · {case.freq} · horizon {case.horizon_primary}",
+        loc="left",
+        fontsize=11,
+    )
+    ax_av.text(
+        0.99,
+        0.5,
+        f"observed: {n_obs / n:.0%}  ·  {n_obs:,} of {n:,} rows",
+        transform=ax_av.transAxes,
+        ha="right",
+        va="center",
+        fontsize=9,
+        color="#555",
+    )
 
     # --- long view: target + optional exogenous overlay ---
     ax_long.plot(df["ds"], y, color="#08519c", linewidth=0.5)
@@ -141,10 +226,18 @@ def make_eda(case_id: str) -> Path:
         ovl_finite = int(vo.notna().sum())
         ovl_nonzero = int((vo.abs() > 1e-9).sum())
         ovl_max = float(vo.max()) if ovl_finite else float("nan")
-        print(f"[{case_id}]   overlay {ovl}: finite={ovl_finite:,} "
-              f"nonzero={ovl_nonzero:,} max={ovl_max:.4g}")
+        print(
+            f"[{case_id}]   overlay {ovl}: finite={ovl_finite:,} "
+            f"nonzero={ovl_nonzero:,} max={ovl_max:.4g}"
+        )
         if ovl_nonzero > 0:
-            _overlay(ax_long, df["ds"], df[ovl], ovl, hint.get("overlay_kind", "line"))
+            _overlay(
+                ax_long,
+                df["ds"],
+                df[ovl],
+                hint.get("overlay_label", ovl),
+                hint.get("overlay_kind", "line"),
+            )
             overlay_drawn = True
     elif ovl:
         print(f"[{case_id}]   overlay {ovl}: NOT in columns {list(df.columns)}")
@@ -153,11 +246,19 @@ def make_eda(case_id: str) -> Path:
     # secondary trend line so the long view always shows some auxiliary structure.
     if not overlay_drawn:
         # window = ~7 days expressed in samples; safe lower bound for short series
-        seven_days_steps = int(pd.Timedelta("7D") / pd.Timedelta(pd.tseries.frequencies.to_offset(case.freq)))
+        seven_days_steps = int(
+            pd.Timedelta("7D") / pd.Timedelta(pd.tseries.frequencies.to_offset(case.freq))
+        )
         window_n = max(seven_days_steps, 7)
         rolling = y.rolling(window_n, min_periods=max(2, window_n // 4), center=True).mean()
-        ax_long.plot(df["ds"], rolling, color="#cb181d", linewidth=1.2, alpha=0.75,
-                     label="7-day rolling mean")
+        ax_long.plot(
+            df["ds"],
+            rolling,
+            color="#cb181d",
+            linewidth=1.2,
+            alpha=0.75,
+            label="7-day rolling mean",
+        )
         ax_long.legend(loc="upper right", fontsize=8, framealpha=0.85)
 
     # mark splits
@@ -167,22 +268,32 @@ def make_eda(case_id: str) -> Path:
         vt = splits["test"]["ds"].iloc[0]
         for x, label in [(tv, "val"), (vt, "test")]:
             ax_long.axvline(x, color="grey", linestyle="--", linewidth=0.8, alpha=0.7)
-            ax_long.text(x, ax_long.get_ylim()[1], f" {label}", color="grey",
-                         fontsize=8, va="top")
+            ax_long.text(x, ax_long.get_ylim()[1], f" {label}", color="grey", fontsize=8, va="top")
 
     # --- zoom window ---
     zoom_len = pd.Timedelta(hint.get("zoom", "30D"))
     t0, t1 = _pick_zoom_window(df["ds"], y, mask, zoom_len)
     sub = df[(df["ds"] >= t0) & (df["ds"] <= t1)]
-    ax_zoom.plot(sub["ds"], pd.to_numeric(sub["y"], errors="coerce"),
-                 color="#08519c", linewidth=0.9)
+    ax_zoom.plot(
+        sub["ds"], pd.to_numeric(sub["y"], errors="coerce"), color="#08519c", linewidth=0.9
+    )
     ax_zoom.set_ylabel(hint.get("target_label", "y"))
-    ax_zoom.set_title(f"Zoom: {t0.strftime('%Y-%m-%d')} → {t1.strftime('%Y-%m-%d')}",
-                      loc="left", fontsize=9, color="#555")
+    ax_zoom.set_title(
+        f"Zoom: {t0.strftime('%Y-%m-%d')} → {t1.strftime('%Y-%m-%d')}",
+        loc="left",
+        fontsize=9,
+        color="#555",
+    )
     if ovl and ovl in sub.columns:
         sub_v = pd.to_numeric(sub[ovl], errors="coerce")
         if (sub_v.abs() > 1e-9).sum() > 0:
-            _overlay(ax_zoom, sub["ds"], sub[ovl], ovl, hint.get("overlay_kind", "line"))
+            _overlay(
+                ax_zoom,
+                sub["ds"],
+                sub[ovl],
+                hint.get("overlay_label", ovl),
+                hint.get("overlay_kind", "line"),
+            )
     ax_zoom.grid(True, alpha=0.25)
 
     # nicer date ticks
@@ -190,24 +301,33 @@ def make_eda(case_id: str) -> Path:
         ax.xaxis.set_major_locator(mdates.AutoDateLocator())
         ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(ax.xaxis.get_major_locator()))
     ax_zoom.xaxis.set_major_locator(mdates.AutoDateLocator())
-    ax_zoom.xaxis.set_major_formatter(mdates.ConciseDateFormatter(ax_zoom.xaxis.get_major_locator()))
+    ax_zoom.xaxis.set_major_formatter(
+        mdates.ConciseDateFormatter(ax_zoom.xaxis.get_major_locator())
+    )
 
     # stats box
     mean = float(np.nanmean(y))
     std = float(np.nanstd(y))
-    stats = (f"span  {span.days} days\n"
-             f"mean  {mean:.3g}\n"
-             f"std   {std:.3g}\n"
-             f"freq  {case.freq}")
-    ax_long.text(0.005, 0.97, stats, transform=ax_long.transAxes, va="top", ha="left",
-                 fontsize=8, family="monospace",
-                 bbox={"facecolor": "white", "alpha": 0.85, "edgecolor": "#ccc", "pad": 4})
+    stats = f"span  {span.days} days\nmean  {mean:.3g}\nstd   {std:.3g}\nfreq  {case.freq}"
+    ax_long.text(
+        0.005,
+        0.97,
+        stats,
+        transform=ax_long.transAxes,
+        va="top",
+        ha="left",
+        fontsize=8,
+        family="monospace",
+        bbox={"facecolor": "white", "alpha": 0.85, "edgecolor": "#ccc", "pad": 4},
+    )
 
     FIG_DIR.mkdir(parents=True, exist_ok=True)
     out = FIG_DIR / f"{case_id}_eda.png"
     fig.savefig(out, dpi=140, bbox_inches="tight")
     plt.close(fig)
-    print(f"[{case_id}] wrote {out.relative_to(REPO_ROOT)}  ({n_obs:,}/{n:,} obs, span {span.days}d)")
+    print(
+        f"[{case_id}] wrote {out.relative_to(REPO_ROOT)}  ({n_obs:,}/{n:,} obs, span {span.days}d)"
+    )
     return out
 
 

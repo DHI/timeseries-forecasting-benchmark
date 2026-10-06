@@ -58,8 +58,15 @@ def _om_fields(variables: list[str]) -> list[str]:
     return fields
 
 
-def _fetch_chunk(lat: float, lon: float, start: str, end: str, fields: list[str],
-                 timeout: int = 120, retries: int = 4) -> pd.DataFrame:
+def _fetch_chunk(
+    lat: float,
+    lon: float,
+    start: str,
+    end: str,
+    fields: list[str],
+    timeout: int = 120,
+    retries: int = 4,
+) -> pd.DataFrame:
     import requests
 
     params = {
@@ -104,13 +111,17 @@ def fetch_era5_point(
     """
     variables = variables or ["mslp", "u10", "v10", "temp_air"]
     fields = _om_fields(variables)
-    start = pd.Timestamp(start).tz_localize(None) if pd.Timestamp(start).tzinfo else pd.Timestamp(start)
+    start = (
+        pd.Timestamp(start).tz_localize(None) if pd.Timestamp(start).tzinfo else pd.Timestamp(start)
+    )
     end = pd.Timestamp(end).tz_localize(None) if pd.Timestamp(end).tzinfo else pd.Timestamp(end)
 
     parts: list[pd.DataFrame] = []
     cur = pd.Timestamp(start)
     while cur <= end:
-        chunk_end = min(pd.Timestamp(end), cur + pd.DateOffset(years=chunk_years) - pd.Timedelta(days=1))
+        chunk_end = min(
+            pd.Timestamp(end), cur + pd.DateOffset(years=chunk_years) - pd.Timedelta(days=1)
+        )
         s, e = cur.strftime("%Y-%m-%d"), chunk_end.strftime("%Y-%m-%d")
         cache = (cache_dir / f"era5_{lat:.3f}_{lon:.3f}_{s}_{e}.parquet") if cache_dir else None
         if cache and cache.exists():
@@ -158,8 +169,13 @@ def to_daily(era5: pd.DataFrame, variables: list[str]) -> pd.DataFrame:
     return out
 
 
-def merge_onto(base: pd.DataFrame, era5: pd.DataFrame, variables: list[str],
-               interpolate: bool = True, interp_limit_hours: int = 6) -> pd.DataFrame:
+def merge_onto(
+    base: pd.DataFrame,
+    era5: pd.DataFrame,
+    variables: list[str],
+    interpolate: bool = True,
+    interp_limit_hours: int = 6,
+) -> pd.DataFrame:
     """Left-merge ERA5 canonical columns onto a base frame keyed on UTC ``ds``.
 
     The base frame keeps its own row grid (the case's freq); ERA5 hourly values are aligned

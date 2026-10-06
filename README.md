@@ -30,9 +30,17 @@ and laptop demos work without any data at all.
 ### Optional extras
 
 ```bash
-uv sync --extra fm     # Chronos-Bolt zero-shot foundation model   (run_pilot --with-fm)
-uv sync --extra dl     # torch N-HiTS / PatchTST                    (run_pilot --with-dl)
+uv sync --extra fm   # all zero-shot foundation models  (run_pilot --with-fm)
+uv sync --extra dl   # torch N-HiTS / PatchTST           (run_pilot --with-dl)
 ```
+
+`uv sync --extra fm` installs every zero-shot foundation model in one shot — Chronos-Bolt,
+Chronos-2, TimesFM 2.5 and Moirai-2.0 — and `run_pilot --with-fm` scores them all (each is
+still skipped at runtime if its library is missing). Chronos-2, TimesFM 2.5 and Moirai-2.0
+also have `+exo` variants that consume declared covariates when available; Chronos-Bolt is
+univariate-only. Moirai's `uni2ts` hard-pins an older scipy / numpy / torch with no
+Python-3.13 wheels, so the whole project is capped at **Python 3.11–3.12** (see
+`requires-python`) to keep every model installable in a single environment.
 
 The torch DL models are portable (Windows/Linux/CI). The broader **neuralforecast zoo**
 (TFT, iTransformer, TimesNet; `--extra nf` / `run_pilot --with-nf`) needs `ray`, which has
@@ -70,7 +78,7 @@ point via the Open-Meteo archive API — no CDS account needed. See
 | `watertemp_james` | water quality | river temperature | daily | 7 d | USGS NWIS |
 | `sewerlevel_bellinge` | urban drainage | sewer level | 15 min | 6 h | Bellinge (DTU) |
 | `demand_ltown` | water distribution | network demand | hourly | 24 h | BattLeDIM L-Town |
-| `wwtp_influent_n2o_350k` | wastewater | influent flow | hourly | 24 h | N₂O WWTP (Cembrowicz) |
+| `wwtp_influent_n2o_350k` | wastewater | influent flow | hourly | 24 h | N₂O WWTP (Hansen et al.) |
 | `surge_cuxhaven` | storm surge | non-tidal residual | hourly | 48 h | GESLA-3 + ERA5 |
 | `waves_oregon` | spectral waves (swell) | significant wave height | hourly | 24 h | NOAA NDBC 46050 |
 | `waves_massachusetts` | spectral waves (wind-sea) | significant wave height | hourly | 24 h | NOAA NDBC 44013 |
@@ -82,8 +90,8 @@ fetched **credential-free** at the station point from the Open-Meteo ERA5 archiv
 
 - Naive: `Mean`, `Persistence`, `SeasonalNaive`, `Climatology`
 - Classical: `AutoARIMA`, `AutoETS`
-- Windowed ML (Tier 1, univariate): `LinearLags` (Ridge), `LightGBM`, `MLP`
-- Windowed ML (Tier 2, **exogenous-aware**): `LinearLags+exo`, `LightGBM+exo` — feed the
+- Windowed ML (Tier 1, univariate): `LinearLags` (Ridge), `LightGBM`, `CatBoost`, `MLP`
+- Windowed ML (Tier 2, **exogenous-aware**): `LinearLags+exo`, `LightGBM+exo`, `CatBoost+exo` — feed the
   case's declared covariates (rain, wind, pressure, ...). At prediction time the horizon's
   covariate values are supplied as a **perfect-forecast proxy** (observed reanalysis stands
   in for an NWP forecast). The Tier-1/Tier-2 pair exposes how much the covariates help.
@@ -112,6 +120,10 @@ Example result: ERA5 wind/pressure lift GESLA storm-surge skill-vs-persistence f
 **0.30 → 0.66**, and precipitation flips CAMELS-DK `LinearLags` from **−3.7 → +0.83** —
 the covariate value the benchmark is built to quantify.
 
+**Interactive viewer**: the same case × method matrix, with filtering, hover detail, and
+forecast-snapshot drill-down, is also browsable without running anything — see `web/` (a static
+React app, deployed via GitHub Pages).
+
 ## Design notes
 
 - **Two concerns, two namespaces**: `tsforecastbench.data` (case-building — schema,
@@ -121,7 +133,9 @@ the covariate value the benchmark is built to quantify.
 - **Storage**: canonical long-format Parquet (`unique_id`, `ds` UTC, `y`, exogenous);
   pandas in memory. SHA-256 manifest in `data/manifest.json`.
 - **Splits**: calendar or observed-span fractions (`split_mode="fraction"`), robust to
-  series whose record doesn't cover a fixed window.
+  series whose record doesn't cover a fixed window. Parameters are estimated on train, val is
+  the early-stopping holdout for the iteratively trained deep-learning methods and is never
+  trained on, test is scored.
 - **Gaps**: explicit NaN rows; training is imputed, scoring is NaN-masked so only real
   observations count (each run reports the observed fraction of the test window).
 - **Tractability**: AutoARIMA/AutoETS are non-seasonal by default and capped at 5000

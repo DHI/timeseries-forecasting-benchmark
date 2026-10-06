@@ -52,28 +52,41 @@ def _(case_picker, get_case):
 
 
 @app.cell
-def _(case, mo):
+def _(case, df_curated, mo):
     exo_parts = list(case.exogenous)
     if case.exogenous_known_future:
         exo_parts += [f"{v} (kf)" for v in case.exogenous_known_future]
     exo_display = ", ".join(exo_parts) if exo_parts else "none"
-    source_link = f"[{case.source.name}]({case.source.url})" if case.source.url else case.source.name
+    _split_ends = case.split_bounds(df_curated)
+    source_link = (
+        f"[{case.source.name}]({case.source.url})" if case.source.url else case.source.name
+    )
 
-    mo.vstack([
-        mo.hstack([
-            mo.stat(case.domain, label="Domain", bordered=True),
-            mo.stat(f"{case.target} ({case.target_unit})", label="Target", bordered=True),
-            mo.stat(case.freq, label="Frequency", bordered=True),
-            mo.stat(case.horizon_primary, label="Horizon", bordered=True),
-            mo.stat(exo_display, label="Exogenous (kf=known-future)", bordered=True),
-        ], justify="start", gap=1),
-        mo.md(f"> {case.notes}  \n"
-              f"> **Source:** {source_link} · "
-              f"**Splits ({case.split_mode}):** "
-              f"train → {case.splits.train_end} · "
-              f"val → {case.splits.val_end} · "
-              f"test → {case.splits.test_end}"),
-    ])
+    mo.vstack(
+        [
+            mo.hstack(
+                [
+                    mo.stat(case.domain, label="Domain", bordered=True),
+                    mo.stat(f"{case.target} ({case.target_unit})", label="Target", bordered=True),
+                    mo.stat(case.freq, label="Frequency", bordered=True),
+                    mo.stat(case.horizon_primary, label="Horizon", bordered=True),
+                    mo.stat(exo_display, label="Exogenous (kf=known-future)", bordered=True),
+                ],
+                justify="start",
+                gap=1,
+            ),
+            mo.md(
+                f"> {case.notes}  \n"
+                f"> **Source:** {source_link} · "
+                # The bounds actually used: in fraction mode `case.splits`' calendar dates
+                # are inert, so printing them described a split the run never used.
+                f"**Splits ({case.split_mode}):** "
+                f"train → {_split_ends[0].date()} · "
+                f"val → {_split_ends[1].date()} · "
+                f"test → {_split_ends[2].date()}"
+            ),
+        ]
+    )
     return
 
 
@@ -82,27 +95,34 @@ def _(case, go, mo):
     # Coordinates sourced from station IDs / case notes.
     # Lat/lon will move into the parquet static_attrs once #19 lands.
     _LOCS = {
-        "groundwater_yorktown":        (41.239,  -73.803, 10),   # USGS 411421073481202, Yorktown Hts NY
-        "discharge_flashy_catskills":    (41.994,  -74.472, 10),   # USGS 01362500, Esopus Creek NY
-        "discharge_snowmelt_yosemite": (37.732, -119.557, 11),   # USGS 11264500, Merced R Yosemite CA
-        "watertemp_james":        (37.652,  -78.087, 10),   # USGS 02035000, James R Cartersville VA
-        "surge_cuxhaven":       (53.867,    8.717,  9),   # Cuxhaven Steubenhoft, German Bight
-        "waves_oregon":              (44.641, -124.532,  7),   # NDBC 46050, Stonewall Bank Oregon
-        "waves_massachusetts":     (42.346,  -70.651,  8),   # NDBC 44013, Boston / Mass Bay
-        "sewerlevel_bellinge":    (55.383,   10.370, 12),   # Bellinge, Odense DK
+        "groundwater_yorktown": (41.239, -73.803, 10),  # USGS 411421073481202, Yorktown Hts NY
+        "discharge_flashy_catskills": (41.994, -74.472, 10),  # USGS 01362500, Esopus Creek NY
+        "discharge_snowmelt_yosemite": (
+            37.732,
+            -119.557,
+            11,
+        ),  # USGS 11264500, Merced R Yosemite CA
+        "watertemp_james": (37.652, -78.087, 10),  # USGS 02035000, James R Cartersville VA
+        "surge_cuxhaven": (53.867, 8.717, 9),  # Cuxhaven Steubenhoft, German Bight
+        "waves_oregon": (44.641, -124.532, 7),  # NDBC 46050, Stonewall Bank Oregon
+        "waves_massachusetts": (42.346, -70.651, 8),  # NDBC 44013, Boston / Mass Bay
+        "sewerlevel_bellinge": (55.383, 10.370, 12),  # Bellinge, Odense DK
     }
 
     if case.id not in _LOCS:
         _map_out = mo.md("_No precise location available for this case._")
     else:
         _lat, _lon, _zoom = _LOCS[case.id]
-        fig_map = go.Figure(go.Scattermap(
-            lat=[_lat], lon=[_lon],
-            mode="markers+text",
-            text=[f"  {case.id}"],
-            textposition="middle right",
-            marker=dict(size=14, color="#e63946"),
-        ))
+        fig_map = go.Figure(
+            go.Scattermap(
+                lat=[_lat],
+                lon=[_lon],
+                mode="markers+text",
+                text=[f"  {case.id}"],
+                textposition="middle right",
+                marker=dict(size=14, color="#e63946"),
+            )
+        )
         fig_map.update_layout(
             map=dict(
                 style="open-street-map",
@@ -119,30 +139,71 @@ def _(case, go, mo):
 @app.cell
 def _(case):
     df = case.load()
+    df_curated = case.load(curated=True)
     splits = case.split_frame(df)
-    return df, splits
+    splits_curated = case.split_frame(df_curated)
+    return df, df_curated, splits, splits_curated
 
 
 @app.cell
-def _(case, go, mo, pd, splits):
-    def _thin(part, max_pts=3000):
-        if len(part) > max_pts:
-            return part.iloc[:: len(part) // max_pts]
-        return part
+def _(case, df, go, mo, np, pd, splits_curated):
+    _MAX_PTS = 3000
+
+    def _envelope(part, edges):
+        # Min/max-per-bin downsampling on a *shared* set of absolute time edges, so every
+        # series (raw or curated) bins against the same grid — a spike surviving in one
+        # series' bin survives identically in every other series' matching bin, and
+        # wherever curated == raw (i.e. outside a filled gap) the two traces stay pointwise
+        # identical rather than drifting apart the way independent per-series striding did.
+        ds = pd.to_datetime(part["ds"])
+        y = pd.to_numeric(part["y"], errors="coerce")
+        bin_id = pd.cut(ds, bins=edges, labels=False, include_lowest=True)
+        agg = (
+            pd.DataFrame({"bin": bin_id, "y": y.to_numpy()})
+            .groupby("bin")["y"]
+            .agg(["idxmin", "idxmax"])
+        )
+        idx = np.unique(agg.dropna(how="all").to_numpy().astype(int))
+        return part.iloc[idx]
+
+    _ds_full = pd.to_datetime(df["ds"])
+    _needs_thin = len(df) > _MAX_PTS
+    _edges = (
+        pd.date_range(_ds_full.min(), _ds_full.max(), periods=_MAX_PTS // 2 + 1)
+        if _needs_thin
+        else None
+    )
 
     fig_ts = go.Figure()
-    for _part, _color, _name in [
-        (_thin(splits["train"]), "#4C72B0", "train"),
-        (_thin(splits["val"]),   "#DD8452", "val"),
-        (_thin(splits["test"]),  "#55A868", "test"),
-    ]:
-        fig_ts.add_trace(go.Scatter(
-            x=pd.to_datetime(_part["ds"]),
-            y=_part["y"],
+    # Raw series first, in grey and behind everything, so it's obvious at a glance how
+    # much of the full nominal span the benchmark-ready (curated) data actually covers.
+    _raw = _envelope(df, _edges) if _needs_thin else df
+    fig_ts.add_trace(
+        go.Scatter(
+            x=pd.to_datetime(_raw["ds"]),
+            y=_raw["y"],
             mode="lines",
-            name=_name,
-            line=dict(color=_color, width=1),
-        ))
+            name="raw (full span)",
+            line=dict(color="#bbb", width=1),
+            opacity=0.6,
+        )
+    )
+    for _part, _color, _name in [
+        (splits_curated["train"], "#4C72B0", "train"),
+        (splits_curated["val"], "#DD8452", "val"),
+        (splits_curated["test"], "#55A868", "test"),
+    ]:
+        if _needs_thin:
+            _part = _envelope(_part, _edges)
+        fig_ts.add_trace(
+            go.Scatter(
+                x=pd.to_datetime(_part["ds"]),
+                y=_part["y"],
+                mode="lines",
+                name=_name,
+                line=dict(color=_color, width=1),
+            )
+        )
     fig_ts.update_layout(
         title=f"{case.id} — full time series",
         xaxis_title="Date",
@@ -150,12 +211,29 @@ def _(case, go, mo, pd, splits):
         height=370,
         margin=dict(t=50, b=40, l=60, r=20),
         legend=dict(
-            orientation="h", x=0.5, xanchor="center",
-            y=-0.12, yanchor="top",
+            orientation="h",
+            x=0.5,
+            xanchor="center",
+            y=-0.12,
+            yanchor="top",
         ),
         hovermode="x unified",
     )
-    mo.ui.plotly(fig_ts)
+    mo.vstack(
+        [
+            mo.ui.plotly(fig_ts),
+            mo.md(
+                "_Grey is the raw series over its full nominal span; the coloured "
+                "train/val/test lines on top are the curated (gap-filled, "
+                "tail contiguous span) series the benchmark actually trains and scores "
+                "on. Where grey shows but no colour does, that stretch was dropped by "
+                "the curation gap policy. Very long/high-frequency series are "
+                "downsampled for display using a shared min/max-per-bin grid across raw "
+                "and curated, so the two stay pointwise identical everywhere outside a "
+                "filled gap._"
+            ),
+        ]
+    )
     return
 
 
@@ -172,7 +250,9 @@ def _(df, mo, pd, px):
     yearly.columns = ["Year", "Completeness"]
 
     fig_qual = px.bar(
-        yearly, x="Year", y="Completeness",
+        yearly,
+        x="Year",
+        y="Completeness",
         title="Data completeness per year",
         labels={"Completeness": "Fraction observed"},
         color="Completeness",
@@ -182,29 +262,51 @@ def _(df, mo, pd, px):
     )
     fig_qual.update_layout(margin=dict(t=40, b=30), coloraxis_showscale=False)
 
-    mo.vstack([
-        mo.hstack([
-            mo.stat(f"{len(df):,}", label="Total rows", bordered=True),
-            mo.stat(f"{n_obs:,}", label="Observed", bordered=True),
-            mo.stat(f"{y.notna().mean():.1%}", label="Overall completeness", bordered=True),
-            mo.stat(f"{span_days:,}", label="Span (days)", bordered=True),
-        ], justify="start", gap=1),
-        mo.ui.plotly(fig_qual),
-    ])
+    mo.vstack(
+        [
+            mo.hstack(
+                [
+                    mo.stat(f"{len(df):,}", label="Total rows", bordered=True),
+                    mo.stat(f"{n_obs:,}", label="Observed", bordered=True),
+                    mo.stat(f"{y.notna().mean():.1%}", label="Overall completeness", bordered=True),
+                    mo.stat(f"{span_days:,}", label="Span (days)", bordered=True),
+                ],
+                justify="start",
+                gap=1,
+            ),
+            mo.ui.plotly(fig_qual),
+            mo.md(
+                "_Fraction of rows with an observed (non-NaN) target per calendar "
+                "year, on the **raw** series — this is where to look for years with "
+                "sensor outages or a dataset that simply doesn't start/end there._"
+            ),
+        ]
+    )
     return (y,)
 
 
 @app.cell
-def _(go, mo, pd, y):
-    y_vals = y.dropna().values
+def _(df_curated, pd):
+    y_curated = pd.to_numeric(df_curated["y"], errors="coerce")
+    return (y_curated,)
+
+
+@app.cell
+def _(go, mo, pd, y_curated):
+    y_vals = y_curated.dropna().values
     _q1 = float(pd.Series(y_vals).quantile(0.25))
     _med = float(pd.Series(y_vals).median())
     _q3 = float(pd.Series(y_vals).quantile(0.75))
 
-    fig_dist = go.Figure(go.Histogram(
-        x=y_vals, nbinsx=60,
-        marker_color="#4C72B0", opacity=0.8, name="observed",
-    ))
+    fig_dist = go.Figure(
+        go.Histogram(
+            x=y_vals,
+            nbinsx=60,
+            marker_color="#4C72B0",
+            opacity=0.8,
+            name="observed",
+        )
+    )
     fig_dist.update_layout(
         title="Target distribution",
         xaxis_title="value",
@@ -214,22 +316,33 @@ def _(go, mo, pd, y):
         bargap=0.04,
     )
 
-    mo.vstack([
-        mo.hstack([
-            mo.stat(f"{y_vals.mean():.4g}", label="Mean", bordered=True),
-            mo.stat(f"{y_vals.std():.4g}", label="Std", bordered=True),
-            mo.stat(f"{_q1:.4g}", label="Q25", bordered=True),
-            mo.stat(f"{_med:.4g}", label="Median", bordered=True),
-            mo.stat(f"{_q3:.4g}", label="Q75", bordered=True),
-        ], justify="start", gap=1),
-        mo.ui.plotly(fig_dist),
-    ])
+    mo.vstack(
+        [
+            mo.hstack(
+                [
+                    mo.stat(f"{y_vals.mean():.4g}", label="Mean", bordered=True),
+                    mo.stat(f"{y_vals.std():.4g}", label="Std", bordered=True),
+                    mo.stat(f"{_q1:.4g}", label="Q25", bordered=True),
+                    mo.stat(f"{_med:.4g}", label="Median", bordered=True),
+                    mo.stat(f"{_q3:.4g}", label="Q75", bordered=True),
+                ],
+                justify="start",
+                gap=1,
+            ),
+            mo.ui.plotly(fig_dist),
+            mo.md(
+                "_Distribution of the **curated** (gap-filled) target. Look for "
+                "implausible outliers or a long tail that a robust metric (MASE) would "
+                "handle better than a scale-sensitive one (RMSE)._"
+            ),
+        ]
+    )
     return
 
 
 @app.cell
-def _(case, mo, plot_acf, plt, y):
-    y_acf = y.dropna()
+def _(case, mo, plot_acf, plt, y_curated):
+    y_acf = y_curated.dropna()
     y_acf = y_acf.iloc[-5000:] if len(y_acf) > 5000 else y_acf
 
     _freq_lags = {"15min": 96, "1h": 48, "1D": 30, "1W": 26}
@@ -239,8 +352,18 @@ def _(case, mo, plot_acf, plt, y):
     plot_acf(y_acf, lags=n_lags, ax=ax_acf, alpha=0.05, zero=False)
     ax_acf.set_title(f"Autocorrelation — {case.target} (last {len(y_acf):,} obs, {n_lags} lags)")
     ax_acf.set_xlabel(f"Lag ({case.freq})")
+    ax_acf.set_ylabel("Autocorrelation")
     plt.tight_layout()
-    mo.mpl.interactive(fig_acf)
+    mo.vstack(
+        [
+            mo.mpl.interactive(fig_acf),
+            mo.md(
+                "_Bars outside the shaded band are statistically significant at the "
+                "5% level. A slow decay means long memory (persistence is a strong "
+                "baseline); a sharp cutoff means the series decorrelates fast._"
+            ),
+        ]
+    )
     return
 
 
@@ -296,23 +419,38 @@ def _(case, df, go, make_subplots, mo, pd):
 
         _n = len(exo_cols)
         _fig = make_subplots(
-            rows=_n + 1, cols=1, shared_xaxes=True,
+            rows=_n + 1,
+            cols=1,
+            shared_xaxes=True,
             subplot_titles=[case.target, *exo_cols],
             vertical_spacing=0.05,
         )
-        _fig.add_trace(go.Scatter(
-            x=pd.to_datetime(_plot_df["ds"]), y=_plot_df["y"],
-            mode="lines", name=case.target, line=dict(color="#333", width=0.8),
-        ), row=1, col=1)
+        _fig.add_trace(
+            go.Scatter(
+                x=pd.to_datetime(_plot_df["ds"]),
+                y=_plot_df["y"],
+                mode="lines",
+                name=case.target,
+                line=dict(color="#333", width=0.8),
+            ),
+            row=1,
+            col=1,
+        )
 
         _palette = ["#e6550d", "#31a354", "#3182bd", "#756bb1", "#636363"]
         for _i, _col in enumerate(exo_cols):
             if _col in _plot_df.columns:
-                _fig.add_trace(go.Scatter(
-                    x=pd.to_datetime(_plot_df["ds"]), y=_plot_df[_col],
-                    mode="lines", name=_col,
-                    line=dict(color=_palette[_i % len(_palette)], width=0.8),
-                ), row=_i + 2, col=1)
+                _fig.add_trace(
+                    go.Scatter(
+                        x=pd.to_datetime(_plot_df["ds"]),
+                        y=_plot_df[_col],
+                        mode="lines",
+                        name=_col,
+                        line=dict(color=_palette[_i % len(_palette)], width=0.8),
+                    ),
+                    row=_i + 2,
+                    col=1,
+                )
 
         _fig.update_layout(
             height=220 * (_n + 1),
@@ -326,14 +464,15 @@ def _(case, df, go, make_subplots, mo, pd):
 
 
 @app.cell
-def _(case, df, exo_cols, go, make_subplots, mo, np, pd, splits):
+def _(case, exo_cols, go, make_subplots, mo, np, pd, splits_curated):
     from sklearn.feature_selection import mutual_info_regression as _mi_reg
 
     if not exo_cols:
         _exo_analysis_out = mo.md("_No exogenous variables — skip correlation analysis._")
     else:
-        # Use train + val only to avoid test-set leakage in EDA metrics
-        _df_tv = pd.concat([splits["train"], splits["val"]], ignore_index=True)
+        # Curated train + val only: gap-free (fairer correlation estimate) and avoids
+        # test-set leakage in EDA metrics.
+        _df_tv = pd.concat([splits_curated["train"], splits_curated["val"]], ignore_index=True)
         _y = pd.to_numeric(_df_tv["y"], errors="coerce")
 
         # Lag range tuned to freq so it spans ~2x the primary horizon
@@ -343,7 +482,8 @@ def _(case, df, exo_cols, go, make_subplots, mo, np, pd, splits):
         _palette = ["#e6550d", "#31a354", "#3182bd", "#756bb1", "#636363"]
         _n_exo = len(exo_cols)
         _fig_ccf = make_subplots(
-            rows=_n_exo, cols=1,
+            rows=_n_exo,
+            cols=1,
             subplot_titles=[f"CCF: {c} → {case.target}" for c in exo_cols],
             vertical_spacing=max(0.04, 0.3 / _n_exo),
             shared_xaxes=True,
@@ -361,53 +501,80 @@ def _(case, df, exo_cols, go, make_subplots, mo, np, pd, splits):
             _best_idx = int(np.argmax(np.abs(_corrs)))
             _best_lag, _best_r = _lags[_best_idx], _corrs[_best_idx]
 
-            _fig_ccf.add_trace(go.Bar(
-                x=_lags, y=_corrs,
-                name=_col,
-                marker_color=_palette[_i % len(_palette)],
-                showlegend=False,
-            ), row=_i + 1, col=1)
-            _fig_ccf.add_hline(y=0,   line_color="black", line_width=0.5, row=_i + 1, col=1)
-            _fig_ccf.add_vline(x=0,   line_color="grey",  line_width=0.8, line_dash="dash",
-                               row=_i + 1, col=1)
-            _fig_ccf.add_vline(x=_best_lag, line_color=_palette[_i % len(_palette)],
-                               line_width=1.2, line_dash="dot", row=_i + 1, col=1)
+            _fig_ccf.add_trace(
+                go.Bar(
+                    x=_lags,
+                    y=_corrs,
+                    name=_col,
+                    marker_color=_palette[_i % len(_palette)],
+                    showlegend=False,
+                ),
+                row=_i + 1,
+                col=1,
+            )
+            _fig_ccf.add_hline(y=0, line_color="black", line_width=0.5, row=_i + 1, col=1)
+            _fig_ccf.add_vline(
+                x=0, line_color="grey", line_width=0.8, line_dash="dash", row=_i + 1, col=1
+            )
+            _fig_ccf.add_vline(
+                x=_best_lag,
+                line_color=_palette[_i % len(_palette)],
+                line_width=1.2,
+                line_dash="dot",
+                row=_i + 1,
+                col=1,
+            )
 
             # Mutual information (non-linear importance)
             _mask = _y.notna() & _x.notna()
-            _mi = float(_mi_reg(
-                _x[_mask].values.reshape(-1, 1), _y[_mask].values, random_state=0,
-            )[0]) if _mask.sum() > 20 else 0.0
+            _mi = (
+                float(
+                    _mi_reg(
+                        _x[_mask].values.reshape(-1, 1),
+                        _y[_mask].values,
+                        random_state=0,
+                    )[0]
+                )
+                if _mask.sum() > 20
+                else 0.0
+            )
 
-            _summary.append({
-                "variable": _col,
-                "known-future": "✓" if _col in case.exogenous_known_future else "",
-                "Pearson r (lag 0)": f"{float(_y.corr(_x)):+.3f}",
-                "best lag": f"{_best_lag:+d} steps",
-                "Pearson r (best lag)": f"{_best_r:+.3f}",
-                "mutual info": f"{_mi:.3f}",
-            })
+            _summary.append(
+                {
+                    "variable": _col,
+                    "known-future": "✓" if _col in case.exogenous_known_future else "",
+                    "Pearson r (lag 0)": f"{float(_y.corr(_x)):+.3f}",
+                    "best lag": f"{_best_lag:+d} steps",
+                    "Pearson r (best lag)": f"{_best_r:+.3f}",
+                    "mutual info": f"{_mi:.3f}",
+                }
+            )
 
         _fig_ccf.update_xaxes(
             title_text=f"Lag (steps of {case.freq})  —  positive lag: x from that many steps ago predicts y  →  x leads y",
-            row=_n_exo, col=1,
+            row=_n_exo,
+            col=1,
         )
+        _fig_ccf.update_yaxes(title_text="Pearson r")
         _fig_ccf.update_layout(
             height=max(220, 180 * _n_exo) + 60,
             margin=dict(t=40, b=60, l=60, r=20),
         )
 
-        _exo_analysis_out = mo.vstack([
-            mo.md("### Exogenous variable analysis"),
-            mo.md(
-                "_**Best lag** = lag δ at which |CCF| is maximised. "
-                "Positive δ means the exogenous variable from δ steps ago best predicts the target — "
-                "a leading indicator useful for forecasting. "
-                "**Mutual info** captures non-linear dependence (higher = more informative)._"
-            ),
-            mo.ui.table(pd.DataFrame(_summary), selection=None),
-            mo.ui.plotly(_fig_ccf),
-        ])
+        _exo_analysis_out = mo.vstack(
+            [
+                mo.md("### Exogenous variable analysis"),
+                mo.md(
+                    "_Computed on the **curated** train+val series. "
+                    "**Best lag** = lag δ at which |CCF| is maximised. "
+                    "Positive δ means the exogenous variable from δ steps ago best predicts the target — "
+                    "a leading indicator useful for forecasting. "
+                    "**Mutual info** captures non-linear dependence (higher = more informative)._"
+                ),
+                mo.ui.table(pd.DataFrame(_summary), selection=None),
+                mo.ui.plotly(_fig_ccf),
+            ]
+        )
     _exo_analysis_out
     return
 

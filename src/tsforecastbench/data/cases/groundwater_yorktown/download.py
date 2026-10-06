@@ -32,10 +32,18 @@ def main(argv: list[str] | None = None) -> int:
 
     g = _usgs.fetch_nwis(SITE, "72019", START, END, service="dv", colname="gwl_depth_m")
     g["gwl_depth_m"] = g["gwl_depth_m"] * FT_TO_M
-    print(f"[groundwater_yorktown] {len(g)} daily rows, {g['gwl_depth_m'].notna().mean():.0%} finite")
+    print(
+        f"[groundwater_yorktown] {len(g)} daily rows, {g['gwl_depth_m'].notna().mean():.0%} finite"
+    )
 
-    base = pd.DataFrame({"unique_id": case.id, "ds": g["ds"], "y": g["gwl_depth_m"],
-                         "gwl_depth_m": g["gwl_depth_m"]})
+    base = pd.DataFrame(
+        {
+            "unique_id": case.id,
+            "ds": g["ds"],
+            "y": g["gwl_depth_m"],
+            "gwl_depth_m": g["gwl_depth_m"],
+        }
+    )
     base = _io.resample_regular(base, case.freq)
 
     era5_vars = ["precip", "temp_air"]
@@ -45,9 +53,14 @@ def main(argv: list[str] | None = None) -> int:
         print("[groundwater_yorktown] ERA5 skipped.")
     else:
         print(f"[groundwater_yorktown] fetching ERA5 {era5_vars} (daily) via Open-Meteo ...")
-        hourly = _era5.fetch_era5_point(info["lat"], info["lon"], base["ds"].min(),
-                                        base["ds"].max(), variables=era5_vars,
-                                        cache_dir=_io.DATA_RAW / case.id / "era5_cache")
+        hourly = _era5.fetch_era5_point(
+            info["lat"],
+            info["lon"],
+            base["ds"].min(),
+            base["ds"].max(),
+            variables=era5_vars,
+            cache_dir=_io.DATA_RAW / case.id / "era5_cache",
+        )
         daily = _era5.to_daily(hourly, era5_vars)
         base = _era5.merge_onto(base, daily, era5_vars, interpolate=False)
         cov = {c: f"{base[c].notna().mean():.0%}" for c in era5_vars}

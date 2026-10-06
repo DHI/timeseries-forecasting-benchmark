@@ -16,23 +16,40 @@ from tsforecastbench.bench.eval import run_case  # noqa: E402
 from tsforecastbench.bench.eval.metrics import mae, mase, rmse, skill_score  # noqa: E402
 from tsforecastbench.bench.eval.rolling import run_leadtime_curve  # noqa: E402
 from tsforecastbench.bench.methods import (  # noqa: E402
+    CatBoostExoForecaster,
+    CatBoostForecaster,
     Climatology,
+    DLinearExoForecaster,
     LightGBMExoForecaster,
     LightGBMForecaster,
     LinearLagsExoForecaster,
     MeanBaseline,
+    MLPExoForecaster,
+    MLPForecaster,
     Persistence,
     SeasonalNaive,
+    ensemble_baselines,
+    ensemble_baselines_theta,
 )
 from tsforecastbench.bench.viz import plot_leadtime_curve, render_matrix  # noqa: E402
 from tsforecastbench.data.registry import discover_cases, get_case  # noqa: E402
 
 ALL_CASES = list(discover_cases())
 
+# Methods fitted directly in these tests are handed an empty early-stopping holdout: none of
+# them trains iteratively, so none reads `fit`'s val argument. The eval loops pass the real
+# declared val split (see `test_val_split_reserved`).
+NO_VAL = pd.DataFrame({"unique_id": [], "ds": pd.to_datetime([]), "y": []})
+
 
 def test_expected_cases_present():
-    for cid in ("discharge_lowland_denmark", "sewerlevel_bellinge", "surge_cuxhaven",
-                "waves_oregon", "wwtp_influent_n2o_350k"):
+    for cid in (
+        "discharge_lowland_denmark",
+        "sewerlevel_bellinge",
+        "surge_cuxhaven",
+        "waves_oregon",
+        "wwtp_influent_n2o_350k",
+    ):
         assert cid in ALL_CASES
 
 
@@ -60,8 +77,85 @@ def test_baselines_run(cid):
     case = get_case(cid)
     methods = [MeanBaseline(), Persistence(), SeasonalNaive(), Climatology()]
     res = run_case(case, methods, prefer_synth=True)
-    assert len(res) == len(methods) * 5  # MAE, RMSE, MASE, Skill_vs_Persistence, Skill_vs_Mean
+    assert (
+        len(res) == len(methods) * 9
+    )  # MAE, RMSE, MASE, Skill_vs_Persistence, Skill_vs_Mean, MAPE, sMAPE, NSE, KGE
+    if case.seasonalities:
+        assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
+    else:
+        # A declared-non-seasonal case makes SeasonalNaive honestly inapplicable (it
+        # would duplicate Persistence); every other baseline still runs.
+        sn = res["method"] == "SeasonalNaive"
+        assert (res.loc[~sn, "status"] == "ok").all()
+        assert res.loc[sn, "status"].str.contains("non-seasonal").all()
+
+
+def test_climatology_forecast_is_periodic_in_declared_dominant_period():
+    # Climatology keys on the case's pinned dominant period, so its forecast repeats with
+    # that period regardless of frequency (issue #54). demand_ltown is hourly and pins 24,
+    # so the forecast cycles cleanly every 24 steps.
+    case = get_case("demand_ltown")
+    train = case.split_frame(case.synth())["train"]
+    period = case.dominant_seasonality
+
+    clim = Climatology()
+    clim.fit(case, train, NO_VAL)
+    horizon = 2 * period + 5
+    preds = clim.predict(case, train, horizon)["y_hat"].to_numpy()
+    np.testing.assert_allclose(preds[:period], preds[period : 2 * period])
+
+
+def test_climatology_on_nonseasonal_case_is_global_mean():
+    # A declared-non-seasonal case has no cycle to key on, so every position collapses to
+    # one bucket and the forecast is the global training mean (decision B on issue #54).
+    from tsforecastbench.data.schema import Case
+
+    case = Case(
+        id="dummy",
+        domain="test",
+        target="y",
+        freq="1h",
+        seasonalities=[],
+        dominant_seasonality=1,
+        horizon_primary="6h",
+        splits={"train_end": "2020-01-01", "val_end": "2021-01-01", "test_end": "2022-01-01"},
+        source={"name": "test"},
+    )
+    ds = pd.date_range("2019-01-01", periods=240, freq="1h")
+    train = pd.DataFrame({"ds": ds, "y": np.arange(240, dtype=float)})
+
+    clim = Climatology()
+    clim.fit(case, train, NO_VAL)
+    preds = clim.predict(case, train, 6)["y_hat"].to_numpy()
+    np.testing.assert_allclose(preds, train["y"].mean())
+
+
+def test_ensemble_baselines_run():
+    case = get_case("discharge_lowland_denmark")
+    methods = [ensemble_baselines(), ensemble_baselines_theta()]
+    res = run_case(case, methods, prefer_synth=True)
+    assert (
+        len(res) == len(methods) * 9
+    )  # MAE, RMSE, MASE, Skill_vs_Persistence, Skill_vs_Mean, MAPE, sMAPE, NSE, KGE
     assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
+
+
+def test_ensemble_is_median_of_members():
+    case = get_case("discharge_lowland_denmark")
+    train = case.split_frame(case.synth())["train"]
+    horizon = 24
+
+    ens = ensemble_baselines()
+    ens.fit(case, train, NO_VAL)
+    combined = ens.predict(case, train, horizon)["y_hat"].to_numpy()
+
+    member_preds = []
+    for member in ens.members:
+        member.fit(case, train, NO_VAL)
+        member_preds.append(member.predict(case, train, horizon)["y_hat"].to_numpy())
+    expected = np.nanmedian(np.vstack(member_preds), axis=0)
+
+    np.testing.assert_allclose(combined, expected)
 
 
 def test_lightgbm_runs_on_one_case():
@@ -69,24 +163,137 @@ def test_lightgbm_runs_on_one_case():
     assert (res["status"] == "ok").all()
 
 
+def test_catboost_runs_on_one_case():
+    res = run_case(get_case("waves_oregon"), [CatBoostForecaster()], prefer_synth=True)
+    assert (res["status"] == "ok").all()
+
+
+def test_catboost_forecast_moves_with_the_seed():
+    """Why CatBoost is `is_stochastic` (issue #106) despite passing no explicit seed
+    before: its default bootstrap resamples rows every iteration, so it was reproducible
+    at the library's default seed of 0 rather than deterministic. If a future CatBoost
+    release turns sampling off by default, this fails and the flag should come off."""
+    case = get_case("waves_oregon")
+    train = case.split_frame(case.synth())["train"]
+    horizon = 12
+
+    def forecast(seed: int) -> np.ndarray:
+        m = CatBoostForecaster()
+        m.seed = seed
+        m.fit(case, train, NO_VAL)
+        return m.predict(case, train, horizon)["y_hat"].to_numpy()
+
+    assert np.array_equal(forecast(0), forecast(0)), "one seed must be reproducible"
+    assert not np.array_equal(forecast(0), forecast(1)), "different seeds must differ"
+
+
+def test_mlp_runs_on_one_case():
+    res = run_case(get_case("waves_oregon"), [MLPForecaster()], prefer_synth=True)
+    assert (res["status"] == "ok").all()
+
+
+def test_mlp_fit_caps_blas_threads(monkeypatch):
+    """Issue #97: MLP's fit read 609s for 2,000 points, which was OpenBLAS thread
+    oversubscription rather than the cost of `direct_horizon`'s one-model-per-step. Its
+    minibatch matmuls are far too small to spread over many cores, so the fit runs under a
+    one-thread limit.
+
+    Asserts the limit is in force at the moment the estimator fits, rather than timing the
+    fit — a wall-clock bound would depend on the machine's core count and on how warm the
+    thread pool happens to be (the very variance that motivated the cap).
+    """
+    from sklearn.neural_network import MLPRegressor
+    from threadpoolctl import threadpool_info
+
+    observed: list[int] = []
+    real_fit = MLPRegressor.fit
+
+    def spy(self, X, y):
+        observed.extend(d["num_threads"] for d in threadpool_info() if d["user_api"] == "blas")
+        return real_fit(self, X, y)
+
+    monkeypatch.setattr(MLPRegressor, "fit", spy)
+
+    case = get_case("waves_oregon")
+    train = case.split_frame(case.synth())["train"]
+    MLPForecaster().fit(case, train, NO_VAL)
+
+    assert observed, "MLPRegressor.fit was never called — the spy is not on the fit path"
+    assert set(observed) == {1}, f"expected 1 BLAS thread during fit, saw {sorted(set(observed))}"
+
+
+def test_windowed_ml_siblings_do_not_cap_blas_threads():
+    """The cap belongs to MLP alone. LightGBM and CatBoost parallelise productively, so a
+    future edit must not lift `blas_threads` onto the shared base class."""
+    from tsforecastbench.bench.methods import ml
+
+    assert ml._WindowedMLBase.blas_threads is None
+    for cls in (ml.LightGBMForecaster, ml.CatBoostForecaster, ml.LinearLagsForecaster):
+        assert cls.blas_threads is None, f"{cls.__name__} should not cap BLAS threads"
+
+
+def test_mlp_direct_horizon_forecast_stays_bounded_on_smooth_case():
+    """Regression test for the groundwater_yorktown blow-up: MLP's direct multi-horizon
+    strategy (one model per horizon step, no feedback loop) must not diverge far outside
+    the training window's own range."""
+    case = get_case("groundwater_yorktown")
+    from tsforecastbench.bench.eval.loop import _horizon_to_steps
+
+    train = case.split_frame(case.synth())["train"]
+    horizon = _horizon_to_steps(case.horizon_primary, case.freq)
+
+    mlp = MLPForecaster()
+    mlp.fit(case, train, NO_VAL)
+    y_hat = mlp.predict(case, train, horizon)["y_hat"].to_numpy()
+
+    y_train = train["y"].to_numpy()
+    span = y_train.max() - y_train.min()
+    # Direct-horizon forecasting has no compounding mechanism left to guard against, so
+    # this is a tighter bound than the old recursive-strategy's ±10x allowance — loose
+    # enough not to be brittle to legitimate model variance, tight enough to catch a
+    # regression back to unbounded drift.
+    assert y_hat.max() <= y_train.max() + 3 * span
+    assert y_hat.min() >= y_train.min() - 3 * span
+
+
 def test_rolling_matrix_runs():
     from tsforecastbench.bench.eval import run_case_rolling
 
     case = get_case("discharge_flashy_catskills")
     methods = [Persistence(), LightGBMExoForecaster()]
-    res = run_case_rolling(case, methods, n_origins=6, prefer_synth=True)
-    assert len(res) == len(methods) * 5
+    res, snaps = run_case_rolling(case, methods, n_origins=6, prefer_synth=True)
+    assert len(res) == len(methods) * 9
     assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
     # pooled rolling score is finite and persistence skill-vs-itself is ~0
     pers = res[(res.method == "Persistence") & (res.metric == "Skill_vs_Persistence")]["value"]
     assert abs(float(pers.iloc[0])) < 1e-6
+    # snapshots: full predicted series per method x origin, tagged by fit variant and
+    # aligned on shared origins
+    assert set(snaps.columns) == {
+        "case_id",
+        "method",
+        "used_extended_history",
+        "origin_id",
+        "origin_ds",
+        "ds",
+        "y_hat",
+    }
+    assert set(snaps["method"].unique()) == {m.name for m in methods}
+    per_method_origins = snaps.groupby("method")["origin_id"].apply(lambda s: sorted(s.unique()))
+    assert per_method_origins.iloc[0] == per_method_origins.iloc[1]
 
 
 @pytest.mark.parametrize("cid", ["surge_cuxhaven", "waves_oregon", "discharge_lowland_denmark"])
 def test_exogenous_methods_run(cid):
-    """Exogenous-aware windowed ML runs on every case that declares covariates."""
+    """Every exogenous-aware method runs on every case that declares covariates."""
     case = get_case(cid)
-    methods = [LinearLagsExoForecaster(), LightGBMExoForecaster()]
+    methods = [
+        LinearLagsExoForecaster(),
+        LightGBMExoForecaster(),
+        CatBoostExoForecaster(),
+        MLPExoForecaster(),
+        DLinearExoForecaster(),
+    ]
     res = run_case(case, methods, prefer_synth=True)
     assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
     assert all(m.uses_exogenous for m in methods)
@@ -101,16 +308,55 @@ def test_exogenous_method_on_univariate_case():
 def test_dlinear_and_theta_run():
     from tsforecastbench.bench.methods import DLinearForecaster, ThetaForecaster
 
-    res = run_case(get_case("discharge_flashy_catskills"),
-                   [DLinearForecaster(), ThetaForecaster()], prefer_synth=True)
+    res = run_case(
+        get_case("discharge_flashy_catskills"),
+        [DLinearForecaster(), ThetaForecaster()],
+        prefer_synth=True,
+    )
     assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
 
 
+def test_mstl_classicals_run():
+    """MSTL-ETS / MSTL-ARIMA fit a seasonal classical model and produce finite MASE."""
+    from tsforecastbench.bench.methods import (
+        MSTLAutoARIMAForecaster,
+        MSTLAutoETSForecaster,
+    )
+
+    res = run_case(
+        get_case("discharge_lowland_denmark"),
+        [MSTLAutoETSForecaster(), MSTLAutoARIMAForecaster()],
+        prefer_synth=True,
+    )
+    assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
+    mase = res[res["metric"] == "MASE"]["value"]
+    assert mase.notna().all() and (mase > 0).all()
+
+
+def test_mstl_is_honestly_inapplicable_on_declared_nonseasonal_case():
+    # Every committed case now declares seasonalities, so we build a non-seasonal variant
+    # explicitly: same synthetic data, seasonalities overridden to []. MSTL must then report
+    # itself inapplicable rather than degenerating into the plain non-seasonal trend model.
+    from tsforecastbench.bench.methods import MSTLAutoETSForecaster
+
+    case = get_case("discharge_flashy_catskills").model_copy(
+        update={"seasonalities": [], "dominant_seasonality": 1}
+    )
+    res = run_case(case, [MSTLAutoETSForecaster()], prefer_synth=True)
+    assert res["status"].str.contains("MSTL inapplicable").all()
+
+
 def test_methods_package_imports_without_fm_deps():
-    """The methods package (incl. the FM wrapper) must import without torch/chronos."""
+    """The methods package (incl. the FM wrappers) must import without torch/chronos."""
     import tsforecastbench.bench.methods as m
 
     assert hasattr(m, "ChronosForecaster")
+    assert hasattr(m, "Chronos2Forecaster")
+    assert hasattr(m, "Chronos2ExoForecaster")
+    assert hasattr(m, "TimesFMForecaster")
+    assert hasattr(m, "TimesFMExoForecaster")
+    assert hasattr(m, "Moirai2Forecaster")
+    assert hasattr(m, "Moirai2ExoForecaster")
 
 
 def test_chronos_runs_if_installed():
@@ -118,6 +364,87 @@ def test_chronos_runs_if_installed():
     from tsforecastbench.bench.methods import ChronosForecaster
 
     res = run_case(get_case("waves_oregon"), [ChronosForecaster()], prefer_synth=True)
+    assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
+
+
+def test_chronos2_runs_if_installed():
+    pytest.importorskip("chronos")
+    from tsforecastbench.bench.methods import Chronos2Forecaster
+
+    res = run_case(get_case("waves_oregon"), [Chronos2Forecaster()], prefer_synth=True)
+    assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
+
+
+def test_chronos2_exo_runs_if_installed():
+    """+exo variant conditions on waves_oregon's declared covariates via predict_df."""
+    pytest.importorskip("chronos")
+    from tsforecastbench.bench.methods import Chronos2ExoForecaster
+
+    res = run_case(get_case("waves_oregon"), [Chronos2ExoForecaster()], prefer_synth=True)
+    assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
+    assert res["uses_exogenous"].all()
+
+
+def test_chronos2_exo_on_univariate_case():
+    """+exo variant reduces to univariate (no crash) on a case with no covariates."""
+    pytest.importorskip("chronos")
+    from tsforecastbench.bench.methods import Chronos2ExoForecaster
+
+    res = run_case(get_case("demand_ltown"), [Chronos2ExoForecaster()], prefer_synth=True)
+    assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
+
+
+def test_timesfm_runs_if_installed():
+    pytest.importorskip("timesfm")
+    from tsforecastbench.bench.methods import TimesFMForecaster
+
+    res = run_case(get_case("waves_oregon"), [TimesFMForecaster()], prefer_synth=True)
+    assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
+
+
+def test_timesfm_exo_runs_if_installed():
+    """+exo variant fits an xreg regressor on waves_oregon's declared covariates."""
+    pytest.importorskip("timesfm")
+    from tsforecastbench.bench.methods import TimesFMExoForecaster
+
+    res = run_case(get_case("waves_oregon"), [TimesFMExoForecaster()], prefer_synth=True)
+    assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
+    assert res["uses_exogenous"].all()
+
+
+def test_timesfm_exo_on_univariate_case():
+    """+exo variant reduces to univariate (no crash) on a case with no covariates."""
+    pytest.importorskip("timesfm")
+    from tsforecastbench.bench.methods import TimesFMExoForecaster
+
+    res = run_case(get_case("demand_ltown"), [TimesFMExoForecaster()], prefer_synth=True)
+    assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
+
+
+def test_moirai2_runs_if_installed():
+    pytest.importorskip("uni2ts")
+    from tsforecastbench.bench.methods import Moirai2Forecaster
+
+    res = run_case(get_case("waves_oregon"), [Moirai2Forecaster()], prefer_synth=True)
+    assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
+
+
+def test_moirai2_exo_runs_if_installed():
+    """+exo variant feeds declared covariates in as feat_dynamic_real."""
+    pytest.importorskip("uni2ts")
+    from tsforecastbench.bench.methods import Moirai2ExoForecaster
+
+    res = run_case(get_case("waves_oregon"), [Moirai2ExoForecaster()], prefer_synth=True)
+    assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
+    assert res["uses_exogenous"].all()
+
+
+def test_moirai2_exo_on_univariate_case():
+    """+exo variant reduces to univariate (no crash) on a case with no covariates."""
+    pytest.importorskip("uni2ts")
+    from tsforecastbench.bench.methods import Moirai2ExoForecaster
+
+    res = run_case(get_case("demand_ltown"), [Moirai2ExoForecaster()], prefer_synth=True)
     assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
 
 
@@ -132,18 +459,20 @@ def test_neuralforecast_zoo_classes_importable():
     # classes must always import (neuralforecast is imported lazily inside fit).
     import tsforecastbench.bench.methods as m
 
-    assert all(hasattr(m, c) for c in
-               ("TFTForecaster", "ITransformerForecaster", "TimesNetForecaster"))
+    assert all(
+        hasattr(m, c) for c in ("TFTForecaster", "ITransformerForecaster", "TimesNetForecaster")
+    )
 
 
-def test_torch_dl_runs_if_installed():
+def test_torch_dl_runs_if_installed(monkeypatch):
     pytest.importorskip("torch")
-    from tsforecastbench.bench.methods import NHITSForecaster, PatchTSTForecaster
+    from tsforecastbench.bench.methods import NHITSForecaster, PatchTSTForecaster, torchdl
 
-    # tiny training budget keeps the test fast
+    # There is no step budget to shrink any more (gh #101) — training runs until held-out
+    # loss goes stale — so an impatient early stop is what keeps the test fast.
+    monkeypatch.setattr(torchdl, "DL_VAL_CHECK_STEPS", 5)
+    monkeypatch.setattr(torchdl, "DL_PATIENCE_CHECKS", 1)
     methods = [NHITSForecaster(), PatchTSTForecaster()]
-    for mdl in methods:
-        mdl.max_steps = 5
     res = run_case(get_case("discharge_flashy_catskills"), methods, prefer_synth=True)
     assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
 
@@ -152,7 +481,7 @@ def test_fraction_split_handles_truncated_obs():
     """CAMELS uses fraction splits; even if obs end early the test window is scorable."""
     case = get_case("discharge_lowland_denmark")
     df = case.synth()
-    df.loc[int(len(df) * 0.6):, "y"] = np.nan  # observations stop at 60%
+    df.loc[int(len(df) * 0.6) :, "y"] = np.nan  # observations stop at 60%
     sp = case.split_frame(df)
     assert sp["test"]["y"].notna().sum() > 0
 
@@ -192,10 +521,19 @@ def test_matrix_colour_scale_clamped_to_outlier(tmp_path):
     for skill while the cell still renders. (User-reported: a -16 cell washed out the map.)"""
     rows = []
     for method, val in [("Good", 0.5), ("Bad", -16.65)]:
-        rows.append({"case_id": "c1", "domain": "d", "method": method,
-                     "horizon": "1h", "metric": "Skill_vs_Persistence", "value": val})
-    fig = render_matrix(pd.DataFrame(rows), metric="Skill_vs_Persistence",
-                        out_path=tmp_path / "skill.png")
+        rows.append(
+            {
+                "case_id": "c1",
+                "domain": "d",
+                "method": method,
+                "horizon": "1h",
+                "metric": "Skill_vs_Persistence",
+                "value": val,
+            }
+        )
+    fig = render_matrix(
+        pd.DataFrame(rows), metric="Skill_vs_Persistence", out_path=tmp_path / "skill.png"
+    )
     norm = fig.axes[0].images[0].norm
     assert norm.vmin == -1.0 and norm.vmax == 1.0  # clamped, not -16.65
     assert (tmp_path / "skill.png").exists()
@@ -203,6 +541,8 @@ def test_matrix_colour_scale_clamped_to_outlier(tmp_path):
 
 def test_leadtime_plot_renders(tmp_path):
     case = get_case("waves_oregon")
-    curve = run_leadtime_curve(case, [MeanBaseline(), Persistence()], n_origins=5, prefer_synth=True)
+    curve = run_leadtime_curve(
+        case, [MeanBaseline(), Persistence()], n_origins=5, prefer_synth=True
+    )
     plot_leadtime_curve(curve, out_path=tmp_path / "c.png")
     assert (tmp_path / "c.png").exists()

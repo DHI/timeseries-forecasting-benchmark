@@ -1,0 +1,29 @@
+id = "discharge_saugeen"
+domain = "hydrology"
+notes = "Daily river discharge at Saugeen River near Walkerton, Ontario, Canada (WSC 02FC002). A canonical benchmark series from the Monash Time Series Forecasting Archive (Godahewa et al., 2021): 65 years of record (1915–1979), univariate. The drainage basin is a low-relief agricultural plain on the Bruce Peninsula; the regime is dominated by spring snowmelt (April–May) and late-summer low flows. A useful complement to discharge_flashy_catskills: longer record, different climate, no exogenous forcing."
+
+target = "discharge"
+target_unit = "m3/s"
+
+freq = "1D"
+seasonalities = [365]
+# Pinned dominance (only declared period; R2 0.193); see notebooks/seasonality.py.
+dominant_seasonality = 365
+horizon_primary = "30D"
+horizons_eval = ["7D", "14D", "30D"]
+
+data_type = "observed"
+split_mode = "fraction"
+split_fraction = [0.7, 0.85]
+
+[splits]
+train_end = 1960-12-31
+val_end = 1970-12-31
+test_end = 1979-12-31
+
+[source]
+name = "Saugeen River Flow (SaugeenDay) — Monash Time Series Forecasting Archive"
+doi = "10.5281/zenodo.4656058"
+url = "https://zenodo.org/records/4656058"
+license = "CC BY 4.0"
+citation = "Godahewa, R., Bergmeir, C., Webb, G. I., Hyndman, R. J., & Montero-Manso, P. (2021). Monash Time Series Forecasting Archive. NeurIPS Datasets and Benchmarks."

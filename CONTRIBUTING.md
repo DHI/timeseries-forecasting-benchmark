@@ -39,7 +39,17 @@ Create `src/tsforecastbench/data/cases/<case_id>/` with:
 
 - `case.toml` — metadata validated into a `Case` (see `data/schema.py`): `id`, `domain`,
   `target`, `freq`, `horizon_primary`, `exogenous`, `splits` (or `split_mode="fraction"`),
-  and `source`.
+  and `source`. If `exogenous` (or `exogenous_known_future`) is non-empty, list which of
+  those columns are required for a meaningful forecast in `necessary_exogenous` (e.g. rain
+  for a flood case) — a domain-expert judgment. Everything else is implicitly optional
+  (`Case.optional_exogenous`, derived, not a TOML field). See `research_log/details.md` (id 9, 2026-07-02).
+  `seasonalities` is **required**: seasonal periods in steps of `freq`, dominant first,
+  `[]` = non-seasonal. It is the single source of truth for seasonality in the
+  train/predict cycle (methods and the MASE season resolve from it; there is no
+  frequency-based fallback). Fix it once at curation time: open
+  `notebooks/seasonality.py`, review the train-split evidence (periodogram prominence +
+  ACF over a fixed physical candidate menu), and commit the proposed value — or deviate
+  from it with a justification in `notes`. See `research_log/details.md` (id 15, 2026-07-03).
 - `synth.py` — `generate(case) -> pd.DataFrame` returning the canonical long format
   (`unique_id`, `ds` UTC, `y`, plus exogenous columns). This lets the pipeline and CI
   run before any real data exists.

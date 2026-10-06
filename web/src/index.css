@@ -1,0 +1,104 @@
+:root {
+  --text: #1f2328;
+  --bg: #ffffff;
+  --panel-bg: #ffffff;
+  --border: #000000;
+  --text-muted: #666666;
+  --text-secondary: #444444;
+  --hover-dim-overlay: rgba(255, 255, 255, 0.6);
+  --warning-text: #b45309;
+  --level-good: #1a7f37;
+  --level-mid: #9a6700;
+  --level-poor: #b42318;
+  --level-empty: #e4e8ec;
+  font:
+    15px/1.45 system-ui,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
+  color-scheme: light dark;
+  color: var(--text);
+  background: var(--bg);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --text: #e6edf3;
+    --bg: #0d1117;
+    --panel-bg: #16233a;
+    --border: #30363d;
+    --text-muted: #9aa4ae;
+    --text-secondary: #c9d1d9;
+    --hover-dim-overlay: rgba(0, 0, 0, 0.55);
+    --warning-text: #e2a03f;
+    --level-good: #3fb950;
+    --level-mid: #d29922;
+    --level-poor: #f85149;
+    --level-empty: #2b3440;
+  }
+}
+
+/* Manual override: takes precedence over the media query above (attribute selector
+   outranks the plain `:root` inside it) whenever a user has picked a theme explicitly. */
+:root[data-theme='light'] {
+  --text: #1f2328;
+  --bg: #ffffff;
+  --panel-bg: #ffffff;
+  --border: #000000;
+  --text-muted: #666666;
+  --text-secondary: #444444;
+  --hover-dim-overlay: rgba(255, 255, 255, 0.6);
+  --warning-text: #b45309;
+  --level-good: #1a7f37;
+  --level-mid: #9a6700;
+  --level-poor: #b42318;
+  --level-empty: #e4e8ec;
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  --text: #e6edf3;
+  --bg: #0d1117;
+  --panel-bg: #16233a;
+  --border: #30363d;
+  --text-muted: #9aa4ae;
+  --text-secondary: #c9d1d9;
+  --hover-dim-overlay: rgba(0, 0, 0, 0.55);
+  --warning-text: #e2a03f;
+  --level-good: #3fb950;
+  --level-mid: #d29922;
+  --level-poor: #f85149;
+  --level-empty: #2b3440;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+#root {
+  min-height: 100svh;
+}
+
+input[type='checkbox'] {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  border: 1px solid var(--border);
+  background-color: var(--panel-bg);
+  background-repeat: no-repeat;
+  margin: 0 0.35em 0 0;
+  vertical-align: middle;
+  cursor: pointer;
+}
+
+input[type='checkbox']:checked {
+  background-image:
+    linear-gradient(45deg, transparent 46%, var(--text) 48%, var(--text) 52%, transparent 54%),
+    linear-gradient(-45deg, transparent 46%, var(--text) 48%, var(--text) 52%, transparent 54%);
+}

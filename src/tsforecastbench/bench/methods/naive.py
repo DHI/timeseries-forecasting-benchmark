@@ -6,43 +6,95 @@ import numpy as np
 import pandas as pd
 
 from tsforecastbench.bench.methods.base import Forecaster
+from tsforecastbench.bench.methods.scorecard import (
+    Capabilities,
+    ForecastStrategy,
+    GrowthShape,
+    Level,
+    RunningCost,
+    Scorecard,
+)
 from tsforecastbench.data.schema import Case
-
-
-def _default_season_length(freq: str) -> int:
-    f = freq.lower()
-    if f in {"1d", "d"}:
-        return 365
-    if f in {"1h", "h"}:
-        return 24
-    if f in {"15min", "15t"}:
-        return 96
-    if f in {"1w", "w"}:
-        return 52
-    return 24
+from tsforecastbench.data.seasonality import position_in_cycle
 
 
 class MeanBaseline(Forecaster):
-    name = "Mean"
+    """Repeats the training-window mean for every step of the horizon."""
 
-    def fit(self, case: Case, train: pd.DataFrame) -> None:
+    name = "Mean"
+    family = "baseline"
+    library = "pandas/numpy only"
+    compute_profile = "CPU, negligible — one mean over the training split."
+    limitations = (
+        "Ignores trend, seasonality, and recency entirely; useful only as a floor "
+        "other methods should comfortably beat."
+    )
+    code_snippet = "mean = train['y'].mean()\ny_hat = [mean] * horizon"
+    capabilities = Capabilities(
+        trend=False, seasonality=False, multiple_seasonality=False, exogenous=False
+    )
+    # Every future timestamp gets the same constant, looked up independently — there's no
+    # step-by-step mechanism for "recursive vs direct" to describe.
+    forecast_strategy = ForecastStrategy.NOT_APPLICABLE
+    # A mean over the training record and a constant forecast: nothing here scales.
+    scorecard = Scorecard(
+        history_requirements=Level.LOW,
+        interpretability=Level.HIGH,
+        running_cost=RunningCost(level=Level.LOW, growth=GrowthShape.FLAT),
+        tuning_effort=Level.LOW,
+    )
+
+    def fit(self, case: Case, train: pd.DataFrame, val: pd.DataFrame) -> None:
         self._mean = float(train["y"].mean())
 
-    def predict(self, case: Case, history: pd.DataFrame, horizon: int,
-                future_exog: pd.DataFrame | None = None) -> pd.DataFrame:
+    def predict(
+        self,
+        case: Case,
+        history: pd.DataFrame,
+        horizon: int,
+        future_exog: pd.DataFrame | None = None,
+    ) -> pd.DataFrame:
         last_ds = history["ds"].max()
         future = self._future_index(case, last_ds, horizon)
         return pd.DataFrame({"ds": future, "y_hat": np.full(horizon, self._mean)})
 
 
 class Persistence(Forecaster):
-    name = "Persistence"
+    """Repeats the last observed value for every step of the horizon (the naive forecast)."""
 
-    def fit(self, case: Case, train: pd.DataFrame) -> None:
+    name = "Persistence"
+    family = "baseline"
+    library = "pandas/numpy only"
+    compute_profile = "CPU, negligible — no fitting at all."
+    limitations = (
+        "Repeats the last observed value for the whole horizon; degrades fast on any "
+        "series with a trend, cycle, or fast dynamics beyond one step."
+    )
+    code_snippet = "last_value = history['y'].iloc[-1]\ny_hat = [last_value] * horizon"
+    capabilities = Capabilities(
+        trend=False, seasonality=False, multiple_seasonality=False, exogenous=False
+    )
+    # Every future timestamp repeats the same last value, looked up independently — no
+    # step-by-step mechanism this field could describe.
+    forecast_strategy = ForecastStrategy.NOT_APPLICABLE
+    # Reads one value and repeats it -- the cheapest thing in the benchmark.
+    scorecard = Scorecard(
+        history_requirements=Level.LOW,
+        interpretability=Level.HIGH,
+        running_cost=RunningCost(level=Level.LOW, growth=GrowthShape.FLAT),
+        tuning_effort=Level.LOW,
+    )
+
+    def fit(self, case: Case, train: pd.DataFrame, val: pd.DataFrame) -> None:
         pass
 
-    def predict(self, case: Case, history: pd.DataFrame, horizon: int,
-                future_exog: pd.DataFrame | None = None) -> pd.DataFrame:
+    def predict(
+        self,
+        case: Case,
+        history: pd.DataFrame,
+        horizon: int,
+        future_exog: pd.DataFrame | None = None,
+    ) -> pd.DataFrame:
         last_value = float(history["y"].iloc[-1])
         last_ds = history["ds"].max()
         future = self._future_index(case, last_ds, horizon)
@@ -50,17 +102,53 @@ class Persistence(Forecaster):
 
 
 class SeasonalNaive(Forecaster):
+    """Tiles the most recently observed full seasonal cycle forward across the horizon."""
+
     name = "SeasonalNaive"
+    family = "baseline"
+    library = "pandas/numpy only"
+    compute_profile = "CPU, negligible — tiles the last observed seasonal cycle."
+    limitations = (
+        "Repeats the most recent full cycle of the case's dominant declared seasonal "
+        "period; refuses to run on a case declared non-seasonal, and can't adapt if "
+        "the cycle's shape drifts over time."
+    )
+    code_snippet = (
+        "seasonal_window = train['y'].tail(season_length)\ny_hat = tile(seasonal_window, horizon)"
+    )
+    capabilities = Capabilities(
+        trend=False, seasonality=True, multiple_seasonality=False, exogenous=False
+    )
+    # Tiles the last observed cycle verbatim, position by position — no step-by-step
+    # mechanism this field could describe.
+    forecast_strategy = ForecastStrategy.NOT_APPLICABLE
+    # One lookup per future timestamp, independent of how long the record is.
+    scorecard = Scorecard(
+        history_requirements=Level.MEDIUM,
+        interpretability=Level.HIGH,
+        running_cost=RunningCost(level=Level.LOW, growth=GrowthShape.FLAT),
+        tuning_effort=Level.LOW,
+    )
 
     def __init__(self, season_length: int | None = None):
         self.season_length = season_length
 
-    def fit(self, case: Case, train: pd.DataFrame) -> None:
-        self._s = self.season_length or _default_season_length(case.freq)
+    def fit(self, case: Case, train: pd.DataFrame, val: pd.DataFrame) -> None:
+        self._s = self.season_length or case.dominant_seasonality
+        if self._s == 1:
+            raise ValueError(
+                f"Case {case.id} is declared non-seasonal (seasonalities = []) — "
+                "SeasonalNaive would degenerate into a duplicate Persistence column"
+            )
         self._tail = train["y"].tail(self._s).to_numpy()
 
-    def predict(self, case: Case, history: pd.DataFrame, horizon: int,
-                future_exog: pd.DataFrame | None = None) -> pd.DataFrame:
+    def predict(
+        self,
+        case: Case,
+        history: pd.DataFrame,
+        horizon: int,
+        future_exog: pd.DataFrame | None = None,
+    ) -> pd.DataFrame:
         s = self._s
         h_tail = history["y"].tail(s).to_numpy()
         if len(h_tail) < s:
@@ -76,32 +164,62 @@ class SeasonalNaive(Forecaster):
 
 
 class Climatology(Forecaster):
-    """Mean value by seasonal position (day-of-year for daily, hour for hourly,
-    day-of-week x hour for sub-daily). A stronger 'no-skill' reference than Mean
-    for series with a stable seasonal/diurnal cycle.
+    """Mean target value by position within the case's dominant declared seasonal cycle
+    (`case.seasonalities`). Keying on the declared seasonality means the baseline has the
+    same meaning at every frequency, rather than shifting between day-of-year, hour, and
+    weekday x hour depending on the sampling rate. A non-seasonal case (`seasonalities =
+    []`) has no cycle to key on, so every timestamp shares one bucket and the baseline is
+    the global training mean. A stronger 'no-skill' reference than Mean for series with a
+    stable seasonal/diurnal cycle.
     """
 
     name = "Climatology"
+    family = "baseline"
+    library = "pandas/numpy only"
+    compute_profile = "CPU, negligible — one groupby-mean over the training split."
+    limitations = (
+        "Averages history by position in the dominant seasonal cycle, so it captures a "
+        "stable average shape but not trend, one-off events, or year-to-year drift; "
+        "falls back to the global mean on a case declared non-seasonal."
+    )
+    code_snippet = (
+        "position = position_in_cycle(freq, period, train['ds'])\n"
+        "climatology = train.groupby(position)['y'].mean()\n"
+        "y_hat = [climatology[position_in_cycle(freq, period, ds)] for ds in future_ds]"
+    )
+    capabilities = Capabilities(
+        trend=False, seasonality=True, multiple_seasonality=False, exogenous=False
+    )
+    # Each future timestamp is an independent lookup by position in the cycle — no
+    # step-by-step mechanism this field could describe.
+    forecast_strategy = ForecastStrategy.NOT_APPLICABLE
+    # One pass to build the per-phase table, then a lookup per timestamp.
+    scorecard = Scorecard(
+        history_requirements=Level.MEDIUM,
+        interpretability=Level.HIGH,
+        running_cost=RunningCost(level=Level.LOW, growth=GrowthShape.FLAT),
+        tuning_effort=Level.LOW,
+    )
 
     def _key(self, idx: pd.DatetimeIndex) -> np.ndarray:
-        f = self._freq
-        if f in {"1d", "d"}:
-            return idx.dayofyear.to_numpy()
-        if f in {"1h", "h"}:
-            return idx.hour.to_numpy()
-        # sub-daily: combine weekday and hour
-        return (idx.dayofweek * 24 + idx.hour).to_numpy()
+        return position_in_cycle(self._freq, self._period, idx)
 
-    def fit(self, case: Case, train: pd.DataFrame) -> None:
-        self._freq = case.freq.lower()
+    def fit(self, case: Case, train: pd.DataFrame, val: pd.DataFrame) -> None:
+        self._freq = case.freq
+        self._period = case.dominant_seasonality
         idx = pd.DatetimeIndex(pd.to_datetime(train["ds"]))
         keys = self._key(idx)
         s = pd.Series(pd.to_numeric(train["y"], errors="coerce").to_numpy())
         self._clim = s.groupby(keys).mean()
         self._global_mean = float(s.mean())
 
-    def predict(self, case: Case, history: pd.DataFrame, horizon: int,
-                future_exog: pd.DataFrame | None = None) -> pd.DataFrame:
+    def predict(
+        self,
+        case: Case,
+        history: pd.DataFrame,
+        horizon: int,
+        future_exog: pd.DataFrame | None = None,
+    ) -> pd.DataFrame:
         last_ds = history["ds"].max()
         future = self._future_index(case, last_ds, horizon)
         keys = self._key(pd.DatetimeIndex(future))
