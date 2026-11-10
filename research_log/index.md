@@ -6,6 +6,9 @@ entry and its commits. See `schema.md` for the format both files follow.
 
 <!-- Add new entries below this line, newest first, matching details.md. -->
 
+### 2026-11-10
+- 104 — neuralforecast models were scored with weights from past their best check
+
 ### 2026-08-31
 - 103 — One pinned dominant period per case, ending a two-way split in what "dominant" meant
 

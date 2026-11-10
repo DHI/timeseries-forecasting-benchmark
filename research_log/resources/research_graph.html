@@ -341,6 +341,23 @@
 <script type="application/json" id="graph-data">{
   "nodes": [
     {
+      "id": "2026-11-10-nf-best-weights-and-surge-qc",
+      "date": "2026-11-10",
+      "title": "neuralforecast models were scored with weights from past their best check",
+      "category": "bug-fix",
+      "summary": "neuralforecast's TFT, iTransformer and TimesNet kept the weights from 250 steps past their best check and trained on MAE, unlike torchdl. Last weights cost N-HiTS/PatchTST a median 5-6% MAE (up to 35%). The nf zoo now restores best weights and trains on MSE; best_step is recorded; GESLA not-for-use values are dropped from the surge record (whether that removes its -7.7 m spikes is unchecked). All DL columns and all surge columns need a re-run.",
+      "detail": "An audit of the benchmark found the three neuralforecast models (TFT, iTransformer, TimesNet) were scored with the weights from 250 steps past their best validation check: the library stops on Lightning's `EarlyStopping` with checkpointing off, and that callback never restores weights. They also trained on MAE, the library default, while `torchdl` restores its best weights and trains on MSE. The gap is not small: scoring N-HiTS and PatchTST with last instead of best weights (seed 0, 100 origins, 12 cases) worsens MAE by a median 5-6% and up to 35%, with last worse in 19 of 24 cells. The neuralforecast models now restore their best weights and train on MSE, and every DL cell records `best_step`, the step whose weights were kept. The step-counted patience was a suspect too but does not bind: 12x more patience picked the same N-HiTS model on `sewerlevel_bellinge`, `discharge_saugeen` and a QC-cleaned `surge_cuxhaven`.\n\nOn raw `surge_cuxhaven` the validation loss was noise, dominated by spikes in the residual down to -7.7 m. The GESLA parser kept every value GESLA flags not for use and now drops them; whether the spikes are among the flagged values can only be checked when the record is regenerated. Every DL column and every `surge_cuxhaven` column must be re-run, and the surge data regenerated from the raw GESLA archive; the merge needs `--drop` of the DL methods from every older partial, so a missing new cell shows as missing rather than as a stale one.",
+      "tags": [
+        "early-stopping",
+        "neuralforecast",
+        "torchdl",
+        "training-budget",
+        "surge",
+        "data-quality",
+        "results"
+      ]
+    },
+    {
       "id": "2026-08-31-pin-dominant-seasonality",
       "date": "2026-08-31",
       "title": "One pinned dominant period per case, ending a two-way split in what \"dominant\" meant",
@@ -1763,6 +1780,16 @@
     }
   ],
   "edges": [
+    {
+      "source": "2026-11-10-nf-best-weights-and-surge-qc",
+      "target": "2026-08-14-window-and-step-caps-removed",
+      "type": "fixes-bug-in"
+    },
+    {
+      "source": "2026-11-10-nf-best-weights-and-surge-qc",
+      "target": "2026-08-31-pin-dominant-seasonality",
+      "type": "relates-to"
+    },
     {
       "source": "2026-08-31-pin-dominant-seasonality",
       "target": "2026-07-08-dominant-period-fit-time",

@@ -1,4 +1,17 @@
 ---
+id: 104
+date: "2026-11-10"
+title: "neuralforecast models were scored with weights from past their best check"
+description: |
+  An audit of the benchmark found the three neuralforecast models (TFT, iTransformer, TimesNet) were scored with the weights from 250 steps past their best validation check: the library stops on Lightning's `EarlyStopping` with checkpointing off, and that callback never restores weights. They also trained on MAE, the library default, while `torchdl` restores its best weights and trains on MSE. The gap is not small: scoring N-HiTS and PatchTST with last instead of best weights (seed 0, 100 origins, 12 cases) worsens MAE by a median 5-6% and up to 35%, with last worse in 19 of 24 cells. The neuralforecast models now restore their best weights and train on MSE, and every DL cell records `best_step`, the step whose weights were kept. The step-counted patience was a suspect too but does not bind: 12x more patience picked the same N-HiTS model on `sewerlevel_bellinge`, `discharge_saugeen` and a QC-cleaned `surge_cuxhaven`.
+
+  On raw `surge_cuxhaven` the validation loss was noise, dominated by spikes in the residual down to -7.7 m. The GESLA parser kept every value GESLA flags not for use and now drops them; whether the spikes are among the flagged values can only be checked when the record is regenerated. Every DL column and every `surge_cuxhaven` column must be re-run, and the surge data regenerated from the raw GESLA archive; the merge needs `--drop` of the DL methods from every older partial, so a missing new cell shows as missing rather than as a stale one.
+commits:
+  - 1d712b9: "Restore the best validation weights after a neuralforecast fit"
+  - 8d9c044: "Train the neuralforecast models on MSE, like torchdl"
+  - 76e81c4: "Record the step each DL fit kept as best_step"
+  - 118e6ca: "Drop GESLA values flagged not for use from the surge record"
+---
 id: 103
 date: "2026-08-31"
 title: "One pinned dominant period per case, ending a two-way split in what \"dominant\" meant"
