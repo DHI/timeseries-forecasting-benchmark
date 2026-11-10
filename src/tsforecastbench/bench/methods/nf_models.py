@@ -163,6 +163,7 @@ class _NFBase(Forecaster):
         import neuralforecast.models as nfm
         import pytorch_lightning as pl
         from neuralforecast import NeuralForecast
+        from neuralforecast.losses.pytorch import MSE
 
         from tsforecastbench.bench.eval.loop import _horizon_to_steps
 
@@ -241,6 +242,11 @@ class _NFBase(Forecaster):
             val_check_steps=DL_VAL_CHECK_STEPS,
             early_stop_patience_steps=DL_PATIENCE_CHECKS,
             scaler_type="standard",
+            # MSE for training and early stopping alike, as in `torchdl`. The library default
+            # is MAE, which left the DL family split across two losses -- and two targets,
+            # since MAE fits the median and MSE the mean.
+            loss=MSE(),
+            valid_loss=MSE(),
             # neuralforecast reseeds torch from its own `random_seed` when the model is
             # built, which would undo the `seed_everything` above if left at its default.
             random_seed=self.seed,
@@ -313,8 +319,10 @@ class TFTForecaster(_NFBase):
     model_name = "TFT"
     code_snippet = (
         "from neuralforecast import NeuralForecast\n"
+        "from neuralforecast.losses.pytorch import MSE\n"
         "from neuralforecast.models import TFT\n\n"
-        "model = TFT(h=horizon, input_size=lookback, early_stop_patience_steps=5)\n"
+        "model = TFT(h=horizon, input_size=lookback, loss=MSE(), valid_loss=MSE(),\n"
+        "            early_stop_patience_steps=5)\n"
         "nf = NeuralForecast(models=[model], freq=case.freq)\n"
         "nf.fit(train_df, val_size=val_size)  # train_df: unique_id, ds, y\n"
         'y_hat = nf.predict()["TFT"]'
@@ -332,9 +340,10 @@ class ITransformerForecaster(_NFBase):
     model_name = "iTransformer"
     code_snippet = (
         "from neuralforecast import NeuralForecast\n"
+        "from neuralforecast.losses.pytorch import MSE\n"
         "from neuralforecast.models import iTransformer\n\n"
         "model = iTransformer(h=horizon, input_size=lookback, n_series=1,\n"
-        "                     early_stop_patience_steps=5)\n"
+        "                     loss=MSE(), valid_loss=MSE(), early_stop_patience_steps=5)\n"
         "nf = NeuralForecast(models=[model], freq=case.freq)\n"
         "nf.fit(train_df, val_size=val_size)  # train_df: unique_id, ds, y\n"
         'y_hat = nf.predict()["iTransformer"]'
@@ -362,8 +371,10 @@ class TimesNetForecaster(_NFBase):
     model_name = "TimesNet"
     code_snippet = (
         "from neuralforecast import NeuralForecast\n"
+        "from neuralforecast.losses.pytorch import MSE\n"
         "from neuralforecast.models import TimesNet\n\n"
-        "model = TimesNet(h=horizon, input_size=lookback, early_stop_patience_steps=5)\n"
+        "model = TimesNet(h=horizon, input_size=lookback, loss=MSE(), valid_loss=MSE(),\n"
+        "                 early_stop_patience_steps=5)\n"
         "nf = NeuralForecast(models=[model], freq=case.freq)\n"
         "nf.fit(train_df, val_size=val_size)  # train_df: unique_id, ds, y\n"
         'y_hat = nf.predict()["TimesNet"]'

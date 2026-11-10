@@ -54,3 +54,10 @@ def test_training_ran_past_the_best_check(fitted_itransformer):
     """Otherwise the test above would pass with or without the restore."""
     losses = _checks(fitted_itransformer)
     assert losses.index(min(losses)) < len(losses) - 1
+
+
+def test_training_and_early_stopping_use_mse_like_torchdl(fitted_itransformer):
+    from neuralforecast.losses.pytorch import MSE
+
+    assert isinstance(fitted_itransformer.loss, MSE)
+    assert isinstance(fitted_itransformer.valid_loss, MSE)
