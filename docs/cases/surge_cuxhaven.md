@@ -26,7 +26,7 @@ The zoom window is centred on the month with the largest surge event.*
 
 Forecast the **non-tidal residual** at one tide gauge, **hourly**, **48 hours** ahead. The horizon matches operational coastal-flood-warning lead times (DMI, Met Office, NOAA).
 
-Station pinned to **Cuxhaven_Steubenhoft (`Cux`)** by `--scan` over the UK + Atlantic NW Europe bounding box: shallow German Bight shelf, surge-rich climate (the 1962 Hamburg flood site), operational benchmark for the Elbe estuary and Hamburg port. The gauge record runs 1917–2024; the canonical Parquet is **trimmed to 2000–2024** so the ERA5 forcing covers the whole series (the splits only use 2017–2020, with ample training history before).
+Station pinned to **Cuxhaven_Steubenhoft (`Cux`)** by `--scan` over the UK + Atlantic NW Europe bounding box: shallow German Bight shelf, surge-rich climate (the 1962 Hamburg flood site), operational benchmark for the Elbe estuary and Hamburg port. The gauge record runs 1917–2024; the canonical Parquet is **trimmed to 2000–2024** so the ERA5 forcing covers the whole series. The benchmark series is the stretch after the last gap longer than 5 hours (a 30-hour gap in GESLA's flagged values on 2021-08-22), so it runs 2021-08 to 2024-06; the global methods also train on the 2000–2021 history before it.
 
 ## Dynamics and drivers
 

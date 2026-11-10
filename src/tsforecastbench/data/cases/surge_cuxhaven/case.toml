@@ -22,8 +22,8 @@ split_mode = "fraction"
 split_fraction = [0.7, 0.85]
 
 [splits]
-train_end = 2017-02-15
-val_end = 2020-10-17
+train_end = 2023-08-15
+val_end = 2024-01-16
 test_end = 2024-06-19
 
 [source]

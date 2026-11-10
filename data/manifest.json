@@ -37,7 +37,7 @@
   "surge_cuxhaven": {
     "parquet": "data/processed/surge_cuxhaven.parquet",
     "rows": 214476,
-    "sha256": "d9fe788340d97177cb927c4d9dcaddfb6161c7c2123b0ddb19e4b69cd75f88a1"
+    "sha256": "6f20afc2d04210fa8e4111f6298ed487bb3f885315b07d8f86b2a3de79347e10"
   },
   "watertemp_james": {
     "parquet": "data/processed/watertemp_james.parquet",

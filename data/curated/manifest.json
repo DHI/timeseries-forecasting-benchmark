@@ -106,18 +106,18 @@
   },
   "surge_cuxhaven": {
     "acf_threshold": 0.8,
-    "cap": 4,
-    "kept_frac": 1.0,
+    "cap": 5,
+    "kept_frac": 0.11537887689065443,
     "min_tail_length": 320,
-    "n_big_gaps": 0,
+    "n_big_gaps": 16,
     "n_filled": 0,
-    "n_observed": 214476,
+    "n_observed": 24746,
     "orig_rows": 214476,
     "parquet": "data/curated/surge_cuxhaven.parquet",
-    "rows": 214476,
-    "sha256": "9e33a0164610ba92b306a5741c975b4d5a4109286fdd5140aa11e6f72ec045e5",
+    "rows": 24746,
+    "sha256": "b5cb368d372bff7931503961ec7476164a81edbdc5457155e77ce067e1c75429",
     "span_end": "2024-06-19 11:00:00+00:00",
-    "span_start": "2000-01-01 00:00:00+00:00"
+    "span_start": "2021-08-23 10:00:00+00:00"
   },
   "watertemp_james": {
     "acf_threshold": 0.8,

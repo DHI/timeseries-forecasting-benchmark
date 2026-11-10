@@ -294,7 +294,7 @@ def main(argv: list[str] | None = None) -> int:
         "--era5-start",
         default="2000-01-01",
         help="Trim the residual record to this start so ERA5 forcing covers it "
-        "(the full GESLA record is ~106 yr; the splits only use 2017-2020).",
+        "(the full GESLA record is ~106 yr).",
     )
     p.add_argument(
         "--no-era5",
@@ -348,7 +348,7 @@ def main(argv: list[str] | None = None) -> int:
 
     df = _read_gesla_record(extracted)
     # Trim to the ERA5-covered window before the (expensive) tide fit. The full record is
-    # ~106 yr; the splits only use 2017-2020, and ERA5 forcing should span the whole series.
+    # ~106 yr, and ERA5 forcing should span the whole series.
     start = pd.Timestamp(args.era5_start, tz="UTC")
     df = df[df["ds"] >= start].reset_index(drop=True)
     print(f"[surge_cuxhaven] {len(df)} records from {args.era5_start}; removing tide via UTide ...")
