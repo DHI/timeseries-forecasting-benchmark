@@ -17,6 +17,10 @@ run whose column is known bad — the file stays on disk with its rows intact, a
 file's version of that method (if any) wins instead. It applies to the tagged file's metrics
 and its snapshots alike, so a dropped method's forecast lines never outlive its scores.
 
+`--drop-case TAG:CASE[,CASE...]` (repeatable) does the same for every row of a case, for a
+case whose data changed: a newer file's rows for it then stand alone, and a cell missing
+from the newer file shows as missing rather than as an older file's stale score.
+
 The ten partials that make up the published matrix as of 2026-08-31, in precedence order
 (research log entry 101 — `baselines_v5` and `gpu_fm_nf_dl_v5` are retired: they predate the
 seed-median scoring of #107 and every cell they hold is superseded):
@@ -69,7 +73,7 @@ def _tag(metrics_path: Path) -> str:
     return metrics_path.stem.replace("pilot_metrics_", "", 1)
 
 
-def _parse_drops(specs: list[str], tags: list[str]) -> dict[str, set[str]]:
+def _parse_drops(specs: list[str], tags: list[str], flag: str = "--drop") -> dict[str, set[str]]:
     """`["lookback_v2:TFT", "wm_full:TFT,TFT+exo"]` -> `{"lookback_v2": {"TFT"}, ...}`.
 
     An unknown tag is an error rather than a no-op: a mistyped `--drop` would otherwise
@@ -77,26 +81,43 @@ def _parse_drops(specs: list[str], tags: list[str]) -> dict[str, set[str]]:
     """
     drops: dict[str, set[str]] = {}
     for spec in specs:
-        tag, _, methods = spec.partition(":")
-        if not tag or not methods:
-            raise SystemExit(f"--drop expects TAG:METHOD[,METHOD...], got {spec!r}")
+        tag, _, values = spec.partition(":")
+        if not tag or not values:
+            raise SystemExit(f"{flag} expects TAG:VALUE[,VALUE...], got {spec!r}")
         if tag not in tags:
             raise SystemExit(
-                f"--drop {spec!r}: no input file tagged {tag!r} (have: {', '.join(tags)})"
+                f"{flag} {spec!r}: no input file tagged {tag!r} (have: {', '.join(tags)})"
             )
-        drops.setdefault(tag, set()).update(m.strip() for m in methods.split(","))
+        drops.setdefault(tag, set()).update(v.strip() for v in values.split(","))
     return drops
 
 
-def _apply_drops(df: pd.DataFrame, tag: str, methods: set[str], label: str) -> pd.DataFrame:
-    """Remove `methods` from one input frame, reporting the row count per method."""
-    kept = df[~df["method"].isin(methods)]
-    for method in sorted(methods):
-        n = int((df["method"] == method).sum())
-        if n == 0:
-            raise SystemExit(f"--drop {tag}:{method}: that file has no {method} {label} rows")
-        print(f"[merge_pilot_results] dropped {n} {method} {label} row(s) from {tag}")
-    return kept
+def _apply_drops(
+    df: pd.DataFrame,
+    tag: str,
+    label: str,
+    methods: set[str] = frozenset(),
+    cases: set[str] = frozenset(),
+    required: bool = True,
+) -> pd.DataFrame:
+    """Remove the rows of `methods` and of `cases` from one input frame, reporting the row
+    count per name.
+
+    Each name is checked against the frame as read, so a file that only holds the dropped
+    case (`surge_full`) can still drop methods. A name with no rows is an error when
+    `required`. Snapshots pass `required=False`: the metrics call has already checked the
+    same names, and some partials hold a method's scores without its forecast lines
+    (`first_six` has no neuralforecast snapshots).
+    """
+    for column, names, flag in [("method", methods, "--drop"), ("case_id", cases, "--drop-case")]:
+        for name in sorted(names):
+            n = int((df[column] == name).sum())
+            if n == 0:
+                if not required:
+                    continue
+                raise SystemExit(f"{flag} {tag}:{name}: that file has no {name} {label} rows")
+            print(f"[merge_pilot_results] dropped {n} {name} {label} row(s) from {tag}")
+    return df[~df["method"].isin(methods) & ~df["case_id"].isin(cases)]
 
 
 def _recompute_mase(results: pd.DataFrame) -> pd.DataFrame:
@@ -174,9 +195,19 @@ def main(argv: list[str] | None = None) -> int:
         "known bad -- an earlier file's version of that method wins instead. Applies to that "
         "file's snapshots too.",
     )
+    parser.add_argument(
+        "--drop-case",
+        action="append",
+        default=[],
+        metavar="TAG:CASE[,CASE...]",
+        help="Leave every row of a case out of one input file (repeatable), for a case whose "
+        "data changed. Applies to that file's snapshots too.",
+    )
     args = parser.parse_args(argv)
 
-    drops = _parse_drops(args.drop, [_tag(p) for p in args.metrics_paths])
+    tags = [_tag(p) for p in args.metrics_paths]
+    drops = _parse_drops(args.drop, tags)
+    case_drops = _parse_drops(args.drop_case, tags, "--drop-case")
 
     metrics_frames = []
     snapshot_frames = []
@@ -184,9 +215,8 @@ def main(argv: list[str] | None = None) -> int:
     for path in args.metrics_paths:
         tag = _tag(path)
         dropped = drops.get(tag, set())
-        df = pd.read_parquet(path)
-        if dropped:
-            df = _apply_drops(df, tag, dropped, "metrics")
+        dropped_cases = case_drops.get(tag, set())
+        df = _apply_drops(pd.read_parquet(path), tag, "metrics", dropped, dropped_cases)
         metrics_frames.append(df)
         for method in df["method"].unique():
             if method not in method_order:
@@ -194,9 +224,9 @@ def main(argv: list[str] | None = None) -> int:
 
         snap_path = _snapshots_path(path)
         if snap_path.exists():
-            snaps = pd.read_parquet(snap_path)
-            if dropped:
-                snaps = _apply_drops(snaps, tag, dropped, "snapshot")
+            snaps = _apply_drops(
+                pd.read_parquet(snap_path), tag, "snapshot", dropped, dropped_cases, required=False
+            )
             snapshot_frames.append(snaps)
         else:
             print(f"[merge_pilot_results] no snapshots at {snap_path}, skipping")
