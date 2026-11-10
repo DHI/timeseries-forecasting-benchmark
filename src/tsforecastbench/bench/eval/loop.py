@@ -269,6 +269,7 @@ def run_case(
         # keeps it out of the median.
         mse = float("inf")
         method.last_fit_steps = None
+        method.last_best_step = None
         method.seed = seed
         try:
             t_fit0 = time.perf_counter()
@@ -309,6 +310,7 @@ def run_case(
             "predict_seconds": predict_seconds,
             # Read here rather than by the caller: the next seed's fit overwrites it.
             "train_steps": method.last_fit_steps,
+            "best_step": method.last_best_step,
         }
 
     for method in methods:
@@ -361,6 +363,7 @@ def run_case(
                         "train_points": len(m_fit),
                         "val_points": len(m_val),
                         "train_steps": chosen["train_steps"],
+                        "best_step": chosen["best_step"],
                     }
                 )
             tag = " [ext]" if used_extended else ""

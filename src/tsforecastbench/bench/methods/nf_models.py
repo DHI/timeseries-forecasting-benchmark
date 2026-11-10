@@ -67,6 +67,7 @@ def _restore_best_weights_callback():
         def __init__(self) -> None:
             self.best_loss = float("inf")
             self.best_state: dict | None = None
+            self.best_step: int | None = None
 
         # `on_validation_end` runs after the module's `on_validation_epoch_end`, which is
         # where neuralforecast appends the check's `(global_step, val_loss)` to
@@ -74,9 +75,9 @@ def _restore_best_weights_callback():
         def on_validation_end(self, trainer, pl_module) -> None:
             if trainer.sanity_checking or not pl_module.valid_trajectories:
                 return
-            loss = pl_module.valid_trajectories[-1][1]
+            step, loss = pl_module.valid_trajectories[-1]
             if loss < self.best_loss:
-                self.best_loss = loss
+                self.best_loss, self.best_step = loss, int(step)
                 self.best_state = {k: v.detach().clone() for k, v in pl_module.state_dict().items()}
 
         def on_fit_end(self, trainer, pl_module) -> None:
@@ -267,6 +268,13 @@ class _NFBase(Forecaster):
         fitted = self._nf.models[0]
         trajectory = getattr(fitted, "train_trajectories", None)
         self.last_fit_steps = int(trajectory[-1][0]) + 1 if trajectory else None
+        # The callback ran on that same copy, so its record is read from there too.
+        restore = next(
+            cb
+            for cb in fitted.trainer_kwargs["callbacks"]
+            if type(cb).__name__ == "RestoreBestWeights"
+        )
+        self.last_best_step = restore.best_step
 
     def predict(
         self,

@@ -341,6 +341,10 @@ class Forecaster(ABC):
     # the code. Stays None for every method that does not train this way -- that is an honest
     # "not applicable", not a missing measurement.
     last_fit_steps: int | None = None
+    # The step whose weights the last fit kept: its best validation check. Early stopping
+    # ends a fit `DL_PATIENCE_CHECKS` checks after this, so `last_fit_steps` alone cannot
+    # say how much training the scored model had. None wherever `last_fit_steps` is.
+    last_best_step: int | None = None
     # The seed the next fit should use, set by the eval loop before each call to `fit` (the
     # same write-then-read arrangement as `last_fit_steps` above). Every `is_stochastic`
     # method must route all of its randomness through this -- a hard-coded literal would
