@@ -1,4 +1,12 @@
 ---
+id: 105
+date: "2026-11-10"
+title: "The MLP's direct models trained on the calendar of the wrong time"
+description: |
+  mlforecast's direct strategy, which the MLP uses, trains model h on the feature row at t against the target at t + h and computes `date_features` at t, while at predict time it hands model h the target's own calendar. Each horizon's model learned the calendar of the time h steps before its target and was then scored with a different one. The MLP now gets its calendar features as plain columns, which mlforecast aligns to each horizon's target the way it aligns the covariates; LightGBM, Ridge and CatBoost forecast recursively, where `date_features` is correct, and keep it. Over 100 origins the MLP improves on cases driven by the daily cycle: `demand_ltown` MAE -24% (5 seeds), `sewerlevel_bellinge` -10% to -14% and `wwtp_influent_n2o_350k` -30% on extended history (one seed). Daily cases move both ways at 5 seeds: `groundwater_yorktown` +15%, `discharge_lowland_denmark` +7% local and -0.4% extended. The MLP and MLP+exo columns must be re-run on every case.
+commits:
+  - 814d539: "Align the MLP's calendar features with each horizon's target"
+---
 id: 104
 date: "2026-11-10"
 title: "neuralforecast models were scored with weights from past their best check"
