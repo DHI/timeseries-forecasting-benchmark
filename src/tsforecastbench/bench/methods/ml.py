@@ -66,6 +66,16 @@ def _sincos_features_for(case: Case) -> list:
     return [sin_feat, cos_feat]
 
 
+def _calendar_frame(case: Case, ds) -> pd.DataFrame:
+    """The calendar features of `ds` as plain columns: the same date parts and sin/cos
+    encoding that `date_features` makes mlforecast compute."""
+    idx = pd.DatetimeIndex(ds)
+    cols = {name: np.asarray(getattr(idx, name)) for name in _date_features_for(case.freq)}
+    for feat in _sincos_features_for(case):
+        cols[feat.__name__] = np.asarray(feat(idx))
+    return pd.DataFrame(cols)
+
+
 def _naive_ds(ds) -> pd.Series:
     ds = pd.to_datetime(pd.Series(ds) if not isinstance(ds, pd.Series) else ds, utc=True)
     return ds.dt.tz_convert("UTC").dt.tz_localize(None)
@@ -129,6 +139,7 @@ class _WindowedMLBase(Forecaster):
     def __init__(self):
         self.uses_exogenous = self.use_exogenous
         self._exo: list[str] = []
+        self._calendar: list[str] = []
 
     def _make_model(self):
         raise NotImplementedError
@@ -157,10 +168,19 @@ class _WindowedMLBase(Forecaster):
             for c in self._exo
         }
 
-        date_feats = [
-            *_date_features_for(case.freq),
-            *_sincos_features_for(case),
-        ]
+        # mlforecast's direct strategy trains model h on the feature row at t against the
+        # target at t + h, and computes `date_features` at t: model h would learn the
+        # calendar of the time h steps before its target, then be handed the target's own
+        # calendar at predict time. Fed as plain columns instead, the calendar is aligned
+        # to each horizon's target the way the covariates are.
+        if self.direct_horizon:
+            calendar = _calendar_frame(case, df["ds"])
+            self._calendar = list(calendar.columns)
+            for c in self._calendar:
+                df[c] = calendar[c].to_numpy()
+            date_feats = []
+        else:
+            date_feats = [*_date_features_for(case.freq), *_sincos_features_for(case)]
 
         self._fcst = MLForecast(
             models=[self._make_model()],
@@ -201,7 +221,11 @@ class _WindowedMLBase(Forecaster):
         new_df["ds"] = _naive_ds(new_df["ds"]).to_numpy()
         for c in self._exo:
             new_df[c] = pd.to_numeric(new_df[c], errors="coerce")
-        if self._exo:
+        if self._calendar:
+            calendar = _calendar_frame(case, new_df["ds"])
+            for c in self._calendar:
+                new_df[c] = calendar[c].to_numpy()
+        if self._exo or self._calendar:
             x_df = self._future_X(case, history, horizon, future_exog)
             preds = self._fcst.predict(h=horizon, new_df=new_df, X_df=x_df)
         else:
@@ -213,10 +237,14 @@ class _WindowedMLBase(Forecaster):
     def _future_X(
         self, case: Case, history: pd.DataFrame, horizon: int, future_exog: pd.DataFrame | None
     ) -> pd.DataFrame:
-        """Build the mlforecast X_df of future covariate values for the horizon."""
+        """Build the mlforecast X_df of future covariate and calendar values for the
+        horizon."""
         last = _naive_ds(history["ds"].max()).iloc[0]
         fidx = pd.date_range(start=last, periods=horizon + 1, freq=case.freq)[1:]
         data: dict = {"unique_id": self._target_uid, "ds": fidx}
+        if self._calendar:
+            calendar = _calendar_frame(case, fidx)
+            data.update({c: calendar[c].to_numpy() for c in self._calendar})
         for c in self._exo:
             fill = self._last_exo.get(c, 0.0)
             if future_exog is not None and c in future_exog.columns:
@@ -412,16 +440,18 @@ class MLPForecaster(_WindowedMLBase):
         "    models=[model],\n"
         "    freq=case.freq,\n"
         "    lags=[1, 2, 4, 8, 16, 32, *case.seasonalities],\n"
-        '    date_features=["dayofweek", "month", ...],\n'
         ")\n"
+        "# calendar features (dayofweek, month, ...) as plain columns of train_df, so each\n"
+        "# horizon's model sees its target's calendar (date_features would give model h\n"
+        "# the calendar of the time h steps before its target)\n"
         "# one model per horizon step instead of one recursive model (see limitations)\n"
         "fcst.fit(train_df, static_features=[], max_horizon=horizon)\n"
         "# +exo: train_df also carries the covariate columns; mlforecast picks them up\n"
         "#       automatically as dynamic features since they're not in static_features\n\n"
-        "y_hat = fcst.predict(h=horizon, new_df=new_df)   # new_df: this origin's history so far\n"
-        "# +exo: fcst.predict(h=horizon, new_df=new_df, X_df=future_exog) -- X_df supplies\n"
-        "#       each future timestamp's covariate values (a perfect-forecast proxy here,\n"
-        "#       not a real forecast of those covariates)"
+        "y_hat = fcst.predict(h=horizon, new_df=new_df, X_df=future_calendar)\n"
+        "# new_df: this origin's history so far; X_df: the horizon's calendar columns\n"
+        "# +exo: X_df also carries each future timestamp's covariate values (a\n"
+        "#       perfect-forecast proxy here, not a real forecast of those covariates)"
     )
     # The heaviest fit of the windowed-ML family (~37s at 100,000 points) against a direct
     # prediction, which keeps a thousand forecasts to ~4 minutes.
