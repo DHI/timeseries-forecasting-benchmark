@@ -49,6 +49,43 @@ def _naive_ds(ds) -> pd.Series:
     return ds.dt.tz_convert("UTC").dt.tz_localize(None)
 
 
+def _restore_best_weights_callback():
+    """A Lightning callback that puts the best-validation weights back when training ends.
+
+    neuralforecast stops on Lightning's `EarlyStopping` with checkpointing turned off, and
+    `EarlyStopping` never restores anything, so the fitted model would otherwise keep the
+    weights from `DL_PATIENCE_CHECKS` checks past its best -- the point where held-out loss
+    has been getting worse. `torchdl` has always restored its best state; this gives the
+    neuralforecast zoo the same rule.
+
+    Built inside a function so `pytorch_lightning` is only imported when an nf model fits,
+    like every other neuralforecast import in this module.
+    """
+    import pytorch_lightning as pl
+
+    class RestoreBestWeights(pl.Callback):
+        def __init__(self) -> None:
+            self.best_loss = float("inf")
+            self.best_state: dict | None = None
+
+        # `on_validation_end` runs after the module's `on_validation_epoch_end`, which is
+        # where neuralforecast appends the check's `(global_step, val_loss)` to
+        # `valid_trajectories`.
+        def on_validation_end(self, trainer, pl_module) -> None:
+            if trainer.sanity_checking or not pl_module.valid_trajectories:
+                return
+            loss = pl_module.valid_trajectories[-1][1]
+            if loss < self.best_loss:
+                self.best_loss = loss
+                self.best_state = {k: v.detach().clone() for k, v in pl_module.state_dict().items()}
+
+        def on_fit_end(self, trainer, pl_module) -> None:
+            if self.best_state is not None:
+                pl_module.load_state_dict(self.best_state)
+
+    return RestoreBestWeights()
+
+
 class _NFBase(Forecaster):
     """Shared neuralforecast wrapper; subclasses name the model class + extra kwargs."""
 
@@ -210,6 +247,8 @@ class _NFBase(Forecaster):
             **exo_kwargs,
             **self.extra_kwargs,
             **_TRAINER_KW,
+            # A fresh list per fit: neuralforecast appends its own EarlyStopping to it.
+            callbacks=[_restore_best_weights_callback()],
         )
         self._nf = NeuralForecast(models=[model], freq=case.freq)
         self._nf.fit(df, val_size=val_size)
