@@ -1,6 +1,6 @@
 import { format as d3format } from 'd3-format';
 import { useMemo } from 'react';
-import type { Annotations, AxisName, Data, Layout, LayoutAxis, Shape } from 'plotly.js';
+import type { Annotation, AxisName, Data, Layout, LayoutAxis, Shape } from 'plotly.js';
 import Plot from '../../plotly';
 import { METHOD_COLORS } from '../../data/constants';
 import { freqToMs } from '../../data/freq';
@@ -75,7 +75,7 @@ export function SnapshotGrid({
 
     const data: Data[] = [];
     const shapes: Partial<Shape>[] = [];
-    const annotations: Partial<Annotations>[] = [];
+    const annotations: Partial<Annotation>[] = [];
     const axisLayout: Record<string, Partial<LayoutAxis>> = {};
 
     curated.forEach((entry, i) => {

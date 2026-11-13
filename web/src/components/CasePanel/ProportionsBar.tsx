@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import type { Layout, PlotData } from 'plotly.js';
+import type { Data, Layout } from 'plotly.js';
 import Plot from '../../plotly';
 import { useTheme } from '../../theme/ThemeContext';
 import { getPlotTheme } from '../../theme/plotTheme';
@@ -22,7 +22,7 @@ export function ProportionsBar({ counts, caseId }: { counts: SplitCounts; caseId
     const total = counts.train + counts.val + counts.test;
     if (total === 0) return null;
     const pt = getPlotTheme(theme === 'dark');
-    const data: Partial<PlotData>[] = (Object.keys(SPLIT_COLORS) as Array<keyof SplitCounts>).map(
+    const data: Data[] = (Object.keys(SPLIT_COLORS) as Array<keyof SplitCounts>).map(
       (split) => {
         const pct = counts[split] / total;
         const label = split.charAt(0).toUpperCase() + split.slice(1);
