@@ -11,8 +11,8 @@
 #   - define no custom USER / useradd — AdaLab manages user-namespace mappings, and a
 #     pinned UID fails with "container doesn't map UID 1000"
 
-# Node 20 to match the Pages workflow, which is where this build is proven.
-FROM node:20-alpine AS build
+# Node 22 to match the Pages workflow, which is where this build is proven.
+FROM node:22-alpine AS build
 
 WORKDIR /src
 
