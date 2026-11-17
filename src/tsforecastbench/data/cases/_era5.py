@@ -17,6 +17,7 @@ Canonical variables this module exposes (Open-Meteo source field in parentheses)
     mslp      mean sea-level pressure, hPa     (pressure_msl)
     temp_air  2-m air temperature, deg C       (temperature_2m)
     u10, v10  10-m wind components, m/s         (wind_speed_10m + wind_direction_10m)
+    wspd10    10-m wind speed, m/s              (wind_speed_10m)
 
 Wind is returned by Open-Meteo as speed + meteorological direction (the direction the
 wind blows *from*); we convert to eastward/northward components:
@@ -39,6 +40,7 @@ _CANON_TO_OM = {
     "temp_air": ["temperature_2m"],
     "u10": ["wind_speed_10m", "wind_direction_10m"],
     "v10": ["wind_speed_10m", "wind_direction_10m"],
+    "wspd10": ["wind_speed_10m"],
     "precip": ["precipitation"],
 }
 
@@ -140,14 +142,16 @@ def fetch_era5_point(
 
 def _to_canonical(raw: pd.DataFrame, variables: list[str]) -> pd.DataFrame:
     out = pd.DataFrame({"ds": pd.to_datetime(raw["ds"], utc=True)})
-    if {"wind_speed_10m", "wind_direction_10m"} & set(raw.columns):
-        spd = pd.to_numeric(raw.get("wind_speed_10m"), errors="coerce").to_numpy()
-        ddeg = pd.to_numeric(raw.get("wind_direction_10m"), errors="coerce").to_numpy()
-        drad = np.deg2rad(ddeg)
-        if "u10" in variables:
-            out["u10"] = -spd * np.sin(drad)
-        if "v10" in variables:
-            out["v10"] = -spd * np.cos(drad)
+    if "wind_speed_10m" in raw.columns:
+        spd = pd.to_numeric(raw["wind_speed_10m"], errors="coerce").to_numpy()
+        if "wspd10" in variables:
+            out["wspd10"] = spd
+        if "wind_direction_10m" in raw.columns:
+            drad = np.deg2rad(pd.to_numeric(raw["wind_direction_10m"], errors="coerce").to_numpy())
+            if "u10" in variables:
+                out["u10"] = -spd * np.sin(drad)
+            if "v10" in variables:
+                out["v10"] = -spd * np.cos(drad)
     if "mslp" in variables:
         out["mslp"] = pd.to_numeric(raw.get("pressure_msl"), errors="coerce").to_numpy()
     if "temp_air" in variables:
@@ -204,3 +208,39 @@ def merge_onto(
         if v not in out.columns:
             out[v] = float("nan")
     return out
+
+
+def fill_gaps_from_era5(
+    base: pd.DataFrame,
+    era5: pd.DataFrame,
+    pairs: dict[str, str],
+    fit_until: pd.Timestamp,
+) -> tuple[pd.DataFrame, dict]:
+    """Fill NaN in each `base` column from the ERA5 column `pairs` maps it to.
+
+    ERA5 values are mapped onto the measured column's scale by a least-squares line
+    fitted where both are present at or before `fit_until`, so the test period does not
+    shape the fill (gh #119). Returns the filled frame and, per column, the line and the
+    number of values filled.
+    """
+    out = base.copy()
+    ds = pd.to_datetime(out["ds"], utc=True)
+    e = era5.assign(ds=pd.to_datetime(era5["ds"], utc=True)).set_index("ds")
+    cutoff = pd.Timestamp(fit_until)
+    cutoff = cutoff.tz_convert("UTC") if cutoff.tzinfo else cutoff.tz_localize("UTC")
+    info: dict[str, dict] = {}
+    for col, era_col in pairs.items():
+        x = e[era_col].reindex(ds).to_numpy(dtype=float)
+        y = pd.to_numeric(out[col], errors="coerce").to_numpy(dtype=float)
+        fit = np.isfinite(x) & np.isfinite(y) & (ds <= cutoff).to_numpy()
+        slope, intercept = np.polyfit(x[fit], y[fit], 1)
+        gap = ~np.isfinite(y) & np.isfinite(x)
+        y[gap] = slope * x[gap] + intercept
+        out[col] = y
+        info[col] = {
+            "slope": float(slope),
+            "intercept": float(intercept),
+            "n_fit": int(fit.sum()),
+            "n_filled": int(gap.sum()),
+        }
+    return out, info
