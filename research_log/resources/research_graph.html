@@ -341,6 +341,23 @@
 <script type="application/json" id="graph-data">{
   "nodes": [
     {
+      "id": "2026-11-17-data-prep-test-leaks",
+      "date": "2026-11-17",
+      "title": "Data preparation no longer reads the test period or bridges long input gaps",
+      "category": "methodology",
+      "summary": "The surge tide fit and the gap cap now use only the pre-test record, origins never condition on a filled value, external-input gaps are filled only up to the cap, atmp leaves both wave cases and waves_massachusetts fills wind and pressure from ERA5.",
+      "detail": "The surge tide model is now fitted on the record before the test start and reconstructed over all of it, which moves the residual by 4 mm on average and 2 cm at most. The gap cap is read on the pre-test record; four cases' caps move by one step and none of their data changes. Forecast origins whose history ends on a filled value are skipped, because that value is interpolated from a later observation. External-input gaps are filled only up to the cap, and a longer gap inside the curated span fails curation (gh #119). `atmp` is dropped from both wave cases: it is missing over all of `waves_oregon`'s training split and 80% of `waves_massachusetts`'s. `waves_massachusetts`'s wind and pressure gaps, up to 1818 h, are filled from ERA5 at the buoy, mapped onto the buoy's scale by a line fitted on the pre-test record. Every column on `surge_cuxhaven`, `waves_massachusetts` and `waves_oregon` needs the re-run.",
+      "tags": [
+        "gap-policy",
+        "curation",
+        "leakage",
+        "surge",
+        "waves",
+        "exogenous",
+        "era5"
+      ]
+    },
+    {
       "id": "2026-11-10-mlp-direct-calendar-alignment",
       "date": "2026-11-10",
       "title": "The MLP's direct models trained on the calendar of the wrong time",
@@ -1795,6 +1812,16 @@
     }
   ],
   "edges": [
+    {
+      "source": "2026-11-17-data-prep-test-leaks",
+      "target": "2026-07-03-gap-handling-policy",
+      "type": "fixes-bug-in"
+    },
+    {
+      "source": "2026-11-17-data-prep-test-leaks",
+      "target": "2026-11-10-nf-best-weights-and-surge-qc",
+      "type": "relates-to"
+    },
     {
       "source": "2026-11-10-mlp-direct-calendar-alignment",
       "target": "2026-07-30-mlp-direct-horizon-forecast-strategy",

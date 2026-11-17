@@ -6,6 +6,9 @@ entry and its commits. See `schema.md` for the format both files follow.
 
 <!-- Add new entries below this line, newest first, matching details.md. -->
 
+### 2026-11-17
+- 106 — Data preparation no longer reads the test period or bridges long input gaps
+
 ### 2026-11-10
 - 105 — The MLP's direct models trained on the calendar of the wrong time
 - 104 — neuralforecast models were scored with weights from past their best check
