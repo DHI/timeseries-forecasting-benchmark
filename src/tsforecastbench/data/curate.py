@@ -106,6 +106,21 @@ def tail_segment_bounds(observed: np.ndarray, cap: int) -> tuple[int, int]:
     return start + int(obs_idx[0]), start + int(obs_idx[-1]) + 1
 
 
+def fraction_split_dates(
+    observed_ds: pd.Series, split_fraction: list[float]
+) -> tuple[pd.Timestamp, pd.Timestamp]:
+    """`(train_end, val_end)` as quantiles `split_fraction` of the observed timestamps,
+    tz-naive UTC."""
+    ds = pd.to_datetime(observed_ds)
+    if ds.dt.tz is not None:
+        ds = ds.dt.tz_convert("UTC").dt.tz_localize(None)
+    if ds.empty:
+        raise ValueError("no observed y values to split on")
+    ns = ds.astype("int64").to_numpy()
+    f0, f1 = split_fraction
+    return pd.Timestamp(int(np.quantile(ns, f0))), pd.Timestamp(int(np.quantile(ns, f1)))
+
+
 def _horizon_steps(horizon: str, freq: str) -> int:
     delta = pd.Timedelta(horizon)
     step = pd.Timedelta(pd.tseries.frequencies.to_offset(freq))
