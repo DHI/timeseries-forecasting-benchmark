@@ -364,7 +364,8 @@ class Chronos2Forecaster(Forecaster):
         cap = self.context_length or pipe.model_context_length
         ctx_len = min(self._n_fit, cap)
         y = pd.to_numeric(history["y"], errors="coerce").ffill().bfill().to_numpy(dtype=float)
-        ds = pd.DatetimeIndex(history["ds"])
+        # chronos-forecasting >= 2.3 reads timestamps as int64 and rejects tz-aware ones.
+        ds = pd.DatetimeIndex(pd.to_datetime(history["ds"], utc=True)).tz_convert(None)
         context_df = pd.DataFrame(
             {
                 "id": 0,
@@ -379,7 +380,7 @@ class Chronos2Forecaster(Forecaster):
             tail = history.iloc[-ctx_len:]
             for c in exo:
                 context_df[c] = pd.to_numeric(tail[c], errors="coerce").to_numpy()
-            future_df = pd.DataFrame({"id": 0, "timestamp": future})
+            future_df = pd.DataFrame({"id": 0, "timestamp": future.tz_convert(None)})
             for c in exo:
                 future_df[c] = _future_covariate(c, history[c], horizon, future_exog)
         pred = pipe.predict_df(
