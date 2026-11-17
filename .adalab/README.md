@@ -5,28 +5,35 @@ The results-matrix app (`web/`) is mirrored to AdaLab at
 account can reach it. GitHub Pages publishes the same app independently via
 `.github/workflows/pages.yml`; neither target replaces the other.
 
-`.github/workflows/adalab.yml` deploys on every push to `main` that touches the app.
-Nothing is built in CI — AdaLab's own build server clones this repo at the pushed commit
-and builds `../Containerfile` itself, which is why no Harbor credentials are needed. The
-only secret involved is `ADALAB_PAT`.
+Deploys are manual. This repository is public, and GitHub does not let a public repository
+call the deploy workflow in the internal `DHI-Internal/dhi_adalab` repo or use its
+self-hosted runner. So nothing deploys on a push to `main`: **after publishing new results,
+redeploy by hand**, or the AdaLab copy keeps serving the old ones.
 
-## The deploy waits for approval
+Nothing is built locally. AdaLab's own build server clones this repo at the given commit
+and builds `../Containerfile` itself.
 
-The workflow runs in the `adalab_deploy` GitHub Environment, DHI's convention for AdaLab
-deploys. That environment carries a required reviewer, so **a deploy pauses in the Actions
-tab until someone approves it**, and it holds its own `ADALAB_PAT` — the callee reads the
-environment's copy rather than the repository-wide one.
+## Deploying
 
-**The environment's `ADALAB_PAT` is the one that matters.** An environment secret
-overrides a repository secret of the same name, so a stale or placeholder value in
-`adalab_deploy` fails every deploy even while a perfectly good repository-level copy sits
-there unused — the failure reads `AssertionError: Failed to authenticate with external
-credentials`, which does not point at the secret at all. Set it with
-`gh secret set ADALAB_PAT --env adalab_deploy --repo <org>/<repo>`. There is deliberately
-no repository-level copy.
+From the repository root, on the DHI network, with the `dhi-adalab` CLI installed and an
+AdaLab personal access token:
 
-The environment has no deployment-branch policy, so any branch may still deploy to it and
-read its secret. Restricting it to `main` needs repository Admin.
+```bash
+git switch main && git pull
+SHA=$(git rev-parse HEAD)
+ADALAB_PAT=<token> dhi-adalab app deploy \
+  --git-url https://github.com/DHI/timeseries-forecasting-benchmark \
+  --commit "$SHA" \
+  --spec-file .adalab/app.json \
+  --next-image-version "tsforecast-benchmark-web=$SHA"
+```
+
+Tag the image with the commit SHA, as above. AdaLab tags cannot change, so redeploying with
+a tag it already has silently serves the old image.
+
+The deploy writes `current_image_version` and `next_image_version` back into
+`local_container_1.json`. Commit that change on a branch and open a PR, so the files keep
+matching what is live.
 
 ## Three things that will bite
 
@@ -46,12 +53,12 @@ and has to stay in step with `app_url` below.
 there is deliberately no `card.json` in this directory. Adding one later with the default
 `card_id: null` makes dhi-adalab decide "create" and produce a *second* card pointing at
 the same app. Fetch the existing card's id first (`adalib.cards`) and put it in `card_id`
-before committing any `card.json`, then pass `card-spec-file: .adalab/card.json` in the
-workflow.
+before committing any `card.json`, then pass `--card .adalab/card.json` to the deploy
+command.
 
 ## Files
 
-- `app.json` — app identity, URL slug, ACL. `app_id` is written back by CI; never edit it.
-- `local_container_1.json` — image name, port, resources. `metadata_id` and
-  `current_image_version` are written back by CI. `next_image_version` is overridden per
-  run with the commit SHA, so it does not need bumping by hand.
+- `app.json` — app identity, URL slug, ACL. `app_id` points the deploy at the live app;
+  never edit it. Without it, a deploy creates a second app.
+- `local_container_1.json` — image name, port, resources. `metadata_id` and the image
+  versions are written back by each deploy.
