@@ -211,18 +211,20 @@ def curate_frame(
     seg = df.iloc[start:stop].copy().reset_index(drop=True)
     seg_observed = observed[start:stop].copy()
 
-    # Fill target and exogenous within the span. By construction the span holds no gap
-    # longer than `cap` in the *target*; exogenous columns are filled unconditionally
-    # (their own gaps aren't cap-bounded the way the target's are).
+    # Fill target and exogenous gaps of up to `cap` steps within the span. By
+    # construction the span holds no longer gap in the target; a longer gap in an
+    # exogenous column is a data problem for the case's download step to fix (gh #119).
     fill_cols = ["y", *[c for c in (exog or []) if c in seg.columns]]
     n_filled = int((~seg_observed).sum())
     for c in fill_cols:
-        s = pd.to_numeric(seg[c], errors="coerce").interpolate(
-            method="linear", limit_direction="both"
-        )
-        if s.isna().any():  # exogenous column that is all-NaN or gappy at the edges
-            s = s.ffill().bfill()
-        seg[c] = s
+        filled = _fill_small_gaps(pd.to_numeric(seg[c], errors="coerce"), cap)
+        if filled.isna().any():
+            runs = [b - a for a, b in _nan_runs(filled.isna().to_numpy())]
+            raise ValueError(
+                f"exogenous column {c!r} has {len(runs)} gap(s) longer than the "
+                f"{cap}-step cap inside the tail segment (longest {max(runs)} steps)"
+            )
+        seg[c] = filled
 
     seg["y_observed"] = seg_observed
 
@@ -285,8 +287,6 @@ def extend_frame(
         filled = _fill_small_gaps(s, cap)
         if c == "y":
             n_filled = int((s.isna() & filled.notna()).sum())
-        elif filled.isna().any():  # exogenous column all-NaN or gappy at the edges
-            filled = filled.ffill().bfill()
         df[c] = filled
 
     df["y_observed"] = observed
