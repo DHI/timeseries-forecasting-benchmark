@@ -106,7 +106,7 @@ describe('App', () => {
     );
     render(<App />);
     await waitFor(() => expect(screen.getByTestId('plot-stub')).toBeInTheDocument());
-    expect(screen.getByText('Timeseries Forecasting Benchmark')).toBeInTheDocument();
+    expect(screen.getByText('Time Series Forecasting Benchmark')).toBeInTheDocument();
 
     // The control panel starts collapsed; open it to reach the sidebar controls.
     await user.click(screen.getByTitle('Collapse/expand controls'));

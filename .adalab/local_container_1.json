@@ -1,0 +1,23 @@
+{
+  "uid": 1,
+  "container_image_name": "tsforecast-benchmark-web",
+  "image_version": {
+    "current_image_version": "373899e4152eb896abe831e13544315092465fbc",
+    "next_image_version": "373899e4152eb896abe831e13544315092465fbc"
+  },
+  "container_description": "nginx serving the built React results-matrix app.",
+  "container_file": "./Containerfile",
+  "build_context": "./",
+  "metadata_id": 432,
+  "primary_container": true,
+  "port": 8080,
+  "test_serving_port": 8080,
+  "max_cpu": 1,
+  "min_cpu": 0,
+  "max_ram": 512,
+  "min_ram": 64,
+  "command": null,
+  "environment_variables": [],
+  "is_locked": false,
+  "volume_mounts": []
+}
