@@ -3554,6 +3554,7 @@ dev = [
     { name = "pytest-cov" },
     { name = "ruff" },
     { name = "streamlit" },
+    { name = "utide" },
 ]
 dl = [
     { name = "torch" },
@@ -3614,6 +3615,7 @@ requires-dist = [
     { name = "transformers", marker = "extra == 'fm'", specifier = "<5" },
     { name = "uni2ts", marker = "extra == 'fm'", specifier = ">=1.2" },
     { name = "utide", marker = "extra == 'data'", specifier = ">=0.3" },
+    { name = "utide", marker = "extra == 'dev'", specifier = ">=0.3" },
     { name = "utilsforecast", specifier = ">=0.2" },
     { name = "xarray", marker = "extra == 'data'", specifier = ">=2024.1" },
 ]
