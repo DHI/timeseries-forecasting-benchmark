@@ -13,6 +13,19 @@ updates:
       python-security:
         applies-to: security-updates
         patterns: ["*"]
+    # Dependabot raises the caps in pyproject.toml instead of respecting them, so
+    # the bumps that break the install are ignored here. Drop a rule once its
+    # blocker is gone.
+    ignore:
+      # 26 needs NumPy 2; the fm extra (uni2ts) holds NumPy at 1.26.
+      - dependency-name: "pyarrow"
+        versions: [">=26"]
+      # 5.x needs torch>=2.5; uni2ts pins torch<2.5.
+      - dependency-name: "transformers"
+        versions: [">=5"]
+      # neuralforecast 3.1.9 needs <2.6; bumping it downgrades neuralforecast.
+      - dependency-name: "pytorch-lightning"
+        versions: [">=2.6"]
 
   - package-ecosystem: "npm"
     directory: "/web"
