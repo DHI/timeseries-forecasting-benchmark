@@ -33,6 +33,7 @@ import numpy as np
 import pandas as pd
 
 from tsforecastbench.data.cases import _io
+from tsforecastbench.data.curate import curate_frame
 from tsforecastbench.data.registry import get_case
 
 CONFIG = {
@@ -231,7 +232,10 @@ def _read_gesla_record(path: Path) -> pd.DataFrame:
     return df.drop(columns="use_flag")
 
 
-def _tidal_residual(df: pd.DataFrame, lat: float) -> pd.DataFrame:
+def _tidal_residual(df: pd.DataFrame, lat: float, fit_until: pd.Timestamp) -> pd.DataFrame:
+    """Sea level minus a UTide tide fitted on the record up to `fit_until` (tz-naive
+    UTC) and reconstructed over the whole record, so the test period does not shape the
+    target (gh #119)."""
     try:
         import utide
     except ImportError as e:
@@ -240,9 +244,10 @@ def _tidal_residual(df: pd.DataFrame, lat: float) -> pd.DataFrame:
         ) from e
 
     t = df["ds"].dt.tz_convert("UTC").dt.tz_localize(None)
+    fit = (t <= pd.Timestamp(fit_until)).to_numpy()
     coef = utide.solve(
-        t.to_numpy(),
-        df["sea_level"].to_numpy(),
+        t.to_numpy()[fit],
+        df["sea_level"].to_numpy()[fit],
         lat=lat,
         method="ols",
         conf_int="none",
@@ -352,17 +357,38 @@ def main(argv: list[str] | None = None) -> int:
     start = pd.Timestamp(args.era5_start, tz="UTC")
     df = df[df["ds"] >= start].reset_index(drop=True)
     print(f"[surge_cuxhaven] {len(df)} records from {args.era5_start}; removing tide via UTide ...")
-    df = _tidal_residual(df, lat=lat)
 
-    out = pd.DataFrame(
-        {
-            "unique_id": case.id,
-            "ds": df["ds"],
-            "y": df["residual_m"],
-            "residual_m": df["residual_m"],
-        }
-    )
-    out = _io.resample_regular(out, case.freq)
+    def residual_frame(fit_until: pd.Timestamp) -> tuple[pd.DataFrame, pd.Timestamp]:
+        res = _tidal_residual(df, lat=lat, fit_until=fit_until)
+        frame = pd.DataFrame(
+            {
+                "unique_id": case.id,
+                "ds": res["ds"],
+                "y": res["residual_m"],
+                "residual_m": res["residual_m"],
+            }
+        )
+        frame = _io.resample_regular(frame, case.freq)
+        _, info = curate_frame(
+            frame,
+            case.freq,
+            seasonalities=case.seasonalities,
+            horizon_primary=case.horizon_primary,
+            split_fraction=case.split_fraction,
+        )
+        return frame, pd.Timestamp(info["val_end"])
+
+    # The test start depends on the residual's gap cap, and the tide fit has to stop at
+    # the test start. A first fit on the whole record locates it; the second fit stops
+    # there and must land on the same test start.
+    _, val_end = residual_frame(pd.Timestamp.max)
+    out, val_end_check = residual_frame(val_end)
+    if val_end_check != val_end:
+        raise RuntimeError(
+            f"[surge_cuxhaven] test start moved from {val_end} to {val_end_check} after "
+            "refitting the tide on the pre-test record"
+        )
+    print(f"[surge_cuxhaven] tide fitted on the record up to {val_end}")
 
     era5_vars = ["mslp", "u10", "v10"]
     if args.no_era5 or lon is None:
