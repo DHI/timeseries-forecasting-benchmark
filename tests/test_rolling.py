@@ -12,6 +12,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
+from tsforecastbench.bench.eval.loop import _pick_origin  # noqa: E402
 from tsforecastbench.bench.eval.rolling import (  # noqa: E402
     _select_rolling_origins,
     run_case_rolling,
@@ -62,6 +63,29 @@ def test_falls_back_to_first_candidate_when_all_filtered_out():
     origins = _select_rolling_origins(test_start, last_origin, raw_y, H, n_origins)
 
     assert origins == [test_start]
+
+
+# A filled value is interpolated from the observation after its gap, so a forecast whose
+# last history point is filled would see the future (gh #119).
+def test_rolling_origins_skip_history_that_ends_on_a_filled_value():
+    test_start, last_origin, H, n_origins = 10, 30, 5, 30
+    raw_y = np.ones(last_origin + H)
+    raw_y[19] = np.nan  # the history of origin 20 ends on this filled point
+
+    origins = _select_rolling_origins(test_start, last_origin, raw_y, H, n_origins)
+
+    assert 20 not in origins
+    assert 21 in origins
+
+
+def test_single_holdout_origin_skips_history_that_ends_on_a_filled_value():
+    test_start, last_origin, H = 10, 30, 4
+    raw_y = np.ones(last_origin + H)
+    raw_y[9] = np.nan  # the history of the first test origin ends on this filled point
+
+    origin = _pick_origin(raw_y, test_start, last_origin, H)
+
+    assert np.isfinite(raw_y[origin - 1])
 
 
 # ---------------------------------------------------------------------------
