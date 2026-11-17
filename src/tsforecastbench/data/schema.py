@@ -263,7 +263,7 @@ class Case(BaseModel):
             return pd.read_parquet(self.curated_extended_path)
         raw = self.load(prefer_synth=prefer_synth)
         exog = list(dict.fromkeys([*self.exogenous, *self.exogenous_known_future]))
-        curated, _ = curate_frame(
+        curated, info = curate_frame(
             raw,
             self.freq,
             seasonalities=self.seasonalities,
@@ -272,7 +272,7 @@ class Case(BaseModel):
             exog=exog,
         )
         _, val_end, _ = self.split_bounds(curated)
-        extended, _ = extend_frame(raw, self.freq, cutoff=val_end, exog=exog)
+        extended, _ = extend_frame(raw, cutoff=val_end, cap=info["cap"], exog=exog)
         return extended
 
     def synth(self) -> pd.DataFrame:

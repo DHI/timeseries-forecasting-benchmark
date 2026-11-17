@@ -7,7 +7,9 @@ Two decisions, applied uniformly to every case (see research_log/details.md, id 
    autocorrelation measures, so the cap is the lag at which the target's ACF first
    falls below `ACF_THRESHOLD`, bounded above by one dominant seasonal cycle. Flashy
    series decorrelate in a step or two (tiny cap, almost nothing filled); smooth series
-   stay correlated for longer (a modest fill is genuinely informed by the data).
+   stay correlated for longer (a modest fill is genuinely informed by the data). The
+   ACF is read on the pre-test record only (up to `val_end`), so the test period does
+   not shape the data it is scored on (gh #119).
 
 2. **Tail-segment trim.** Gaps larger than the cap are hard boundaries — never bridged.
    They split the record into contiguous segments; we keep the last one (the span
@@ -181,15 +183,31 @@ def curate_frame(
     observed = y.notna().to_numpy()
     n_total = len(df)
 
-    cap = gap_cap(y, freq, threshold)
-    start, stop = tail_segment_bounds(observed, cap)
+    ds_naive = pd.to_datetime(df["ds"])
+    if ds_naive.dt.tz is not None:
+        ds_naive = ds_naive.dt.tz_convert("UTC").dt.tz_localize(None)
     floor = min_tail_length(seasonalities, horizon_primary, freq, split_fraction)
-    if stop - start < floor:
-        raise ValueError(
-            f"tail segment is {stop - start} steps, below the {floor}-step floor "
-            f"(2 cycles of the longest declared period in train, >=1 horizon of "
-            f"'{horizon_primary}' in test) — needs a human look, not a smaller span."
-        )
+
+    # The cap sets the tail segment, the segment sets `val_end`, and the cap is read on
+    # the record up to `val_end`. Start from the full record and repeat until the cap
+    # stops changing.
+    cap = gap_cap(y, freq, threshold)
+    for _ in range(10):
+        start, stop = tail_segment_bounds(observed, cap)
+        if stop - start < floor:
+            raise ValueError(
+                f"tail segment is {stop - start} steps, below the {floor}-step floor "
+                f"(2 cycles of the longest declared period in train, >=1 horizon of "
+                f"'{horizon_primary}' in test) — needs a human look, not a smaller span."
+            )
+        seg_ds = ds_naive.iloc[start:stop]
+        _, val_end = fraction_split_dates(seg_ds[observed[start:stop]], split_fraction)
+        pre_test_cap = gap_cap(y[ds_naive <= val_end], freq, threshold)
+        if pre_test_cap == cap:
+            break
+        cap = pre_test_cap
+    else:
+        raise ValueError("gap cap did not settle on the pre-test record after 10 passes")
     seg = df.iloc[start:stop].copy().reset_index(drop=True)
     seg_observed = observed[start:stop].copy()
 
@@ -219,6 +237,7 @@ def curate_frame(
         "n_filled": n_filled,
         "n_big_gaps": len(big_runs),
         "min_tail_length": floor,
+        "val_end": str(val_end),
         "span_start": str(seg["ds"].iloc[0]) if len(seg) else None,
         "span_end": str(seg["ds"].iloc[-1]) if len(seg) else None,
     }
@@ -227,10 +246,9 @@ def curate_frame(
 
 def extend_frame(
     df: pd.DataFrame,
-    freq: str,
     cutoff: pd.Timestamp,
+    cap: int,
     exog: list[str] | None = None,
-    threshold: float = ACF_THRESHOLD,
 ) -> tuple[pd.DataFrame, dict]:
     """Gap-fill the full raw record up to `cutoff`, for `Forecaster.is_global` methods
     that can use more history than the shared tail segment.
@@ -241,12 +259,10 @@ def extend_frame(
     global-capable method sees the record's true shape, gaps and all, not a
     stitched-together approximation of one. `cutoff` should be the tail segment's
     `val_end`, so this frame never reaches past what the corresponding local matrix
-    holds out for testing.
+    holds out for testing, and `cap` the gap cap `curate_frame` reported, so both views
+    fill the same gaps.
     """
     df = df.sort_values("ds").reset_index(drop=True)
-    # Match `curate_frame`: derive the per-case fill cap from the full raw record so the
-    # extended-history view uses the same small-gap policy.
-    cap = gap_cap(pd.to_numeric(df["y"], errors="coerce"), freq, threshold)
 
     ds_cmp = pd.to_datetime(df["ds"])
     if ds_cmp.dt.tz is not None:
@@ -278,7 +294,6 @@ def extend_frame(
     big_runs = [(a, b) for a, b in _nan_runs(~observed) if (b - a) > cap]
     info = {
         "cap": int(cap),
-        "acf_threshold": float(threshold),
         "orig_rows": int(n_total),
         "rows": len(df),
         "n_observed": int(observed.sum()),
