@@ -123,12 +123,16 @@ def _pick_origin(
 ) -> int:
     """First origin in [test_start, last_origin] whose horizon window is >= min_frac
     observed; else the origin with the densest window. Keeps the single-holdout metric
-    meaningful when the test split begins in a gap."""
+    meaningful when the test split begins in a gap. An origin whose history ends on a
+    filled value is skipped: that value is interpolated from the observation after its
+    gap, so it carries the future (gh #119)."""
     if last_origin <= test_start:
         return test_start
     step = max(1, horizon // 4)
     best_o, best_frac = test_start, -1.0
     for o in range(test_start, last_origin + 1, step):
+        if not np.isfinite(raw_y[o - 1]):
+            continue
         frac = float(np.isfinite(raw_y[o : o + horizon]).mean())
         if frac >= min_frac:
             return o

@@ -72,15 +72,20 @@ def _select_rolling_origins(
 ) -> list[int]:
     """Pick up to `n_origins` origins spread across [test_start, last_origin].
 
-    Oversamples candidates, drops any whose horizon window is <50% observed, then
-    evenly downsamples the survivors back to `n_origins` — evenly, not by truncating
-    the sorted list — so a few dropped candidates near the end don't collapse the
-    selection onto the front of the range.
+    Oversamples candidates, drops any whose horizon window is <50% observed or whose
+    history ends on a filled value (interpolated from the observation after its gap, so
+    it carries the future; gh #119), then evenly downsamples the survivors back to
+    `n_origins` — evenly, not by truncating the sorted list — so a few dropped
+    candidates near the end don't collapse the selection onto the front of the range.
     """
     cand = np.unique(
         np.linspace(test_start, last_origin, max(n_origins * 2, n_origins)).astype(int)
     )
-    valid = [int(o) for o in cand if np.isfinite(raw_y[o : o + H]).mean() >= 0.5]
+    valid = [
+        int(o)
+        for o in cand
+        if np.isfinite(raw_y[o - 1]) and np.isfinite(raw_y[o : o + H]).mean() >= 0.5
+    ]
     if not valid:
         return [int(cand[0])]
     if len(valid) <= n_origins:
