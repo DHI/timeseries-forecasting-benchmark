@@ -201,7 +201,9 @@ def _read_gesla_record(path: Path) -> pd.DataFrame:
 
     Format: ~40 header lines starting with '#', then whitespace-delimited records of
         date  time  sea_level  qc_flag  use_flag
-    Sentinels (-99.9999) become NaN.
+    Sentinels (-99.9999) become NaN, and so does every value GESLA marks not for use
+    (use_flag 0). GESLA derives that flag from the provider's QC flag: doubtful values,
+    isolated spikes or wrong values, and missing values (QC 3, 4, 5) are not for use.
     """
     rows = []
     with path.open() as f:
@@ -218,10 +220,15 @@ def _read_gesla_record(path: Path) -> pd.DataFrame:
                 sl = float(parts[2])
             except ValueError:
                 continue
-            rows.append((ts, sl))
-    df = pd.DataFrame(rows, columns=["ds", "sea_level"])
+            use = int(parts[4]) if len(parts) >= 5 else 1
+            rows.append((ts, sl, use))
+    df = pd.DataFrame(rows, columns=["ds", "sea_level", "use_flag"])
     df.loc[df["sea_level"] < -99, "sea_level"] = np.nan
-    return df
+    n_rejected = int(((df["use_flag"] == 0) & df["sea_level"].notna()).sum())
+    if n_rejected:
+        print(f"[surge_cuxhaven] {n_rejected:,} values flagged not for use by GESLA -> NaN")
+    df.loc[df["use_flag"] == 0, "sea_level"] = np.nan
+    return df.drop(columns="use_flag")
 
 
 def _tidal_residual(df: pd.DataFrame, lat: float) -> pd.DataFrame:
@@ -287,7 +294,7 @@ def main(argv: list[str] | None = None) -> int:
         "--era5-start",
         default="2000-01-01",
         help="Trim the residual record to this start so ERA5 forcing covers it "
-        "(the full GESLA record is ~106 yr; the splits only use 2017-2020).",
+        "(the full GESLA record is ~106 yr).",
     )
     p.add_argument(
         "--no-era5",
@@ -341,7 +348,7 @@ def main(argv: list[str] | None = None) -> int:
 
     df = _read_gesla_record(extracted)
     # Trim to the ERA5-covered window before the (expensive) tide fit. The full record is
-    # ~106 yr; the splits only use 2017-2020, and ERA5 forcing should span the whole series.
+    # ~106 yr, and ERA5 forcing should span the whole series.
     start = pd.Timestamp(args.era5_start, tz="UTC")
     df = df[df["ds"] >= start].reset_index(drop=True)
     print(f"[surge_cuxhaven] {len(df)} records from {args.era5_start}; removing tide via UTide ...")

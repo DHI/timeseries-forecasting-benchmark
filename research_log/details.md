@@ -1,4 +1,26 @@
 ---
+id: 105
+date: "2026-11-10"
+title: "The MLP's direct models trained on the calendar of the wrong time"
+description: |
+  mlforecast's direct strategy, which the MLP uses, trains model h on the feature row at t against the target at t + h and computes `date_features` at t, while at predict time it hands model h the target's own calendar. Each horizon's model learned the calendar of the time h steps before its target and was then scored with a different one. The MLP now gets its calendar features as plain columns, which mlforecast aligns to each horizon's target the way it aligns the covariates; LightGBM, Ridge and CatBoost forecast recursively, where `date_features` is correct, and keep it. Over 100 origins the MLP improves on cases driven by the daily cycle: `demand_ltown` MAE -24% (5 seeds), `sewerlevel_bellinge` -10% to -14% and `wwtp_influent_n2o_350k` -30% on extended history (one seed). Daily cases move both ways at 5 seeds: `groundwater_yorktown` +15%, `discharge_lowland_denmark` +7% local and -0.4% extended. The MLP and MLP+exo columns must be re-run on every case.
+commits:
+  - 814d539: "Align the MLP's calendar features with each horizon's target"
+---
+id: 104
+date: "2026-11-10"
+title: "neuralforecast models were scored with weights from past their best check"
+description: |
+  An audit of the benchmark found the three neuralforecast models (TFT, iTransformer, TimesNet) were scored with the weights from 250 steps past their best validation check: the library stops on Lightning's `EarlyStopping` with checkpointing off, and that callback never restores weights. They also trained on MAE, the library default, while `torchdl` restores its best weights and trains on MSE. The gap is not small: scoring N-HiTS and PatchTST with last instead of best weights (seed 0, 100 origins, 12 cases) worsens MAE by a median 5-6% and up to 35%, with last worse in 19 of 24 cells. The neuralforecast models now restore their best weights and train on MSE, and every DL cell records `best_step`, the step whose weights were kept. The step-counted patience was a suspect too but does not bind: 12x more patience picked the same N-HiTS model on `sewerlevel_bellinge`, `discharge_saugeen` and a QC-cleaned `surge_cuxhaven`.
+
+  On raw `surge_cuxhaven` the validation loss was noise, dominated by spikes in the residual down to -7.7 m. They were GESLA's 374 values flagged not for use since 2000 (QC flag 4, a -1.0 m placeholder in the raw record), which the parser kept; it now drops them. The surge data was regenerated from the GESLA-4.1 archive. The gaps the spikes leave break the curated series under the existing gap rule, and the last one (30 h, 2021-08-22) cuts it from 214,476 points (2000-2024) to 24,746 (2021-08 to 2024-06), with the 2000-2021 history kept for the global methods' extended frame. Every DL column and every `surge_cuxhaven` column must be re-run; the merge needs `--drop` of the DL methods and of all `surge_cuxhaven` rows from every older partial, so a missing new cell shows as missing rather than as a stale one.
+commits:
+  - 1d712b9: "Restore the best validation weights after a neuralforecast fit"
+  - 8d9c044: "Train the neuralforecast models on MSE, like torchdl"
+  - 76e81c4: "Record the step each DL fit kept as best_step"
+  - 118e6ca: "Drop GESLA values flagged not for use from the surge record"
+  - 6482343: "Regenerate the surge data without GESLA's flagged values"
+---
 id: 103
 date: "2026-08-31"
 title: "One pinned dominant period per case, ending a two-way split in what \"dominant\" meant"

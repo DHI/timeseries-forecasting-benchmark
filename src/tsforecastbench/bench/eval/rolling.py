@@ -244,6 +244,7 @@ def run_case_rolling(
         # Infinite for a run that failed, which keeps it out of the median.
         mse = float("inf")
         method.last_fit_steps = None
+        method.last_best_step = None
         method.seed = seed
         try:
             # A global method keeps a trained model apart from its input, so it is fit
@@ -359,6 +360,7 @@ def run_case_rolling(
             "val_points": val_points,
             # Read here rather than by the caller: the next seed's fit overwrites it.
             "train_steps": method.last_fit_steps,
+            "best_step": method.last_best_step,
         }
 
     for method in methods:
@@ -418,11 +420,13 @@ def run_case_rolling(
                         # orders of magnitude (issue #95); recording them per cell keeps
                         # any future divergence visible in the data rather than only in
                         # the code. `train_steps` is null for methods that do not train
-                        # by gradient descent. `val_points` is the early-stopping holdout
+                        # by gradient descent, and `best_step` -- the step whose weights
+                        # were kept -- with it. `val_points` is the early-stopping holdout
                         # handed over, 0 for a method refit at every origin.
                         "train_points": chosen["train_points"],
                         "val_points": chosen["val_points"],
                         "train_steps": chosen["train_steps"],
+                        "best_step": chosen["best_step"],
                     }
                 )
             tag = " [ext]" if used_extended else ""

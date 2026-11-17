@@ -1,4 +1,4 @@
-"""Checks for scripts/merge_pilot_results.py's `--drop` option.
+"""Checks for scripts/merge_pilot_results.py's `--drop` and `--drop-case` options.
 
 `--drop` is how a partial run's known-bad column is kept out of the published matrix while
 its file stays on disk (research log entry 101). Both guards below matter: a mistyped tag or
@@ -38,12 +38,40 @@ def test_parse_drops_rejects_a_spec_it_cannot_honour(spec):
 
 
 def test_apply_drops_removes_only_the_named_method():
-    df = pd.DataFrame({"method": ["TFT", "TFT", "N-HiTS"], "value": [1.0, 2.0, 3.0]})
-    kept = _apply_drops(df, "lookback_v2", {"TFT"}, "metrics")
+    df = pd.DataFrame({"case_id": ["a"] * 3, "method": ["TFT", "TFT", "N-HiTS"]})
+    kept = _apply_drops(df, "lookback_v2", "metrics", methods={"TFT"})
     assert kept["method"].tolist() == ["N-HiTS"]
 
 
 def test_apply_drops_rejects_a_method_the_file_does_not_have():
-    df = pd.DataFrame({"method": ["N-HiTS"], "value": [3.0]})
+    df = pd.DataFrame({"case_id": ["a"], "method": ["N-HiTS"]})
     with pytest.raises(SystemExit):
-        _apply_drops(df, "lookback_v2", {"TFT"}, "metrics")
+        _apply_drops(df, "lookback_v2", "metrics", methods={"TFT"})
+
+
+def test_apply_drops_removes_every_row_of_a_dropped_case():
+    df = pd.DataFrame(
+        {"case_id": ["surge_cuxhaven", "surge_cuxhaven", "waves_oregon"], "method": ["TFT"] * 3}
+    )
+    kept = _apply_drops(df, "surge_full", "metrics", cases={"surge_cuxhaven"})
+    assert kept["case_id"].tolist() == ["waves_oregon"]
+
+
+def test_apply_drops_rejects_a_case_the_file_does_not_have():
+    df = pd.DataFrame({"case_id": ["waves_oregon"], "method": ["TFT"]})
+    with pytest.raises(SystemExit):
+        _apply_drops(df, "first_six", "metrics", cases={"surge_cuxhaven"})
+
+
+def test_apply_drops_checks_methods_and_cases_against_the_file_as_read():
+    """`surge_full` holds only surge rows: dropping the case and a method together works."""
+    df = pd.DataFrame({"case_id": ["surge_cuxhaven"] * 2, "method": ["N-HiTS", "Naive"]})
+    kept = _apply_drops(df, "surge_full", "metrics", {"N-HiTS"}, {"surge_cuxhaven"})
+    assert kept.empty
+
+
+def test_apply_drops_skips_a_missing_method_when_not_required():
+    """Snapshots: `first_six` holds neuralforecast scores but no neuralforecast forecasts."""
+    df = pd.DataFrame({"case_id": ["a"], "method": ["N-HiTS"]})
+    kept = _apply_drops(df, "first_six", "snapshot", methods={"TFT"}, required=False)
+    assert kept["method"].tolist() == ["N-HiTS"]

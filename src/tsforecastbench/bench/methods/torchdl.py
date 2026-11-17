@@ -319,6 +319,7 @@ class _TorchDLBase(Forecaster):
         if X is None:
             self._model = None
             self.last_fit_steps = None
+            self.last_best_step = None
             return
         # Early stopping runs on the declared val split, not on a fraction carved off the
         # training windows: the boundary the app displays is the boundary the fit uses
@@ -376,7 +377,7 @@ class _TorchDLBase(Forecaster):
             out = self._model((xb - mu) / sd) * sd + mu
             return out + self._model.exo_term(xfb)
 
-        best, best_state, stale = float("inf"), None, 0
+        best, best_state, best_step, stale = float("inf"), None, None, 0
         steps = 0
         # `DL_MAX_EPOCHS` passes over this fit's own window pool, so a longer record buys
         # more steps rather than thinner ones (gh #101). Early stopping below is what
@@ -399,7 +400,7 @@ class _TorchDLBase(Forecaster):
             with torch.no_grad():
                 val = float(lossf(_revin_pred(Xv, Xfv), Yv))
             if val < best:
-                best, stale = val, 0
+                best, best_step, stale = val, step, 0
                 best_state = {k: v.detach().clone() for k, v in self._model.state_dict().items()}
             else:
                 stale += 1
@@ -408,6 +409,7 @@ class _TorchDLBase(Forecaster):
         if best_state is not None:
             self._model.load_state_dict(best_state)
         self.last_fit_steps = steps
+        self.last_best_step = best_step
 
     def predict(
         self,

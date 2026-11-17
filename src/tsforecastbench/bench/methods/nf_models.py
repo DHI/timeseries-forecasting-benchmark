@@ -49,6 +49,44 @@ def _naive_ds(ds) -> pd.Series:
     return ds.dt.tz_convert("UTC").dt.tz_localize(None)
 
 
+def _restore_best_weights_callback():
+    """A Lightning callback that puts the best-validation weights back when training ends.
+
+    neuralforecast stops on Lightning's `EarlyStopping` with checkpointing turned off, and
+    `EarlyStopping` never restores anything, so the fitted model would otherwise keep the
+    weights from `DL_PATIENCE_CHECKS` checks past its best -- the point where held-out loss
+    has been getting worse. `torchdl` has always restored its best state; this gives the
+    neuralforecast zoo the same rule.
+
+    Built inside a function so `pytorch_lightning` is only imported when an nf model fits,
+    like every other neuralforecast import in this module.
+    """
+    import pytorch_lightning as pl
+
+    class RestoreBestWeights(pl.Callback):
+        def __init__(self) -> None:
+            self.best_loss = float("inf")
+            self.best_state: dict | None = None
+            self.best_step: int | None = None
+
+        # `on_validation_end` runs after the module's `on_validation_epoch_end`, which is
+        # where neuralforecast appends the check's `(global_step, val_loss)` to
+        # `valid_trajectories`.
+        def on_validation_end(self, trainer, pl_module) -> None:
+            if trainer.sanity_checking or not pl_module.valid_trajectories:
+                return
+            step, loss = pl_module.valid_trajectories[-1]
+            if loss < self.best_loss:
+                self.best_loss, self.best_step = loss, int(step)
+                self.best_state = {k: v.detach().clone() for k, v in pl_module.state_dict().items()}
+
+        def on_fit_end(self, trainer, pl_module) -> None:
+            if self.best_state is not None:
+                pl_module.load_state_dict(self.best_state)
+
+    return RestoreBestWeights()
+
+
 class _NFBase(Forecaster):
     """Shared neuralforecast wrapper; subclasses name the model class + extra kwargs."""
 
@@ -126,6 +164,7 @@ class _NFBase(Forecaster):
         import neuralforecast.models as nfm
         import pytorch_lightning as pl
         from neuralforecast import NeuralForecast
+        from neuralforecast.losses.pytorch import MSE
 
         from tsforecastbench.bench.eval.loop import _horizon_to_steps
 
@@ -204,12 +243,19 @@ class _NFBase(Forecaster):
             val_check_steps=DL_VAL_CHECK_STEPS,
             early_stop_patience_steps=DL_PATIENCE_CHECKS,
             scaler_type="standard",
+            # MSE for training and early stopping alike, as in `torchdl`. The library default
+            # is MAE, which left the DL family split across two losses -- and two targets,
+            # since MAE fits the median and MSE the mean.
+            loss=MSE(),
+            valid_loss=MSE(),
             # neuralforecast reseeds torch from its own `random_seed` when the model is
             # built, which would undo the `seed_everything` above if left at its default.
             random_seed=self.seed,
             **exo_kwargs,
             **self.extra_kwargs,
             **_TRAINER_KW,
+            # A fresh list per fit: neuralforecast appends its own EarlyStopping to it.
+            callbacks=[_restore_best_weights_callback()],
         )
         self._nf = NeuralForecast(models=[model], freq=case.freq)
         self._nf.fit(df, val_size=val_size)
@@ -222,6 +268,13 @@ class _NFBase(Forecaster):
         fitted = self._nf.models[0]
         trajectory = getattr(fitted, "train_trajectories", None)
         self.last_fit_steps = int(trajectory[-1][0]) + 1 if trajectory else None
+        # The callback ran on that same copy, so its record is read from there too.
+        restore = next(
+            cb
+            for cb in fitted.trainer_kwargs["callbacks"]
+            if type(cb).__name__ == "RestoreBestWeights"
+        )
+        self.last_best_step = restore.best_step
 
     def predict(
         self,
@@ -274,8 +327,10 @@ class TFTForecaster(_NFBase):
     model_name = "TFT"
     code_snippet = (
         "from neuralforecast import NeuralForecast\n"
+        "from neuralforecast.losses.pytorch import MSE\n"
         "from neuralforecast.models import TFT\n\n"
-        "model = TFT(h=horizon, input_size=lookback, early_stop_patience_steps=5)\n"
+        "model = TFT(h=horizon, input_size=lookback, loss=MSE(), valid_loss=MSE(),\n"
+        "            early_stop_patience_steps=5)\n"
         "nf = NeuralForecast(models=[model], freq=case.freq)\n"
         "nf.fit(train_df, val_size=val_size)  # train_df: unique_id, ds, y\n"
         'y_hat = nf.predict()["TFT"]'
@@ -293,9 +348,10 @@ class ITransformerForecaster(_NFBase):
     model_name = "iTransformer"
     code_snippet = (
         "from neuralforecast import NeuralForecast\n"
+        "from neuralforecast.losses.pytorch import MSE\n"
         "from neuralforecast.models import iTransformer\n\n"
         "model = iTransformer(h=horizon, input_size=lookback, n_series=1,\n"
-        "                     early_stop_patience_steps=5)\n"
+        "                     loss=MSE(), valid_loss=MSE(), early_stop_patience_steps=5)\n"
         "nf = NeuralForecast(models=[model], freq=case.freq)\n"
         "nf.fit(train_df, val_size=val_size)  # train_df: unique_id, ds, y\n"
         'y_hat = nf.predict()["iTransformer"]'
@@ -323,8 +379,10 @@ class TimesNetForecaster(_NFBase):
     model_name = "TimesNet"
     code_snippet = (
         "from neuralforecast import NeuralForecast\n"
+        "from neuralforecast.losses.pytorch import MSE\n"
         "from neuralforecast.models import TimesNet\n\n"
-        "model = TimesNet(h=horizon, input_size=lookback, early_stop_patience_steps=5)\n"
+        "model = TimesNet(h=horizon, input_size=lookback, loss=MSE(), valid_loss=MSE(),\n"
+        "                 early_stop_patience_steps=5)\n"
         "nf = NeuralForecast(models=[model], freq=case.freq)\n"
         "nf.fit(train_df, val_size=val_size)  # train_df: unique_id, ds, y\n"
         'y_hat = nf.predict()["TimesNet"]'

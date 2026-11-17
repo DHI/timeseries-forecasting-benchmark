@@ -475,6 +475,9 @@ def test_torch_dl_runs_if_installed(monkeypatch):
     methods = [NHITSForecaster(), PatchTSTForecaster()]
     res = run_case(get_case("discharge_flashy_catskills"), methods, prefer_synth=True)
     assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
+    # Early stopping fires one stale check (5 steps) after the best one, whose weights are
+    # the ones kept and reported as `best_step`.
+    assert (res["train_steps"] - res["best_step"] == 5).all(), res[["train_steps", "best_step"]]
 
 
 def test_fraction_split_handles_truncated_obs():
