@@ -6,7 +6,7 @@
 
 The **regime contrast** to [`waves_oregon`](waves_oregon.md). Buoy 46050 (Oregon) sits in the open Pacific and is **swell-dominated** — long-period energy arriving from distant storms, so the sea state has long memory and persistence is strong. Buoy **44013** (Boston, Massachusetts Bay) is **fetch-limited wind-sea**: H_s responds quickly to local wind and nor'easters, with shorter memory. Forecasting the same target and horizon at both buoys tests whether method ranking is robust across wave climates — a wind-driven sea should reward the wind covariate far more than a swell-dominated one.
 
-Data is hourly NDBC standard-meteorological records (public domain); exogenous come from the same buoy's wind, pressure and temperatures.
+Data is hourly NDBC standard-meteorological records (public domain); exogenous come from the same buoy's wind, pressure and water temperature. Gaps in the buoy's wind and pressure, up to 1818 h, are filled from ERA5 10-m wind speed and mean sea-level pressure at the buoy, mapped onto the buoy's scale on the pre-test record.
 
 ```mermaid
 flowchart LR
@@ -31,7 +31,7 @@ Wind-sea growth and decay on hours-timescales, modulated by fetch and storm pass
 ## Exogenous candidates
 
 - **Wind speed** (dominant, known-future) and **pressure** (storm passage, known-future).
-- **Air / water temperature** (stability, historical) as secondary covariates.
+- **Water temperature** (stability, historical) as a secondary covariate. Air temperature is left out: 80% of it is missing over the training split.
 - ERA5/GFS wind *forecasts* would replace the perfect-forecast proxy in an operational setting.
 
 ## Operational relevance
