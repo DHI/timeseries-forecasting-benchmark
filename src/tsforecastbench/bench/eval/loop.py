@@ -69,10 +69,19 @@ def _segment_extended(extended: pd.DataFrame, case: Case, horizon: int) -> list[
     Segments too short to yield even one lookback+horizon window are dropped; the tail
     segment (ending at `val_end`) always survives, being the curated training span.
 
+    A row with a missing external input also ends a segment: the extended frame fills
+    those gaps only up to the cap (gh #119).
+
     Returns segments in time order (tail last). A gap-free record yields a single
     segment, i.e. no history beyond the curated span.
     """
-    observed = pd.to_numeric(extended["y"], errors="coerce").notna().to_numpy()
+    exo_cols = [
+        c
+        for c in dict.fromkeys([*case.exogenous, *case.exogenous_known_future])
+        if c in extended.columns
+    ]
+    observed = extended[["y", *exo_cols]].apply(pd.to_numeric, errors="coerce").notna()
+    observed = observed.all(axis=1).to_numpy()
     floor = lookback_for(case, horizon) + horizon
     segments: list[pd.DataFrame] = []
     for start, stop in _contiguous_runs(observed):
