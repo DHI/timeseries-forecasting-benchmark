@@ -121,8 +121,10 @@ Example result: ERA5 wind/pressure lift GESLA storm-surge skill-vs-persistence f
 the covariate value the benchmark is built to quantify.
 
 **Interactive viewer**: the same case × method matrix, with filtering, hover detail, and
-forecast-snapshot drill-down, is also browsable without running anything — see `web/` (a static
-React app, deployed via GitHub Pages).
+forecast-snapshot drill-down, is also browsable without running anything at
+<https://dhi.github.io/timeseries-forecasting-benchmark/> (source in `web/`, a static React
+app deployed via GitHub Pages; per-case EDA pages under
+[`/eda/`](https://dhi.github.io/timeseries-forecasting-benchmark/eda/)).
 
 ## Design notes
 

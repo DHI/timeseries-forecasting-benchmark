@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import type { Layout, PlotData } from 'plotly.js';
+import type { Data, Layout } from 'plotly.js';
 import Plot from '../../plotly';
 import { useTheme } from '../../theme/ThemeContext';
 import { getPlotTheme } from '../../theme/plotTheme';
@@ -25,7 +25,7 @@ export function LineSnapshot({ series, emptyMessage }: { series: Series; emptyMe
   const figure = useMemo(() => {
     if (series.ds.length === 0) return null;
     const pt = getPlotTheme(theme === 'dark');
-    const data: Partial<PlotData>[] = [
+    const data: Data[] = [
       {
         type: 'scatter',
         x: series.ds,

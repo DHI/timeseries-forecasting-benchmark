@@ -1,6 +1,6 @@
 import { format as d3format } from 'd3-format';
 import { useMemo } from 'react';
-import type { Annotations, Data, Layout, Margin, PlotData, Shape } from 'plotly.js';
+import type { Annotation, Data, HeatmapData, Layout, Shape } from 'plotly.js';
 import { CELL, FAMILY_FULL_NAMES } from '../../data/constants';
 import { colorscaleFor } from '../../data/colorscale';
 import { metricConfig, TRAINING_TIME_CONFIG, type MetricConfig } from '../../data/metricConfig';
@@ -248,7 +248,7 @@ export function useMatrixFigure(
       ? new Map<string, string>()
       : rowBestMethods(rowOrder, colOrder, values, cfg.lowerIsBetter);
 
-    const annotations: Partial<Annotations>[] = [];
+    const annotations: Partial<Annotation>[] = [];
     rowOrder.forEach((caseId, r) => {
       const bestMethod = bestOfRow.get(caseId);
       colOrder.forEach((method, c) => {
@@ -360,7 +360,7 @@ export function useMatrixFigure(
 
     // @types/plotly.js is missing `zmid` (a real, documented plotly.js heatmap option —
     // just absent from this package's typings), hence the inline extension below.
-    const heatmap: Partial<PlotData> & { zmid?: number } = {
+    const heatmap: Partial<HeatmapData> = {
       type: 'heatmap',
       z: colorZ,
       x: colOrder,
@@ -424,7 +424,7 @@ export function useMatrixFigure(
     // it guarantees the heatmap cells occupy exactly the same pixels either way. `r` is
     // sized to fit the colorbar title's widest possible second line ("[target unit]"),
     // left-anchored at the colorbar's own x — a plain 80px clipped it mid-word.
-    const margin: Partial<Margin> & { autoexpand?: boolean } = {
+    const margin: NonNullable<Layout['margin']> = {
       // l fits the domain row labels (now horizontal, up to two lines) and the "Cases"
       // super-title, both of which spill left past the plot's own edge. t includes room for
       // "Methods"/"Cases" stacked above the family group labels.

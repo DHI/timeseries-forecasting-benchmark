@@ -68,9 +68,10 @@ Subclass `tsforecastbench.bench.methods.base.Forecaster`:
 
 ```python
 class MyForecaster(Forecaster):
-    name = "MyMethod"            # column header in the matrix
+    name = "MyMethod"  # column header in the matrix
     requires_gpu = False
-    uses_exogenous = False       # set True to receive future covariates
+    uses_exogenous = False  # set True to receive future covariates
+
     def fit(self, case, train): ...
     def predict(self, case, history, horizon, future_exog=None): ...  # -> DataFrame[ds, y_hat]
 ```

@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import type { Annotations, Layout, PlotData } from 'plotly.js';
+import type { Annotation, Data, Layout } from 'plotly.js';
 import Plot from '../../plotly';
 import { useTheme } from '../../theme/ThemeContext';
 import { getPlotTheme } from '../../theme/plotTheme';
@@ -50,7 +50,7 @@ export function SeasonalPatternPlot({ patterns }: { patterns: SeasonalPattern[] 
     const nCols = Math.min(N_COLS, patterns.length);
     const nRows = Math.ceil(patterns.length / nCols);
 
-    const data: Partial<PlotData>[] = [];
+    const data: Data[] = [];
     const layout: Partial<Layout> = {
       autosize: true,
       height: ROW_HEIGHT * nRows,
@@ -61,7 +61,7 @@ export function SeasonalPatternPlot({ patterns }: { patterns: SeasonalPattern[] 
       showlegend: false,
       annotations: [],
     };
-    const annotations: Partial<Annotations>[] = [];
+    const annotations: Partial<Annotation>[] = [];
 
     patterns.forEach((pattern, i) => {
       const suffix = i === 0 ? '' : String(i + 1);

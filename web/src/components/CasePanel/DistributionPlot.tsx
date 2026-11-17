@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import type { Layout, PlotData } from 'plotly.js';
+import type { Data, Layout } from 'plotly.js';
 import Plot from '../../plotly';
 import { useTheme } from '../../theme/ThemeContext';
 import { getPlotTheme } from '../../theme/plotTheme';
@@ -32,7 +32,7 @@ export function DistributionPlot({
       return { empty: `Not enough variance to estimate a distribution for ${caseId}.` };
     }
     const pt = getPlotTheme(theme === 'dark');
-    const data: Partial<PlotData>[] = [];
+    const data: Data[] = [];
     if (distribution.train_density) {
       data.push({
         type: 'scatter',
