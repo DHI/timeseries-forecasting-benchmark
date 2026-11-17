@@ -47,7 +47,7 @@
   "waves_massachusetts": {
     "parquet": "data/processed/waves_massachusetts.parquet",
     "rows": 78889,
-    "sha256": "481cf921e50da86818593bbc26ee8b4f9197747aadc3ddafe0d5e5a7d52e37ab"
+    "sha256": "25b8f3d6ee57e5cd04845e05cd6931a098d3f1a604828b254579cc445822281a"
   },
   "waves_oregon": {
     "parquet": "data/processed/waves_oregon.parquet",
