@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from tsforecastbench.data.curate import curate_frame, fraction_split_dates, gap_cap
 
@@ -33,3 +34,25 @@ def test_gap_cap_is_read_from_the_pre_test_record():
     pre_test = df["y"][df["ds"].dt.tz_localize(None) <= val_end]
     assert info["cap"] == gap_cap(pre_test, "1h")
     assert info["cap"] != gap_cap(df["y"], "1h")
+
+
+def _smooth(n: int) -> np.ndarray:
+    return np.sin(np.arange(n) / 20.0)
+
+
+def test_short_exogenous_gap_is_interpolated():
+    wind = np.arange(2000, dtype=float)
+    wind[500:502] = np.nan
+    curated, info = _curate(_frame(_smooth(2000), wind=wind), exog=["wind"])
+
+    assert info["cap"] >= 2
+    assert curated["wind"].isna().sum() == 0
+    assert curated["wind"].iloc[500] == 500.0
+
+
+def test_exogenous_gap_longer_than_the_cap_fails():
+    wind = np.ones(2000)
+    wind[500:900] = np.nan  # straight-lining this would invent 400 h of wind
+
+    with pytest.raises(ValueError, match="wind"):
+        _curate(_frame(_smooth(2000), wind=wind), exog=["wind"])
