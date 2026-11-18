@@ -215,7 +215,7 @@ class Case(BaseModel):
     def load(self, prefer_synth: bool = False, curated: bool = False) -> pd.DataFrame:
         """Load the case frame.
 
-        `curated=True` returns the benchmark-ready series (longest contiguous span,
+        `curated=True` returns the benchmark-ready series (one contiguous span,
         small gaps filled, `y_observed` mask) that the eval loops consume: it reads
         `data/curated/<id>.parquet` when present, else applies the gap policy on the
         fly. The default (`curated=False`) returns the raw series in
@@ -241,7 +241,6 @@ class Case(BaseModel):
             self.freq,
             seasonalities=self.seasonalities,
             horizon_primary=self.horizon_primary,
-            split_fraction=self.split_fraction,
             exog=exog,
         )
         return curated
@@ -268,7 +267,6 @@ class Case(BaseModel):
             self.freq,
             seasonalities=self.seasonalities,
             horizon_primary=self.horizon_primary,
-            split_fraction=self.split_fraction,
             exog=exog,
         )
         _, val_end, _ = self.split_bounds(curated)

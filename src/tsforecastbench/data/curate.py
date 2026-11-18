@@ -11,17 +11,17 @@ Two decisions, applied uniformly to every case (see research_log/details.md, id 
    ACF is read on the pre-test record only (up to `val_end`), so the test period does
    not shape the data it is scored on (gh #119).
 
-2. **Longest-segment trim.** Gaps larger than the cap are hard boundaries — never
-   bridged. They split the record into contiguous segments; we keep the longest one
-   (the latest on a tie) and drop the rest. The longest segment gives the longest test
-   split on gappy records (gh #121); the cost is that data after it goes unused, and
-   the test window is not the end of the record. Everything before the segment's
-   `val_end` stays available as extra history for methods that can use it
-   (`Forecaster.is_global`). "If it has no target, it is nonexistent": we use every
-   observation in that span and invent nothing across a real void. A segment too short
-   to give the train split 2 full cycles of the longest declared seasonal period, or
-   the test split a full forecast horizon, fails loudly rather than silently falling
-   back to a different span.
+2. **Segment trim.** Gaps larger than the cap are hard boundaries — never bridged.
+   They split the record into contiguous segments, and one is kept. The last segment
+   is kept when it is long enough, so the test window is the end of the record and
+   everything before the segment's `val_end` stays available as extra history for
+   methods that can use it (`Forecaster.is_global`). Otherwise the longest segment is
+   kept (the latest on a tie), and data after it goes unused. A segment is long enough
+   when its train split spans `MIN_TRAIN_CYCLES` cycles of the longest declared
+   seasonal period and its test split spans 2 cycles and one forecast horizon (gh
+   #121). When neither segment is, curation fails and the case needs a human look.
+   "If it has no target, it is nonexistent": we use every observation in that span and
+   invent nothing across a real void.
 
 The materialized frame keeps a `y_observed` boolean column: `y` is complete (small gaps
 filled) so any method can fit, but scoring counts only genuinely observed points.
@@ -88,6 +88,22 @@ def _nan_runs(mask: np.ndarray):
             i = j
         else:
             i += 1
+
+
+def tail_segment_bounds(observed: np.ndarray, cap: int) -> tuple[int, int]:
+    """`[start, stop)` of the last span separated by gaps longer than `cap`.
+
+    Gaps of `cap` steps or fewer do not break a segment (they will be filled); longer
+    gaps are boundaries. Trailing rows with no observed value (e.g. padding to a common
+    end date) are not part of the segment. The span begins and ends on observed
+    points."""
+    if not observed.any():
+        return 0, 0
+    last_obs = int(np.flatnonzero(observed)[-1]) + 1
+    big = [(a, b) for a, b in _nan_runs(~observed[:last_obs]) if (b - a) > cap]
+    start = big[-1][1] if big else 0
+    obs_idx = np.flatnonzero(observed[start:last_obs])
+    return start + int(obs_idx[0]), start + int(obs_idx[-1]) + 1
 
 
 def longest_segment_bounds(observed: np.ndarray, cap: int) -> tuple[int, int]:
@@ -174,21 +190,55 @@ def _fill_small_gaps(s: pd.Series, cap: int) -> pd.Series:
     return s.where(~fillable, filled)
 
 
-def min_segment_length(
-    seasonalities: list[int], horizon_primary: str, freq: str, split_fraction: list[float]
-) -> int:
-    """Shortest segment usable for benchmarking.
+MIN_TRAIN_CYCLES = 4
 
-    The train split alone (fraction `split_fraction[0]` of the segment) must hold 2
-    full cycles of the *longest* declared seasonal period — not the most prominent one
-    (`seasonalities` is ordered by detection prominence, not length; a long period is
-    the more data-hungry requirement regardless of where it ranks). The test split (the
-    remaining `1 - split_fraction[1]`) must hold at least one full forecast horizon.
-    """
-    period = max(seasonalities) if seasonalities else 1
-    horizon_steps = _horizon_steps(horizon_primary, freq)
-    f0, f1 = split_fraction
-    return int(np.ceil(max(2 * period / f0, horizon_steps / (1 - f1))))
+
+def _segment_shortfall(
+    observed_ds: pd.Series, longest_period: int, horizon_primary: str, freq: str
+) -> str | None:
+    """Why a segment with observations at `observed_ds` is too short, or None.
+
+    Its split comes from `split_fraction_for`. The train split must span
+    `MIN_TRAIN_CYCLES` cycles of `longest_period`; the test split must span 2 cycles
+    and one `horizon_primary`."""
+    step = pd.Timedelta(pd.tseries.frequencies.to_offset(freq))
+    cycle = longest_period * step
+    need_test = max(2 * cycle, pd.Timedelta(horizon_primary))
+    need_train = MIN_TRAIN_CYCLES * cycle
+    if observed_ds.empty or observed_ds.max() - observed_ds.min() < need_train + need_test:
+        span = observed_ds.max() - observed_ds.min() if len(observed_ds) else pd.Timedelta(0)
+        return f"spans {span}, below {need_train} of train plus {need_test} of test"
+    train_end, val_end = fraction_split_dates(
+        observed_ds, split_fraction_for(observed_ds, longest_period, freq)
+    )
+    if train_end - observed_ds.min() < need_train:
+        return f"train spans {train_end - observed_ds.min()}, below {need_train}"
+    if observed_ds.max() - val_end < need_test:
+        return f"test spans {observed_ds.max() - val_end}, below {need_test}"
+    return None
+
+
+def _pick_segment(
+    observed: np.ndarray,
+    ds: pd.Series,
+    cap: int,
+    longest_period: int,
+    horizon_primary: str,
+    freq: str,
+) -> tuple[int, int, str, list[str]]:
+    """`(start, stop, kind, shortfalls)` of the segment to keep: the last one if it is
+    long enough, else the longest. When neither is, `kind` is "longest" and
+    `shortfalls` says why each failed."""
+    shortfalls = []
+    for kind, bounds in (("last", tail_segment_bounds), ("longest", longest_segment_bounds)):
+        start, stop = bounds(observed, cap)
+        why = _segment_shortfall(
+            ds.iloc[start:stop][observed[start:stop]], longest_period, horizon_primary, freq
+        )
+        if why is None:
+            return start, stop, kind, []
+        shortfalls.append(f"{kind} segment {why}")
+    return start, stop, "longest", shortfalls
 
 
 def curate_frame(
@@ -197,17 +247,17 @@ def curate_frame(
     *,
     seasonalities: list[int],
     horizon_primary: str,
-    split_fraction: list[float],
     exog: list[str] | None = None,
     threshold: float = ACF_THRESHOLD,
 ) -> tuple[pd.DataFrame, dict]:
     """Apply the gap policy to a raw case frame.
 
-    Returns `(curated, info)` where `curated` is the longest contiguous span with small
-    gaps filled and a `y_observed` mask added, and `info` records the policy outcome
-    (cap, gap counts, span, kept fraction) for the manifest. Raises `ValueError` if the
-    segment is shorter than `min_segment_length` allows — a case that fails this
-    needs a human look, not a silent fallback to a different span.
+    Returns `(curated, info)` where `curated` is the kept segment (the last one if long
+    enough, else the longest) with small gaps filled and a `y_observed` mask added, and
+    `info` records the policy outcome (cap, segment kind, split, gap counts, span, kept
+    fraction) for the manifest. `info["split_fraction"]` is what the case's `case.toml`
+    must declare. Raises `ValueError` when neither segment is long enough: the case
+    needs a human look.
     """
     df = df.sort_values("ds").reset_index(drop=True)
     y = pd.to_numeric(df["y"], errors="coerce")
@@ -217,7 +267,7 @@ def curate_frame(
     ds_naive = pd.to_datetime(df["ds"])
     if ds_naive.dt.tz is not None:
         ds_naive = ds_naive.dt.tz_convert("UTC").dt.tz_localize(None)
-    floor = min_segment_length(seasonalities, horizon_primary, freq, split_fraction)
+    longest_period = max(seasonalities) if seasonalities else 1
 
     # The cap sets the segment, the segment sets `val_end`, and the cap is read on
     # the record up to `val_end`. Start from the largest cap the frequency allows, which
@@ -226,20 +276,23 @@ def curate_frame(
     # checked on the settled segment only.
     cap = _season_ceiling(freq)
     for _ in range(10):
-        start, stop = longest_segment_bounds(observed, cap)
-        seg_ds = ds_naive.iloc[start:stop]
-        _, val_end = fraction_split_dates(seg_ds[observed[start:stop]], split_fraction)
+        start, stop, kind, shortfalls = _pick_segment(
+            observed, ds_naive, cap, longest_period, horizon_primary, freq
+        )
+        seg_obs_ds = ds_naive.iloc[start:stop][observed[start:stop]]
+        split_fraction = split_fraction_for(seg_obs_ds, longest_period, freq)
+        if shortfalls:
+            break  # flagged below; the split of a too-short segment can be meaningless
+        _, val_end = fraction_split_dates(seg_obs_ds, split_fraction)
         pre_test_cap = gap_cap(y[ds_naive <= val_end], freq, threshold)
         if pre_test_cap == cap:
             break
         cap = pre_test_cap
     else:
         raise ValueError("gap cap did not settle on the pre-test record after 10 passes")
-    if stop - start < floor:
+    if shortfalls:
         raise ValueError(
-            f"longest segment is {stop - start} steps, below the {floor}-step floor "
-            f"(2 cycles of the longest declared period in train, >=1 horizon of "
-            f"'{horizon_primary}' in test) — needs a human look, not a smaller span."
+            f"no segment is long enough at cap {cap} ({'; '.join(shortfalls)}): needs a human look."
         )
     seg = df.iloc[start:stop].copy().reset_index(drop=True)
     seg_observed = observed[start:stop].copy()
@@ -271,7 +324,8 @@ def curate_frame(
         "n_observed": int(seg_observed.sum()),
         "n_filled": n_filled,
         "n_big_gaps": len(big_runs),
-        "min_segment_length": floor,
+        "segment": kind,
+        "split_fraction": split_fraction,
         "val_end": str(val_end),
         "span_start": str(seg["ds"].iloc[0]) if len(seg) else None,
         "span_end": str(seg["ds"].iloc[-1]) if len(seg) else None,

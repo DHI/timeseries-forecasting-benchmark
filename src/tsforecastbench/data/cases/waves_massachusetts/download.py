@@ -45,7 +45,6 @@ def main(argv: list[str] | None = None) -> int:
         case.freq,
         seasonalities=case.seasonalities,
         horizon_primary=case.horizon_primary,
-        split_fraction=case.split_fraction,
     )
     era5 = _era5.fetch_era5_point(
         CONFIG["lat"],

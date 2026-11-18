@@ -2,9 +2,9 @@
 from data/processed/.
 
 Applies the gap policy in tsforecastbench.data.curate once per case: fill small gaps
-(<= a per-case, autocorrelation-derived cap), keep the longest contiguous span (the
-latest on a tie), drop the rest, and record which
-points are genuine observations (`y_observed`). The eval loops read these; the raw
+(<= a per-case, autocorrelation-derived cap), keep the last contiguous span if it is
+long enough and the longest otherwise, drop the rest, and record which points are
+genuine observations (`y_observed`). The eval loops read these; the raw
 gappy Parquets in data/processed/ stay untouched for EDA and case review.
 
 Also materializes the extended-history frame `Forecaster.is_global` methods use: the
@@ -79,9 +79,13 @@ def main(argv: list[str] | None = None) -> int:
                 case.freq,
                 seasonalities=case.seasonalities,
                 horizon_primary=case.horizon_primary,
-                split_fraction=case.split_fraction,
                 exog=exog,
             )
+            if info["split_fraction"] != case.split_fraction:
+                raise ValueError(
+                    f"case.toml split_fraction is {case.split_fraction}, but the kept "
+                    f"{info['segment']} segment needs {info['split_fraction']}"
+                )
             curated["ds"] = pd.to_datetime(curated["ds"], utc=True)
             out = DATA_CURATED / f"{cid}.parquet"
             curated.to_parquet(out, index=False)

@@ -23,9 +23,7 @@ def _frame(y: np.ndarray, **exog: np.ndarray) -> pd.DataFrame:
 
 
 def _curate(df: pd.DataFrame, exog: list[str] | None = None):
-    return curate_frame(
-        df, "1h", seasonalities=[24], horizon_primary="24h", split_fraction=SPLIT, exog=exog
-    )
+    return curate_frame(df, "1h", seasonalities=[24], horizon_primary="24h", exog=exog)
 
 
 def test_gap_cap_is_read_from_the_pre_test_record():
@@ -124,3 +122,37 @@ def test_short_gaps_do_not_split_a_segment():
     observed[-1] = False
 
     assert longest_segment_bounds(observed, cap=5) == (2, 99)
+
+
+def test_last_segment_is_kept_when_long_enough():
+    y = _smooth(2000)
+    y[600:700] = np.nan  # leaves a 600 h first segment and a 1300 h last one
+
+    curated, info = _curate(_frame(y))
+
+    assert info["segment"] == "last"
+    assert len(curated) == 1300
+
+
+def test_longest_segment_is_kept_when_the_last_is_too_short():
+    y = _smooth(2000)
+    y[1900:1950] = np.nan  # the last 50 h cannot hold 4 daily cycles of train
+
+    curated, info = _curate(_frame(y))
+
+    assert info["segment"] == "longest"
+    assert len(curated) == 1900
+
+
+def test_curation_fails_when_no_segment_is_long_enough():
+    y = _smooth(200)
+    y[80:150] = np.nan  # segments of 80 h and 50 h
+
+    with pytest.raises(ValueError, match="no segment is long enough"):
+        _curate(_frame(y))
+
+
+def test_split_is_reported_for_the_kept_segment():
+    curated, info = _curate(_frame(_smooth(2000)))
+
+    assert info["split_fraction"] == split_fraction_for(curated["ds"], 24, "1h")
