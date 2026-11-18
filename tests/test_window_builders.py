@@ -161,7 +161,7 @@ def test_torch_nets_accept_a_horizon_covariate_block(L, H, n_exo):
 def test_exo_scaler_treats_a_flatlined_column_as_constant():
     """A covariate that never moves in training must standardise to zero, not to 1e12.
 
-    `waves_oregon`'s `atmp` is 12.7 at every one of its 17,176 training points. The std of
+    `waves_oregon`'s `atmp` was 12.7 at every one of its 17,176 training points. The std of
     that comes back as 1.8e-15 from a contiguous 1-D slice and 3.4e-12 from the axis
     reduction over the strided 2-D column, so an absolute epsilon guard cannot separate a
     constant column from a small one -- and dividing a real deviation by 3.4e-12 put 1e12

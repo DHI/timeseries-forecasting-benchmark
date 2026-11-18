@@ -13,7 +13,6 @@ from datetime import date
 from pathlib import Path
 from typing import Literal
 
-import numpy as np
 import pandas as pd
 from pydantic import (
     BaseModel,
@@ -23,6 +22,8 @@ from pydantic import (
     field_validator,
     model_validator,
 )
+
+from tsforecastbench.data.curate import fraction_split_dates
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DATA_RAW = REPO_ROOT / "data" / "raw"
@@ -262,7 +263,7 @@ class Case(BaseModel):
             return pd.read_parquet(self.curated_extended_path)
         raw = self.load(prefer_synth=prefer_synth)
         exog = list(dict.fromkeys([*self.exogenous, *self.exogenous_known_future]))
-        curated, _ = curate_frame(
+        curated, info = curate_frame(
             raw,
             self.freq,
             seasonalities=self.seasonalities,
@@ -271,7 +272,7 @@ class Case(BaseModel):
             exog=exog,
         )
         _, val_end, _ = self.split_bounds(curated)
-        extended, _ = extend_frame(raw, self.freq, cutoff=val_end, exog=exog)
+        extended, _ = extend_frame(raw, cutoff=val_end, cap=info["cap"], exog=exog)
         return extended
 
     def synth(self) -> pd.DataFrame:
@@ -280,16 +281,6 @@ class Case(BaseModel):
         _validate_frame(self, df)
         return df
 
-    def _fraction_split_dates(self, df: pd.DataFrame) -> tuple[pd.Timestamp, pd.Timestamp]:
-        obs = pd.to_datetime(df.loc[_observed_mask(df), "ds"])
-        if obs.empty:
-            raise ValueError(f"Case {self.id}: no observed y values to split on")
-        ns = obs.astype("int64").to_numpy()
-        f0, f1 = self.split_fraction
-        t0 = pd.Timestamp(int(np.quantile(ns, f0)))
-        t1 = pd.Timestamp(int(np.quantile(ns, f1)))
-        return t0, t1
-
     def split_bounds(self, df: pd.DataFrame) -> tuple[pd.Timestamp, pd.Timestamp, pd.Timestamp]:
         """(train_end, val_end, test_end), tz-naive UTC, from `split_mode`."""
         ds_cmp = pd.to_datetime(df["ds"])
@@ -297,7 +288,9 @@ class Case(BaseModel):
             ds_cmp = ds_cmp.dt.tz_convert("UTC").dt.tz_localize(None)
 
         if self.split_mode == "fraction":
-            train_end, val_end = self._fraction_split_dates(df.assign(ds=ds_cmp))
+            train_end, val_end = fraction_split_dates(
+                ds_cmp[_observed_mask(df)], self.split_fraction
+            )
             obs_ds = ds_cmp[_observed_mask(df)]
             test_end = obs_ds.max() if not obs_ds.empty else ds_cmp.max()
         else:

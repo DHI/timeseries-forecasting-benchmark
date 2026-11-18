@@ -92,7 +92,7 @@ def main(argv: list[str] | None = None) -> int:
             }
 
             _, val_end, _ = case.split_bounds(curated)
-            extended, info_ext = extend_frame(raw, case.freq, cutoff=val_end, exog=exog)
+            extended, info_ext = extend_frame(raw, cutoff=val_end, cap=info["cap"], exog=exog)
             extended["ds"] = pd.to_datetime(extended["ds"], utc=True)
             out_ext = DATA_CURATED_EXTENDED / f"{cid}.parquet"
             extended.to_parquet(out_ext, index=False)

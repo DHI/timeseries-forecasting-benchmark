@@ -234,7 +234,7 @@ class ExoScaler:
         std = np.nanstd(stacked, axis=0)
         mean = np.where(np.isfinite(mean), mean, 0.0)
         # A constant column must divide by 1.0, so it standardises to 0 and drops out. The
-        # test has to be *relative* to the column's magnitude: `waves_oregon`'s `atmp` is
+        # test has to be *relative* to the column's magnitude: `waves_oregon`'s `atmp` was
         # 12.7 at every one of its 17,176 training points, and the std of that comes back as
         # 1.8e-15 from a contiguous 1-D slice but 3.4e-12 from the axis reduction over the
         # strided 2-D column -- the reduction's own rounding error. Any absolute epsilon

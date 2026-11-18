@@ -6,7 +6,7 @@
 
 Coastal sea level = astronomical tide (predictable to centimetres years ahead) + mean sea-level trend + **non-tidal residual**. The residual is dominated by meteorological forcing: low pressure lifts the surface (~1 cm per 1 hPa, the inverse barometer effect) and onshore winds pile water against the coast (wind setup). When a storm coincides with high tide, this is the **storm-surge** flood-risk problem.
 
-We forecast the *residual*, not the raw level: the tide is removed via UTide harmonic analysis before the canonical Parquet is written, so this case is exclusively about the meteorologically driven part. GESLA-3 (Haigh et al., 2023) provides **5,119 stations globally**, sub-hourly resolution, unified to UTC with QC flags.
+We forecast the *residual*, not the raw level: the tide is removed via UTide harmonic analysis before the canonical Parquet is written, fitted on the record before the test period and reconstructed over all of it, so this case is exclusively about the meteorologically driven part. GESLA-3 (Haigh et al., 2023) provides **5,119 stations globally**, sub-hourly resolution, unified to UTC with QC flags.
 
 ```mermaid
 flowchart LR

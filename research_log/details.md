@@ -1,4 +1,24 @@
 ---
+id: 106
+date: "2026-11-17"
+title: "Data preparation no longer reads the test period or bridges long input gaps"
+description: |
+  The surge tide model is now fitted on the record before the test start and reconstructed over all of it, which moves the residual by 4 mm on average and 2 cm at most. The gap cap is read on the pre-test record; four cases' caps move by one step and none of their data changes. Forecast origins whose history ends on a filled value are skipped, because that value is interpolated from a later observation. External-input gaps are filled only up to the cap, and a longer gap inside the curated span fails curation (gh #119). `atmp` is dropped from both wave cases: it is missing over all of `waves_oregon`'s training split and 80% of `waves_massachusetts`'s. `waves_massachusetts`'s wind and pressure gaps, up to 1818 h, are filled from ERA5 at the buoy, mapped onto the buoy's scale by a line fitted on the pre-test record. Every column on `surge_cuxhaven`, `waves_massachusetts` and `waves_oregon` needs the re-run.
+commits:
+  - dcbd89b: "Skip forecast origins whose history ends on a filled value"
+  - dfc587d: "Move fraction split dates into curate.py"
+  - ce52385: "Read the gap cap on the pre-test record"
+  - 0b4efb9: "Cap external-input gap fills like the target's"
+  - 0bf81c6: "End extended-history segments at external-input gaps"
+  - 42292b8: "Drop air temperature from the wave cases"
+  - ce54854: "Add ERA5 10-m wind speed and a gap fill mapped on the pre-test record"
+  - be8c204: "Fill waves_massachusetts wind and pressure gaps from ERA5"
+  - 23b1268: "Fit the surge tide model on the pre-test record"
+  - aaaec0f: "Regenerate the curated data"
+  - edb3033: "Never start a forecast right after a filled value"
+  - 7fa305d: "Drop the station option from the Massachusetts wave download"
+  - c25ee50: "Start the gap-cap search from the frequency ceiling"
+---
 id: 105
 date: "2026-11-10"
 title: "The MLP's direct models trained on the calendar of the wrong time"
