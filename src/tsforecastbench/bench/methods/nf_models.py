@@ -383,6 +383,7 @@ class TFTForecaster(_NFBase):
         "            early_stop_patience_steps=5)\n"
         "nf = NeuralForecast(models=[model], freq=case.freq)\n"
         "nf.fit(train_df, val_size=val_size)  # train_df: unique_id, ds, y\n"
+        "# then a fresh model, max_steps=best_step, fit on train + val with val_size=0\n"
         'y_hat = nf.predict()["TFT"]'
     )
     # A single neuralforecast predict() call returns the full horizon at once — TFT's
@@ -404,6 +405,7 @@ class ITransformerForecaster(_NFBase):
         "                     loss=MSE(), valid_loss=MSE(), early_stop_patience_steps=5)\n"
         "nf = NeuralForecast(models=[model], freq=case.freq)\n"
         "nf.fit(train_df, val_size=val_size)  # train_df: unique_id, ds, y\n"
+        "# then a fresh model, max_steps=best_step, fit on train + val with val_size=0\n"
         'y_hat = nf.predict()["iTransformer"]'
     )
     # iTransformer is multivariate and fixed to n_series=1 here, so it cannot absorb the
@@ -435,6 +437,7 @@ class TimesNetForecaster(_NFBase):
         "                 early_stop_patience_steps=5)\n"
         "nf = NeuralForecast(models=[model], freq=case.freq)\n"
         "nf.fit(train_df, val_size=val_size)  # train_df: unique_id, ds, y\n"
+        "# then a fresh model, max_steps=best_step, fit on train + val with val_size=0\n"
         'y_hat = nf.predict()["TimesNet"]'
     )
     # Same one-call, full-horizon-at-once prediction as its siblings — see TFTForecaster.
