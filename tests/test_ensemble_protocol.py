@@ -1,14 +1,11 @@
-"""The two cadences inside `EnsembleForecaster`, and what each one is fit on.
+"""How `EnsembleForecaster` fits its members and rolls them forward.
 
-The composite is `is_global`: whichever members keep a trained model are fit once, on the
-declared train split, and rolled forward. The members whose parameters are a closed-form
-statistic of the frame they are shown are re-derived inside `predict`, from that origin's
-history, so they keep tracking the origin.
+The composite and every member are fit once, before the test period. The naive members have
+nothing to fit and read the history up to each origin in their own `predict` (gh #120).
 
 The regression this file guards is a `ThetaForecaster` member whose `AutoTheta` optimizer
 re-ran once per origin -- 100 times per cell -- because the composite around it declared
-itself local. Fitting it once is also what keeps it off the val split: the only frame the
-local path ever hands `fit` is the history up to an origin, which runs through val (gh #99).
+itself local.
 
 Everything here uses stub members, so no optimizer runs and the whole file is well under a
 second. The real-Theta counterparts live in `test_classical_fit_once.py`.
@@ -85,11 +82,6 @@ class _GlobalRecorder(_Recorder):
     is_global = True
 
 
-class _LocalRecorder(_Recorder):
-    name = "LocalRecorder"
-    is_global = False
-
-
 def _ensemble(members, name="StubEnsemble") -> EnsembleForecaster:
     return EnsembleForecaster(
         members,
@@ -123,22 +115,20 @@ def test_both_factories_report_themselves_fit_once():
         assert ens.pools_segments is False, ens.name
 
 
-def test_the_theta_variant_really_does_hold_a_global_member():
-    """The whole reason the composite is fit-once. If this ever goes False the column has
-    no trained model and the flag is a lie."""
-    assert any(m.is_global for m in ensemble_baselines_theta().members)
-    assert not any(m.is_global for m in ensemble_baselines().members)
+def test_every_member_is_fit_once():
+    for factory in (ensemble_baselines, ensemble_baselines_theta):
+        assert all(m.is_global for m in factory().members), factory.__name__
 
 
 def test_global_member_is_fit_once_across_origins(case):
     """The direct regression test: one optimizer run per cell, not one per origin."""
-    trained, naive = _GlobalRecorder(), _LocalRecorder()
+    trained, naive = _GlobalRecorder(), _Recorder()
 
     res, _ = _rolling(case, _ensemble([trained, naive]))
 
     assert (res["status"] == "ok").all()
     assert trained.fit_calls == 1
-    assert naive.fit_calls == 1 + N_ORIGINS  # the shared fit, then once per origin
+    assert naive.fit_calls == 1
 
 
 def test_global_member_is_fit_on_the_declared_train_split(case):
@@ -156,35 +146,6 @@ def test_global_member_is_fit_on_the_declared_train_split(case):
     assert trained.val_lengths[0] > 0
     assert set(res["val_points"]) == {trained.val_lengths[0]}
     assert set(res["train_points"]) == {trained.train_lengths[0]}
-
-
-def test_local_members_are_conditioned_on_each_origins_history(case):
-    """Guards against a future 'simplification' that drops the predict-time pass and
-    freezes Mean/Climatology at train-split statistics."""
-    naive = _LocalRecorder()
-
-    res, _ = _rolling(case, _ensemble([naive]))
-
-    assert (res["status"] == "ok").all()
-    per_origin = naive.train_lengths[1:]  # drop the shared fit on the train split
-    assert len(per_origin) == N_ORIGINS
-    assert per_origin == sorted(per_origin)
-    assert per_origin[0] < per_origin[-1], "history must grow with the origin"
-    # Each conditioning pass gets an empty holdout, as the per-origin refit did.
-    assert naive.val_lengths[1:] == [0] * N_ORIGINS
-
-
-def test_naive_only_ensemble_still_tracks_every_origin(case):
-    """Pins the claim that `EnsembleBaselines` forecasts are unchanged by this: all four
-    of its members are local, so all four are re-derived at every origin."""
-    a, b = _LocalRecorder(), _LocalRecorder()
-
-    res, _ = _rolling(case, _ensemble([a, b]))
-
-    assert (res["status"] == "ok").all()
-    for member in (a, b):
-        assert member.fit_calls == 1 + N_ORIGINS
-        assert member.train_lengths[1:] == sorted(member.train_lengths[1:])
 
 
 def test_cached_member_fit_is_not_reused_across_cases():
@@ -208,39 +169,23 @@ def test_cached_member_fit_is_not_reused_across_cases():
 def test_predict_before_fit_raises(case):
     """Without this a missing fit would turn EnsembleBaselinesTheta into a quietly
     different column rather than a failed cell."""
-    ens = _ensemble([_LocalRecorder()])
+    ens = _ensemble([_Recorder()])
     frame = case.synth().head(50)
 
     with pytest.raises(RuntimeError, match="before fit"):
         ens.predict(case, frame, 3)
 
 
-def test_a_member_that_cannot_be_conditioned_fails_the_cell(case):
-    """A raise, not a quietly smaller median under a card that still claims the member."""
-
-    class _Unconditionable(_LocalRecorder):
-        name = "Unconditionable"
-
-        def fit(self, case, train, val):
-            if len(val) == 0:  # the predict-time conditioning pass
-                raise ValueError("cannot condition on this history")
-            super().fit(case, train, val)
-
-    res, _ = _rolling(case, _ensemble([_Unconditionable()]))
-
-    assert res["status"].str.startswith("error").all()
-
-
 def test_member_predict_failure_is_still_dropped(case):
     """Unchanged behaviour: predict-time failure drops that member for that origin."""
 
-    class _PredictFails(_LocalRecorder):
+    class _PredictFails(_Recorder):
         name = "PredictFails"
 
         def predict(self, case, history, horizon, future_exog=None):
             raise ValueError("no forecast today")
 
-    good = _LocalRecorder()
+    good = _Recorder()
 
     res, _ = _rolling(case, _ensemble([good, _PredictFails()]))
 
@@ -250,19 +195,19 @@ def test_member_predict_failure_is_still_dropped(case):
 def test_flags_are_derived_from_members():
     """So an exogenous-aware or stochastic member added later cannot publish a stale flag."""
 
-    class _Exo(_LocalRecorder):
+    class _Exo(_Recorder):
         name = "Exo"
         uses_exogenous = True
 
-    class _Stochastic(_LocalRecorder):
+    class _Stochastic(_Recorder):
         name = "Stochastic"
         is_stochastic = True
 
-    plain = _ensemble([_LocalRecorder()])
+    plain = _ensemble([_Recorder()])
     assert plain.uses_exogenous is False
     assert plain.is_stochastic is False
-    assert _ensemble([_LocalRecorder(), _Exo()]).uses_exogenous is True
-    assert _ensemble([_LocalRecorder(), _Stochastic()]).is_stochastic is True
+    assert _ensemble([_Recorder(), _Exo()]).uses_exogenous is True
+    assert _ensemble([_Recorder(), _Stochastic()]).is_stochastic is True
 
     # Both real factories are deterministic and univariate today, which is what keeps the
     # recorded `uses_exogenous` column and the single-seed cell unchanged.
@@ -274,7 +219,7 @@ def test_flags_are_derived_from_members():
 def test_seed_is_forwarded_to_members(case):
     """Every stochastic method must route randomness through `self.seed` (base.py), so a
     composite has to pass its own down or a member would repeat one draw."""
-    member = _LocalRecorder()
+    member = _Recorder()
     ens = _ensemble([member])
     ens.seed = 3
 

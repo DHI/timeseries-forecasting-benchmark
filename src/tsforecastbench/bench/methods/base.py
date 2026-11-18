@@ -291,18 +291,12 @@ class Forecaster(ABC):
     #      span. The results viewer scores `is_global` methods a second time on the
     #      extended-history fit (see `pools_segments`) in a separate matrix, alongside the
     #      shared local one every method is scored on; the gap is the gain from the history.
-    #   2. The rolling-origin eval fits it once, on data strictly before the test period,
-    #      then scores every origin by inference alone -- its predict conditions on the
-    #      observed history up to that origin without re-estimating parameters. A non-global
-    #      method is refit at each origin instead, because for it the fit IS the forecast
-    #      and there is no reusable model to carry forward. Every `is_global` method must
-    #      therefore make predict depend only on its trained model plus the `history` it is
-    #      handed, never on per-origin state captured during fit.
-    #      A composite (see `methods/ensemble.py`) satisfies that by fitting the members
-    #      which keep a trained model once, and re-deriving the members whose state is a
-    #      closed-form statistic of the history from the history predict was handed. That is
-    #      conditioning, not estimation, in the same sense as the per-origin seasonal
-    #      decomposition `methods/classical.py` re-runs inside `forward`.
+    #   2. Its predict depends only on its trained model plus the `history` it is handed,
+    #      never on per-origin state captured during fit. The eval loop fits every method
+    #      once, on data strictly before the test period, and scores every origin by
+    #      inference alone (gh #120), so every method in the benchmark sets this. The naive
+    #      baselines qualify because they have no parameters: their forecast is a statistic
+    #      of the history, read in predict. Renaming the flag is #87.
     is_global: bool = False
     # Whether `fit` actually trains on the full multi-segment extended history (as
     # opposed to only conditioning on the tail segment). True for the methods that learn
@@ -377,17 +371,10 @@ class Forecaster(ABC):
     ) -> pd.DataFrame:
         """Forecast `horizon` steps ahead. Returns columns: ds (UTC), y_hat (float64).
 
-        Whether `history` is read depends on `is_global`. Global methods condition their
-        forecast on it, so one fit serves every origin. Non-global methods read only its
-        last timestamp (to place the forecast index) and forecast from state captured at
-        `fit` — to move the origin, refit; passing fresh history to predict alone would
-        silently forecast from the old origin.
-
-        A global method may also re-derive deterministic state from `history` here —
-        including by calling a local member's own `fit` on it, which is what a composite
-        does for the members whose parameters are a closed-form statistic of what they are
-        shown. What the `is_global` contract forbids is carrying origin information out of
-        the method's *own* fit, not re-reading the history predict was handed.
+        The forecast conditions on `history`, all observations up to the origin, so one fit
+        serves every origin. A method may re-derive deterministic state from `history` here,
+        such as a seasonal decomposition or a naive baseline's statistic. What it must not
+        do is carry origin information out of its fit.
 
         `future_exog`, when given, holds the exogenous columns for the `horizon` future
         timestamps (ds + each declared covariate). Univariate methods ignore it;
