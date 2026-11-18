@@ -374,7 +374,6 @@ def main(argv: list[str] | None = None) -> int:
             case.freq,
             seasonalities=case.seasonalities,
             horizon_primary=case.horizon_primary,
-            split_fraction=case.split_fraction,
         )
         return frame, pd.Timestamp(info["val_end"])
 

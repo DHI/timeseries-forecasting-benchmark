@@ -18,7 +18,10 @@ necessary_exogenous = ["precip"]
 static_attrs = ["lat", "lon"]
 data_type = "mixed"
 split_mode = "fraction"
-split_fraction = [0.7, 0.85]
+# From split_fraction_for: the test split is 2 annual cycles (gh #121).
+split_fraction = [0.695, 0.845]
+# Long enough for curation: 4 annual cycles of train plus 2 of test.
+synth_steps = 2920
 
 [splits]
 train_end = 2017-02-06

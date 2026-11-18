@@ -21,7 +21,14 @@ one uniform gap policy — see `src/tsforecastbench/data/curate.py` and the RESE
 - **Small gaps** (≤ a per-case cap, the lag where the target's autocorrelation drops below
   0.8, bounded by one seasonal cycle) are linearly interpolated.
 - **Large gaps** are hard boundaries — never bridged. The record is split into contiguous
-  segments and only the **longest** is kept.
+  segments and one is kept: the **last** if it is long enough, else the **longest** (the
+  latest on a tie). Long enough means training spans 4 cycles of the longest declared
+  season and test spans 2 cycles and one forecast horizon. Curation fails when neither
+  segment is long enough.
+- **Splits** are taken inside the kept segment. Validation is 15% of the observations
+  and test is the larger of 15% and 2 cycles of the longest declared season, with
+  training getting the rest. Each case's `split_fraction` in `case.toml` comes from
+  `split_fraction_for`, and `tests/test_case_splits.py` checks it.
 - A **`y_observed`** boolean column marks genuine observations, so the target is complete
   enough for any method to fit while scoring still counts only measured points.
 
