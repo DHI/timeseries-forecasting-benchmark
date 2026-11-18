@@ -5,7 +5,7 @@ The buoy's wind speed and pressure have gaps of up to 1818 h. They are filled fr
 the pre-test record (gh #119).
 
 uv run python -m tsforecastbench.data.cases.waves_massachusetts.download
-uv run python -m tsforecastbench.data.cases.waves_massachusetts.download --station 44013 --years 2014-2023
+uv run python -m tsforecastbench.data.cases.waves_massachusetts.download --years 2014-2023
 """
 
 from __future__ import annotations
@@ -28,7 +28,6 @@ ERA5_FOR = {"wspd": "wspd10", "pres": "mslp"}
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--station", default=CONFIG["station"])
     p.add_argument("--years", default=None, help="e.g. 2014-2023")
     args = p.parse_args(argv)
 
@@ -38,7 +37,8 @@ def main(argv: list[str] | None = None) -> int:
         a, b = args.years.split("-")
         years = list(range(int(a), int(b) + 1))
 
-    out = _ndbc.build_ndbc(case, args.station, years)
+    # The ERA5 point is this buoy's position, so the station is fixed.
+    out = _ndbc.build_ndbc(case, CONFIG["station"], years)
 
     _, info = curate_frame(
         out,
@@ -64,7 +64,7 @@ def main(argv: list[str] | None = None) -> int:
 
     path = _io.write_canonical(case, out)
     print(
-        f"[waves_massachusetts] wrote {path} ({len(out)} rows) station {args.station} "
+        f"[waves_massachusetts] wrote {path} ({len(out)} rows) station {CONFIG['station']} "
         f"{years[0]}-{years[-1]}"
     )
     return 0
