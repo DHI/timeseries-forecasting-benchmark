@@ -119,6 +119,9 @@ SNAPSHOT_COLUMNS = (
     "origin_ds",
     "ds",
     "y_hat",
+    "y",
+    "y_persistence",
+    "y_mean",
 )
 
 
@@ -142,8 +145,9 @@ def run_case_rolling(
       horizon, metric, value, fit_seconds, predict_seconds, frac_finite_test, status) so
       the matrix renderer is unchanged.
     - `snapshots` holds every origin's full predicted series (columns `SNAPSHOT_COLUMNS`:
-      case_id, method, used_extended_history, origin_id, origin_ds, ds, y_hat) so the
-      results viewer can draw real forecasts. Origins are case-level, so `origin_id`/
+      case_id, method, used_extended_history, origin_id, origin_ds, ds, y_hat, y,
+      y_persistence, y_mean) so the results viewer can draw real forecasts and the
+      bootstrap intervals can recompute the score. Origins are case-level, so `origin_id`/
       `origin_ds` align across methods and fits, which is what lets the viewer overlay
       several methods (and swap in a method's extended-history fit) on one origin's
       panel. A method that errors contributes no snapshot rows for that fit (its metrics
@@ -299,8 +303,15 @@ def run_case_rolling(
                 preds = method.predict(case, history, H, future_exog=fexog)
                 predict_times.append(time.perf_counter() - t_pred0)
                 y_hat = preds["y_hat"].to_numpy(float)
+                actual = raw_y[o : o + H]
+                # Local-history references, shared by both fits so the extended fit's
+                # skill scores isolate the model, not a shifted baseline.
+                persistence = float(local_hist["y"].iloc[-1])
+                mean = float(np.nanmean(local_hist["y"].to_numpy(float)))
                 # Full predicted series (all H steps, before masking) so the viewer
-                # draws a continuous forecast line even where the actual has gaps.
+                # draws a continuous forecast line even where the actual has gaps. The
+                # observed value (NaN where filled) and both references go alongside, so
+                # the score can be recomputed from the snapshots for the intervals.
                 method_snaps.append(
                     pd.DataFrame(
                         {
@@ -311,22 +322,20 @@ def run_case_rolling(
                             "origin_ds": full_fit["ds"].iloc[o],
                             "ds": preds["ds"].to_numpy(),
                             "y_hat": y_hat,
+                            "y": actual,
+                            "y_persistence": persistence,
+                            "y_mean": mean,
                         }
                     )
                 )
-                actual = raw_y[o : o + H]
                 m = np.isfinite(actual)
                 if not m.any():
                     continue
                 n_ok += 1
                 a.extend(actual[m])
                 p.extend(y_hat[m])
-                # Local-history references, shared by both fits so the extended fit's
-                # skill scores isolate the model, not a shifted baseline.
-                ref_p.extend(np.full(int(m.sum()), float(local_hist["y"].iloc[-1])))
-                ref_m.extend(
-                    np.full(int(m.sum()), float(np.nanmean(local_hist["y"].to_numpy(float))))
-                )
+                ref_p.extend(np.full(int(m.sum()), persistence))
+                ref_m.extend(np.full(int(m.sum()), mean))
             if not a:
                 raise ValueError("no finite test points across origins")
             a = np.array(a)

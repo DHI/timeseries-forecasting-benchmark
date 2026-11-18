@@ -13,6 +13,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from tsforecastbench.bench.eval.loop import _pick_origin  # noqa: E402
+from tsforecastbench.bench.eval.metrics import pooled_metrics  # noqa: E402
 from tsforecastbench.bench.eval.rolling import (  # noqa: E402
     _leadtime_origins,
     _select_rolling_origins,
@@ -245,6 +246,23 @@ def test_the_reported_numbers_describe_the_drawn_forecast(case):
     for metric in ("MAE", "RMSE"):
         value = float(res.loc[res["metric"] == metric, "value"].iloc[0])
         assert abs(value - drawn) / drawn < 0.01, f"{metric} does not match the drawn line"
+
+
+def test_score_recomputed_from_the_snapshots_matches_the_run(case):
+    res, snaps = _rolling(case, _Deterministic(), n_seeds=1)
+    scores = res.set_index("metric")["value"]
+    observed = snaps[snaps["y"].notna()]
+
+    recomputed = pooled_metrics(
+        observed["y"].to_numpy(),
+        observed["y_hat"].to_numpy(),
+        observed["y_persistence"].to_numpy(),
+        observed["y_mean"].to_numpy(),
+        mase_scale=scores["MAE"] / scores["MASE"],
+    )
+
+    for metric, value in recomputed.items():
+        assert value == pytest.approx(scores[metric], nan_ok=True), metric
 
 
 def test_deterministic_method_is_fit_once_whatever_n_seeds_says(case):
