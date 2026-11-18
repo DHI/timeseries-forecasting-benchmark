@@ -10,6 +10,7 @@ from tsforecastbench.data.curate import (
     curate_frame,
     fraction_split_dates,
     gap_cap,
+    longest_segment_bounds,
     split_fraction_for,
 )
 
@@ -66,7 +67,7 @@ def test_exogenous_gap_longer_than_the_cap_fails():
 def test_tail_length_is_checked_with_the_pre_test_cap():
     rng = np.random.default_rng(0)
     y = np.concatenate([_smooth(1700), rng.normal(scale=200.0, size=300)])
-    y[1900:1902] = np.nan  # with the full record's cap of 1, the tail is the last 98 steps
+    y[1900:1902] = np.nan  # with the full record's cap of 1, this gap splits the record
 
     curated, info = _curate(_frame(y))
 
@@ -83,3 +84,26 @@ def test_split_gives_two_seasons_of_test_when_15_percent_is_shorter():
 
     assert (1 - val_end) * 2192 >= 2 * 365
     assert val_end - train_end == pytest.approx(0.15, abs=1e-3)
+
+
+def test_longest_segment_is_kept_over_a_shorter_last_one():
+    observed = np.ones(100, dtype=bool)
+    observed[60:70] = False  # a 10-step gap splits the record into 60 and 30 steps
+
+    assert longest_segment_bounds(observed, cap=5) == (0, 60)
+
+
+def test_equal_segments_keep_the_latest():
+    observed = np.ones(100, dtype=bool)
+    observed[45:55] = False  # two 45-step segments
+
+    assert longest_segment_bounds(observed, cap=5) == (55, 100)
+
+
+def test_short_gaps_do_not_split_a_segment():
+    observed = np.ones(100, dtype=bool)
+    observed[60:63] = False
+    observed[:2] = False  # leading and trailing unobserved rows are trimmed
+    observed[-1] = False
+
+    assert longest_segment_bounds(observed, cap=5) == (2, 99)

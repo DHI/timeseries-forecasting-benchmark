@@ -215,7 +215,7 @@ class Case(BaseModel):
     def load(self, prefer_synth: bool = False, curated: bool = False) -> pd.DataFrame:
         """Load the case frame.
 
-        `curated=True` returns the benchmark-ready series (tail contiguous span,
+        `curated=True` returns the benchmark-ready series (longest contiguous span,
         small gaps filled, `y_observed` mask) that the eval loops consume: it reads
         `data/curated/<id>.parquet` when present, else applies the gap policy on the
         fly. The default (`curated=False`) returns the raw series in
@@ -250,8 +250,8 @@ class Case(BaseModel):
         """Full single-series history for `Forecaster.is_global` methods.
 
         Gap-filled the same way as `load(curated=True)` (small gaps <= the per-case
-        ACF-derived cap), but without trimming to the tail segment: every observation
-        at or before the tail segment's `val_end` is kept, gaps larger than the cap
+        ACF-derived cap), but without trimming to the curated segment: every observation
+        at or before the curated segment's `val_end` is kept, gaps larger than the cap
         included and marked unobserved rather than used as a trim boundary. Cutting off
         at `val_end` — not the raw series' end — keeps this frame strictly before the
         test window every method (local or global) is scored on, so it adds history,

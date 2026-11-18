@@ -2,13 +2,13 @@
 from data/processed/.
 
 Applies the gap policy in tsforecastbench.data.curate once per case: fill small gaps
-(<= a per-case, autocorrelation-derived cap), keep the tail contiguous span (the one
-ending at the record's most recent observation), drop the rest, and record which
+(<= a per-case, autocorrelation-derived cap), keep the longest contiguous span (the
+latest on a tie), drop the rest, and record which
 points are genuine observations (`y_observed`). The eval loops read these; the raw
 gappy Parquets in data/processed/ stay untouched for EDA and case review.
 
 Also materializes the extended-history frame `Forecaster.is_global` methods use: the
-full record up to the tail segment's `val_end`, gap-filled the same way but without
+full record up to the curated segment's `val_end`, gap-filled the same way but without
 the segment trim (see `tsforecastbench.data.curate.extend_frame`).
 
 Run after downloading/refreshing data, or after changing the policy:
