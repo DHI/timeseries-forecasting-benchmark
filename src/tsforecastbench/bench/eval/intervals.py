@@ -152,3 +152,49 @@ def case_intervals(
                 }
             )
     return pd.DataFrame(rows)
+
+
+INTERVAL_COLUMNS = ["ci_low", "ci_high", "best_method", "diff_low", "diff_high"]
+
+
+def matrix_intervals(
+    results: pd.DataFrame,
+    snapshots: pd.DataFrame,
+    lower_is_better: Mapping[str, bool],
+    n_boot: int = N_BOOT,
+) -> pd.DataFrame:
+    """`results` with `INTERVAL_COLUMNS` added from the bootstrap of each case's snapshots.
+
+    The best method of a case is picked among the local fits of the methods that use no
+    exogenous inputs, which is the matrix's default view. Each case's MASE scale is read
+    off its rows (MAE over MASE) and its horizon from the `horizon` column, so the
+    intervals use the same denominators as the scores. A cell with no snapshots, such as
+    a failed run, keeps NaN intervals.
+    """
+    reference = set(results.loc[~results["uses_exogenous"], "method"])
+    frames = []
+    for case_id, case_snaps in snapshots.groupby("case_id", sort=True):
+        rows = results[(results["case_id"] == case_id) & ~results["used_extended_history"]]
+        mae = rows[rows["metric"] == "MAE"].set_index("method")["value"]
+        mase = rows[rows["metric"] == "MASE"].set_index("method")["value"]
+        ratio = (mae / mase).dropna()
+        if ratio.empty:
+            continue
+        horizon = pd.Timedelta(rows["horizon"].iloc[0])
+        print(f"[intervals] {case_id}: {case_snaps['method'].nunique()} method(s)")
+        frames.append(
+            case_intervals(
+                case_snaps,
+                mase_scale=float(ratio.iloc[0]),
+                horizon=horizon,
+                lower_is_better=lower_is_better,
+                reference_methods=reference,
+                n_boot=n_boot,
+            )
+        )
+    if not frames:
+        return results.assign(**{c: np.nan for c in INTERVAL_COLUMNS})
+    intervals = pd.concat(frames, ignore_index=True)
+    key = [*CELL_KEY, "metric"]
+    merged = results.merge(intervals[[*key, *INTERVAL_COLUMNS]], on=key, how="left")
+    return merged

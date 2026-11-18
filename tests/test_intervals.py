@@ -6,8 +6,17 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from tsforecastbench.bench.eval.intervals import block_length, case_intervals, resample_indices
+from tsforecastbench.bench.eval.intervals import (
+    block_length,
+    case_intervals,
+    matrix_intervals,
+    resample_indices,
+)
 from tsforecastbench.bench.eval.metrics import POOLED_METRICS
+from tsforecastbench.bench.eval.rolling import run_case_rolling
+from tsforecastbench.bench.methods.base import Forecaster
+from tsforecastbench.data.registry import get_case
+from tsforecastbench.data.schema import Case
 
 LOWER_IS_BETTER = {m: not m.startswith(("Skill", "NSE", "KGE")) for m in POOLED_METRICS}
 H = 24
@@ -144,3 +153,36 @@ def test_point_score_sits_inside_its_interval(metric):
 
     row = res[res["metric"] == metric].iloc[0]
     assert row["ci_low"] <= row["value"] <= row["ci_high"]
+
+
+class _Offset(Forecaster):
+    """Forecasts the last observed value plus a fixed offset."""
+
+    family = "baseline"
+    is_global = False
+
+    def __init__(self, name: str, offset: float):
+        self.name = name
+        self.offset = offset
+
+    def fit(self, case: Case, train: pd.DataFrame, val: pd.DataFrame) -> None:
+        pass
+
+    def predict(self, case, history, horizon, future_exog=None) -> pd.DataFrame:
+        future = self._future_index(case, history["ds"].max(), horizon)
+        level = float(history["y"].iloc[-1]) + self.offset
+        return pd.DataFrame({"ds": future, "y_hat": np.full(horizon, level)})
+
+
+def test_matrix_rows_get_intervals_around_their_own_scores():
+    case = get_case("discharge_flashy_catskills")
+    methods = [_Offset("Close", 0.0), _Offset("Far", 50.0)]
+    results, snaps = run_case_rolling(case, methods, n_origins=12, prefer_synth=True)
+
+    out = matrix_intervals(results, snaps, LOWER_IS_BETTER, n_boot=100)
+
+    assert len(out) == len(results)
+    mae = out[out["metric"] == "MAE"].set_index("method")
+    assert (mae["ci_low"] <= mae["value"]).all() and (mae["value"] <= mae["ci_high"]).all()
+    assert set(mae["best_method"]) == {"Close"}
+    assert mae.loc["Far", "diff_low"] > 0

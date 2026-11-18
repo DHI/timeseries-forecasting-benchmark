@@ -11,7 +11,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from tsforecastbench.bench.viz import render_matrix
+from tsforecastbench.bench.eval.intervals import matrix_intervals
+from tsforecastbench.bench.viz import METRIC_CONFIG, render_matrix
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 RESULTS_DIR = REPO_ROOT / "results"
@@ -53,7 +54,16 @@ def write_pilot_artifacts(
     method_order: list[str],
 ) -> None:
     """Write `results/pilot_metrics.parquet`, its `docs/results/scores.parquet` mirror,
-    `results/pilot_snapshots.parquet` (if any snapshots), and every matrix PNG."""
+    `results/pilot_snapshots.parquet` (if any snapshots), and every matrix PNG.
+
+    Each score gets its bootstrap interval and its difference from the case's best method
+    here, where every method's snapshots are in one place (see `eval.intervals`).
+    """
+    if snapshots:
+        lower_is_better = {m: cfg["lower_is_better"] for m, cfg in METRIC_CONFIG.items()}
+        results = matrix_intervals(
+            results, pd.concat(snapshots, ignore_index=True), lower_is_better
+        )
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     results.to_parquet(RESULTS_DIR / "pilot_metrics.parquet", index=False)
     DOCS_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
