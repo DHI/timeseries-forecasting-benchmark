@@ -341,6 +341,20 @@
 <script type="application/json" id="graph-data">{
   "nodes": [
     {
+      "id": "2026-11-18-bootstrap-intervals",
+      "date": "2026-11-18",
+      "title": "Matrix scores get block-bootstrap intervals and a tie mark against the best method",
+      "category": "methodology",
+      "summary": "95% block-bootstrap interval per score with a t-quantile over the block count, and a \"≈\" mark where a cell cannot be told apart from the case's best method; start-count scaling (#44) dropped.",
+      "detail": "Each matrix score now carries a 95% interval from a circular block bootstrap over its forecast starts, recomputed from the forecast snapshots, which now store the observed value and both skill-score references (gh #121). Blocks span at least one horizon of starts. The interval is the score plus or minus the bootstrap standard deviation times a t-quantile with one degree of freedom fewer than the number of blocks. On synthetic AR(1) errors plain percentile intervals covered the truth 70-90% of the time and this form 87-96%, falling to about 75% when errors stay correlated across several horizons and the test span holds few. Each cell also gets an interval on its difference from the case's best method, picked among local fits without exogenous inputs, and the app marks a cell \"≈\" when that interval contains 0. Scaling the start count with test length (#44) is dropped: the block length already accounts for overlapping windows, and fewer starts would leave too few blocks to resample. A dry run on the published snapshots, scored under the old splits, gives median MASE half-widths from 6% (`demand_ltown`) to 66% (`discharge_snowmelt_yosemite`), and 0 to 23 of 25 methods per case that cannot be told apart from the best (`surge_cuxhaven` 23, `waves_oregon` 19). The intervals appear once the #122 re-run writes snapshots with the new columns.",
+      "tags": [
+        "intervals",
+        "bootstrap",
+        "evaluation",
+        "significance"
+      ]
+    },
+    {
       "id": "2026-11-18-test-length-rule",
       "date": "2026-11-18",
       "title": "Test splits span 2 seasons, and curation keeps the last segment only when it is long enough",
@@ -1826,6 +1840,11 @@
     }
   ],
   "edges": [
+    {
+      "source": "2026-11-18-bootstrap-intervals",
+      "target": "2026-11-18-test-length-rule",
+      "type": "follows-from"
+    },
     {
       "source": "2026-11-18-test-length-rule",
       "target": "2026-07-10-is-global-flag-inert",

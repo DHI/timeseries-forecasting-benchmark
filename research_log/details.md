@@ -1,4 +1,16 @@
 ---
+id: 108
+date: "2026-11-18"
+title: "Matrix scores get block-bootstrap intervals and a tie mark against the best method"
+description: |
+  Each matrix score now carries a 95% interval from a circular block bootstrap over its forecast starts, recomputed from the forecast snapshots, which now store the observed value and both skill-score references (gh #121). Blocks span at least one horizon of starts. The interval is the score plus or minus the bootstrap standard deviation times a t-quantile with one degree of freedom fewer than the number of blocks. On synthetic AR(1) errors plain percentile intervals covered the truth 70-90% of the time and this form 87-96%, falling to about 75% when errors stay correlated across several horizons and the test span holds few. Each cell also gets an interval on its difference from the case's best method, picked among local fits without exogenous inputs, and the app marks a cell "≈" when that interval contains 0. Scaling the start count with test length (#44) is dropped: the block length already accounts for overlapping windows, and fewer starts would leave too few blocks to resample. A dry run on the published snapshots, scored under the old splits, gives median MASE half-widths from 6% (`demand_ltown`) to 66% (`discharge_snowmelt_yosemite`), and 0 to 23 of 25 methods per case that cannot be told apart from the best (`surge_cuxhaven` 23, `waves_oregon` 19). The intervals appear once the #122 re-run writes snapshots with the new columns.
+commits:
+  - 94d028c: "Move the pooled matrix metrics into one shared function"
+  - dea3b94: "Store the observed value and both references in the forecast snapshots"
+  - 8005b12: "Add block-bootstrap intervals and a difference from the best per cell"
+  - f6d9cbb: "Attach each score's interval and difference from the best when results are written"
+  - ce8fb2d: "Show each cell's interval on hover and mark cells tied with the best"
+---
 id: 107
 date: "2026-11-18"
 title: "Test splits span 2 seasons, and curation keeps the last segment only when it is long enough"
