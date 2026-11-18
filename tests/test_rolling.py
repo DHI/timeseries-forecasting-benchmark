@@ -14,6 +14,7 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from tsforecastbench.bench.eval.loop import _pick_origin  # noqa: E402
 from tsforecastbench.bench.eval.rolling import (  # noqa: E402
+    _leadtime_origins,
     _select_rolling_origins,
     run_case_rolling,
 )
@@ -57,8 +58,9 @@ def test_all_valid_candidates_returned_when_fewer_than_n_origins():
 
 
 def test_falls_back_to_first_candidate_when_all_filtered_out():
-    test_start, last_origin, H, n_origins = 0, 10, 5, 4
+    test_start, last_origin, H, n_origins = 1, 10, 5, 4
     raw_y = np.full(last_origin + H, np.nan)
+    raw_y[0] = 1.0  # every horizon window is empty; only origin 1 follows an observation
 
     origins = _select_rolling_origins(test_start, last_origin, raw_y, H, n_origins)
 
@@ -86,6 +88,57 @@ def test_single_holdout_origin_skips_history_that_ends_on_a_filled_value():
     origin = _pick_origin(raw_y, test_start, last_origin, H)
 
     assert np.isfinite(raw_y[origin - 1])
+
+
+def test_rolling_fallback_searches_between_the_sampled_candidates():
+    test_start, last_origin, H, n_origins = 10, 20, 5, 1
+    raw_y = np.full(last_origin + H, np.nan)
+    raw_y[14] = 1.0  # only origin 15 follows an observation; it is not a sampled candidate
+
+    origins = _select_rolling_origins(test_start, last_origin, raw_y, H, n_origins)
+
+    assert origins == [15]
+
+
+def test_rolling_origins_fail_when_no_history_ends_on_an_observation():
+    raw_y = np.full(20, np.nan)
+
+    with pytest.raises(ValueError, match="observed value"):
+        _select_rolling_origins(5, 10, raw_y, 5, 4)
+
+
+def test_single_holdout_origin_searches_off_the_stride():
+    test_start, last_origin, H = 10, 30, 8  # candidates every 2 steps: 10, 12, ...
+    raw_y = np.ones(last_origin + H)
+    raw_y[9:30:2] = np.nan  # every candidate's history ends on a filled point
+
+    origin = _pick_origin(raw_y, test_start, last_origin, H)
+
+    assert origin == 11
+
+
+def test_leadtime_origins_move_past_a_filled_value():
+    raw_y = np.ones(40)
+    raw_y[19] = np.nan  # the history of origin 20 ends on this filled point
+
+    origins = _leadtime_origins(10, 30, raw_y, 3)  # evenly spaced: 10, 20, 30
+
+    assert origins == [10, 21, 30]
+
+
+def test_leadtime_origins_drop_one_with_no_observed_history_before_the_end():
+    raw_y = np.ones(40)
+    raw_y[29] = np.nan  # the history of the last origin, 30, ends on this filled point
+
+    assert _leadtime_origins(10, 30, raw_y, 3) == [10, 20]
+
+
+def test_single_holdout_origin_fails_when_its_only_option_follows_a_filled_value():
+    raw_y = np.ones(20)
+    raw_y[9] = np.nan
+
+    with pytest.raises(ValueError, match="observed value"):
+        _pick_origin(raw_y, 10, 10, 4)
 
 
 # ---------------------------------------------------------------------------

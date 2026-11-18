@@ -57,6 +57,7 @@ import pandas as pd
 
 from tsforecastbench.bench.eval.config import DEFAULT_ORIGINS, DEFAULT_SEEDS
 from tsforecastbench.bench.eval.loop import (
+    _first_origin_after_observed,
     _horizon_to_steps,
     _raw_y,
     _segment_extended,
@@ -87,11 +88,27 @@ def _select_rolling_origins(
         if np.isfinite(raw_y[o - 1]) and np.isfinite(raw_y[o : o + H]).mean() >= 0.5
     ]
     if not valid:
-        return [int(cand[0])]
+        return [_first_origin_after_observed(raw_y, test_start, last_origin)]
     if len(valid) <= n_origins:
         return valid
     idx = np.unique(np.linspace(0, len(valid) - 1, n_origins).astype(int))
     return [valid[i] for i in idx]
+
+
+def _leadtime_origins(
+    test_start: int, last_origin: int, raw_y: np.ndarray, n_origins: int
+) -> list[int]:
+    """`n_origins` evenly spaced origins in [test_start, last_origin], each moved forward
+    to the first one whose history ends on an observed value (gh #119). An origin with
+    none before `last_origin` is dropped; raises `ValueError` if all are."""
+    evenly = np.linspace(test_start, last_origin, n_origins).astype(int)
+    shifted = [o + int(np.argmax(np.isfinite(raw_y[o - 1 : last_origin]))) for o in evenly]
+    origins = sorted({int(o) for o in shifted if np.isfinite(raw_y[o - 1])})
+    if not origins:
+        raise ValueError(
+            f"no forecast origin in [{test_start}, {last_origin}] has an observed value before it"
+        )
+    return origins
 
 
 SNAPSHOT_COLUMNS = (
@@ -479,9 +496,8 @@ def run_leadtime_curve(
     last_origin = len(full) - H - 1
     if last_origin <= test_start:
         raise ValueError(f"Case {case.id}: test span too short for horizon {H}")
-    origins = np.unique(np.linspace(test_start, last_origin, n_origins).astype(int))
-
     raw_y = _raw_y(full)  # for honest scoring (filled points masked back to NaN)
+    origins = _leadtime_origins(test_start, last_origin, raw_y, n_origins)
     rows: list[dict] = []
     for method in methods:
         # accumulate errors per lead

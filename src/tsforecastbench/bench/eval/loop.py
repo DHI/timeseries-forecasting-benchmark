@@ -127,18 +127,30 @@ def _raw_y(df: pd.DataFrame) -> np.ndarray:
     return np.where(_observed_mask(df).to_numpy(), df["y"].to_numpy(dtype=float), np.nan)
 
 
+def _first_origin_after_observed(raw_y: np.ndarray, start: int, stop: int) -> int:
+    """First origin in [start, stop] whose history ends on an observed value.
+
+    A filled value is interpolated from the observation after its gap, so a forecast
+    whose last history point is filled would see the future (gh #119). Raises
+    `ValueError` if no origin in the range qualifies.
+    """
+    for o in range(start, stop + 1):
+        if np.isfinite(raw_y[o - 1]):
+            return o
+    raise ValueError(f"no forecast origin in [{start}, {stop}] has an observed value before it")
+
+
 def _pick_origin(
     raw_y: np.ndarray, test_start: int, last_origin: int, horizon: int, min_frac: float = 0.5
 ) -> int:
     """First origin in [test_start, last_origin] whose horizon window is >= min_frac
     observed; else the origin with the densest window. Keeps the single-holdout metric
     meaningful when the test split begins in a gap. An origin whose history ends on a
-    filled value is skipped: that value is interpolated from the observation after its
-    gap, so it carries the future (gh #119)."""
+    filled value is never returned (see `_first_origin_after_observed`)."""
     if last_origin <= test_start:
-        return test_start
+        return _first_origin_after_observed(raw_y, test_start, test_start)
     step = max(1, horizon // 4)
-    best_o, best_frac = test_start, -1.0
+    best_o, best_frac = None, -1.0
     for o in range(test_start, last_origin + 1, step):
         if not np.isfinite(raw_y[o - 1]):
             continue
@@ -147,6 +159,8 @@ def _pick_origin(
             return o
         if frac > best_frac:
             best_frac, best_o = frac, o
+    if best_o is None:
+        return _first_origin_after_observed(raw_y, test_start, last_origin)
     return best_o
 
 
