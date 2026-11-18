@@ -516,3 +516,99 @@ describe('useMatrixFigure — training-time overlay cell text color', () => {
     expect(annotationFontColor(result.current!, '10000.00')).toBe('#000000');
   });
 });
+
+describe('useMatrixFigure — intervals and ties with the best', () => {
+  const rows = [
+    row({
+      method: 'LightGBM',
+      value: 1.0,
+      ci_low: 0.9,
+      ci_high: 1.1,
+      best_method: 'LightGBM',
+      diff_low: 0,
+      diff_high: 0,
+    }),
+    row({
+      method: 'CatBoost',
+      value: 1.05,
+      ci_low: 0.9,
+      ci_high: 1.2,
+      best_method: 'LightGBM',
+      diff_low: -0.02,
+      diff_high: 0.1,
+    }),
+    row({
+      method: 'MLP',
+      value: 2.0,
+      ci_low: 1.8,
+      ci_high: 2.2,
+      best_method: 'LightGBM',
+      diff_low: 0.5,
+      diff_high: 1.5,
+    }),
+  ];
+  const textOf = (fig: ReturnType<typeof useMatrixFigure>, method: string) =>
+    String(fig!.layout.annotations!.find((a) => a.x === method && a.y === 'case_a')!.text);
+
+  it('marks only the cell whose difference interval from the best contains 0', () => {
+    const { result } = renderHook(() =>
+      useMatrixFigure(rows, 'MAE', EMPTY_SELECTION, false, false, false),
+    );
+    expect(textOf(result.current, 'CatBoost')).toContain('≈');
+    expect(textOf(result.current, 'LightGBM')).not.toContain('≈');
+    expect(textOf(result.current, 'MLP')).not.toContain('≈');
+  });
+
+  it('gives each cell its interval and its standing against the best for the tooltip', () => {
+    const { result } = renderHook(() =>
+      useMatrixFigure(rows, 'MAE', EMPTY_SELECTION, false, false, false),
+    );
+    const lines = result.current!.intervalLinesOf;
+    expect(lines.get('case_a|LightGBM')).toEqual([
+      '95% interval: 0.90 to 1.10',
+      'Best on this case',
+    ]);
+    expect(lines.get('case_a|CatBoost')?.[1]).toBe('Cannot be told apart from LightGBM');
+    expect(lines.get('case_a|MLP')?.[1]).toBe('Worse than LightGBM');
+  });
+
+  it('drops the marks and tooltips while the training-time overlay is held', () => {
+    const { result } = renderHook(() =>
+      useMatrixFigure(rows, 'MAE', EMPTY_SELECTION, false, false, true),
+    );
+    expect(textOf(result.current, 'CatBoost')).not.toContain('≈');
+    expect(result.current!.intervalLinesOf.size).toBe(0);
+  });
+
+  it('describes the swapped-in extended row when showGlobal is on', () => {
+    const withExtended = [
+      row({
+        method: 'LightGBM',
+        is_global: true,
+        value: 1.0,
+        best_method: 'LightGBM',
+        diff_low: 0,
+        diff_high: 0,
+        ci_low: 0.9,
+        ci_high: 1.1,
+      }),
+      row({
+        method: 'LightGBM',
+        is_global: true,
+        used_extended_history: true,
+        value: 1.2,
+        best_method: 'LightGBM',
+        diff_low: -0.1,
+        diff_high: 0.3,
+        ci_low: 1.0,
+        ci_high: 1.4,
+      }),
+    ];
+    const { result } = renderHook(() =>
+      useMatrixFigure(withExtended, 'MAE', EMPTY_SELECTION, true, false, false),
+    );
+    expect(result.current!.intervalLinesOf.get('case_a|LightGBM')?.[0]).toBe(
+      '95% interval: 1.00 to 1.40',
+    );
+  });
+});

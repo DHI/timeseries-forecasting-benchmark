@@ -44,6 +44,20 @@ export function AppInstructions({ maxWidth }: { maxWidth?: number }) {
           can&apos;t compare methods across different cases.
         </li>
       </ul>
+      <h3>Bold cells, &quot;≈&quot; and intervals</h3>
+      <p>
+        The bold cell is the best visible score in its row. A cell marked &quot;≈&quot; cannot be
+        told apart from the case&apos;s best method: the 95% interval on the difference between the
+        two contains 0. The best method is picked among the methods that use no exogenous inputs,
+        scored on the curated span, so it stays the same whichever checkboxes are on. Hovering a
+        cell shows its 95% interval and how it compares with that best method.
+      </p>
+      <p>
+        Intervals come from a block bootstrap over the forecast origins: runs of neighbouring
+        origins, spanning at least one forecast horizon, are resampled together, because their
+        errors are correlated. Intervals are wide on a short test span. They come out too narrow
+        when errors stay correlated across several horizons and the test span holds only a few.
+      </p>
       <h3>Method cards</h3>
       <p>
         Click a card&apos;s title bar to collapse it down to just that bar, or to expand it again.

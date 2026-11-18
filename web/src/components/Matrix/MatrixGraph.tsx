@@ -47,6 +47,29 @@ function TrainingTimeBreakdownTooltip({
   );
 }
 
+/** The hovered cell's 95% interval and whether it can be told apart from the case's best
+ * method, placed like the training-time breakdown above. */
+function IntervalTooltip({ lines, left, top }: { lines: string[]; left: number; top: number }) {
+  const style: CSSProperties = {
+    position: 'absolute',
+    pointerEvents: 'none',
+    zIndex: 10,
+    left,
+    top,
+    transform: 'translate(-50%, -140%)',
+    padding: '6px 10px',
+    lineHeight: 1.5,
+    ...tooltipBoxStyle,
+  };
+  return (
+    <div style={style}>
+      {lines.map((line) => (
+        <div key={line}>{line}</div>
+      ))}
+    </div>
+  );
+}
+
 // Locks the heatmap down to a read-only view: keeps hover, but strips every pan/zoom/
 // select tool from the mode bar so the grid can't be dragged, scaled, or rearranged.
 // Port of app/app.py's _MATRIX_CONFIG.
@@ -103,6 +126,7 @@ function MatrixGraphComponent({
   const graphRef = useRef<HTMLDivElement | null>(null);
   const [overlay, setOverlay] = useState<HoverOverlay | null>(null);
   const [breakdown, setBreakdown] = useState<TrainingTimeBreakdown | null>(null);
+  const [intervalLines, setIntervalLines] = useState<string[] | null>(null);
 
   const handleHover = useCallback(
     (event: PlotMouseEvent) => {
@@ -118,6 +142,7 @@ function MatrixGraphComponent({
       // The fit/predict breakdown only ever makes sense while the combined number is on
       // screen — otherwise a stale value could hang around into a normal metric hover.
       setBreakdown(showTrainingTime ? (figure.trainingBreakdownOf.get(`${y}|${x}`) ?? null) : null);
+      setIntervalLines(figure.intervalLinesOf.get(`${y}|${x}`) ?? null);
     },
     [figure, showTrainingTime],
   );
@@ -125,6 +150,7 @@ function MatrixGraphComponent({
   const handleUnhover = useCallback(() => {
     setOverlay(null);
     setBreakdown(null);
+    setIntervalLines(null);
   }, []);
 
   const handleClick = useCallback(
@@ -163,6 +189,9 @@ function MatrixGraphComponent({
           left={overlay.col.left}
           top={overlay.row.top}
         />
+      )}
+      {!showTrainingTime && intervalLines && overlay && (
+        <IntervalTooltip lines={intervalLines} left={overlay.col.left} top={overlay.row.top} />
       )}
     </div>
   );
