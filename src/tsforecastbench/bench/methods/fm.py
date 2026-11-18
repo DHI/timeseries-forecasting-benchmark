@@ -132,8 +132,8 @@ def _timesfm_context_len(model, n_available: int, max_horizon: int) -> int:
 def _load_timesfm(
     model_name: str, max_context: int, max_horizon: int, return_backcast: bool = False
 ):
-    # Compilation bakes in the context/horizon caps, so cache per (model, caps) bucket --
-    # one bucket per distinct per-case context length now, rather than one shared bucket.
+    # Compilation bakes in the context/horizon caps, so a new context length needs a new
+    # compile.
     # `return_backcast` is a separate bucket dimension: `forecast_with_covariates` requires
     # it True to fit the xreg regressor, but turning it on changes what plain `forecast()`
     # returns (backcast prepended to the horizon, not just the horizon) — so the
@@ -141,9 +141,11 @@ def _load_timesfm(
     # Each bucket miss is a `copy.copy` of the shared loaded model (weights stay shared,
     # verified empirically: two copies compiled at different shapes coexist and produce
     # correct, non-cross-contaminating results) plus a fresh `.compile()`, not a checkpoint
-    # reload -- so a 12-case pilot costs ~12-24 cheap compiles, not 12-24 full reloads.
-    key = (model_name, max_context, max_horizon, return_backcast)
-    if key not in _TIMESFM_CACHE:
+    # reload. The context grows with the origin, so only the latest shape per key is kept:
+    # origins run in time order and an earlier, shorter shape is never asked for again.
+    key = (model_name, max_horizon, return_backcast)
+    cached = _TIMESFM_CACHE.get(key)
+    if cached is None or cached[0] != max_context:
         import copy
 
         import timesfm
@@ -161,8 +163,8 @@ def _load_timesfm(
                 return_backcast=return_backcast,
             )
         )
-        _TIMESFM_CACHE[key] = variant
-    return _TIMESFM_CACHE[key]
+        _TIMESFM_CACHE[key] = (max_context, variant)
+    return _TIMESFM_CACHE[key][1]
 
 
 def _load_moirai_module(model_name: str):
@@ -242,10 +244,9 @@ class ChronosForecaster(Forecaster):
         self.context_length = context_length
 
     def fit(self, case: Case, train: pd.DataFrame, val: pd.DataFrame) -> None:
-        # Zero-shot: no case-specific training. The only fit-time state is the pre-test
-        # history length, which pins the context to a fixed width (see predict) so it stays
-        # constant across rolling origins instead of growing with each one.
-        self._n_fit = len(train)
+        # Zero-shot: no case-specific training. Each forecast reads the history up to its
+        # origin, as far back as the model's context limit (gh #120).
+        pass
 
     def predict(
         self,
@@ -257,8 +258,7 @@ class ChronosForecaster(Forecaster):
         import torch
 
         y = pd.to_numeric(history["y"], errors="coerce").ffill().bfill().to_numpy(dtype=float)
-        # Fixed width sized at fit time, sliding to the most recent points of each origin.
-        ctx_len = min(self._n_fit, self.context_length)
+        ctx_len = min(len(y), self.context_length)
         context = y[-ctx_len:]
         pipe = _load_pipeline(self.model_name)
         ctx = torch.tensor(context, dtype=torch.float32)
@@ -349,9 +349,8 @@ class Chronos2Forecaster(Forecaster):
         self.uses_exogenous = self.use_exogenous
 
     def fit(self, case: Case, train: pd.DataFrame, val: pd.DataFrame) -> None:
-        # Records the pre-test history length to pin a fixed context width (see
-        # ChronosForecaster.fit); no case-specific training.
-        self._n_fit = len(train)
+        # Zero-shot; see ChronosForecaster.fit.
+        pass
 
     def predict(
         self,
@@ -362,7 +361,7 @@ class Chronos2Forecaster(Forecaster):
     ) -> pd.DataFrame:
         pipe = _load_chronos2_pipeline(self.model_name)
         cap = self.context_length or pipe.model_context_length
-        ctx_len = min(self._n_fit, cap)
+        ctx_len = min(len(history), cap)
         y = pd.to_numeric(history["y"], errors="coerce").ffill().bfill().to_numpy(dtype=float)
         # chronos-forecasting >= 2.3 reads timestamps as int64 and rejects tz-aware ones.
         ds = pd.DatetimeIndex(pd.to_datetime(history["ds"], utc=True)).tz_convert(None)
@@ -475,11 +474,8 @@ class TimesFMForecaster(Forecaster):
         self.uses_exogenous = self.use_exogenous
 
     def fit(self, case: Case, train: pd.DataFrame, val: pd.DataFrame) -> None:
-        # Records the pre-test history length to pin a fixed context width (see
-        # ChronosForecaster.fit); no case-specific training. Sizing the context from this
-        # fixed length rather than the growing per-origin history means one compiled shape
-        # per case instead of one per origin.
-        self._n_fit = len(train)
+        # Zero-shot; see ChronosForecaster.fit.
+        pass
 
     def predict(
         self,
@@ -493,8 +489,10 @@ class TimesFMForecaster(Forecaster):
         # model is reused across origins rather than recompiled each call.
         max_horizon = max(256, horizon)
         base_model = _load_timesfm_model(self.model_name)
-        # Fixed width from the pre-test history, so the compiled shape is stable per case.
-        ctx_len = self.max_context or _timesfm_context_len(base_model, self._n_fit, max_horizon)
+        # The history up to this origin, capped at the model's limit. The compiled shape
+        # follows it, so a case whose history is under the limit recompiles each time its
+        # history crosses a patch boundary (every 32 steps); see `_load_timesfm`.
+        ctx_len = self.max_context or _timesfm_context_len(base_model, len(y), max_horizon)
         exo = [c for c in _exo_cols(case) if c in history.columns] if self.use_exogenous else []
         if exo:
             # forecast_with_covariates needs return_backcast=True to fit the xreg
@@ -610,9 +608,8 @@ class Moirai2Forecaster(Forecaster):
         self.uses_exogenous = self.use_exogenous
 
     def fit(self, case: Case, train: pd.DataFrame, val: pd.DataFrame) -> None:
-        # Records the pre-test history length to pin a fixed context width (see
-        # ChronosForecaster.fit); no case-specific training.
-        self._n_fit = len(train)
+        # Zero-shot; see ChronosForecaster.fit.
+        pass
 
     def predict(
         self,
@@ -630,7 +627,7 @@ class Moirai2Forecaster(Forecaster):
         # dynamically resize its rotary cache rather than use what it was built with.
         cache_cap = module.max_seq_len * module.patch_size
         cap = min(self.context_length or cache_cap, cache_cap)
-        ctx_len = min(self._n_fit, cap)
+        ctx_len = min(len(y), cap)
         exo = [c for c in _exo_cols(case) if c in history.columns] if self.use_exogenous else []
         forecaster = Moirai2Forecast(
             module=module,
