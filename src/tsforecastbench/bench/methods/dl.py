@@ -112,12 +112,10 @@ class DLinearForecaster(Forecaster):
         self._last_exo: dict[str, float] = {}
 
     def fit(self, case: Case, train: pd.DataFrame, val: pd.DataFrame) -> None:
-        """Fit the ridge on every window in `train`.
+        """Fit the ridge on every window in `train`, all data before the test period.
 
-        `val` goes unread: there is no training loop to stop, so a closed-form fit has
-        nothing to decide with a holdout. It still never sees the val split -- `train` is
-        the train split alone (gh #99) -- which is what keeps its training data the same as
-        every other method's.
+        `val` is empty: there is no training loop to stop, so a closed-form fit has nothing
+        to decide with a holdout (gh #120).
         """
         from sklearn.linear_model import Ridge
 

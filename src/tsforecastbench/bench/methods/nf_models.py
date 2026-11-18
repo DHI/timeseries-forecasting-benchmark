@@ -97,6 +97,7 @@ class _NFBase(Forecaster):
     # Weight init, the window sampler and dropout are all drawn from the seeded global RNG,
     # so a different seed is a different fit.
     is_stochastic = True
+    stops_on_val = True
     model_name = "NHITS"  # neuralforecast.models class name
     use_exogenous: bool = False
     extra_kwargs: ClassVar[dict] = {}
@@ -105,7 +106,9 @@ class _NFBase(Forecaster):
         "Uses a GPU automatically if one is available (accelerator='auto'), "
         "otherwise falls back to CPU; a heavier training loop (full pytorch_lightning "
         "trainer overhead, run until held-out loss stops improving rather than for a "
-        "fixed number of steps) than the custom torch models in torchdl.py. Only "
+        "fixed number of steps) than the custom torch models in torchdl.py. It then trains a "
+        "fresh model for that many steps on train and val together, so each cell pays for "
+        "two fits. Only "
         "available on Linux with Python <3.13 (the `nf` extra), since neuralforecast "
         "depends on `ray`."
     )
@@ -166,22 +169,9 @@ class _NFBase(Forecaster):
         from neuralforecast import NeuralForecast
         from neuralforecast.losses.pytorch import MSE
 
-        from tsforecastbench.bench.eval.loop import _horizon_to_steps
-
         pl.seed_everything(self.seed)
-        self._h = h = _horizon_to_steps(case.horizon_primary, case.freq)
-        self._exo = _exo_cols(case) if self.use_exogenous else []
-        self._last_exo = last_observed_exo(train, self._exo)
-        df = train[["unique_id", "ds", "y", *self._exo]].copy()
-        # The extended-history frame carries one unique_id per contiguous segment;
-        # neuralforecast fits them as a panel, so no window spans a gap. The tail segment
-        # (latest ds, always the last row) is the series we forecast at predict.
-        self._target_uid = df["unique_id"].iloc[-1]
-        # No truncation: the whole record is trained on (issue #95).
-        df["ds"] = _naive_ds(df["ds"]).to_numpy()
-        df["y"] = pd.to_numeric(df["y"], errors="coerce")
-        df = self._numeric_exo(df)
-
+        df = self._panel(case, train)
+        h = self._h
         lookback = lookback_for(case, h)
         # Early stopping runs on the declared val split (gh #99). neuralforecast holds out
         # the last `val_size` steps of every series in the panel, so the target series is
@@ -260,6 +250,66 @@ class _NFBase(Forecaster):
         self._nf = NeuralForecast(models=[model], freq=case.freq)
         self._nf.fit(df, val_size=val_size)
         self._col = self.model_name
+        self._record_steps()
+
+    def refit(self, case: Case, train_val: pd.DataFrame) -> None:
+        """Train a fresh model on `train_val` for the step count `fit` kept, with no
+        holdout and no early stopping.
+
+        `last_fit_steps` and `last_best_step` keep describing the stopping run.
+        """
+        import neuralforecast.models as nfm
+        import pytorch_lightning as pl
+        from neuralforecast import NeuralForecast
+        from neuralforecast.losses.pytorch import MSE
+
+        n_steps = self.last_best_step or self.last_fit_steps
+        if n_steps is None:
+            return
+        pl.seed_everything(self.seed)
+        df = self._panel(case, train_val)
+        h = self._h
+        lookback = lookback_for(case, h)
+        lens = df.groupby("unique_id", sort=False).size()
+        keep = [uid for uid, n in lens.items() if uid == self._target_uid or n >= lookback + h]
+        df = df[df["unique_id"].isin(keep)].sort_values(
+            ["unique_id", "ds"], kind="stable", ignore_index=True
+        )
+        exo_kwargs = {"futr_exog_list": list(self._exo)} if self._exo else {}
+        model = getattr(nfm, self.model_name)(
+            h=h,
+            input_size=lookback,
+            max_steps=n_steps,
+            scaler_type="standard",
+            loss=MSE(),
+            valid_loss=MSE(),
+            random_seed=self.seed,
+            **exo_kwargs,
+            **self.extra_kwargs,
+            **_TRAINER_KW,
+        )
+        self._nf = NeuralForecast(models=[model], freq=case.freq)
+        self._nf.fit(df, val_size=0)
+
+    def _panel(self, case: Case, frame: pd.DataFrame) -> pd.DataFrame:
+        """`frame` as a neuralforecast panel, setting the horizon, covariates and target
+        series the fit and predict share."""
+        from tsforecastbench.bench.eval.loop import _horizon_to_steps
+
+        self._h = _horizon_to_steps(case.horizon_primary, case.freq)
+        self._exo = _exo_cols(case) if self.use_exogenous else []
+        self._last_exo = last_observed_exo(frame, self._exo)
+        df = frame[["unique_id", "ds", "y", *self._exo]].copy()
+        # The extended-history frame carries one unique_id per contiguous segment;
+        # neuralforecast fits them as a panel, so no window spans a gap. The tail segment
+        # (latest ds, always the last row) is the series we forecast at predict.
+        self._target_uid = df["unique_id"].iloc[-1]
+        # No truncation: the whole record is trained on (issue #95).
+        df["ds"] = _naive_ds(df["ds"]).to_numpy()
+        df["y"] = pd.to_numeric(df["y"], errors="coerce")
+        return self._numeric_exo(df)
+
+    def _record_steps(self) -> None:
         # `model` is the pre-fit copy (NeuralForecast deep-copies models_init at construction
         # time and detaches the trainer from the fitted copy once fit() returns), so the
         # step count has to come from the fitted model's own recorded trajectory rather than

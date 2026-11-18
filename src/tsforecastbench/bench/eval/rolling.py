@@ -52,6 +52,7 @@ from tsforecastbench.bench.eval.loop import (
     _raw_y,
     _segment_extended,
     _split_segments_at_train_end,
+    fit_before_test,
 )
 from tsforecastbench.bench.eval.metrics import POOLED_METRICS, pooled_metrics
 from tsforecastbench.bench.methods.base import Forecaster
@@ -171,11 +172,13 @@ def run_case_rolling(
         raise ValueError(f"Case {case.id}: test span too short for horizon {H}")
     origins = _select_rolling_origins(test_start, last_origin, raw_y, H, n_origins)
 
-    # Parameters are estimated on the train split alone; the val split goes over separately
-    # for the iteratively trained methods to stop on (gh #99). Neither is the history a
-    # forecast conditions on -- that grows with the origin, further down.
+    # Parameters are estimated on everything before the test period; the train and val
+    # splits also go over apart, for the iteratively trained methods to find their stopping
+    # step on (`fit_before_test`, gh #120). None of these is the history a forecast
+    # conditions on -- that grows with the origin, further down.
     local_fit_frame = full_fit.iloc[:val_start]
     local_val_frame = full_fit.iloc[val_start:test_start]
+    local_pre_test = full_fit.iloc[:test_start]
 
     def _naive_scale(y_pre: np.ndarray) -> float:
         """In-sample MAE of a seasonal-naive forecast at the case's pinned dominant period
@@ -245,18 +248,17 @@ def run_case_rolling(
         method.last_best_step = None
         method.seed = seed
         try:
-            # Fit once, on the train split alone — plus the pre-curated segments for the
-            # extended fit — with the val split handed over separately for the iteratively
-            # trained methods to stop on (gh #99), then evaluate every origin by inference
+            # Fit once, on everything before the test period -- plus the pre-curated
+            # segments for the extended fit -- then evaluate every origin by inference
             # alone. No origin's forecast sees test data in its weights.
             if used_extended:
                 fit_frame, val_frame = _split_segments_at_train_end(segs, train_end)
+                pre_test = pd.concat(segs, ignore_index=True)
             else:
                 fit_frame, val_frame = local_fit_frame, local_val_frame
-            train_points = len(fit_frame)
-            val_points = len(val_frame)
+                pre_test = local_pre_test
             t_fit0 = time.perf_counter()
-            method.fit(case, fit_frame, val_frame)
+            train_points, val_points = fit_before_test(method, case, fit_frame, val_frame, pre_test)
             fit_seconds = time.perf_counter() - t_fit0
             for i, o in enumerate(origins):
                 local_hist = full_fit.iloc[:o]
@@ -395,8 +397,9 @@ def run_case_rolling(
                         # any future divergence visible in the data rather than only in
                         # the code. `train_steps` is null for methods that do not train
                         # by gradient descent, and `best_step` -- the step whose weights
-                        # were kept -- with it. `val_points` is the early-stopping holdout
-                        # handed over.
+                        # were kept -- with it. `train_points` is what the parameters were
+                        # estimated on and `val_points` the holdout that found the stopping
+                        # step, 0 for a method that does not stop on val.
                         "train_points": chosen["train_points"],
                         "val_points": chosen["val_points"],
                         "train_steps": chosen["train_steps"],
@@ -457,12 +460,17 @@ def run_leadtime_curve(
         sq_err = [[] for _ in range(H)]
         signed = [[] for _ in range(H)]
         n_ok = 0
-        # Same protocol as the matrix (see `run_case_rolling`): fit once, on the train split,
-        # with the val split handed over for early stopping, then evaluate every origin by
-        # inference. A failed fit makes the method unusable on this case, so it contributes
-        # no rows.
+        # Same protocol as the matrix (see `run_case_rolling`): fit once before the test
+        # period, then evaluate every origin by inference. A failed fit makes the method
+        # unusable on this case, so it contributes no rows.
         try:
-            method.fit(case, full_fit.iloc[:val_start], full_fit.iloc[val_start:test_start])
+            fit_before_test(
+                method,
+                case,
+                full_fit.iloc[:val_start],
+                full_fit.iloc[val_start:test_start],
+                full_fit.iloc[:test_start],
+            )
         except Exception:
             continue
         for o in origins:

@@ -1,9 +1,9 @@
-"""The declared val split must be a real holdout: no method may estimate parameters on it.
+"""What `fit` is handed before the test period (gh #120).
 
-Before gh #99 every method was fit on `train + val` -- `eval.loop` concatenated the two into
-one frame and the val boundary survived only as the offset locating where test begins -- while
-the app displayed and described a three-way split. These tests pin the boundary on both eval
-paths, for the single-series local fit and for the multi-segment extended-history one.
+Parameters are estimated on all data before the test period. A method that stops on val
+first gets the train and val splits apart, to find its stopping step, then refits on both.
+These tests pin both paths on both eval loops, for the single-series local fit and for the
+multi-segment extended-history one.
 """
 
 from __future__ import annotations
@@ -20,6 +20,7 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from tsforecastbench.bench.eval import run_case, run_case_rolling  # noqa: E402
 from tsforecastbench.bench.eval.budget import nf_val_size  # noqa: E402
+from tsforecastbench.bench.eval.loop import _naive_ds  # noqa: E402
 from tsforecastbench.bench.methods.base import Forecaster  # noqa: E402
 from tsforecastbench.bench.methods.torchdl import _build_val_windows  # noqa: E402
 from tsforecastbench.data.registry import get_case  # noqa: E402
@@ -28,18 +29,14 @@ from tsforecastbench.data.schema import Case  # noqa: E402
 # One case whose record is a single span and two whose extended history splits into several
 # segments, so the pooled-panel fit frame is covered as well as the local one.
 CASES = ["surge_cuxhaven", "discharge_lowland_denmark", "waves_oregon"]
-
-
-def _naive_max_ds(frame: pd.DataFrame) -> pd.Timestamp:
-    """Latest timestamp in `frame`, tz-naive UTC to match `Case.split_bounds`."""
-    ds = pd.to_datetime(frame["ds"])
-    if ds.dt.tz is not None:
-        ds = ds.dt.tz_convert("UTC").dt.tz_localize(None)
-    return ds.max()
+RUNNERS = {
+    "single_holdout": lambda case, m: run_case(case, [m], prefer_synth=True),
+    "rolling": lambda case, m: run_case_rolling(case, [m], n_origins=3, prefer_synth=True),
+}
 
 
 class _FitFrameRecorder(Forecaster):
-    """Keeps every pair of frames `fit` is handed, and forecasts zeros.
+    """Keeps every frame `fit` and `refit` are handed, and forecasts zeros.
 
     `pools_segments` is on so the eval loop builds the extended-history fit too.
     """
@@ -52,10 +49,14 @@ class _FitFrameRecorder(Forecaster):
     def __init__(self) -> None:
         self.fit_frames: list[pd.DataFrame] = []
         self.val_frames: list[pd.DataFrame] = []
+        self.refit_frames: list[pd.DataFrame] = []
 
     def fit(self, case: Case, train: pd.DataFrame, val: pd.DataFrame) -> None:
         self.fit_frames.append(train)
         self.val_frames.append(val)
+
+    def refit(self, case: Case, train_val: pd.DataFrame) -> None:
+        self.refit_frames.append(train_val)
 
     def predict(
         self,
@@ -65,60 +66,67 @@ class _FitFrameRecorder(Forecaster):
         future_exog: pd.DataFrame | None = None,
     ) -> pd.DataFrame:
         step = pd.Timedelta(pd.tseries.frequencies.to_offset(case.freq))
-        ds = pd.date_range(_naive_max_ds(history) + step, periods=horizon, freq=case.freq)
+        ds = pd.date_range(_naive_ds(history).max() + step, periods=horizon, freq=case.freq)
         return pd.DataFrame({"ds": ds, "y_hat": np.zeros(horizon)})
 
 
-def _train_end(case: Case) -> pd.Timestamp:
-    return case.split_bounds(case.load(prefer_synth=True, curated=True))[0]
+class _StopsOnValRecorder(_FitFrameRecorder):
+    stops_on_val = True
 
 
+def _bounds(case: Case) -> tuple[pd.Timestamp, pd.Timestamp]:
+    train_end, val_end, _ = case.split_bounds(case.load(prefer_synth=True, curated=True))
+    return train_end, val_end
+
+
+def _ends_at_val_end(frame: pd.DataFrame, case: Case, val_end: pd.Timestamp) -> bool:
+    """`val_end` is a quantile of the timestamps, so it can fall between two of them."""
+    step = pd.Timedelta(pd.tseries.frequencies.to_offset(case.freq))
+    last = _naive_ds(frame).max()
+    return val_end - step < last <= val_end
+
+
+@pytest.mark.parametrize("runner", RUNNERS)
 @pytest.mark.parametrize("cid", CASES)
-def test_single_holdout_fit_stops_at_the_train_boundary(cid):
+def test_fit_gets_everything_before_the_test_period(cid, runner):
     case = get_case(cid)
     recorder = _FitFrameRecorder()
+    RUNNERS[runner](case, recorder)
+
+    _, val_end = _bounds(case)
+    assert recorder.fit_frames, "fit was never called"
+    for frame, val in zip(recorder.fit_frames, recorder.val_frames, strict=True):
+        assert _ends_at_val_end(frame, case, val_end)
+        assert len(val) == 0
+    assert recorder.refit_frames == []
+
+
+@pytest.mark.parametrize("runner", RUNNERS)
+@pytest.mark.parametrize("cid", CASES)
+def test_a_method_that_stops_on_val_finds_its_step_on_val_then_refits_on_both(cid, runner):
+    case = get_case(cid)
+    recorder = _StopsOnValRecorder()
+    RUNNERS[runner](case, recorder)
+
+    train_end, val_end = _bounds(case)
+    assert len(recorder.refit_frames) == len(recorder.fit_frames) > 0
+    for frame, val, refit in zip(
+        recorder.fit_frames, recorder.val_frames, recorder.refit_frames, strict=True
+    ):
+        assert _naive_ds(frame).max() <= train_end
+        assert _naive_ds(val).min() > train_end
+        assert _ends_at_val_end(val, case, val_end)
+        assert _ends_at_val_end(refit, case, val_end)
+        assert len(refit) == len(frame) + len(val)
+
+
+def test_the_local_val_frame_is_the_declared_split():
+    case = get_case("surge_cuxhaven")
+    recorder = _StopsOnValRecorder()
     run_case(case, [recorder], prefer_synth=True)
 
-    train_end = _train_end(case)
-    assert recorder.fit_frames, "fit was never called"
-    for frame in recorder.fit_frames:
-        assert _naive_max_ds(frame) <= train_end
-
-
-@pytest.mark.parametrize("cid", CASES)
-def test_rolling_fit_stops_at_the_train_boundary(cid):
-    case = get_case(cid)
-    recorder = _FitFrameRecorder()
-    run_case_rolling(case, [recorder], n_origins=3, prefer_synth=True)
-
-    train_end = _train_end(case)
-    assert recorder.fit_frames, "fit was never called"
-    for frame in recorder.fit_frames:
-        assert _naive_max_ds(frame) <= train_end
-
-
-@pytest.mark.parametrize("cid", CASES)
-def test_fit_receives_the_declared_val_split(cid):
-    """The other half of the contract: the holdout handed over IS the declared split."""
-    case = get_case(cid)
-    recorder = _FitFrameRecorder()
-    run_case(case, [recorder], prefer_synth=True)
-
-    df = case.load(prefer_synth=True, curated=True)
-    train_end, val_end, _ = case.split_bounds(df)
-    declared = case.split_frame(df)["val"]
-
-    assert recorder.val_frames, "fit was never called"
-    # The local fit's val frame is the declared split exactly. The extended fit's is the
-    # same period taken from the segmented panel, so it carries segment `unique_id`s and
-    # can be shorter where a gap falls inside the val period -- hence bounds, not equality.
+    declared = case.split_frame(case.load(prefer_synth=True, curated=True))["val"]
     assert len(recorder.val_frames[0]) == len(declared)
-    for frame in recorder.val_frames:
-        ds = pd.to_datetime(frame["ds"])
-        if ds.dt.tz is not None:
-            ds = ds.dt.tz_convert("UTC").dt.tz_localize(None)
-        assert ds.min() > train_end
-        assert ds.max() <= val_end
 
 
 def test_nf_val_size_uses_the_whole_val_split_when_the_panel_affords_it():

@@ -131,20 +131,17 @@ def test_global_member_is_fit_once_across_origins(case):
     assert naive.fit_calls == 1
 
 
-def test_global_member_is_fit_on_the_declared_train_split(case):
-    """What makes the member numerically comparable to its standalone column -- and what
-    keeps it off val, which a cached local fit could not do."""
+def test_member_is_fit_on_the_same_frame_as_its_standalone_column(case):
+    """What makes the member numerically comparable to its standalone column: all data
+    before the test period, with no holdout (gh #120)."""
     trained = _GlobalRecorder()
 
     res, _ = _rolling(case, _ensemble([trained]))
 
     assert (res["status"] == "ok").all()
     assert trained.fit_calls == 1
-    # A real val split was handed over, so the fit frame is train alone rather than the
-    # train+val history the per-origin path passes.
-    assert len(trained.val_lengths) == 1
-    assert trained.val_lengths[0] > 0
-    assert set(res["val_points"]) == {trained.val_lengths[0]}
+    assert trained.val_lengths == [0]
+    assert set(res["val_points"]) == {0}
     assert set(res["train_points"]) == {trained.train_lengths[0]}
 
 
