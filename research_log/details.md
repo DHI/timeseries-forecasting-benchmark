@@ -15,6 +15,9 @@ commits:
   - be8c204: "Fill waves_massachusetts wind and pressure gaps from ERA5"
   - 23b1268: "Fit the surge tide model on the pre-test record"
   - aaaec0f: "Regenerate the curated data"
+  - edb3033: "Never start a forecast right after a filled value"
+  - 7fa305d: "Drop the station option from the Massachusetts wave download"
+  - c25ee50: "Start the gap-cap search from the frequency ceiling"
 ---
 id: 105
 date: "2026-11-10"
