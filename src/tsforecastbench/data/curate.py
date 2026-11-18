@@ -189,17 +189,13 @@ def curate_frame(
     floor = min_tail_length(seasonalities, horizon_primary, freq, split_fraction)
 
     # The cap sets the tail segment, the segment sets `val_end`, and the cap is read on
-    # the record up to `val_end`. Start from the full record and repeat until the cap
-    # stops changing.
-    cap = gap_cap(y, freq, threshold)
+    # the record up to `val_end`. Start from the largest cap the frequency allows, which
+    # reads no data, and repeat until the cap stops changing. Starting from the full
+    # record's cap would let test values pick where the loop settles. The tail length is
+    # checked on the settled segment only.
+    cap = _season_ceiling(freq)
     for _ in range(10):
         start, stop = tail_segment_bounds(observed, cap)
-        if stop - start < floor:
-            raise ValueError(
-                f"tail segment is {stop - start} steps, below the {floor}-step floor "
-                f"(2 cycles of the longest declared period in train, >=1 horizon of "
-                f"'{horizon_primary}' in test) — needs a human look, not a smaller span."
-            )
         seg_ds = ds_naive.iloc[start:stop]
         _, val_end = fraction_split_dates(seg_ds[observed[start:stop]], split_fraction)
         pre_test_cap = gap_cap(y[ds_naive <= val_end], freq, threshold)
@@ -208,6 +204,12 @@ def curate_frame(
         cap = pre_test_cap
     else:
         raise ValueError("gap cap did not settle on the pre-test record after 10 passes")
+    if stop - start < floor:
+        raise ValueError(
+            f"tail segment is {stop - start} steps, below the {floor}-step floor "
+            f"(2 cycles of the longest declared period in train, >=1 horizon of "
+            f"'{horizon_primary}' in test) — needs a human look, not a smaller span."
+        )
     seg = df.iloc[start:stop].copy().reset_index(drop=True)
     seg_observed = observed[start:stop].copy()
 

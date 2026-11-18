@@ -56,3 +56,14 @@ def test_exogenous_gap_longer_than_the_cap_fails():
 
     with pytest.raises(ValueError, match="wind"):
         _curate(_frame(_smooth(2000), wind=wind), exog=["wind"])
+
+
+def test_tail_length_is_checked_with_the_pre_test_cap():
+    rng = np.random.default_rng(0)
+    y = np.concatenate([_smooth(1700), rng.normal(scale=200.0, size=300)])
+    y[1900:1902] = np.nan  # with the full record's cap of 1, the tail is the last 98 steps
+
+    curated, info = _curate(_frame(y))
+
+    assert info["cap"] >= 2
+    assert len(curated) == 2000
