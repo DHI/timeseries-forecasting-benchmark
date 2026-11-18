@@ -9,14 +9,10 @@ Each case declares its train/val/test split in case.toml, either as calendar dat
 timestamps, so series with gaps still split cleanly. Splits are strictly chronological —
 no shuffling.
 
-Every method estimates its parameters on train alone. Val is the held-out period the
-iteratively trained deep-learning methods (N-HiTS, PatchTST, TFT, TimesNet) stop on once
-their validation loss stops improving; no method trains on it. Test is scored, and nothing
-else is.
-
-Fitting on train is not the same as never reading val: a fit-once method's forecast
-conditions on the observed history running through val and into the test period up to each
-origin. It reads that data, it just doesn't estimate parameters from it.
+Every method estimates its parameters on train and val together. The deep-learning methods
+(N-HiTS, PatchTST, TFT, TimesNet, iTransformer) first train on train alone and stop once
+their loss on val stops improving, then train a fresh model on train and val for that many
+steps. Test is scored, and nothing else is.
 
 ## Curation
 
@@ -28,26 +24,23 @@ training, masked out during scoring so only real observations count.
 
 ## Fitting protocol
 
-Methods split into two groups by how often they re-estimate. Global methods — every ML, DL,
-and foundation-model family, plus all of the classical ones (AutoARIMA, AutoETS, Theta, MSTL,
-TBATS) — fit once on data strictly before the test period, then roll forward across every
-origin by inference alone, with no further re-estimation. The naive baselines refit from
-scratch at each origin instead, since for them the fit is the forecast. The ensembles sit
-across the split: whichever members hold a trained model are fit once, while the naive
-members they combine are re-derived from the history at each origin. This split keeps
-a method's score from depending on how often it happens to be allowed to re-estimate, and
-fitting strictly before the test period keeps the fit-once methods leak-free without repeated
-retraining. Predict cost isn't uniformly small for the fit-once methods either — Theta and
-MSTL, for instance, re-derive a seasonal decomposition over the whole history at every origin
-— so the benchmark records fit time and predict time separately rather than folding them into
-one number.
+One rule covers every method: parameters are estimated once, before the test period, and
+frozen; every forecast reads all observations up to its origin. Classical methods update
+their state from those observations, ML and DL methods read them as their input window,
+and foundation models read them as context, as far back as each model allows. The naive
+baselines have no parameters, so for them reading the history is the whole forecast. No
+method is retrained during the test period, so a score never depends on how often a method
+was allowed to re-estimate. Predict cost isn't uniformly small either — Theta and MSTL, for
+instance, re-derive a seasonal decomposition over the whole history at every origin — so the
+benchmark records fit time and predict time separately rather than folding them into one
+number.
 
 ## Model parameters
 
 There's no per-case tuning or grid search. Each method uses fixed, hard-coded
 defaults — e.g., LightGBM and CatBoost both use 200 iterations at a 0.05 learning rate, so
 the two gradient-boosting methods compete on equal footing. Classical methods (AutoARIMA,
-AutoETS, etc.) run their own internal search. Every method reads the whole train split: the
+AutoETS, etc.) run their own internal search. Every method reads all of train and val: the
 per-method training caps, which once differed by two orders of magnitude and made a column of
 the matrix incomparable, were removed once their cost was measured. Any deviation from a
 method's default is manual and explicit, not automated.

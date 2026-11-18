@@ -56,16 +56,7 @@ function scoreRow(method: string, family: string, isGlobal = family === 'fm'): S
   };
 }
 
-// Local-vs-global has to be read off `is_global` rather than inferred from `family`: every
-// real classical method (AutoARIMA, AutoETS, Theta, MSTL, TBATS) fits once today, but the
-// panel's logic must still key off the flag itself in case that ever splits again.
-// `MockLocalClassical` is a synthetic fixture for that scenario, not a real forecaster.
-const scores: ScoreRow[] = [
-  scoreRow('Persistence', 'baseline'),
-  scoreRow('TimesFM-2.5', 'fm'),
-  scoreRow('AutoARIMA', 'classical', true),
-  scoreRow('MockLocalClassical', 'classical', false),
-];
+const scores: ScoreRow[] = [scoreRow('Persistence', 'baseline'), scoreRow('TimesFM-2.5', 'fm')];
 
 describe('CasePanel', () => {
   it('shows no foundation-model note when the selection has none', () => {
@@ -99,73 +90,5 @@ describe('CasePanel', () => {
 
     expect(screen.getByText(/is a zero-shot foundation model/)).toBeInTheDocument();
     expect(screen.getByText('TimesFM-2.5')).toBeInTheDocument();
-  });
-
-  it('notes that a selected local method refits at every origin', () => {
-    render(
-      <ThemeProvider>
-        <CasePanel
-          caseId="demand_ltown"
-          caseMeta={caseMeta}
-          scores={scores}
-          showGlobal={false}
-          selectedMethods={['Persistence']}
-        />
-      </ThemeProvider>,
-    );
-
-    expect(screen.getByText(/is a local method/)).toBeInTheDocument();
-    expect(screen.getByText('Persistence')).toBeInTheDocument();
-  });
-
-  it('does not call a fit-once classical method local', () => {
-    render(
-      <ThemeProvider>
-        <CasePanel
-          caseId="demand_ltown"
-          caseMeta={caseMeta}
-          scores={scores}
-          showGlobal={false}
-          selectedMethods={['AutoARIMA']}
-        />
-      </ThemeProvider>,
-    );
-
-    expect(screen.queryByText(/is a local method/)).not.toBeInTheDocument();
-  });
-
-  it('calls a refit-per-origin classical method local even though its family is mixed', () => {
-    render(
-      <ThemeProvider>
-        <CasePanel
-          caseId="demand_ltown"
-          caseMeta={caseMeta}
-          scores={scores}
-          showGlobal={false}
-          selectedMethods={['AutoARIMA', 'MockLocalClassical']}
-        />
-      </ThemeProvider>,
-    );
-
-    expect(screen.getByText(/is a local method/)).toBeInTheDocument();
-    expect(screen.getByText('MockLocalClassical')).toBeInTheDocument();
-    expect(screen.queryByText('AutoARIMA')).not.toBeInTheDocument();
-  });
-
-  it('shows both notes when local and foundation methods are selected together', () => {
-    render(
-      <ThemeProvider>
-        <CasePanel
-          caseId="demand_ltown"
-          caseMeta={caseMeta}
-          scores={scores}
-          showGlobal={false}
-          selectedMethods={['Persistence', 'TimesFM-2.5']}
-        />
-      </ThemeProvider>,
-    );
-
-    expect(screen.getByText(/is a zero-shot foundation model/)).toBeInTheDocument();
-    expect(screen.getByText(/is a local method/)).toBeInTheDocument();
   });
 });

@@ -33,7 +33,7 @@ export function caseTrainingStats(caseMeta: CaseMeta, extended = false): string 
   return (
     `Number of samples: train ${NUMBER_FORMAT.format(counts.train)} · ` +
     `val ${NUMBER_FORMAT.format(counts.val)} · test ${NUMBER_FORMAT.format(counts.test)} ` +
-    '\n\nParameters are estimated on train; val is the early-stopping holdout for the ' +
-    'iteratively trained deep-learning methods and is never trained on; test is scored.'
+    '\n\nParameters are estimated on train and val together; the deep-learning methods ' +
+    'first find their stopping step with val held out; test is scored.'
   );
 }
