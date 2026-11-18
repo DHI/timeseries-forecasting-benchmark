@@ -1,4 +1,16 @@
 ---
+id: 109
+date: "2026-11-18"
+title: "Every method is fit once on train and val, and every forecast reads all history up to its start"
+description: |
+  Every method now follows one rule (gh #120): parameters are estimated once, on all data before the test period, and frozen; every forecast reads all observations up to its start. The deep-learning methods first train on the train split and stop when their loss on validation stops improving, then train a fresh model on train and validation for that many steps, which roughly doubles their fit time. This reverses the rule from entry 92 that no method estimates parameters on validation, which had left 15% of every record unused by the classical and ML methods. The naive baselines now compute their statistic from the history inside `predict` and are fit once like every other method, so no method is refit per forecast start; their rolling-origin forecasts do not change. Foundation models read up to their own context limit instead of the training-split length, and TimesFM recompiles each time a growing context crosses a 32-step boundary. Every column except the naive baselines needs the re-run (#122).
+commits:
+  - fd3ba3b: "Fit the naive baselines once and read the history in predict"
+  - fcff034: "Estimate every method's parameters on train and val"
+  - c55941d: "Let the foundation models read history up to their context limit"
+  - afa373b: "Describe the one fitting rule in the app"
+  - f825228: "Re-export the web method cards"
+---
 id: 108
 date: "2026-11-18"
 title: "Matrix scores get block-bootstrap intervals and a tie mark against the best method"
