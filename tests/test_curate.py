@@ -6,7 +6,12 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from tsforecastbench.data.curate import curate_frame, fraction_split_dates, gap_cap
+from tsforecastbench.data.curate import (
+    curate_frame,
+    fraction_split_dates,
+    gap_cap,
+    split_fraction_for,
+)
 
 SPLIT = [0.7, 0.85]
 
@@ -67,3 +72,14 @@ def test_tail_length_is_checked_with_the_pre_test_cap():
 
     assert info["cap"] >= 2
     assert len(curated) == 2000
+
+
+def test_split_is_15_percent_test_when_two_seasons_fit_inside_it():
+    assert split_fraction_for(n_steps=10_000, longest_period=24) == [0.7, 0.85]
+
+
+def test_split_gives_two_seasons_of_test_when_15_percent_is_shorter():
+    train_end, val_end = split_fraction_for(n_steps=2192, longest_period=365)
+
+    assert (1 - val_end) * 2192 >= 2 * 365
+    assert val_end - train_end == pytest.approx(0.15, abs=1e-3)

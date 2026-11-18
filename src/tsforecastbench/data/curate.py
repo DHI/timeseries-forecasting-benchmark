@@ -123,6 +123,25 @@ def fraction_split_dates(
     return pd.Timestamp(int(np.quantile(ns, f0))), pd.Timestamp(int(np.quantile(ns, f1)))
 
 
+VAL_FRACTION = 0.15
+MIN_TEST_FRACTION = 0.15
+
+
+def split_fraction_for(n_steps: int, longest_period: int) -> list[float]:
+    """`split_fraction` for a curated segment of `n_steps` (gh #121).
+
+    The test split is the larger of `MIN_TEST_FRACTION` of the segment and 2 cycles of
+    the longest declared seasonal period; the val split is `VAL_FRACTION`; train gets
+    the rest. Fractions are rounded down to 3 decimals, which can only lengthen the
+    test split. A case's `case.toml` holds the result, computed once on its curated
+    data.
+    """
+    test = max(MIN_TEST_FRACTION, 2 * longest_period / n_steps)
+    val_end = np.floor((1 - test) * 1000) / 1000
+    train_end = np.floor((val_end - VAL_FRACTION) * 1000) / 1000
+    return [float(train_end), float(val_end)]
+
+
 def _horizon_steps(horizon: str, freq: str) -> int:
     delta = pd.Timedelta(horizon)
     step = pd.Timedelta(pd.tseries.frequencies.to_offset(freq))
