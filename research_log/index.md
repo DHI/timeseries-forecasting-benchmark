@@ -6,6 +6,9 @@ entry and its commits. See `schema.md` for the format both files follow.
 
 <!-- Add new entries below this line, newest first, matching details.md. -->
 
+### 2026-11-18
+- 107 — Test splits span 2 seasons, and curation keeps the last segment only when it is long enough
+
 ### 2026-11-17
 - 106 — Data preparation no longer reads the test period or bridges long input gaps
 

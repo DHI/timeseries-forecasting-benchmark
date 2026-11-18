@@ -341,6 +341,20 @@
 <script type="application/json" id="graph-data">{
   "nodes": [
     {
+      "id": "2026-11-18-test-length-rule",
+      "date": "2026-11-18",
+      "title": "Test splits span 2 seasons, and curation keeps the last segment only when it is long enough",
+      "category": "methodology",
+      "summary": "Test is the larger of 15% and 2 cycles of the longest declared season; curation keeps the last segment unless its training is under 4 cycles, which moves discharge_lowland_denmark to its longest segment.",
+      "detail": "The test split is now the larger of 15% of a case's observations and 2 cycles of its longest declared season, measured in time back from the last observation; validation stays at 15% and training gets the rest (gh #121). The five daily cases with an annual season move from 15% to about 2 years of test: `discharge_flashy_catskills`, `discharge_snowmelt_yosemite`, `groundwater_yorktown`, `watertemp_james` and `discharge_lowland_denmark`. Curation keeps the last gap-free segment when its training split spans 4 cycles of the longest declared season and its test split 2 cycles and one horizon, else the longest segment, and fails when neither is long enough. Only `discharge_lowland_denmark` switches: its last segment (2000-2005) held 3.1 annual cycles of training, so it now uses 1989-1998 (6.5 cycles), and its extended-history view adds nothing beyond that segment. Every column on these five cases needs the re-run.",
+      "tags": [
+        "splits",
+        "curation",
+        "gap-policy",
+        "test-length"
+      ]
+    },
+    {
       "id": "2026-11-17-data-prep-test-leaks",
       "date": "2026-11-17",
       "title": "Data preparation no longer reads the test period or bridges long input gaps",
@@ -1812,6 +1826,16 @@
     }
   ],
   "edges": [
+    {
+      "source": "2026-11-18-test-length-rule",
+      "target": "2026-07-10-is-global-flag-inert",
+      "type": "follows-from"
+    },
+    {
+      "source": "2026-11-18-test-length-rule",
+      "target": "2026-11-17-data-prep-test-leaks",
+      "type": "relates-to"
+    },
     {
       "source": "2026-11-17-data-prep-test-leaks",
       "target": "2026-07-03-gap-handling-policy",

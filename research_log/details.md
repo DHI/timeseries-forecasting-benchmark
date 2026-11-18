@@ -1,4 +1,18 @@
 ---
+id: 107
+date: "2026-11-18"
+title: "Test splits span 2 seasons, and curation keeps the last segment only when it is long enough"
+description: |
+  The test split is now the larger of 15% of a case's observations and 2 cycles of its longest declared season, measured in time back from the last observation; validation stays at 15% and training gets the rest (gh #121). The five daily cases with an annual season move from 15% to about 2 years of test: `discharge_flashy_catskills`, `discharge_snowmelt_yosemite`, `groundwater_yorktown`, `watertemp_james` and `discharge_lowland_denmark`. Curation keeps the last gap-free segment when its training split spans 4 cycles of the longest declared season and its test split 2 cycles and one horizon, else the longest segment, and fails when neither is long enough. Only `discharge_lowland_denmark` switches: its last segment (2000-2005) held 3.1 annual cycles of training, so it now uses 1989-1998 (6.5 cycles), and its extended-history view adds nothing beyond that segment. Every column on these five cases needs the re-run.
+commits:
+  - a5e52a6: "Add the test-length rule as split_fraction_for"
+  - b30b5f2: "Keep the longest gap-free segment instead of the last one"
+  - 8339818: "Measure the two-season test length in time"
+  - ade79b4: "Set each case's split from the test-length rule and regenerate the data"
+  - b47af52: "Keep the last segment when long enough, else the longest"
+  - 1a96c68: "Lengthen the daily synthetic series to 8 years"
+  - 609a7c1: "Re-curate with the last segment unless it is too short"
+---
 id: 106
 date: "2026-11-17"
 title: "Data preparation no longer reads the test period or bridges long input gaps"
