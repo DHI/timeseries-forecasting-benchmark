@@ -86,3 +86,48 @@ def kge(y: np.ndarray, y_hat: np.ndarray) -> float:
     alpha = std_hat / std_y
     beta = float(np.mean(y_hat)) / mean_y
     return 1.0 - float(np.sqrt((r - 1.0) ** 2 + (alpha - 1.0) ** 2 + (beta - 1.0) ** 2))
+
+
+POOLED_METRICS = (
+    "MAE",
+    "RMSE",
+    "MASE",
+    "Skill_vs_Persistence",
+    "Skill_vs_Mean",
+    "MAPE",
+    "sMAPE",
+    "NSE",
+    "KGE",
+)
+
+
+def pooled_metrics(
+    y: np.ndarray,
+    y_hat: np.ndarray,
+    y_persistence: np.ndarray,
+    y_mean: np.ndarray,
+    mase_scale: float,
+) -> dict[str, float]:
+    """The nine matrix metrics on observed points pooled over every forecast start.
+
+    `y_persistence` and `y_mean` are the reference forecasts for the skill scores, one
+    value per point. `mase_scale` is the in-sample MAE of a seasonal-naive forecast. The
+    run's scores and the bootstrap intervals both come from here.
+    """
+    abs_err = float(np.mean(np.abs(y - y_hat)))
+    mse = float(np.mean((y - y_hat) ** 2))
+    mse_persistence = float(np.mean((y - y_persistence) ** 2))
+    mse_mean = float(np.mean((y - y_mean) ** 2))
+    return {
+        "MAE": abs_err,
+        "RMSE": float(np.sqrt(mse)),
+        "MASE": abs_err / mase_scale if mase_scale else float("nan"),
+        "Skill_vs_Persistence": 1.0 - mse / mse_persistence
+        if mse_persistence != 0.0
+        else float("nan"),
+        "Skill_vs_Mean": 1.0 - mse / mse_mean if mse_mean != 0.0 else float("nan"),
+        "MAPE": mape(y, y_hat),
+        "sMAPE": smape(y, y_hat),
+        "NSE": nse(y, y_hat),
+        "KGE": kge(y, y_hat),
+    }

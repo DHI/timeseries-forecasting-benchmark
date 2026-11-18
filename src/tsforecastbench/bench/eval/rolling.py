@@ -63,7 +63,7 @@ from tsforecastbench.bench.eval.loop import (
     _segment_extended,
     _split_segments_at_train_end,
 )
-from tsforecastbench.bench.eval.metrics import kge, mape, nse, smape
+from tsforecastbench.bench.eval.metrics import POOLED_METRICS, pooled_metrics
 from tsforecastbench.bench.methods.base import Forecaster
 from tsforecastbench.data.schema import Case
 
@@ -223,17 +223,6 @@ def run_case_rolling(
                     "is_global methods use the curated span only."
                 )
 
-    metric_names = (
-        "MAE",
-        "RMSE",
-        "MASE",
-        "Skill_vs_Persistence",
-        "Skill_vs_Mean",
-        "MAPE",
-        "sMAPE",
-        "NSE",
-        "KGE",
-    )
     records: list[dict] = []
     snap_frames: list[pd.DataFrame] = []
 
@@ -345,24 +334,10 @@ def run_case_rolling(
             ref_p = np.array(ref_p)
             ref_m = np.array(ref_m)
             mse = float(np.mean((a - p) ** 2))
-            mse_ref_p = float(np.mean((a - ref_p) ** 2))
-            mse_ref_m = float(np.mean((a - ref_m) ** 2))
-            metrics = {
-                "MAE": float(np.mean(np.abs(a - p))),
-                "RMSE": float(np.sqrt(mse)),
-                "MASE": float(np.mean(np.abs(a - p)) / naive_scale)
-                if naive_scale
-                else float("nan"),
-                "Skill_vs_Persistence": 1.0 - mse / mse_ref_p if mse_ref_p != 0.0 else float("nan"),
-                "Skill_vs_Mean": 1.0 - mse / mse_ref_m if mse_ref_m != 0.0 else float("nan"),
-                "MAPE": mape(a, p),
-                "sMAPE": smape(a, p),
-                "NSE": nse(a, p),
-                "KGE": kge(a, p),
-            }
+            metrics = pooled_metrics(a, p, ref_p, ref_m, naive_scale)
             status = "ok"
         except Exception as exc:
-            metrics = {k: float("nan") for k in metric_names}
+            metrics = {k: float("nan") for k in POOLED_METRICS}
             status = f"error: {type(exc).__name__}: {str(exc)[:70]}"
         return {
             "seed": seed,
