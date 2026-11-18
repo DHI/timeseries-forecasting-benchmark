@@ -10,7 +10,7 @@ from tsforecastbench.data.schema import Case
 
 def generate(case: Case, seed: int = 17) -> pd.DataFrame:
     rng = np.random.default_rng(seed)
-    n = min(case.synth_steps, 6 * 365)
+    n = min(case.synth_steps, 8 * 365)
     end = pd.Timestamp(case.splits.test_end, tz="UTC")
     idx = pd.date_range(end=end, periods=n, freq="1D")
     doy = idx.dayofyear.to_numpy()
