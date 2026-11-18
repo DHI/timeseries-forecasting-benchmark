@@ -19,7 +19,8 @@ static_attrs = ["area_km2", "imperviousness"]
 domain_metrics = ["NSE", "KGE"]
 data_type = "mixed"
 split_mode = "fraction"
-split_fraction = [0.7, 0.85]
+# From split_fraction_for: the test split is 2 annual cycles (gh #121).
+split_fraction = [0.649, 0.799]
 
 [splits]
 train_end = 2015-12-31

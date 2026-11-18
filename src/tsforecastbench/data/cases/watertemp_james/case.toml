@@ -18,7 +18,8 @@ necessary_exogenous = ["temp_air"]
 static_attrs = ["lat", "lon"]
 data_type = "mixed"
 split_mode = "fraction"
-split_fraction = [0.7, 0.85]
+# From split_fraction_for: the test split is 2 annual cycles (gh #121).
+split_fraction = [0.644, 0.794]
 
 [splits]
 train_end = 2018-01-30
