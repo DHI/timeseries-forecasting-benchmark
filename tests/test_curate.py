@@ -75,15 +75,32 @@ def test_tail_length_is_checked_with_the_pre_test_cap():
     assert len(curated) == 2000
 
 
+def _daily(n: int) -> pd.Series:
+    return pd.Series(pd.date_range("2000-01-01", periods=n, freq="1D"))
+
+
 def test_split_is_15_percent_test_when_two_seasons_fit_inside_it():
-    assert split_fraction_for(n_steps=10_000, longest_period=24) == [0.7, 0.85]
+    assert split_fraction_for(_daily(10_000), longest_period=7, freq="1D") == [0.7, 0.85]
 
 
 def test_split_gives_two_seasons_of_test_when_15_percent_is_shorter():
-    train_end, val_end = split_fraction_for(n_steps=2192, longest_period=365)
+    ds = _daily(2192)
 
-    assert (1 - val_end) * 2192 >= 2 * 365
+    train_end, val_end = split_fraction_for(ds, longest_period=365, freq="1D")
+
+    _, val_end_date = fraction_split_dates(ds, [train_end, val_end])
+    assert (ds.max() - val_end_date).days >= 730
     assert val_end - train_end == pytest.approx(0.15, abs=1e-3)
+
+
+def test_two_season_test_is_measured_in_time_when_observations_are_uneven():
+    ds = _daily(2192)
+    ds = ds[(ds < "2004-01-01") | (ds.dt.day % 2 == 0)]  # half the late days missing
+
+    split = split_fraction_for(ds, longest_period=365, freq="1D")
+
+    _, val_end_date = fraction_split_dates(ds, split)
+    assert (ds.max() - val_end_date).days >= 730
 
 
 def test_longest_segment_is_kept_over_a_shorter_last_one():
