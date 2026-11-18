@@ -37,7 +37,7 @@
   "surge_cuxhaven": {
     "parquet": "data/processed/surge_cuxhaven.parquet",
     "rows": 214476,
-    "sha256": "6fff17a16061fe70b061ce4757ab4fe09280a865aa0ce125ad81801c82766984"
+    "sha256": "caa002a7452344320bda42b3185b64bcf540c4ae9b36354cecaa9e126e42cc81"
   },
   "watertemp_james": {
     "parquet": "data/processed/watertemp_james.parquet",
@@ -47,7 +47,7 @@
   "waves_massachusetts": {
     "parquet": "data/processed/waves_massachusetts.parquet",
     "rows": 78889,
-    "sha256": "986c4a42ad924674078335cfad69307c49e9ff1b6ac21917b1534be65b7abdcb"
+    "sha256": "25b8f3d6ee57e5cd04845e05cd6931a098d3f1a604828b254579cc445822281a"
   },
   "waves_oregon": {
     "parquet": "data/processed/waves_oregon.parquet",
