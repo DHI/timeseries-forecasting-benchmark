@@ -101,6 +101,16 @@ def test_two_season_test_is_measured_in_time_when_observations_are_uneven():
     assert (ds.max() - val_end_date).days >= 730
 
 
+def test_two_season_test_holds_when_a_gap_sits_at_the_cutoff():
+    ds = _daily(2800)
+    ds = ds.drop(range(2069, 2077)).reset_index(drop=True)  # 8 missing days at the cutoff
+
+    split = split_fraction_for(ds, longest_period=365, freq="1D")
+
+    _, val_end_date = fraction_split_dates(ds, split)
+    assert ds.max() - val_end_date >= pd.Timedelta(days=730)
+
+
 def test_longest_segment_is_kept_over_a_shorter_last_one():
     observed = np.ones(100, dtype=bool)
     observed[60:70] = False  # a 10-step gap splits the record into 60 and 30 steps

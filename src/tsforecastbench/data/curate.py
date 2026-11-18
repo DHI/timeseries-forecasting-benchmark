@@ -155,16 +155,18 @@ def split_fraction_for(observed_ds: pd.Series, longest_period: int, freq: str) -
     of the longest declared seasonal period, measured in time from the last observation;
     the val split is `VAL_FRACTION`; train gets the rest. Splits are quantiles of the
     observed timestamps (`fraction_split_dates`), so the 2-cycle test start is converted
-    to the fraction of observations before it. Fractions are rounded down to 3 decimals,
-    which can only lengthen the test split. A case's `case.toml` holds the result,
-    computed once on its curated data.
+    to the quantile of the last observation before it, `(k - 1) / (n - 1)` for `k` of
+    `n` observations before it. Fractions are rounded down to 3 decimals, which can only
+    lengthen the test split. A case's `case.toml` holds the result, computed once on its
+    curated data.
     """
     ds = pd.to_datetime(observed_ds)
     if ds.dt.tz is not None:
         ds = ds.dt.tz_convert("UTC").dt.tz_localize(None)
     step = pd.Timedelta(pd.tseries.frequencies.to_offset(freq))
     test_start = ds.max() - 2 * longest_period * step
-    val_end = min(1 - MIN_TEST_FRACTION, float((ds < test_start).mean()))
+    n_before = int((ds < test_start).sum())
+    val_end = min(1 - MIN_TEST_FRACTION, (n_before - 1) / (len(ds) - 1))
     val_end = np.floor(val_end * 1000) / 1000
     train_end = np.floor((val_end - VAL_FRACTION) * 1000) / 1000
     return [float(train_end), float(val_end)]
