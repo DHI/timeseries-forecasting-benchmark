@@ -277,6 +277,9 @@ def test_rolling_matrix_runs():
         "origin_ds",
         "ds",
         "y_hat",
+        "y",
+        "y_persistence",
+        "y_mean",
     }
     assert set(snaps["method"].unique()) == {m.name for m in methods}
     per_method_origins = snaps.groupby("method")["origin_id"].apply(lambda s: sorted(s.unique()))
