@@ -30,7 +30,31 @@ export type MatrixFigure = {
    * row — fit_seconds/predict_seconds are duplicated identically across a row's metric
    * rows, so any one of them gives the same value. */
   trainingBreakdownOf: Map<string, TrainingTimeBreakdown>;
+  /** `${case_id}|${method}` -> lines for the cell's hover tooltip: its 95% interval and
+   * whether it can be told apart from the case's best method. Empty while the
+   * training-time overlay is held, and for a cell with no interval. */
+  intervalLinesOf: Map<string, string[]>;
 };
+
+/** True when the cell's difference interval from the case's best method contains 0. */
+export function tiedWithBest(row: ScoreRow): boolean {
+  if (row.best_method == null || row.best_method === row.method) return false;
+  const { diff_low: lo, diff_high: hi } = row;
+  return (
+    lo != null && hi != null && Number.isFinite(lo) && Number.isFinite(hi) && lo <= 0 && hi >= 0
+  );
+}
+
+function intervalLines(row: ScoreRow, show: (v: number) => string): string[] {
+  const { ci_low: lo, ci_high: hi } = row;
+  if (lo == null || hi == null || !Number.isFinite(lo) || !Number.isFinite(hi)) return [];
+  const lines = [`95% interval: ${show(lo)} to ${show(hi)}`];
+  if (row.best_method === row.method) lines.push('Best on this case');
+  else if (tiedWithBest(row)) lines.push(`Cannot be told apart from ${row.best_method}`);
+  else if (row.best_method != null && Number.isFinite(row.diff_low ?? NaN))
+    lines.push(`Worse than ${row.best_method}`);
+  return lines;
+}
 
 /** Round-number seconds ticks (0, 1, 10, 100, ...) up to the first one at or past
  * `maxSeconds`, positioned in the same log10(seconds + 1) space the training-time
@@ -127,6 +151,11 @@ export function useMatrixFigure(
     const cfg = showTrainingTime ? TRAINING_TIME_CONFIG : metricConfig(metric);
     const fmt = d3format(cfg.format);
 
+    // The row each cell shows, kept in step with the swaps below, so its interval and
+    // its tie with the best describe the number on screen.
+    const shownRowOf = new Map<string, ScoreRow>();
+    for (const row of dfLocal) shownRowOf.set(`${row.case_id}|${row.method}`, row);
+
     const domainOf = new Map<string, string>();
     const familyOf = new Map<string, string>();
     const trainingBreakdownOf = new Map<string, TrainingTimeBreakdown>();
@@ -157,6 +186,7 @@ export function useMatrixFigure(
         const v = valueOf(row);
         if (r === -1 || c === -1 || v === null) continue;
         values[r]![c] = v;
+        shownRowOf.set(`${row.case_id}|${row.method}`, row);
         globalOverlayCells.push([row.case_id, row.method]);
       }
     }
@@ -195,6 +225,7 @@ export function useMatrixFigure(
           if (r === -1 || c === -1 || v === null) continue;
           if ((tierOf.get(row.case_id) ?? 'none') === 'none') continue;
           values[r]![c] = v;
+          shownRowOf.set(`${row.case_id}|${base}`, extValue !== null ? extRow! : row);
           exoOverlayCells.push([row.case_id, base]);
           if (extValue === null) exoCellsWithoutExtended.add(`${row.case_id}|${base}`);
         }
@@ -248,11 +279,23 @@ export function useMatrixFigure(
       ? new Map<string, string>()
       : rowBestMethods(rowOrder, colOrder, values, cfg.lowerIsBetter);
 
+    const intervalLinesOf = new Map<string, string[]>();
+    if (!showTrainingTime) {
+      for (const [key, row] of shownRowOf) {
+        const lines = intervalLines(row, (v) => fmt(v * scale));
+        if (lines.length) intervalLinesOf.set(key, lines);
+      }
+    }
+
     const annotations: Partial<Annotation>[] = [];
     rowOrder.forEach((caseId, r) => {
       const bestMethod = bestOfRow.get(caseId);
       colOrder.forEach((method, c) => {
         const isBest = method === bestMethod;
+        const shown = shownRowOf.get(`${caseId}|${method}`);
+        // "≈": the interval on this cell minus the case's best method contains 0.
+        const tie = !showTrainingTime && shown !== undefined && tiedWithBest(shown) ? '≈' : '';
+        const cellText = `${text[r]![c]}${tie}`;
         const t =
           isGreyscale && colorZMax > colorZMin
             ? (colorZ[r]![c]! - colorZMin) / (colorZMax - colorZMin)
@@ -263,7 +306,7 @@ export function useMatrixFigure(
           y: caseId,
           xref: 'x',
           yref: 'y',
-          text: isBest ? `<b>${text[r]![c]}</b>` : text[r]![c],
+          text: isBest ? `<b>${cellText}</b>` : cellText,
           showarrow: false,
           // Explicit black/light split (not `undefined`) so this stays keyed only to the
           // cell's own color, independent of layout.font.color (the page-theme label color).
@@ -471,6 +514,13 @@ export function useMatrixFigure(
       },
     };
 
-    return { data: [heatmap as Data], layout, rowOrder, colOrder, trainingBreakdownOf };
+    return {
+      data: [heatmap as Data],
+      layout,
+      rowOrder,
+      colOrder,
+      trainingBreakdownOf,
+      intervalLinesOf,
+    };
   }, [rows, metric, selection, showGlobal, showExo, showTrainingTime, isDark]);
 }

@@ -15,6 +15,15 @@ export type ScoreRow = {
   frac_finite_test: number | null;
   status: string;
   n_origins: number;
+  /** 95% block-bootstrap interval on `value` (see src/tsforecastbench/bench/eval/intervals.py).
+   * Absent or null for a cell scored before intervals existed or without snapshots. */
+  ci_low?: number | null;
+  ci_high?: number | null;
+  /** The case's best method on this metric, among the local fits of the methods with no
+   * exogenous inputs, and the 95% interval on (this cell - that method). */
+  best_method?: string | null;
+  diff_low?: number | null;
+  diff_high?: number | null;
 };
 
 export type ScorecardLevel = 'Low' | 'Medium' | 'High';

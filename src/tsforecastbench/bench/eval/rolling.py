@@ -63,7 +63,7 @@ from tsforecastbench.bench.eval.loop import (
     _segment_extended,
     _split_segments_at_train_end,
 )
-from tsforecastbench.bench.eval.metrics import kge, mape, nse, smape
+from tsforecastbench.bench.eval.metrics import POOLED_METRICS, pooled_metrics
 from tsforecastbench.bench.methods.base import Forecaster
 from tsforecastbench.data.schema import Case
 
@@ -119,6 +119,9 @@ SNAPSHOT_COLUMNS = (
     "origin_ds",
     "ds",
     "y_hat",
+    "y",
+    "y_persistence",
+    "y_mean",
 )
 
 
@@ -142,8 +145,9 @@ def run_case_rolling(
       horizon, metric, value, fit_seconds, predict_seconds, frac_finite_test, status) so
       the matrix renderer is unchanged.
     - `snapshots` holds every origin's full predicted series (columns `SNAPSHOT_COLUMNS`:
-      case_id, method, used_extended_history, origin_id, origin_ds, ds, y_hat) so the
-      results viewer can draw real forecasts. Origins are case-level, so `origin_id`/
+      case_id, method, used_extended_history, origin_id, origin_ds, ds, y_hat, y,
+      y_persistence, y_mean) so the results viewer can draw real forecasts and the
+      bootstrap intervals can recompute the score. Origins are case-level, so `origin_id`/
       `origin_ds` align across methods and fits, which is what lets the viewer overlay
       several methods (and swap in a method's extended-history fit) on one origin's
       panel. A method that errors contributes no snapshot rows for that fit (its metrics
@@ -223,17 +227,6 @@ def run_case_rolling(
                     "is_global methods use the curated span only."
                 )
 
-    metric_names = (
-        "MAE",
-        "RMSE",
-        "MASE",
-        "Skill_vs_Persistence",
-        "Skill_vs_Mean",
-        "MAPE",
-        "sMAPE",
-        "NSE",
-        "KGE",
-    )
     records: list[dict] = []
     snap_frames: list[pd.DataFrame] = []
 
@@ -310,8 +303,15 @@ def run_case_rolling(
                 preds = method.predict(case, history, H, future_exog=fexog)
                 predict_times.append(time.perf_counter() - t_pred0)
                 y_hat = preds["y_hat"].to_numpy(float)
+                actual = raw_y[o : o + H]
+                # Local-history references, shared by both fits so the extended fit's
+                # skill scores isolate the model, not a shifted baseline.
+                persistence = float(local_hist["y"].iloc[-1])
+                mean = float(np.nanmean(local_hist["y"].to_numpy(float)))
                 # Full predicted series (all H steps, before masking) so the viewer
-                # draws a continuous forecast line even where the actual has gaps.
+                # draws a continuous forecast line even where the actual has gaps. The
+                # observed value (NaN where filled) and both references go alongside, so
+                # the score can be recomputed from the snapshots for the intervals.
                 method_snaps.append(
                     pd.DataFrame(
                         {
@@ -322,22 +322,20 @@ def run_case_rolling(
                             "origin_ds": full_fit["ds"].iloc[o],
                             "ds": preds["ds"].to_numpy(),
                             "y_hat": y_hat,
+                            "y": actual,
+                            "y_persistence": persistence,
+                            "y_mean": mean,
                         }
                     )
                 )
-                actual = raw_y[o : o + H]
                 m = np.isfinite(actual)
                 if not m.any():
                     continue
                 n_ok += 1
                 a.extend(actual[m])
                 p.extend(y_hat[m])
-                # Local-history references, shared by both fits so the extended fit's
-                # skill scores isolate the model, not a shifted baseline.
-                ref_p.extend(np.full(int(m.sum()), float(local_hist["y"].iloc[-1])))
-                ref_m.extend(
-                    np.full(int(m.sum()), float(np.nanmean(local_hist["y"].to_numpy(float))))
-                )
+                ref_p.extend(np.full(int(m.sum()), persistence))
+                ref_m.extend(np.full(int(m.sum()), mean))
             if not a:
                 raise ValueError("no finite test points across origins")
             a = np.array(a)
@@ -345,24 +343,10 @@ def run_case_rolling(
             ref_p = np.array(ref_p)
             ref_m = np.array(ref_m)
             mse = float(np.mean((a - p) ** 2))
-            mse_ref_p = float(np.mean((a - ref_p) ** 2))
-            mse_ref_m = float(np.mean((a - ref_m) ** 2))
-            metrics = {
-                "MAE": float(np.mean(np.abs(a - p))),
-                "RMSE": float(np.sqrt(mse)),
-                "MASE": float(np.mean(np.abs(a - p)) / naive_scale)
-                if naive_scale
-                else float("nan"),
-                "Skill_vs_Persistence": 1.0 - mse / mse_ref_p if mse_ref_p != 0.0 else float("nan"),
-                "Skill_vs_Mean": 1.0 - mse / mse_ref_m if mse_ref_m != 0.0 else float("nan"),
-                "MAPE": mape(a, p),
-                "sMAPE": smape(a, p),
-                "NSE": nse(a, p),
-                "KGE": kge(a, p),
-            }
+            metrics = pooled_metrics(a, p, ref_p, ref_m, naive_scale)
             status = "ok"
         except Exception as exc:
-            metrics = {k: float("nan") for k in metric_names}
+            metrics = {k: float("nan") for k in POOLED_METRICS}
             status = f"error: {type(exc).__name__}: {str(exc)[:70]}"
         return {
             "seed": seed,
