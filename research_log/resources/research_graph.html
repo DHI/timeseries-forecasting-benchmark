@@ -341,6 +341,20 @@
 <script type="application/json" id="graph-data">{
   "nodes": [
     {
+      "id": "2026-11-18-one-fitting-rule",
+      "date": "2026-11-18",
+      "title": "Every method is fit once on train and val, and every forecast reads all history up to its start",
+      "category": "methodology",
+      "summary": "Parameters estimated once on train+val and frozen; DL finds its stopping step on val then refits on both; naive baselines read history in predict; foundation models use their full context limit.",
+      "detail": "Every method now follows one rule (gh #120): parameters are estimated once, on all data before the test period, and frozen; every forecast reads all observations up to its start. The deep-learning methods first train on the train split and stop when their loss on validation stops improving, then train a fresh model on train and validation for that many steps, which roughly doubles their fit time. This reverses the rule from entry 92 that no method estimates parameters on validation, which had left 15% of every record unused by the classical and ML methods. The naive baselines now compute their statistic from the history inside `predict` and are fit once like every other method, so no method is refit per forecast start; their rolling-origin forecasts do not change. Foundation models read up to their own context limit instead of the training-split length, and TimesFM recompiles each time a growing context crosses a 32-step boundary. Every column except the naive baselines needs the re-run (#122).",
+      "tags": [
+        "fitting-protocol",
+        "fairness",
+        "validation",
+        "foundation-models"
+      ]
+    },
+    {
       "id": "2026-11-18-bootstrap-intervals",
       "date": "2026-11-18",
       "title": "Matrix scores get block-bootstrap intervals and a tie mark against the best method",
@@ -1840,6 +1854,26 @@
     }
   ],
   "edges": [
+    {
+      "source": "2026-11-18-one-fitting-rule",
+      "target": "2026-11-18-test-length-rule",
+      "type": "follows-from"
+    },
+    {
+      "source": "2026-11-18-one-fitting-rule",
+      "target": "2026-08-13-val-split-becomes-real",
+      "type": "supersedes"
+    },
+    {
+      "source": "2026-11-18-one-fitting-rule",
+      "target": "2026-08-24-ensembles-fit-once",
+      "type": "supersedes"
+    },
+    {
+      "source": "2026-11-18-one-fitting-rule",
+      "target": "2026-07-10-is-global-flag-inert",
+      "type": "relates-to"
+    },
     {
       "source": "2026-11-18-bootstrap-intervals",
       "target": "2026-11-18-test-length-rule",

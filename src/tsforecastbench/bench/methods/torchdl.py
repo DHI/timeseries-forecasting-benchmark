@@ -241,6 +241,7 @@ class _TorchDLBase(Forecaster):
     # Weight init, the minibatch draw in the training loop, and PatchTST's dropout all come
     # off torch's global RNG, so a different seed is a different network.
     is_stochastic = True
+    stops_on_val = True
     use_exogenous: bool = False
     # Batch size and learning rate are N-HiTS's own (Challu et al., AAAI 2023, Table A3).
     batch = 256
@@ -257,8 +258,9 @@ class _TorchDLBase(Forecaster):
         "CPU (no GPU dependency); trains a small network from scratch per case over "
         "randomly sampled windows, stopping when held-out loss stops improving rather "
         "than at a fixed step count, so training cost scales with how much the case has "
-        "left to learn. Among the heaviest CPU methods in the benchmark; keep "
-        "rolling-origin counts modest when including them."
+        "left to learn. It then trains a fresh network for that many steps on train and "
+        "val together, so each cell pays for two fits. Among the heaviest CPU methods in "
+        "the benchmark."
     )
     limitations = (
         "The univariate variant ignores exogenous inputs; the +exo variant sees the "
@@ -290,6 +292,25 @@ class _TorchDLBase(Forecaster):
         raise NotImplementedError
 
     def fit(self, case: Case, train: pd.DataFrame, val: pd.DataFrame) -> None:
+        """Train on `train`, stopping when the loss on `val` stops improving."""
+        self._train(case, train, val, n_steps=None)
+
+    def refit(self, case: Case, train_val: pd.DataFrame) -> None:
+        """Train a fresh network on `train_val` for the step count `fit` kept.
+
+        `last_fit_steps` and `last_best_step` keep describing the stopping run. A fit that
+        built no model (too few windows) has no step count, and neither does the refit.
+        """
+        n_steps = self.last_best_step or self.last_fit_steps
+        if n_steps is None:
+            return
+        self._train(case, train_val, None, n_steps=n_steps)
+
+    def _train(
+        self, case: Case, train: pd.DataFrame, val: pd.DataFrame | None, n_steps: int | None
+    ) -> None:
+        """Early stopping on `val` when `n_steps` is None; else exactly `n_steps` steps with
+        no holdout, keeping the last weights."""
         from tsforecastbench.bench.eval.loop import _horizon_to_steps
 
         mods = _make_modules()
@@ -318,37 +339,38 @@ class _TorchDLBase(Forecaster):
         X, Xf, Y = build_windows_fut(segs, exo_segs, self._L, self._H)
         if X is None:
             self._model = None
-            self.last_fit_steps = None
-            self.last_best_step = None
+            if n_steps is None:
+                self.last_fit_steps = None
+                self.last_best_step = None
             return
-        # Early stopping runs on the declared val split, not on a fraction carved off the
-        # training windows: the boundary the app displays is the boundary the fit uses
-        # (gh #99). Every training window's target is inside train, every validation
-        # window's target is inside val.
-        tail_uid = train["unique_id"].iloc[-1]
-        val_y = pd.to_numeric(val.loc[val["unique_id"] == tail_uid, "y"], errors="coerce").to_numpy(
-            dtype=np.float32
-        )
-        exo_val = None
-        if self._exo:
-            val_tail = val.loc[val["unique_id"] == tail_uid]
-            exo_val = self._scaler.transform(segment_exo_arrays(val_tail, self._exo)[0]).astype(
-                np.float32
-            )
-        Xv_np, Xfv_np, Yv_np = _build_val_windows(
-            segs[tail],
-            val_y,
-            self._L,
-            self._H,
-            exo_segs[tail] if exo_segs is not None else None,
-            exo_val,
-        )
         Xt, Yt, Xft = torch.from_numpy(X), torch.from_numpy(Y), torch.from_numpy(Xf)
-        Xv, Yv, Xfv = (
-            torch.from_numpy(Xv_np),
-            torch.from_numpy(Yv_np),
-            torch.from_numpy(Xfv_np),
-        )
+        if val is not None:
+            # Early stopping runs on the declared val split, not on a fraction carved off
+            # the training windows (gh #99). Every training window's target is inside
+            # train, every validation window's target is inside val.
+            tail_uid = train["unique_id"].iloc[-1]
+            val_y = pd.to_numeric(
+                val.loc[val["unique_id"] == tail_uid, "y"], errors="coerce"
+            ).to_numpy(dtype=np.float32)
+            exo_val = None
+            if self._exo:
+                val_tail = val.loc[val["unique_id"] == tail_uid]
+                exo_val = self._scaler.transform(segment_exo_arrays(val_tail, self._exo)[0]).astype(
+                    np.float32
+                )
+            Xv_np, Xfv_np, Yv_np = _build_val_windows(
+                segs[tail],
+                val_y,
+                self._L,
+                self._H,
+                exo_segs[tail] if exo_segs is not None else None,
+                exo_val,
+            )
+            Xv, Yv, Xfv = (
+                torch.from_numpy(Xv_np),
+                torch.from_numpy(Yv_np),
+                torch.from_numpy(Xfv_np),
+            )
 
         # The target's own scale over the training pool, so the covariate layer's weights
         # stay near 1 -- see `_exo_term`. Guarded against a degenerate constant target.
@@ -382,7 +404,7 @@ class _TorchDLBase(Forecaster):
         # `DL_MAX_EPOCHS` passes over this fit's own window pool, so a longer record buys
         # more steps rather than thinner ones (gh #101). Early stopping below is what
         # normally ends the fit; this is only reached by one that never converges.
-        max_steps = dl_step_ceiling(n, self.batch)
+        max_steps = dl_step_ceiling(n, self.batch) if n_steps is None else n_steps
         for step in range(1, max_steps + 1):
             self._model.train()
             idx = torch.randint(0, n, (min(self.batch, n),))
@@ -391,7 +413,7 @@ class _TorchDLBase(Forecaster):
             loss.backward()
             opt.step()
             steps = step
-            if step % DL_VAL_CHECK_STEPS:
+            if n_steps is not None or step % DL_VAL_CHECK_STEPS:
                 continue
             # Stop when held-out loss stops improving, rather than at a fixed step count: a
             # fixed count made the number of passes over the data vary inversely with case
@@ -406,6 +428,8 @@ class _TorchDLBase(Forecaster):
                 stale += 1
                 if stale >= DL_PATIENCE_CHECKS:
                     break
+        if n_steps is not None:
+            return
         if best_state is not None:
             self._model.load_state_dict(best_state)
         self.last_fit_steps = steps

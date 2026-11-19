@@ -82,7 +82,8 @@ MLP_MAX_EPOCHS = 2_000
 
 # What that held-out loss is measured on is the case's declared val split, not a fraction of
 # the training windows (gh #99): the eval loop hands `fit` the train split and the val split
-# separately, and no method estimates parameters on the latter. The one place that cannot be
+# separately, then `refit` trains for the step count found on train and val together
+# (gh #120). The one place that cannot be
 # expressed directly is a multi-segment neuralforecast panel -- see `nf_val_size`.
 
 # Shortest validation cut worth stopping on, in horizons. Four gives a handful of disjoint

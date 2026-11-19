@@ -61,19 +61,6 @@ function CasePanelComponent({ caseId, caseMeta, scores, showGlobal, selectedMeth
     return map;
   }, [scores, caseId]);
 
-  // Local vs global is a per-method property, not a per-family one: the naive baselines are
-  // refit per origin while every classical method (AutoARIMA/AutoETS/Theta/MSTL/TBATS) fits
-  // once, and the ensembles are fit-once composites that re-derive their naive members per
-  // origin. So read the flag the eval loop actually acted on rather than inferring it from
-  // `family`.
-  const isGlobalByMethod = useMemo(() => {
-    const map = new Map<string, boolean>();
-    for (const row of scores) {
-      if (row.case_id === caseId) map.set(row.method, row.is_global);
-    }
-    return map;
-  }, [scores, caseId]);
-
   // Foundation models forecast zero-shot, from recent context, so the train/val/test
   // split below doesn't describe how they were fit the way it does for other methods.
   const foundationMethods = useMemo(
@@ -84,17 +71,6 @@ function CasePanelComponent({ caseId, caseMeta, scores, showGlobal, selectedMeth
     foundationMethods.length === 1
       ? "is a zero-shot foundation model: it forecasts from recent context only and never fits on this case's training data at all."
       : "are zero-shot foundation models: they forecast from recent context only and never fit on this case's training data at all.";
-
-  // Local methods have no single reusable trained model, so they're refit from scratch at
-  // every forecast origin. That's the naive baselines and the ensembles built on them.
-  const localMethods = useMemo(
-    () => selectedMethods.filter((m) => isGlobalByMethod.get(m) === false),
-    [isGlobalByMethod, selectedMethods],
-  );
-  const localNote =
-    localMethods.length === 1
-      ? "is a local method: it's refit from scratch at every forecast origin, using all history up to that point, rather than being fit once on the train split like the global methods. It therefore re-estimates on more recent data than they do."
-      : "are local methods: they're refit from scratch at every forecast origin, using all history up to that point, rather than being fit once on the train split like the global methods. They therefore re-estimate on more recent data than the global methods do.";
 
   return (
     <div>
@@ -117,18 +93,6 @@ function CasePanelComponent({ caseId, caseMeta, scores, showGlobal, selectedMeth
             <p style={{ ...SUBCAPTION_STYLE, margin: 0 }}>
               <strong>{foundationMethods.join(', ')}</strong> {foundationNote} The split below still
               applies to the other methods and to how the test points are scored.
-            </p>
-          </div>
-        )}
-        {localMethods.length > 0 && (
-          <div style={FOUNDATION_NOTE_STYLE}>
-            <span aria-hidden="true" style={{ color: 'var(--warning-text)' }}>
-              ⚠
-            </span>
-            <p style={{ ...SUBCAPTION_STYLE, margin: 0 }}>
-              <strong>{localMethods.join(', ')}</strong> {localNote} The split below still applies
-              to how the test points are scored, but there's no single trained model here the way
-              there is for global methods — it refits at every origin instead.
             </p>
           </div>
         )}

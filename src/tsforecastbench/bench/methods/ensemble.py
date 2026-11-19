@@ -37,41 +37,22 @@ class EnsembleForecaster(Forecaster):
     that fails at predict time is dropped for that origin; if none succeed the error is
     re-raised so the eval loop records it.
 
-    Two cadences, one column. A member that keeps a trained model apart from the series it
-    scores (`is_global`, e.g. `ThetaForecaster`, whose `AutoTheta` parameter search is the
-    expensive part) is fit once, on the declared train split, and rolled forward. A member
-    whose parameters are a closed-form statistic of whatever frame it is shown (the naive
-    baselines: a sample mean, within-cycle means, the last observed cycle) is re-derived
-    inside `predict` from that origin's history, which keeps it tracking the origin exactly
-    as a per-origin refit did.
-
-    That split is why this class is `is_global = True` rather than local. Before, the whole
-    composite was refit at every origin, so the Theta member re-ran its optimizer once per
-    origin — 100 times per cell for a forecast change of at most a fraction of a percent,
-    and half the total runtime of a 49,000-point case. Fitting it once instead is not just
-    cheaper: a model reused across origins has to be fit on the declared train split alone,
-    and the only frame the local path ever hands `fit` is the history up to an origin, which
-    runs through val (gh #99).
+    Every member is fit once, like the composite, and rolled forward by its own `predict`:
+    `ThetaForecaster` through its fitted model, the naive baselines by reading the history
+    up to each origin (gh #120).
     """
 
     family = "ensemble"
     library = "no additional library — combines member forecasters' own outputs"
-    # Set unconditionally rather than derived from the member list, so one flag cannot mean
-    # different things for two instances of the same class. An all-local ensemble
-    # (`ensemble_baselines`) therefore reports a fit that reuses nothing, which is the honest
-    # description of it: every member is re-derived per origin inside predict, so its cost
-    # lands in `predict_seconds` and its `fit_seconds` is near zero because there genuinely is
-    # no reusable model. Its forecasts are unchanged by that move.
     is_global = True
     # Explicit rather than inherited: a member's fit takes one contiguous 1-D series, and the
     # naive members' statistics assume a contiguous history, so there is no multi-segment fit
     # to offer and the eval loop produces no extended-history variant for this column.
     pools_segments = False
     compute_profile = (
-        "Sum of its members' costs, split across the two cadences: members that keep a "
-        "trained model are fit once and rolled forward, while the naive members are "
-        "re-derived from each origin's history inside predict. A naive-only ensemble is "
-        "therefore milliseconds per origin with no meaningful fit; the Theta variant "
+        "Sum of its members' costs. The naive members have nothing to fit and read each "
+        "origin's history inside predict, so a naive-only ensemble is milliseconds per "
+        "origin with no meaningful fit; the Theta variant "
         "inherits Theta's cost at both ends — roughly 210s to fit and ~5s per origin on a "
         "49,000-point record, tens of minutes and ~110s per origin on a 214,000-point one."
     )
@@ -80,17 +61,13 @@ class EnsembleForecaster(Forecaster):
         "member that fails at predict is dropped from that origin's combination rather "
         "than failing the whole prediction, but a member that cannot be conditioned on the "
         "case at all raises instead, since silently combining fewer members would "
-        "misreport what the column is. The column also mixes cadences: a trained member is "
-        "fit once on the declared train split while the naive members are re-derived per "
-        "origin, so `fit_seconds` describes only the former."
+        "misreport what the column is."
     )
     code_snippet = (
-        "# fit: every member, once, on the declared train split\n"
+        "# fit: every member, once\n"
         "for m in members:\n"
         "    m.fit(case, train, val)\n\n"
-        "# each origin: re-derive the members whose state is a statistic of the history\n"
-        "for m in local_members:\n"
-        "    m.fit(case, history, history.iloc[:0])\n"
+        "# each origin: every member reads the history up to it\n"
         "stacked = np.vstack([m.predict(case, history, h)['y_hat'] for m in members])\n"
         "y_hat = np.nanmedian(stacked, axis=0)   # or np.nanmean if combine='mean'"
     )
@@ -123,18 +100,12 @@ class EnsembleForecaster(Forecaster):
         self.uses_exogenous = any(m.uses_exogenous for m in members)
         self.is_stochastic = any(m.is_stochastic for m in members)
         self.requires_gpu = any(m.requires_gpu for m in members)
-        # The members re-derived per origin in `predict`. Partitioned on each member's own
-        # `is_global` rather than a hardcoded list, so the cadence decision is delegated to
-        # the same flag the eval loop would have used on that member directly.
-        self._local_members = [m for m in members if not m.is_global]
         self._fitted = False
 
     def fit(self, case: Case, train: pd.DataFrame, val: pd.DataFrame) -> None:
-        # Every member, including the ones `predict` re-derives: it keeps `fit`'s meaning
-        # uniform, leaves the object in a valid post-fit state for any caller, and preserves
-        # the failure timing this column had before — `SeasonalNaive.fit` raises on a case
-        # declared non-seasonal, and that has to surface as a failed cell rather than as a
-        # quietly smaller median under a card that still claims seasonality.
+        # `SeasonalNaive.fit` raises on a case declared non-seasonal, and that has to surface
+        # as a failed cell rather than as a quietly smaller median under a card that still
+        # claims seasonality.
         self._fitted = False
         for member in self.members:
             member.seed = self.seed
@@ -153,17 +124,6 @@ class EnsembleForecaster(Forecaster):
                 f"{self.name}.predict called before fit; a composite has no forecast until "
                 "its members have one"
             )
-        # Re-derive the members whose parameters are a closed-form statistic of the frame
-        # they are shown, on the history this origin handed us — the same frame, and the same
-        # empty holdout, that the eval loop's per-origin refit used to pass (see
-        # `eval.rolling` on why val is included: the history is contiguous and cannot skip a
-        # period). Deliberately outside the per-member drop handler below: a member that
-        # cannot be conditioned on this case at all is a broken ensemble, not a member to
-        # silently drop for one origin.
-        for member in self._local_members:
-            member.seed = self.seed
-            member.fit(case, history, history.iloc[:0])
-
         forecasts: list[np.ndarray] = []
         future: pd.Series | None = None
         last_error: Exception | None = None

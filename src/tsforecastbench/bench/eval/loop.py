@@ -122,6 +122,29 @@ def _split_segments_at_train_end(
     )
 
 
+def fit_before_test(
+    method: Forecaster,
+    case: Case,
+    train: pd.DataFrame,
+    val: pd.DataFrame,
+    train_val: pd.DataFrame,
+) -> tuple[int, int]:
+    """Estimate `method`'s parameters on all data before the test period (gh #120).
+
+    A `stops_on_val` method first finds its stopping step with `val` held out, then refits
+    on `train_val` for that many steps. Every other method is fit on `train_val` directly.
+    `train_val` is passed rather than built here because the extended-history panel is not
+    the concatenation of its train and val parts. Returns the rows the parameters were
+    estimated on and the rows held out to find the stopping step.
+    """
+    if method.stops_on_val:
+        method.fit(case, train, val)
+        method.refit(case, train_val)
+        return len(train_val), len(val)
+    method.fit(case, train_val, train_val.iloc[:0])
+    return len(train_val), 0
+
+
 def _raw_y(df: pd.DataFrame) -> np.ndarray:
     """Target with filled points masked back to NaN, for honest scoring/origin choice."""
     return np.where(_observed_mask(df).to_numpy(), df["y"].to_numpy(dtype=float), np.nan)
@@ -204,12 +227,13 @@ def run_case(
     last_origin = len(full) - horizon_steps
     origin = _pick_origin(raw_y, test_start, last_origin, horizon_steps)
 
-    # Three frames, not one. Parameters are estimated on the train split alone; the val
-    # split is handed over separately, for the iteratively trained methods to stop on and
-    # for no other purpose; and `history` -- everything before the origin, val and the
-    # slid-in test prefix included -- is what predict conditions on (gh #99).
+    # Parameters are estimated on everything before the test period; the train and val
+    # splits are also handed over apart, for the iteratively trained methods to find their
+    # stopping step on (`fit_before_test`). `history` -- everything before the origin, the
+    # slid-in test prefix included -- is what predict conditions on (gh #120).
     fit_frame = full_fit.iloc[:val_start].reset_index(drop=True)
     val_frame = full_fit.iloc[val_start:test_start].reset_index(drop=True)
+    pre_test = full_fit.iloc[:test_start].reset_index(drop=True)
     history = full_fit.iloc[:origin].reset_index(drop=True)
     # Rows the origin-picking slide pulled from the test split into the history -- carried
     # over verbatim onto the extended frame too, so global methods forecast from the
@@ -228,9 +252,8 @@ def run_case(
     def _train_stats(history_df: pd.DataFrame) -> tuple[np.ndarray, int, np.ndarray, np.ndarray]:
         """Reference scales for MASE and the skill scores.
 
-        Read off the pre-origin history, not the (shorter) fit frame: these are the
-        yardstick every method is measured against, so reserving the val split from
-        training must not move them.
+        Read off the pre-origin history: these are the yardstick every method is
+        measured against, so they must not depend on what a method was fit on.
         """
         y_train = history_df["y"].to_numpy(dtype=float)
         # The case's pinned dominant period, the same one `SeasonalNaive` forecasts with
@@ -248,7 +271,7 @@ def run_case(
     # the tail segment equals the local train span, so the metric reference scales stay
     # identical and only the training data the model sees grows. A gap-free record yields
     # a single segment (no history beyond the curated span), so only the local fit runs.
-    fit_frame_ext = val_frame_ext = history_ext = None
+    fit_frame_ext = val_frame_ext = pre_test_ext = history_ext = None
     if any(m.is_global and m.pools_segments for m in methods):
         try:
             extended = case.load_extended(prefer_synth=prefer_synth)
@@ -263,6 +286,7 @@ def run_case(
                 slide = slide_in.copy()
                 slide["unique_id"] = segments[-1]["unique_id"].iloc[0]
                 fit_frame_ext, val_frame_ext = _split_segments_at_train_end(segments, train_end)
+                pre_test_ext = pd.concat(segments, ignore_index=True)
                 history_ext = pd.concat([*segments, slide], ignore_index=True)
             else:
                 print(
@@ -283,7 +307,7 @@ def run_case(
     )
     records: list[dict] = []
 
-    def _run_once(method: Forecaster, m_fit, m_val, m_history, seed) -> dict:
+    def _run_once(method: Forecaster, m_fit, m_val, m_pre_test, m_history, seed) -> dict:
         """Fit and score one (method, variant) at one seed, returning the whole run.
 
         Returns a bundle rather than appending to `records`, so several seeds can be run
@@ -295,12 +319,13 @@ def run_case(
         # points, so only the predictions differ. Infinite for a run that failed, which
         # keeps it out of the median.
         mse = float("inf")
+        train_points = val_points = None
         method.last_fit_steps = None
         method.last_best_step = None
         method.seed = seed
         try:
             t_fit0 = time.perf_counter()
-            method.fit(case, m_fit, m_val)
+            train_points, val_points = fit_before_test(method, case, m_fit, m_val, m_pre_test)
             fit_seconds = time.perf_counter() - t_fit0
             t_pred0 = time.perf_counter()
             preds = method.predict(case, m_history, horizon_steps, future_exog=future_exog)
@@ -335,6 +360,8 @@ def run_case(
             "metrics": metrics,
             "fit_seconds": fit_seconds,
             "predict_seconds": predict_seconds,
+            "train_points": train_points,
+            "val_points": val_points,
             # Read here rather than by the caller: the next seed's fit overwrites it.
             "train_steps": method.last_fit_steps,
             "best_step": method.last_best_step,
@@ -345,15 +372,17 @@ def run_case(
         # a second time on the extended history, when the case has any. Both fits share
         # the local reference scales (persistence/mean/seasonal-naive), so the extended
         # row differs from the local one only through the model, not the yardstick.
-        variants = [(fit_frame, val_frame, history, False)]
+        variants = [(fit_frame, val_frame, pre_test, history, False)]
         if method.is_global and method.pools_segments and fit_frame_ext is not None:
-            variants.append((fit_frame_ext, val_frame_ext, history_ext, True))
-        for m_fit, m_val, m_history, used_extended in variants:
+            variants.append((fit_frame_ext, val_frame_ext, pre_test_ext, history_ext, True))
+        for m_fit, m_val, m_pre_test, m_history, used_extended in variants:
             # Several draws for a method whose forecast moves with the seed, keeping the
             # middle one whole; one run for everyone else. See `eval.rolling` on why the
             # run is kept whole rather than averaged or medianed metric by metric.
             cell_seeds = list(range(n_seeds)) if method.is_stochastic else [0]
-            runs = [_run_once(method, m_fit, m_val, m_history, seed) for seed in cell_seeds]
+            runs = [
+                _run_once(method, m_fit, m_val, m_pre_test, m_history, seed) for seed in cell_seeds
+            ]
             ok = [r for r in runs if r["status"] == "ok"]
             # Lower-middle when a seed failed and an even number survived; if none did,
             # report the first run's failure, as a single-seed run would have.
@@ -385,10 +414,11 @@ def run_case(
                         "n_seeds": len(runs),
                         # What this fit was given and what it spent -- see the same set
                         # in `eval.rolling` and `eval.budget` on why they are recorded.
-                        # `val_points` is the holdout handed over for early stopping; a
-                        # method that does not train iteratively ignores it.
-                        "train_points": len(m_fit),
-                        "val_points": len(m_val),
+                        # `train_points` is what the parameters were estimated on and
+                        # `val_points` the holdout that found the stopping step, 0 for a
+                        # method that does not stop on val.
+                        "train_points": chosen["train_points"],
+                        "val_points": chosen["val_points"],
                         "train_steps": chosen["train_steps"],
                         "best_step": chosen["best_step"],
                     }
