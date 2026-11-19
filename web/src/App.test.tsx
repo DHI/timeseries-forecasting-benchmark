@@ -19,7 +19,6 @@ const SCORES = [
     method: 'Persistence',
     family: 'baseline',
     uses_exogenous: false,
-    is_global: false,
     used_extended_history: false,
     horizon: '24h',
     metric: 'MASE',

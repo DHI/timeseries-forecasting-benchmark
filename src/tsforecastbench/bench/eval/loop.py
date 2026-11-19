@@ -7,7 +7,7 @@ only genuine observations — the curated frame's `y_observed` mask marks which 
 were measured vs. filled, and metrics use only the measured ones. The fraction of
 finite test points is reported so a gappy test window is visible, not silently scored.
 
-Methods that are `is_global` and `pools_segments` are additionally scored on the full
+Methods that are `pools_segments` are additionally scored on the full
 single-series history (`Case.load_extended`) reaching back before the tail segment. That
 history is split at its big gaps into contiguous segments, each carrying its own
 `unique_id`, so a windowed method trains across all of them without ever building a
@@ -236,8 +236,8 @@ def run_case(
     pre_test = full_fit.iloc[:test_start].reset_index(drop=True)
     history = full_fit.iloc[:origin].reset_index(drop=True)
     # Rows the origin-picking slide pulled from the test split into the history -- carried
-    # over verbatim onto the extended frame too, so global methods forecast from the
-    # same origin as everyone else.
+    # over verbatim onto the extended frame too, so extended-history fits forecast from
+    # the same origin as everyone else.
     slide_in = full_fit.iloc[test_start:origin].reset_index(drop=True)
     future_exog = None
     if exo_cols:
@@ -266,19 +266,19 @@ def run_case(
 
     y_train, season, ref_persistence, ref_mean = _train_stats(history)
 
-    # Extended-history training for `is_global` methods that pool segments. The extended
+    # Extended-history training for methods that pool segments. The extended
     # frame is split at its big gaps into contiguous segments (see `_segment_extended`);
     # the tail segment equals the local train span, so the metric reference scales stay
     # identical and only the training data the model sees grows. A gap-free record yields
     # a single segment (no history beyond the curated span), so only the local fit runs.
     fit_frame_ext = val_frame_ext = pre_test_ext = history_ext = None
-    if any(m.is_global and m.pools_segments for m in methods):
+    if any(m.pools_segments for m in methods):
         try:
             extended = case.load_extended(prefer_synth=prefer_synth)
         except Exception as exc:
             print(
                 f"  [note] load_extended failed ({type(exc).__name__}: {exc}); "
-                "is_global methods use the curated span only."
+                "segment-pooling methods use the curated span only."
             )
         else:
             segments = _segment_extended(extended, case, horizon_steps)
@@ -291,7 +291,7 @@ def run_case(
             else:
                 print(
                     "  [note] no history beyond the curated span; "
-                    "is_global methods use the curated span only."
+                    "segment-pooling methods use the curated span only."
                 )
 
     metric_names = (
@@ -373,7 +373,7 @@ def run_case(
         # the local reference scales (persistence/mean/seasonal-naive), so the extended
         # row differs from the local one only through the model, not the yardstick.
         variants = [(fit_frame, val_frame, pre_test, history, False)]
-        if method.is_global and method.pools_segments and fit_frame_ext is not None:
+        if method.pools_segments and fit_frame_ext is not None:
             variants.append((fit_frame_ext, val_frame_ext, pre_test_ext, history_ext, True))
         for m_fit, m_val, m_pre_test, m_history, used_extended in variants:
             # Several draws for a method whose forecast moves with the seed, keeping the
@@ -398,7 +398,6 @@ def run_case(
                         "case_exo_tier": case.exo_tier,
                         "method": method.name,
                         "uses_exogenous": method.uses_exogenous,
-                        "is_global": method.is_global,
                         "used_extended_history": used_extended,
                         "horizon": case.horizon_primary,
                         "metric": metric_name,

@@ -44,7 +44,6 @@ class EnsembleForecaster(Forecaster):
 
     family = "ensemble"
     library = "no additional library — combines member forecasters' own outputs"
-    is_global = True
     # Explicit rather than inherited: a member's fit takes one contiguous 1-D series, and the
     # naive members' statistics assume a contiguous history, so there is no multi-segment fit
     # to offer and the eval loop produces no extended-history variant for this column.

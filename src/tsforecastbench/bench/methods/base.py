@@ -14,7 +14,7 @@ from tsforecastbench.data.schema import Case
 def segment_arrays(train: pd.DataFrame, value_col: str = "y") -> tuple[list[np.ndarray], int]:
     """Split a training frame into one array per contiguous segment (``unique_id``).
 
-    The extended-history frame an `is_global` method fits on carries several segments,
+    The extended-history frame a `pools_segments` method fits on carries several segments,
     one per gap-bounded stretch of the record, each under its own ``unique_id`` (see
     `tsforecastbench.bench.eval.loop._segment_extended`). Building windows across a
     segment boundary would treat gap-separated rows as adjacent time steps, so windowed
@@ -284,26 +284,13 @@ class Forecaster(ABC):
     # by the results viewer to filter/group methods. "unclassified" flags a method that
     # forgot to set it, rather than silently disappearing from a family filter.
     family: str = "unclassified"
-    # Capability flag: this method keeps a trained model apart from the series it scores,
-    # the way a strictly local statistical method (whose parameters are a direct function
-    # of the exact series passed to fit) does not. Two consequences follow:
-    #   1. It can exploit more of a series' history than the shared curated (tail-segment)
-    #      span. The results viewer scores `is_global` methods a second time on the
-    #      extended-history fit (see `pools_segments`) in a separate matrix, alongside the
-    #      shared local one every method is scored on; the gap is the gain from the history.
-    #   2. Its predict depends only on its trained model plus the `history` it is handed,
-    #      never on per-origin state captured during fit. The eval loop fits every method
-    #      once, on data strictly before the test period, and scores every origin by
-    #      inference alone (gh #120), so every method in the benchmark sets this. The naive
-    #      baselines qualify because they have no parameters: their forecast is a statistic
-    #      of the history, read in predict. Renaming the flag is #87.
-    is_global: bool = False
     # Whether `fit` actually trains on the full multi-segment extended history (as
     # opposed to only conditioning on the tail segment). True for the methods that learn
     # parameters from training windows/rows (ml/dl/neuralforecast); False for
     # zero-shot foundation models, which condition on the recent context and cannot
     # bridge a gap, so extended history leaves their forecast unchanged. The eval loop
-    # runs the second (extended) fit only for `is_global and pools_segments` methods.
+    # scores these methods a second time on the extended-history fit, alongside the
+    # shared local one every method is scored on; the gap is the gain from the history.
     pools_segments: bool = False
     # Whether this method's forecast changes when `seed` changes -- weight init, minibatch
     # sampling, dropout, row subsampling. A cell for such a method is one draw from a

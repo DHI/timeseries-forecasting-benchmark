@@ -161,7 +161,6 @@ class _SeedSensitive(Forecaster):
 
     name = "SeedSensitive"
     family = "baseline"
-    is_global = True
     is_stochastic = True
 
     def __init__(self):

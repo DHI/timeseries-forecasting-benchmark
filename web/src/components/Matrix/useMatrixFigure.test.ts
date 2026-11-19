@@ -12,7 +12,6 @@ function row(overrides: Partial<ScoreRow>): ScoreRow {
     method: 'LightGBM',
     family: 'ml',
     uses_exogenous: false,
-    is_global: false,
     used_extended_history: false,
     horizon: '24h',
     metric: 'MAE',
@@ -29,11 +28,11 @@ function row(overrides: Partial<ScoreRow>): ScoreRow {
 // This is a regression test for a real bug caught during M1->M2 development: passing
 // both the local and extended-history row for the same (case, method) straight into the
 // pivot silently picked whichever came last in array order, rather than always defaulting
-// to the local row until `showGlobal` is on.
+// to the local row until `showExtended` is on.
 describe('useMatrixFigure — extended-history swap', () => {
   const rows = [
-    row({ value: 1.0, used_extended_history: false, is_global: true }),
-    row({ value: 9.0, used_extended_history: true, is_global: true }),
+    row({ value: 1.0, used_extended_history: false }),
+    row({ value: 9.0, used_extended_history: true }),
   ];
 
   it('uses the local value by default, regardless of row order', () => {
@@ -45,26 +44,14 @@ describe('useMatrixFigure — extended-history swap', () => {
     expect(heatmap.z).toEqual([[Math.log10(1.0)]]);
   });
 
-  it('swaps in the extended value and marks it when showGlobal is on', () => {
+  it('swaps in the extended value and marks it when showExtended is on', () => {
     const { result } = renderHook(() =>
       useMatrixFigure(rows, 'MAE', EMPTY_SELECTION, true, false, false),
     );
     const heatmap = result.current!.data[0] as { z: number[][] };
     expect(heatmap.z).toEqual([[Math.log10(9.0)]]);
-    // One boundary-less single-cell grid: any shape present is the global overlay triangle.
+    // One boundary-less single-cell grid: any shape present is the extended-history overlay triangle.
     expect(result.current!.layout.shapes?.some((s) => s.fillcolor === '#FF1493')).toBe(true);
-  });
-
-  it('never swaps in a non-global method’s extended row', () => {
-    const localOnly = [
-      row({ value: 1.0, used_extended_history: false, is_global: false }),
-      row({ value: 9.0, used_extended_history: true, is_global: false }),
-    ];
-    const { result } = renderHook(() =>
-      useMatrixFigure(localOnly, 'MAE', EMPTY_SELECTION, true, false, false),
-    );
-    const heatmap = result.current!.data[0] as { z: number[][] };
-    expect(heatmap.z).toEqual([[Math.log10(1.0)]]);
   });
 });
 
@@ -115,14 +102,14 @@ describe('useMatrixFigure — exogenous swap', () => {
 // exogenous swap, which runs second, used to overwrite the extended-history value with
 // the sibling's local one and leave the full-history checkbox with nothing to change.
 describe('useMatrixFigure — extended-history and exogenous swaps together', () => {
-  const globalExo = (overrides: Partial<ScoreRow>) =>
-    row({ is_global: true, case_exo_tier: 'necessary', ...overrides });
+  const extendedExo = (overrides: Partial<ScoreRow>) =>
+    row({ case_exo_tier: 'necessary', ...overrides });
 
   const rows = [
-    globalExo({ method: 'LightGBM', used_extended_history: false, value: 1.0 }),
-    globalExo({ method: 'LightGBM', used_extended_history: true, value: 9.0 }),
-    globalExo({ method: 'LightGBM+exo', used_extended_history: false, value: 0.5 }),
-    globalExo({ method: 'LightGBM+exo', used_extended_history: true, value: 0.25 }),
+    extendedExo({ method: 'LightGBM', used_extended_history: false, value: 1.0 }),
+    extendedExo({ method: 'LightGBM', used_extended_history: true, value: 9.0 }),
+    extendedExo({ method: 'LightGBM+exo', used_extended_history: false, value: 0.5 }),
+    extendedExo({ method: 'LightGBM+exo', used_extended_history: true, value: 0.25 }),
   ];
 
   const fillcolors = (result: { layout: { shapes?: Array<{ fillcolor?: unknown }> } }) =>
@@ -412,13 +399,12 @@ describe('useMatrixFigure — training-time overlay', () => {
     ]);
   });
 
-  it('pivots the showGlobal swap-in cell on training time too, still log-colored', () => {
-    const globalRows = [
+  it('pivots the showExtended swap-in cell on training time too, still log-colored', () => {
+    const extendedRows = [
       row({
         case_id: 'case_a',
         method: 'LightGBM',
         used_extended_history: false,
-        is_global: true,
         value: 1.0,
         fit_seconds: 4.32,
         predict_seconds: 0,
@@ -427,14 +413,13 @@ describe('useMatrixFigure — training-time overlay', () => {
         case_id: 'case_a',
         method: 'LightGBM',
         used_extended_history: true,
-        is_global: true,
         value: 9.0,
         fit_seconds: 8.64,
         predict_seconds: 0,
       }),
     ];
     const { result } = renderHook(() =>
-      useMatrixFigure(globalRows, 'MAE', EMPTY_SELECTION, true, false, true),
+      useMatrixFigure(extendedRows, 'MAE', EMPTY_SELECTION, true, false, true),
     );
     const heatmap = result.current!.data[0] as { z: number[][] };
     expect(heatmap.z).toEqual([[Math.log10(9.64)]]);
@@ -580,11 +565,10 @@ describe('useMatrixFigure — intervals and ties with the best', () => {
     expect(result.current!.intervalLinesOf.size).toBe(0);
   });
 
-  it('describes the swapped-in extended row when showGlobal is on', () => {
+  it('describes the swapped-in extended row when showExtended is on', () => {
     const withExtended = [
       row({
         method: 'LightGBM',
-        is_global: true,
         value: 1.0,
         best_method: 'LightGBM',
         diff_low: 0,
@@ -594,7 +578,6 @@ describe('useMatrixFigure — intervals and ties with the best', () => {
       }),
       row({
         method: 'LightGBM',
-        is_global: true,
         used_extended_history: true,
         value: 1.2,
         best_method: 'LightGBM',

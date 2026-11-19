@@ -43,7 +43,6 @@ class _FitFrameRecorder(Forecaster):
 
     name = "Recorder"
     family = "test"
-    is_global = True
     pools_segments = True
 
     def __init__(self) -> None:

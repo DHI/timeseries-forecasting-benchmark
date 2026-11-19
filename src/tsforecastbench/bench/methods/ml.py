@@ -101,7 +101,6 @@ class _WindowedMLBase(Forecaster):
 
     name = "WindowedML"
     family = "ml"
-    is_global = True
     pools_segments = True
     max_train_steps: int = TRAIN_POINT_CEILING
     use_exogenous: bool = False

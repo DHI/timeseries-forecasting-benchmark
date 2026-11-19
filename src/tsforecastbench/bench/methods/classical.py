@@ -7,7 +7,7 @@ Three tractability choices, all standard practice:
    fitted parameters straight back out (`ets_f(y, m, model=fitted)` takes alpha/beta/gamma/
    phi and the initial state from the fit and runs one filter pass; `Arima(x=y,
    model=fitted)` is the same apply-without-re-estimating path R's `forecast::Arima(x,
-   model=fit)` uses) and never calls an optimizer. So those four are `is_global`: the
+   model=fit)` uses) and never calls an optimizer. So those four fit once: the
    order/spec search runs once in `fit`, and `predict` conditions on each rolling origin's
    growing `history` through `forward`. TBATS joins them, but has no public `forward()` to
    call -- statsforecast couples its automatic component search to every `.fit()` on the
@@ -104,7 +104,6 @@ class _ForwardForecaster(Forecaster):
     """
 
     family = "classical"
-    is_global = True
 
     def _make_model(self, case: Case, df: pd.DataFrame):
         raise NotImplementedError
@@ -299,7 +298,6 @@ class TBATSForecaster(Forecaster):
 
     name = "TBATS"
     family = "classical"
-    is_global = True
     library = "statsforecast (Nixtla)"
     compute_profile = (
         "CPU only; a genuine AIC search over Box-Cox/trend/damped-trend/ARMA-error "
@@ -372,7 +370,7 @@ class TBATSForecaster(Forecaster):
         # Apply Yeo-Johnson when Box-Cox would be disabled (non-positive data). Checked on
         # the *full* train frame, not the capped search window `df`: predict later
         # conditions on history the search window never saw (that's the point of
-        # is_global), and Box-Cox with a near-zero lambda maps y=0 to -inf, which then
+        # fitting once), and Box-Cox with a near-zero lambda maps y=0 to -inf, which then
         # corrupts every subsequent state in calcTBATSFaster's recursion. A value that
         # first appears during the test period itself is a separate, unavoidable boundary
         # -- this can only act on what fit is actually handed.

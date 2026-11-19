@@ -33,7 +33,7 @@ export type AppState = {
   domains: string[];
   families: string[];
   sidebarCollapsed: boolean;
-  showGlobal: boolean;
+  showExtended: boolean;
   showExogenous: boolean;
   trainingTimeOverlay: boolean;
   casePanelWidth: number;
@@ -50,7 +50,7 @@ export type AppAction =
   | { type: 'SET_DOMAINS'; domains: string[] }
   | { type: 'SET_FAMILIES'; families: string[] }
   | { type: 'TOGGLE_SIDEBAR' }
-  | { type: 'TOGGLE_GLOBAL' }
+  | { type: 'TOGGLE_EXTENDED' }
   | { type: 'TOGGLE_EXOGENOUS' }
   | { type: 'SET_TRAINING_TIME_OVERLAY'; active: boolean }
   | { type: 'SET_CASE_PANEL_WIDTH'; width: number }
@@ -71,8 +71,8 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, families: action.families };
     case 'TOGGLE_SIDEBAR':
       return { ...state, sidebarCollapsed: !state.sidebarCollapsed };
-    case 'TOGGLE_GLOBAL':
-      return { ...state, showGlobal: !state.showGlobal };
+    case 'TOGGLE_EXTENDED':
+      return { ...state, showExtended: !state.showExtended };
     case 'TOGGLE_EXOGENOUS':
       return { ...state, showExogenous: !state.showExogenous };
     case 'SET_TRAINING_TIME_OVERLAY':
@@ -104,7 +104,7 @@ export function initialAppState(overrides: Partial<AppState> = {}): AppState {
     domains: [],
     families: [],
     sidebarCollapsed: true,
-    showGlobal: false,
+    showExtended: false,
     showExogenous: false,
     trainingTimeOverlay: false,
     casePanelWidth: CASE_PANEL_DEFAULT_WIDTH,

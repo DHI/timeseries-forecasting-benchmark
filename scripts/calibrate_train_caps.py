@@ -128,7 +128,7 @@ def uncap(method) -> None:
 
 
 def fit_frames(case, prefer_synth: bool = False) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """The frames a global method is fit on in a rolling run, test excluded.
+    """The frames a method is fit on in a rolling run, test excluded.
 
     The train split, whose length is what the ladder walks, and the declared val split,
     handed over for the iteratively trained methods to stop on (gh #99). Keeping val out of

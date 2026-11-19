@@ -34,8 +34,3 @@ def test_forecast_follows_the_history_not_the_fit_frame(case, method_cls):
     y_hat = method.predict(case, _frame(case, np.full(n, 5.0)), 7)["y_hat"].to_numpy()
 
     np.testing.assert_allclose(y_hat, 5.0)
-
-
-@pytest.mark.parametrize("method_cls", [MeanBaseline, Persistence, SeasonalNaive, Climatology])
-def test_naive_baselines_are_fit_once(method_cls):
-    assert method_cls.is_global is True

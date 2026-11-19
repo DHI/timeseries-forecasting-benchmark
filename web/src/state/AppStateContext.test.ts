@@ -33,13 +33,13 @@ describe('appReducer', () => {
     expect(expanded.sidebarCollapsed).toBe(false);
   });
 
-  it('toggles the global-history and exogenous toggles independently', () => {
+  it('toggles the extended-history and exogenous toggles independently', () => {
     let state = initialAppState();
-    state = appReducer(state, { type: 'TOGGLE_GLOBAL' });
-    expect(state.showGlobal).toBe(true);
+    state = appReducer(state, { type: 'TOGGLE_EXTENDED' });
+    expect(state.showExtended).toBe(true);
     expect(state.showExogenous).toBe(false);
     state = appReducer(state, { type: 'TOGGLE_EXOGENOUS' });
-    expect(state.showGlobal).toBe(true);
+    expect(state.showExtended).toBe(true);
     expect(state.showExogenous).toBe(true);
   });
 

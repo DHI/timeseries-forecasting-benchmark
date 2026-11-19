@@ -16,7 +16,7 @@ def main() -> int:
     m = DOCS_R / "scores.parquet"
     if m.exists():
         df = pd.read_parquet(m)
-        # is_global methods carry two rows per cell (local + extended fit); the matrices
+        # segment-pooling methods carry two rows per cell (local + extended fit); the matrices
         # below are the local fit, so every method is on the same curated span.
         local = df[~df["used_extended_history"]] if "used_extended_history" in df else df
         print("\n=== Pilot matrix: MASE (lower is better; 1.0 = seasonal naive in-sample) ===")
@@ -45,7 +45,7 @@ def main() -> int:
             ext_mase = ext[ext["metric"] == "MASE"].set_index(key)["value"]
             cmp = pd.DataFrame({"local": loc_mase, "extended": ext_mase}).dropna()
             cmp["gain_%"] = (100 * (cmp["local"] - cmp["extended"]) / cmp["local"]).round(1)
-            print("\n=== Extended-history MASE (is_global methods; full-series vs local fit) ===")
+            print("\n=== Extended-history MASE (full-series vs local fit) ===")
             print(cmp.round(3).to_string())
 
     for cid in ("waves_oregon", "discharge_lowland_denmark", "sewerlevel_bellinge"):
