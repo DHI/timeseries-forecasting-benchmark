@@ -159,7 +159,6 @@ class _Offset(Forecaster):
     """Forecasts the last observed value plus a fixed offset."""
 
     family = "baseline"
-    is_global = False
 
     def __init__(self, name: str, offset: float):
         self.name = name

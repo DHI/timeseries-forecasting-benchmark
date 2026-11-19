@@ -15,7 +15,7 @@ Two decisions, applied uniformly to every case (see research_log/details.md, id 
    They split the record into contiguous segments, and one is kept. The last segment
    is kept when it is long enough, so the test window is the end of the record and
    everything before the segment's `val_end` stays available as extra history for
-   methods that can use it (`Forecaster.is_global`). Otherwise the longest segment is
+   methods that can use it (`Forecaster.pools_segments`). Otherwise the longest segment is
    kept (the latest on a tie), and data after it goes unused. A segment is long enough
    when its train split spans `MIN_TRAIN_CYCLES` cycles of the longest declared
    seasonal period and its test split spans 2 cycles and one forecast horizon (gh
@@ -26,7 +26,7 @@ Two decisions, applied uniformly to every case (see research_log/details.md, id 
 The materialized frame keeps a `y_observed` boolean column: `y` is complete (small gaps
 filled) so any method can fit, but scoring counts only genuinely observed points.
 
-`Forecaster.is_global` methods can use more than the shared segment: `extend_frame`
+`Forecaster.pools_segments` methods can use more than the shared segment: `extend_frame`
 applies the same small-gap fill to the full record up to the segment's `val_end`,
 without the segment trim, for `Case.load_extended` to serve.
 
@@ -341,13 +341,13 @@ def extend_frame(
     cap: int,
     exog: list[str] | None = None,
 ) -> tuple[pd.DataFrame, dict]:
-    """Gap-fill the full raw record up to `cutoff`, for `Forecaster.is_global` methods
-    that can use more history than the shared curated segment.
+    """Gap-fill the full raw record up to `cutoff`, for `Forecaster.pools_segments`
+    methods that can use more history than the shared curated segment.
 
     Unlike `curate_frame`, this does not trim to one contiguous segment: every gap
     `<= cap` is filled throughout the kept range, but gaps larger than `cap` are left
     unfilled (and marked unobserved) rather than used as a trim boundary — a
-    global-capable method sees the record's true shape, gaps and all, not a
+    segment-pooling method sees the record's true shape, gaps and all, not a
     stitched-together approximation of one. `cutoff` should be the curated segment's
     `val_end`, so this frame never reaches past what the corresponding local matrix
     holds out for testing, and `cap` the gap cap `curate_frame` reported, so both views

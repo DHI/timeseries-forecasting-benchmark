@@ -29,7 +29,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 DATA_RAW = REPO_ROOT / "data" / "raw"
 DATA_PROCESSED = REPO_ROOT / "data" / "processed"
 DATA_CURATED = REPO_ROOT / "data" / "curated"
-# Extended-history frames for `Forecaster.is_global` methods (schema.py:Case.load_extended).
+# Extended-history frames for `Forecaster.pools_segments` methods (schema.py:Case.load_extended).
 DATA_CURATED_EXTENDED = REPO_ROOT / "data" / "curated_extended"
 
 REQUIRED_COLS = ("unique_id", "ds", "y")
@@ -246,14 +246,14 @@ class Case(BaseModel):
         return curated
 
     def load_extended(self, prefer_synth: bool = False) -> pd.DataFrame:
-        """Full single-series history for `Forecaster.is_global` methods.
+        """Full single-series history for `Forecaster.pools_segments` methods.
 
         Gap-filled the same way as `load(curated=True)` (small gaps <= the per-case
         ACF-derived cap), but without trimming to the curated segment: every observation
         at or before the curated segment's `val_end` is kept, gaps larger than the cap
         included and marked unobserved rather than used as a trim boundary. Cutting off
         at `val_end` — not the raw series' end — keeps this frame strictly before the
-        test window every method (local or global) is scored on, so it adds history,
+        test window every method is scored on, so it adds history,
         never leaks it.
         """
         from tsforecastbench.data.curate import curate_frame, extend_frame

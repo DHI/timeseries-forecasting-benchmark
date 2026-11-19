@@ -30,5 +30,5 @@ import os
 DEFAULT_ORIGINS = int(os.environ.get("TSFB_ORIGINS", "8"))
 # Five is the smallest odd count with a real middle to pick — a median of three sits one
 # unlucky draw away from being an extreme itself. The cost lands only on the nine
-# `is_stochastic` methods, all of which are `is_global` and so fit once per case per seed.
+# `is_stochastic` methods, which, like every method, fit once per case per seed.
 DEFAULT_SEEDS = int(os.environ.get("TSFB_SEEDS", "5"))

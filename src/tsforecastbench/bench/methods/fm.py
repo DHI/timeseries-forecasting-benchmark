@@ -188,9 +188,6 @@ class ChronosForecaster(Forecaster):
     name = "Chronos-Bolt"
     family = "fm"
     is_probabilistic = True
-    # Zero-shot: there's no fit-time benefit, but a longer history helps up to
-    # `context_length` if the shared curated span is shorter than that.
-    is_global = True
     library = "chronos-forecasting (Amazon Chronos-Bolt) + torch"
     compute_profile = (
         "CPU-capable; zero-shot, so there's no per-case training — one forward "
@@ -286,7 +283,6 @@ class Chronos2Forecaster(Forecaster):
     name = "Chronos-2"
     family = "fm"
     is_probabilistic = True
-    is_global = True
     library = "chronos-forecasting (Amazon Chronos-2) + torch"
     compute_profile = (
         "CPU-capable but slower than Chronos-Bolt (120M params); zero-shot, so there's "
@@ -406,7 +402,6 @@ class TimesFMForecaster(Forecaster):
     name = "TimesFM-2.5"
     family = "fm"
     is_probabilistic = True
-    is_global = True
     library = "timesfm (Google TimesFM 2.5, torch backend)"
     compute_profile = (
         "CPU-capable but slow (200M params); zero-shot, so there's no per-case training — "
@@ -540,7 +535,6 @@ class Moirai2Forecaster(Forecaster):
     name = "Moirai-2.0"
     family = "fm"
     is_probabilistic = True
-    is_global = True
     library = "uni2ts (Salesforce Moirai-2.0) + gluonts + torch"
     compute_profile = (
         "CPU-capable but slow; zero-shot, so there's no per-case training — one forward "

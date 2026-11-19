@@ -57,7 +57,6 @@ class DLinearForecaster(Forecaster):
 
     name = "DLinear"
     family = "dl"
-    is_global = True
     pools_segments = True
     library = "scikit-learn (Ridge) — no deep-learning framework"
     compute_profile = (

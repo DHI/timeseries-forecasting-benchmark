@@ -236,7 +236,6 @@ def _make_modules():
 class _TorchDLBase(Forecaster):
     name = "TorchDL"
     family = "dl"
-    is_global = True
     pools_segments = True
     # Weight init, the minibatch draw in the training loop, and PatchTST's dropout all come
     # off torch's global RNG, so a different seed is a different network.

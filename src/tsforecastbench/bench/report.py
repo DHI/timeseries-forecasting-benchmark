@@ -24,10 +24,10 @@ DOCS_FIGURES_DIR = REPO_ROOT / "docs" / "figures" / "benchmark"
 
 # Two matrices per metric. The main one is every method on the shared curated span (the
 # local fit only, `used_extended_history=False`), so all methods are compared on identical
-# data. The `_global` one shows the same `is_global` methods scored on the full
-# single-series history where the case has any beyond the curated span (the extended fit,
+# data. The `_extended` one shows every method scored on the full single-series history
+# where the case has any beyond the curated span (the extended fit,
 # `used_extended_history=True`), falling back to the local score for cases/methods with no
-# extra history. Reading the two side by side shows the gain a global-capable method gets
+# extra history. Reading the two side by side shows the gain a segment-pooling method gets
 # from the extra training data.
 # `docs_stem` is the name these land under in docs/figures/benchmark/ (matches the names
 # already referenced by docs/RESULTS.md).
@@ -74,15 +74,12 @@ def write_pilot_artifacts(
         )
 
     local_results = results[~results["used_extended_history"]]
-    # For the global matrix, keep one row per (case, method, metric): the extended fit
+    # For the extended matrix, keep one row per (case, method, metric): the extended fit
     # when it ran, otherwise the local fit. Sorting False<True and keeping the last row
     # prefers the extended score wherever both exist.
-    global_results = (
-        results[results["is_global"]]
-        .sort_values("used_extended_history")
-        .drop_duplicates(subset=["case_id", "method", "metric"], keep="last")
+    extended_results = results.sort_values("used_extended_history").drop_duplicates(
+        subset=["case_id", "method", "metric"], keep="last"
     )
-    global_method_order = [m for m in method_order if m in global_results["method"].unique()]
 
     DOCS_FIGURES_DIR.mkdir(parents=True, exist_ok=True)
     written = []
@@ -102,23 +99,20 @@ def write_pilot_artifacts(
             method_order=method_order,
         )
         written.append(f"{stem}.png")
-        if global_method_order:
-            render_matrix(
-                global_results,
-                metric=metric,
-                out_path=RESULTS_DIR / f"{stem}_global.png",
-                title=f"RK2026 pilot - {label} (is_global methods, extended-history fit)",
-                method_order=global_method_order,
-            )
-            written.append(f"{stem}_global.png")
+        render_matrix(
+            extended_results,
+            metric=metric,
+            out_path=RESULTS_DIR / f"{stem}_extended.png",
+            title=f"RK2026 pilot - {label} (extended-history fit)",
+            method_order=method_order,
+        )
+        written.append(f"{stem}_extended.png")
 
     print(f"\nWrote results to {RESULTS_DIR.relative_to(REPO_ROOT)}/")
     print(f"  pilot_metrics.parquet ({len(results)} rows)")
     if snapshots:
         n_snap = sum(len(s) for s in snapshots)
         print(f"  pilot_snapshots.parquet ({n_snap} rows)")
-    if not global_method_order:
-        print("  [note] no is_global methods in this run; skipped the _global matrices")
     print("  " + ", ".join(written))
     print(f"Wrote committed onboarding copies to {DOCS_RESULTS_DIR.relative_to(REPO_ROOT)}/ and")
     print(f"  {DOCS_FIGURES_DIR.relative_to(REPO_ROOT)}/ — commit these along with this run.")

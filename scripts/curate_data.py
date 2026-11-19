@@ -7,7 +7,7 @@ long enough and the longest otherwise, drop the rest, and record which points ar
 genuine observations (`y_observed`). The eval loops read these; the raw
 gappy Parquets in data/processed/ stay untouched for EDA and case review.
 
-Also materializes the extended-history frame `Forecaster.is_global` methods use: the
+Also materializes the extended-history frame `Forecaster.pools_segments` methods use: the
 full record up to the curated segment's `val_end`, gap-filled the same way but without
 the segment trim (see `tsforecastbench.data.curate.extend_frame`).
 

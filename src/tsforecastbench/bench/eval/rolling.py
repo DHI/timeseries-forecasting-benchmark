@@ -17,7 +17,7 @@ once; predict cost still scales with
   (`calcTBATSFaster`/`tbats_forecast`) instead, pinned bit-exact against the library's own
   output. Two deterministic pieces (Theta's and MSTL's seasonal decomposition) are
   re-derived per origin, no differently from the ML methods recomputing their calendar
-  features -- see `methods.classical`. The ensembles are global for the same reason but
+  features -- see `methods.classical`. The ensembles follow the same rule but are
   mixed inside: whichever members keep a trained model are fit once, while the naive
   members they combine are re-derived from each origin's history inside `predict` -- so
   that per-origin cost lands in `predict_seconds`, and `fit_seconds` describes only the
@@ -33,7 +33,7 @@ filled points never enter a metric.
 
 `run_case_rolling` is `scripts/run_pilot.py`'s default path (single hold-out `run_case`
 only runs under `--fast`), so it gets the same segment-pooled extended-history scoring
-as `eval.loop.run_case` -- see that module's docstring. Methods that are `is_global` and
+as `eval.loop.run_case` -- see that module's docstring. Methods that are
 `pools_segments` get a second (`used_extended_history=True`) score from a single fit on
 the full pre-curated history (its gap-bounded segments), alongside the local one.
 """
@@ -194,20 +194,20 @@ def run_case_rolling(
 
     naive_scale = _naive_scale(full_fit["y"].iloc[:test_start].to_numpy(dtype=float))
 
-    # Extended-history training for is_global methods that pool segments -- the full
+    # Extended-history training for methods that pool segments -- the full
     # single-series record split at its big gaps into contiguous per-`unique_id`
     # segments, so no window spans a gap (see `eval.loop._segment_extended`). A gap-free
     # record has no history beyond the curated span and yields a single segment, so no
     # extended fit runs. The extended fit reuses the local MASE/persistence/mean
     # references, so its scores differ from the local fit only through the model.
     ext_segments = None
-    if any(m.is_global and m.pools_segments for m in methods):
+    if any(m.pools_segments for m in methods):
         try:
             extended = case.load_extended(prefer_synth=prefer_synth)
         except Exception as exc:
             print(
                 f"  [note] load_extended failed ({type(exc).__name__}: {exc}); "
-                "is_global methods use the curated span only."
+                "segment-pooling methods use the curated span only."
             )
         else:
             segs = _segment_extended(extended, case, H)
@@ -216,7 +216,7 @@ def run_case_rolling(
             else:
                 print(
                     "  [note] no history beyond the curated span; "
-                    "is_global methods use the curated span only."
+                    "segment-pooling methods use the curated span only."
                 )
 
     records: list[dict] = []
@@ -344,7 +344,7 @@ def run_case_rolling(
         # the case has history beyond the curated span. Both fits' forecasts are saved as
         # snapshots, tagged by `used_extended_history`, so the viewer can show either.
         variants = [(None, False)]
-        if method.is_global and method.pools_segments and ext_segments is not None:
+        if method.pools_segments and ext_segments is not None:
             variants.append((ext_segments, True))
         for segs, used_extended in variants:
             # One draw is not a score for a method whose forecast moves with the seed, so
@@ -376,7 +376,6 @@ def run_case_rolling(
                         "case_exo_tier": case.exo_tier,
                         "method": method.name,
                         "uses_exogenous": method.uses_exogenous,
-                        "is_global": method.is_global,
                         "used_extended_history": used_extended,
                         "horizon": case.horizon_primary,
                         "metric": metric_name,

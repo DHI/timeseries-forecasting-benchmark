@@ -1,6 +1,6 @@
-"""Unit tests for the classical methods' fit-once (`is_global`) behaviour.
+"""Unit tests for the classical methods' fit-once behaviour.
 
-The five global classical forecasters (AutoARIMA, AutoETS, Theta, MSTL-ETS/MSTL-ARIMA,
+The five fit-once classical forecasters (AutoARIMA, AutoETS, Theta, MSTL-ETS/MSTL-ARIMA,
 TBATS) roll forward via a fixed, already-estimated model. Each must:
   1. Genuinely condition its forecast on the history `predict` is handed, not just on
      state captured at `fit` -- proven by forecasting from two different-length histories
@@ -86,7 +86,6 @@ def _series_with_zero_before_the_search_window(n: int = 500, window: int = 200) 
 
 
 def _assert_conditions_on_growing_history(method, case, train) -> None:
-    assert method.is_global
     method.fit(case, train, NO_VAL)
     short = method.predict(case, train.iloc[:400], 6)["y_hat"].to_numpy()
     long = method.predict(case, train.iloc[:450], 6)["y_hat"].to_numpy()

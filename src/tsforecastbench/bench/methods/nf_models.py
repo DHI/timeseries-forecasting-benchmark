@@ -92,7 +92,6 @@ class _NFBase(Forecaster):
 
     name = "NF"
     family = "dl"
-    is_global = True
     pools_segments = True
     # Weight init, the window sampler and dropout are all drawn from the seeded global RNG,
     # so a different seed is a different fit.

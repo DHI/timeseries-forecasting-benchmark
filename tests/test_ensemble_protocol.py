@@ -77,11 +77,6 @@ class _Recorder(Forecaster):
         return pd.DataFrame({"ds": future, "y_hat": np.full(horizon, self._value)})
 
 
-class _GlobalRecorder(_Recorder):
-    name = "GlobalRecorder"
-    is_global = True
-
-
 def _ensemble(members, name="StubEnsemble") -> EnsembleForecaster:
     return EnsembleForecaster(
         members,
@@ -107,22 +102,16 @@ def _rolling(case, method):
     return run_case_rolling(case, [method], n_origins=N_ORIGINS, prefer_synth=True, n_seeds=1)
 
 
-def test_both_factories_report_themselves_fit_once():
-    """`is` comparisons, because `test_method_scorecards` compares `gaps` by identity."""
+def test_neither_factory_pools_segments():
+    """`is` comparison, because `test_method_scorecards` compares `gaps` by identity."""
     for factory in (ensemble_baselines, ensemble_baselines_theta):
         ens = factory()
-        assert ens.is_global is True, ens.name
         assert ens.pools_segments is False, ens.name
 
 
-def test_every_member_is_fit_once():
-    for factory in (ensemble_baselines, ensemble_baselines_theta):
-        assert all(m.is_global for m in factory().members), factory.__name__
-
-
-def test_global_member_is_fit_once_across_origins(case):
+def test_members_are_fit_once_across_origins(case):
     """The direct regression test: one optimizer run per cell, not one per origin."""
-    trained, naive = _GlobalRecorder(), _Recorder()
+    trained, naive = _Recorder(), _Recorder()
 
     res, _ = _rolling(case, _ensemble([trained, naive]))
 
@@ -134,7 +123,7 @@ def test_global_member_is_fit_once_across_origins(case):
 def test_member_is_fit_on_the_same_frame_as_its_standalone_column(case):
     """What makes the member numerically comparable to its standalone column: all data
     before the test period, with no holdout (gh #120)."""
-    trained = _GlobalRecorder()
+    trained = _Recorder()
 
     res, _ = _rolling(case, _ensemble([trained]))
 
@@ -148,7 +137,7 @@ def test_member_is_fit_on_the_same_frame_as_its_standalone_column(case):
 def test_cached_member_fit_is_not_reused_across_cases():
     """Instances are built once in `build_methods()` and reused for all 12 cases, so a
     member fit that outlived its cell would silently score case B on case A's model."""
-    trained = _GlobalRecorder()
+    trained = _Recorder()
     ens = _ensemble([trained])
 
     for case_id in ("discharge_flashy_catskills", "discharge_lowland_denmark"):

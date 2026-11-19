@@ -28,7 +28,6 @@ class MeanBaseline(Forecaster):
 
     name = "Mean"
     family = "baseline"
-    is_global = True
     library = "pandas/numpy only"
     compute_profile = "CPU, negligible — one mean over the history at each forecast start."
     limitations = (
@@ -71,7 +70,6 @@ class Persistence(Forecaster):
 
     name = "Persistence"
     family = "baseline"
-    is_global = True
     library = "pandas/numpy only"
     compute_profile = "CPU, negligible — no fitting at all."
     limitations = (
@@ -114,7 +112,6 @@ class SeasonalNaive(Forecaster):
 
     name = "SeasonalNaive"
     family = "baseline"
-    is_global = True
     library = "pandas/numpy only"
     compute_profile = "CPU, negligible — tiles the last observed seasonal cycle."
     limitations = (
@@ -180,7 +177,6 @@ class Climatology(Forecaster):
 
     name = "Climatology"
     family = "baseline"
-    is_global = True
     library = "pandas/numpy only"
     compute_profile = "CPU, negligible — one groupby-mean over the history at each forecast start."
     limitations = (
