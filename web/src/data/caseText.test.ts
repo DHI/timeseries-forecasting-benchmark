@@ -63,6 +63,6 @@ describe('caseTrainingStats', () => {
   it('says what each split is used for, since the counts alone imply nothing', () => {
     const stats = caseTrainingStats(caseMeta());
     expect(stats).toContain('estimated on train');
-    expect(stats).toContain('never trained on');
+    expect(stats).toContain('val held out');
   });
 });
