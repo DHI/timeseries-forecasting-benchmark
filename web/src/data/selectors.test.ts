@@ -24,7 +24,6 @@ function row(overrides: Partial<ScoreRow>): ScoreRow {
     method: 'Mean',
     family: 'baseline',
     uses_exogenous: false,
-    is_global: false,
     used_extended_history: false,
     horizon: '24h',
     metric: 'MAE',

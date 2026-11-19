@@ -45,8 +45,8 @@ function overlayTriangles(
 
 /** Small hotpink corner triangle over cells overridden with the extended-history (full
  * data) fit, so they read as "not directly comparable to the rest of the row" without
- * covering the cell's number. Port of app/app.py's `_global_overlay_shapes`. */
-export function globalOverlayShapes(
+ * covering the cell's number. */
+export function extendedOverlayShapes(
   cells: Array<[string, string]>,
   rowOrder: string[],
   colOrder: string[],
@@ -54,7 +54,7 @@ export function globalOverlayShapes(
   return overlayTriangles(cells, rowOrder, colOrder, 'top-right', '#FF1493');
 }
 
-/** Small teal corner triangle (opposite corner from the global-history marker, so the two
+/** Small teal corner triangle (opposite corner from the extended-history marker, so the two
  * never collide) over cells whose displayed value was swapped in from the method's
  * exogenous-aware ("+exo") sibling. Port of app/app.py's `_exogenous_overlay_shapes`. */
 export function exogenousOverlayShapes(

@@ -13,7 +13,7 @@ import {
   pivotValues,
   rowBestMethods,
 } from '../../data/selectors';
-import { exogenousOverlayShapes, globalOverlayShapes, selectionShapes } from './overlayShapes';
+import { exogenousOverlayShapes, extendedOverlayShapes, selectionShapes } from './overlayShapes';
 import { getPlotTheme } from '../../theme/plotTheme';
 import type { SelectionState } from '../../state/selectionReducer';
 import type { ScoreRow } from '../../types/data';
@@ -119,12 +119,12 @@ function colorbarTitle(metric: string, cfg: MetricConfig): string {
 /** Builds the case x method heatmap figure for one metric. `rows` must be filtered only by
  * metric/case-eligibility/family (matching app/app.py's `df_metric`) — NOT by
  * `used_extended_history`, since the extended-history rows a case may have are exactly
- * what `showGlobal` swaps in. Port of app/app.py's `render_matrix`. */
+ * what `showExtended` swaps in. Port of app/app.py's `render_matrix`. */
 export function useMatrixFigure(
   rows: ScoreRow[],
   metric: string,
   selection: SelectionState,
-  showGlobal: boolean,
+  showExtended: boolean,
   showExo: boolean,
   showTrainingTime: boolean,
   isDark: boolean = false,
@@ -134,7 +134,7 @@ export function useMatrixFigure(
     const pt = getPlotTheme(isDark);
 
     // When the training-time overlay is held, every cell pivots on fit_seconds +
-    // predict_seconds instead of `value` — including the showGlobal/showExo swap-in cells
+    // predict_seconds instead of `value` — including the showExtended/showExo swap-in cells
     // below — so the whole matrix temporarily shows the cost to produce one forecast
     // instead of the selected metric's score. See TRAINING_TIME_CONFIG's doc comment for
     // why this is a sum of two already-per-origin-averaged fields, not a raw total.
@@ -169,17 +169,16 @@ export function useMatrixFigure(
     }
 
     // Every method has a `used_extended_history=false` ("local") row on the shared
-    // curated span, plotted by default. `is_global` methods additionally get a
+    // curated span, plotted by default. `pools_segments` methods additionally get a
     // `used_extended_history=true` row wherever the case has real history beyond the
-    // curated span. When `showGlobal` is on, those cells are swapped in for the local
+    // curated span. When `showExtended` is on, those cells are swapped in for the local
     // score and marked with a corner triangle — they're fit on more data than the rest
-    // of the row and aren't directly comparable. Port of app/app.py's `show_global`
-    // branch (render_matrix lines 262-273).
-    let globalOverlayCells: Array<[string, string]> = [];
+    // of the row and aren't directly comparable.
+    let extendedOverlayCells: Array<[string, string]> = [];
     const extendedRowOf = new Map<string, ScoreRow>();
-    if (showGlobal) {
+    if (showExtended) {
       for (const row of rows) {
-        if (!row.used_extended_history || !row.is_global) continue;
+        if (!row.used_extended_history) continue;
         extendedRowOf.set(`${row.case_id}|${row.method}`, row);
         const r = rowOrder.indexOf(row.case_id);
         const c = colOrder.indexOf(row.method);
@@ -187,7 +186,7 @@ export function useMatrixFigure(
         if (r === -1 || c === -1 || v === null) continue;
         values[r]![c] = v;
         shownRowOf.set(`${row.case_id}|${row.method}`, row);
-        globalOverlayCells.push([row.case_id, row.method]);
+        extendedOverlayCells.push([row.case_id, row.method]);
       }
     }
 
@@ -196,7 +195,7 @@ export function useMatrixFigure(
     // (case_exo_tier != "none") get that sibling's score swapped in and marked with a
     // teal corner. Port of app/app.py's `show_exo` branch (render_matrix lines 275-293).
     //
-    // This runs after the `showGlobal` block and writes the same cells, so with both
+    // This runs after the `showExtended` block and writes the same cells, so with both
     // toggles on it has to pick the sibling's extended-history row itself — reading only
     // `dfLocal` here would silently undo the swap above and leave the pink triangle
     // claiming a full-history value the cell isn't showing. Where the sibling has no
@@ -232,7 +231,7 @@ export function useMatrixFigure(
       }
     }
     if (exoCellsWithoutExtended.size > 0) {
-      globalOverlayCells = globalOverlayCells.filter(
+      extendedOverlayCells = extendedOverlayCells.filter(
         ([caseId, method]) => !exoCellsWithoutExtended.has(`${caseId}|${method}`),
       );
     }
@@ -335,7 +334,7 @@ export function useMatrixFigure(
         y1: nRows - 0.5,
         line: boundaryLine,
       })),
-      ...globalOverlayShapes(globalOverlayCells, rowOrder, colOrder),
+      ...extendedOverlayShapes(extendedOverlayCells, rowOrder, colOrder),
       ...exogenousOverlayShapes(exoOverlayCells, rowOrder, colOrder),
       ...selectionShapes(selection, rowOrder, colOrder),
     ];
@@ -522,5 +521,5 @@ export function useMatrixFigure(
       trainingBreakdownOf,
       intervalLinesOf,
     };
-  }, [rows, metric, selection, showGlobal, showExo, showTrainingTime, isDark]);
+  }, [rows, metric, selection, showExtended, showExo, showTrainingTime, isDark]);
 }

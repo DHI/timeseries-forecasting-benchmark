@@ -35,7 +35,7 @@ const caseMeta: CaseMeta = {
   notes: '',
 };
 
-function scoreRow(method: string, family: string, isGlobal = family === 'fm'): ScoreRow {
+function scoreRow(method: string, family: string): ScoreRow {
   return {
     case_id: 'demand_ltown',
     domain: 'water_distribution',
@@ -43,7 +43,6 @@ function scoreRow(method: string, family: string, isGlobal = family === 'fm'): S
     method,
     family,
     uses_exogenous: false,
-    is_global: isGlobal,
     used_extended_history: false,
     horizon: '24h',
     metric: 'MASE',
@@ -66,7 +65,7 @@ describe('CasePanel', () => {
           caseId="demand_ltown"
           caseMeta={caseMeta}
           scores={scores}
-          showGlobal={false}
+          showExtended={false}
           selectedMethods={['Persistence']}
         />
       </ThemeProvider>,
@@ -82,7 +81,7 @@ describe('CasePanel', () => {
           caseId="demand_ltown"
           caseMeta={caseMeta}
           scores={scores}
-          showGlobal={false}
+          showExtended={false}
           selectedMethods={['Persistence', 'TimesFM-2.5']}
         />
       </ThemeProvider>,

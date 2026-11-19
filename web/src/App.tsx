@@ -8,7 +8,7 @@ import { MetricDropdown } from './components/Sidebar/MetricDropdown';
 import { MetricInfoModal } from './components/Sidebar/MetricInfoModal';
 import { SidebarToggleHint } from './components/Sidebar/SidebarToggleHint';
 import { ToggleExogenous } from './components/Sidebar/ToggleExogenous';
-import { ToggleGlobal } from './components/Sidebar/ToggleGlobal';
+import { ToggleExtended } from './components/Sidebar/ToggleExtended';
 import { MatrixGraph } from './components/Matrix/MatrixGraph';
 import { SelectionHint } from './components/Matrix/SelectionHint';
 import { AppInstructions } from './components/AppInstructions/AppInstructions';
@@ -366,16 +366,16 @@ function MainLayout({
                 onChange={(families) => dispatch({ type: 'SET_FAMILIES', families })}
               />
               <label style={{ fontWeight: 'bold', display: 'block', marginTop: 16 }}>
-                Global methods
+                Extended history
               </label>
-              <ToggleGlobal
-                checked={state.showGlobal}
-                onChange={() => dispatch({ type: 'TOGGLE_GLOBAL' })}
+              <ToggleExtended
+                checked={state.showExtended}
+                onChange={() => dispatch({ type: 'TOGGLE_EXTENDED' })}
               />
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginTop: 4 }}>
                 <MarkerSwatch corner="top-right" color="#FF1493" />
                 <p style={{ color: 'var(--text-muted)', fontSize: '0.8em', margin: 0 }}>
-                  Some global models have been trained with longer history.
+                  Some methods have been trained with longer history.
                 </p>
               </div>
               <label style={{ fontWeight: 'bold', display: 'block', marginTop: 16 }}>
@@ -481,7 +481,7 @@ function MainLayout({
               rows={filteredRows}
               metric={state.metric}
               selection={state.selection}
-              showGlobal={state.showGlobal}
+              showExtended={state.showExtended}
               showExogenous={state.showExogenous}
               showTrainingTime={state.trainingTimeOverlay}
               onCellClick={handleCellClick}
@@ -636,7 +636,7 @@ function MainLayout({
                 caseId={state.selection.case_id!}
                 caseMeta={selectedCase}
                 scores={scores}
-                showGlobal={state.showGlobal}
+                showExtended={state.showExtended}
                 selectedMethods={state.selection.methods}
               />
               <SnapshotPanel
@@ -645,7 +645,7 @@ function MainLayout({
                 scores={scores}
                 methods={state.selection.methods}
                 metric={state.metric}
-                showGlobal={state.showGlobal}
+                showExtended={state.showExtended}
                 showExogenous={state.showExogenous}
                 onRemoveMethod={handleRemoveMethod}
                 onClear={handleClear}

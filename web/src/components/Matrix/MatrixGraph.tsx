@@ -97,7 +97,7 @@ type Props = {
   rows: ScoreRow[];
   metric: string;
   selection: SelectionState;
-  showGlobal: boolean;
+  showExtended: boolean;
   showExogenous: boolean;
   showTrainingTime: boolean;
   onCellClick: (caseId: string, method: string) => void;
@@ -107,7 +107,7 @@ function MatrixGraphComponent({
   rows,
   metric,
   selection,
-  showGlobal,
+  showExtended,
   showExogenous,
   showTrainingTime,
   onCellClick,
@@ -117,7 +117,7 @@ function MatrixGraphComponent({
     rows,
     metric,
     selection,
-    showGlobal,
+    showExtended,
     showExogenous,
     showTrainingTime,
     theme === 'dark',

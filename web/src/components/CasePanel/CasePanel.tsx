@@ -32,17 +32,17 @@ type Props = {
   caseId: string;
   caseMeta: CaseMeta;
   scores: ScoreRow[];
-  showGlobal: boolean;
+  showExtended: boolean;
   selectedMethods: string[];
 };
 
 /** Right-hand detail panel: training/test snapshots, a train-vs-test distribution, a
  * train/val/test proportions bar, a seasonal-pattern figure, and case metadata for the
- * selected case. When `showGlobal` reveals extended history for this case, the training
+ * selected case. When `showExtended` reveals extended history for this case, the training
  * snapshot, distribution, proportions bar, seasonal patterns, and sample counts all swap
  * in the extended-history train split. Port of app/app.py's `render_case_panel`. */
-function CasePanelComponent({ caseId, caseMeta, scores, showGlobal, selectedMethods }: Props) {
-  const extended = showGlobal && caseHasExtendedHistory(scores, caseId);
+function CasePanelComponent({ caseId, caseMeta, scores, showExtended, selectedMethods }: Props) {
+  const extended = showExtended && caseHasExtendedHistory(scores, caseId);
   const trainTail = extended ? caseMeta.train_tail_extended : caseMeta.train_tail;
   const splitCounts = extended ? caseMeta.split_counts_extended : caseMeta.split_counts;
   const distribution = extended ? caseMeta.distribution_extended : caseMeta.distribution;

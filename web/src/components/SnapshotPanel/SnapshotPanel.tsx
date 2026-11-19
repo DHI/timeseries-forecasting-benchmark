@@ -14,7 +14,7 @@ type Props = {
   scores: ScoreRow[];
   methods: string[];
   metric: string;
-  showGlobal: boolean;
+  showExtended: boolean;
   showExogenous: boolean;
   onRemoveMethod: (method: string) => void;
   onClear: () => void;
@@ -28,7 +28,7 @@ function SnapshotPanelComponent({
   scores,
   methods,
   metric,
-  showGlobal,
+  showExtended,
   showExogenous,
   onRemoveMethod,
   onClear,
@@ -90,7 +90,7 @@ function SnapshotPanelComponent({
           bundle={bundleState.data}
           effectiveMethods={effectiveMethods}
           metric={metric}
-          showGlobal={showGlobal}
+          showExtended={showExtended}
         />
       </details>
     </div>

@@ -26,9 +26,9 @@ const X_AXIS_STYLE = {
 function effectiveVariant(
   bundle: SnapshotBundle,
   method: string,
-  showGlobal: boolean,
+  showExtended: boolean,
 ): PredictionVariant {
-  return showGlobal && bundle.predictions[method]?.extended ? 'extended' : 'local';
+  return showExtended && bundle.predictions[method]?.extended ? 'extended' : 'local';
 }
 
 type Props = {
@@ -37,7 +37,7 @@ type Props = {
   bundle: SnapshotBundle;
   effectiveMethods: string[];
   metric: string;
-  showGlobal: boolean;
+  showExtended: boolean;
 };
 
 /** Grid of curated forecast-origin snapshots for one case, overlaying each of
@@ -52,13 +52,13 @@ export function SnapshotGrid({
   bundle,
   effectiveMethods,
   metric,
-  showGlobal,
+  showExtended,
 }: Props) {
   const { theme } = useTheme();
   const figure = useMemo(() => {
     if (effectiveMethods.length === 0) return null;
     const anchor = effectiveMethods[0]!;
-    const anchorVariant = effectiveVariant(bundle, anchor, showGlobal);
+    const anchorVariant = effectiveVariant(bundle, anchor, showExtended);
     const curated = bundle.curation[metric]?.[anchor]?.[anchorVariant] ?? [];
     if (curated.length === 0) {
       return { empty: `No observed actuals to score any stored origin for ${caseId}.` };
@@ -101,10 +101,10 @@ export function SnapshotGrid({
       } as Data);
 
       for (const method of effectiveMethods) {
-        const variant = effectiveVariant(bundle, method, showGlobal);
+        const variant = effectiveVariant(bundle, method, showExtended);
         const predValues = bundle.predictions[method]?.[variant]?.[String(entry.origin_id)] ?? [];
         const predTimestamps = timestamps.slice(nHistory, nHistory + predValues.length);
-        const label = variant === 'extended' ? `${method} (global fit)` : method;
+        const label = variant === 'extended' ? `${method} (extended fit)` : method;
         data.push({
           type: 'scatter',
           mode: 'lines',
@@ -169,7 +169,7 @@ export function SnapshotGrid({
     };
 
     return { data, layout };
-  }, [bundle, effectiveMethods, metric, showGlobal, caseId, caseMeta.freq, theme]);
+  }, [bundle, effectiveMethods, metric, showExtended, caseId, caseMeta.freq, theme]);
 
   if (!figure) return null;
   if ('empty' in figure) return <p style={{ color: 'var(--text-muted)' }}>{figure.empty}</p>;

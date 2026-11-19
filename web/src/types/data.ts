@@ -5,7 +5,6 @@ export type ScoreRow = {
   method: string;
   family: string;
   uses_exogenous: boolean;
-  is_global: boolean;
   used_extended_history: boolean;
   horizon: string;
   metric: string;
