@@ -1,4 +1,15 @@
 ---
+id: 111
+date: "2026-11-25"
+title: "Stuck and out-of-range sensor readings are masked before curation, and the sewer nowcast column is dropped"
+description: |
+  `Case.load` now masks two kinds of target sensor fault to NaN before curation, so the curated span and the extended history treat them as gaps (gh #151). A run of identical readings longer than the case's dominant seasonal period is stuck, since a working sensor moves within a full cycle; readings at or beyond a case's declared `valid_min`/`valid_max` are out of range. Only two cases are affected: `sewerlevel_bellinge` (1,399 readings, including a Dec 2012 - Jan 2013 block saturated at 2.06 m that carried 58% of the extended training loss under MSE, and six 0 m dropouts) and `waves_oregon` (595 readings of 0 m wave height in 2015). A 3-day flat run inside the sewer curated span moves its start from 2019-05-15 to 2019-09-17 and its gap cap from 15 to 6; Oregon's curated span is unchanged. The sewer `rain_radar_nowcast` column, a placeholder copy of `rain_gauge`, is dropped (gh #152). Every column on both cases needs the re-run.
+commits:
+  - 860afed: "Drop the sewer rain_radar_nowcast column, a copy of rain_gauge"
+  - f136edb: "Add a mask for stuck and out-of-range sensor readings"
+  - 2388d23: "Mask sensor faults when a case's processed record is loaded"
+  - b9610d1: "Declare valid ranges for sewer level and Oregon wave height, and re-curate"
+---
 id: 110
 date: "2026-11-25"
 title: "Deep-learning patience counts passes over the data, and TFT trains on 256 windows a step"

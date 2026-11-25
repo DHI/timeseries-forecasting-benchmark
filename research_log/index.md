@@ -7,6 +7,7 @@ entry and its commits. See `schema.md` for the format both files follow.
 <!-- Add new entries below this line, newest first, matching details.md. -->
 
 ### 2026-11-25
+- 111 — Stuck and out-of-range sensor readings are masked before curation, and the sewer nowcast column is dropped
 - 110 — Deep-learning patience counts passes over the data, and TFT trains on 256 windows a step
 
 ### 2026-11-18
