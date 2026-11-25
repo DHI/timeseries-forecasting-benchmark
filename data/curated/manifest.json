@@ -130,7 +130,7 @@
     "parquet": "data/curated/sewerlevel_bellinge.parquet",
     "rows": 49499,
     "segment": "last",
-    "sha256": "f833a8e2ab8c0cf8d30f51bf0964ba1bc5735784ff2dd6aba0b7c7391a650fe9",
+    "sha256": "e19e5399f0a870eb3bbd635e40107d8aff99dd03265adc2eded70f41f8ca6215",
     "span_end": "2020-10-12 00:00:00+00:00",
     "span_start": "2019-05-15 09:30:00+00:00",
     "split_fraction": [

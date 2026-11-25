@@ -61,8 +61,8 @@ This is a case where **univariate forecasting is only a floor** — the wet-weat
 
 - **Rain gauge** (primary) — the Bellinge hydrodynamic models were calibrated on rain
   gauges, so this is the canonical, sufficient driver. *(Per Rocco, PR #2.)*
-- **X-band local radar nowcast** (known-future) — included for completeness, but its
-  *added value over the rain gauge here is uncertain* and worth testing rather than assuming.
+- **X-band local radar nowcast** — not used in this case. Its *added value over the rain
+  gauge here is uncertain* and worth testing rather than assuming (gh #152).
 - **C-band DMI radar** — larger spatial coverage for incoming systems.
 - **Antecedent dry-weather period** — key for CSO event onset.
 - **Calendar features** — weekday vs weekend modulates the diurnal pattern.

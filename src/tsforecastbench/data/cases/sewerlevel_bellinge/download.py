@@ -312,7 +312,6 @@ def main(argv: list[str] | None = None) -> int:
                 f"{int(base['rain_gauge'].notna().sum())} non-NaN of {len(base)}, "
                 f"{int((base['rain_gauge'] > 0).sum())} non-zero"
             )
-            base["rain_radar_nowcast"] = base["rain_gauge"]  # placeholder until X-band added
 
     # air temperature from ERA5 at the Bellinge point (credential-free via Open-Meteo)
     if not args.no_era5 and len(base):
@@ -334,7 +333,7 @@ def main(argv: list[str] | None = None) -> int:
         base = _era5.merge_onto(base, era5, ["temp_air"])
         print(f"[sewerlevel_bellinge] temp_air coverage {base['temp_air'].notna().mean():.0%}")
 
-    for col in ["rain_gauge", "rain_radar_nowcast", "temp_air"]:
+    for col in ["rain_gauge", "temp_air"]:
         if col not in base.columns:
             base[col] = float("nan")
 

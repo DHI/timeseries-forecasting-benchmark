@@ -34,9 +34,6 @@ def generate(case: Case, seed: int = 1) -> pd.DataFrame:
     )
     level = diurnal + seasonal + 0.12 * rain_response + rng.normal(0, 0.012, n)
     level = np.clip(level, 0.05, 1.5)
-    nowcast = np.roll(rain, -1)
-    nowcast[-1] = 0.0
-    nowcast = np.clip(nowcast + rng.normal(0, 0.05, n), 0.0, None)
 
     return pd.DataFrame(
         {
@@ -45,7 +42,6 @@ def generate(case: Case, seed: int = 1) -> pd.DataFrame:
             "y": level.astype(np.float64),
             "level_m": level.astype(np.float64),
             "rain_gauge": rain.astype(np.float64),
-            "rain_radar_nowcast": nowcast.astype(np.float64),
             "temp_air": temp.astype(np.float64),
         }
     )
