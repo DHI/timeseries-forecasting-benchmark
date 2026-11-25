@@ -78,16 +78,16 @@
     "span_start": "2008-01-01 00:00:00+00:00"
   },
   "sewerlevel_bellinge": {
-    "cap": 15,
-    "cutoff": "2020-07-26 15:36:45",
-    "n_big_gaps": 9,
-    "n_filled": 247,
-    "n_observed": 348411,
-    "orig_rows": 350175,
+    "cap": 6,
+    "cutoff": "2020-08-14 09:12:00",
+    "n_big_gaps": 18,
+    "n_filled": 205,
+    "n_observed": 348810,
+    "orig_rows": 351973,
     "parquet": "data/curated_extended/sewerlevel_bellinge.parquet",
-    "rows": 350175,
-    "sha256": "61927566d43c73c33b05d1a95c6d97edcc9c22dfc4b13f2c09f4c32384e0213a",
-    "span_end": "2020-07-26 15:30:00+00:00",
+    "rows": 351973,
+    "sha256": "420760b844af3ad1da34e5265fa3bacea6138c71b035d6c025dbb45aa7ed1ab0",
+    "span_end": "2020-08-14 09:00:00+00:00",
     "span_start": "2010-08-01 00:00:00+00:00"
   },
   "surge_cuxhaven": {
@@ -130,15 +130,15 @@
     "span_start": "2014-12-31 23:00:00+00:00"
   },
   "waves_oregon": {
-    "cap": 15,
+    "cap": 14,
     "cutoff": "2023-08-01 08:03:00",
-    "n_big_gaps": 9,
-    "n_filled": 565,
-    "n_observed": 74156,
+    "n_big_gaps": 16,
+    "n_filled": 518,
+    "n_observed": 73561,
     "orig_rows": 75226,
     "parquet": "data/curated_extended/waves_oregon.parquet",
     "rows": 75226,
-    "sha256": "cdacb3d9475da6c14dea00bee15e50abc513d93afbaf64ec919d55894fad9c96",
+    "sha256": "b69052d03c82ddcdd0c48ee062d12fda08fdb7c68bdbe078c719b1a048465972",
     "span_end": "2023-08-01 08:00:00+00:00",
     "span_start": "2014-12-31 23:00:00+00:00"
   },

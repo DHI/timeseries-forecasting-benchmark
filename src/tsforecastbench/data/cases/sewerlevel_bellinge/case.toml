@@ -1,6 +1,6 @@
 id = "sewerlevel_bellinge"
 domain = "urban_drainage"
-notes = "Sewer water level at sensor G71F05R LevelInlet (the original F04R Level1 instance was only 20% active over 2010-2020 per --scan; G71F05R LevelInlet is 100% active over the same span). Bellinge combined drainage system, Odense DK. Native sampling 1-min, resampled to 15-min. Rain gauge as exogenous; the source's X-band radar is not used. Necessary exogenous: rain_gauge — combined-sewer surcharge is rainfall-driven; optional: temp_air (minor secondary effect). Assumption, not yet validated against measured skill."
+notes = "Sewer water level at sensor G71F05R LevelInlet (the original F04R Level1 instance was only 20% active over 2010-2020 per --scan; G71F05R LevelInlet is 100% active over the same span). Bellinge combined drainage system, Odense DK. Native sampling 1-min, resampled to 15-min. Rain gauge as exogenous; the source's X-band radar is not used. Necessary exogenous: rain_gauge — combined-sewer surcharge is rainfall-driven; optional: temp_air (minor secondary effect). Assumption, not yet validated against measured skill. Valid level range (0, 1) m: the level never reads below 0.12 m except six isolated 0 m dropouts, and never above 0.93 m except a Dec 2012 - Jan 2013 block saturated at 2.01-2.06 m and its two edge readings (gh #151)."
 
 target = "level_m"
 target_unit = "m"
@@ -9,6 +9,8 @@ freq = "15min"
 seasonalities = [16,96]
 # Pinned dominance (R2 0.009 vs 0.000001 for 16); see notebooks/seasonality.py.
 dominant_seasonality = 96
+valid_min = 0.0
+valid_max = 1.0
 horizon_primary = "6h"
 horizons_eval = ["1h", "6h", "24h"]
 
