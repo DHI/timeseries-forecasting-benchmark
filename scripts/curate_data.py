@@ -62,7 +62,7 @@ def main(argv: list[str] | None = None) -> int:
 
     hdr = (
         f"{'case':30s} {'cap':>4s} {'orig':>8s} {'kept':>8s} {'kept%':>6s} {'filled':>7s} "
-        f"{'bigg':>5s} {'ext_rows':>8s}"
+        f"{'bigg':>5s} {'ext_rows':>8s} {'stuck':>6s} {'range':>6s}"
     )
     print(hdr)
     print("-" * len(hdr))
@@ -72,7 +72,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{cid:30s}  [skip] no processed parquet")
             continue
         try:
-            raw = pd.read_parquet(case.parquet_path)
+            raw, faults = case.mask_sensor_faults(pd.read_parquet(case.parquet_path))
             exog = list(dict.fromkeys([*case.exogenous, *case.exogenous_known_future]))
             curated, info = curate_frame(
                 raw,
@@ -93,6 +93,7 @@ def main(argv: list[str] | None = None) -> int:
                 "parquet": str(out.relative_to(REPO_ROOT)),
                 "sha256": _sha256(out),
                 **info,
+                **faults,
             }
 
             _, val_end, _ = case.split_bounds(curated)
@@ -109,7 +110,7 @@ def main(argv: list[str] | None = None) -> int:
             print(
                 f"{cid:30s} {info['cap']:4d} {info['orig_rows']:8d} {info['rows']:8d} "
                 f"{100 * info['kept_frac']:6.1f} {info['n_filled']:7d} {info['n_big_gaps']:5d} "
-                f"{info_ext['rows']:8d}"
+                f"{info_ext['rows']:8d} {faults['n_stuck']:6d} {faults['n_out_of_range']:6d}"
             )
         except Exception as exc:
             print(f"{cid:30s}  [error] {type(exc).__name__}: {exc}")

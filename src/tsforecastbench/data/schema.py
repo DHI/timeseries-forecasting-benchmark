@@ -97,6 +97,12 @@ class Case(BaseModel):
     # period instead, so the metric and the methods could resolve different periods on the
     # same case (research log id 103). 1 when `seasonalities` is empty.
     dominant_seasonality: int
+    # Physical bounds on the target, exclusive: a reading at or below `valid_min` or at or
+    # above `valid_max` is a sensor fault, masked to NaN when the record is loaded (gh #151).
+    # None = no bound on that side. Like `necessary_exogenous`, a domain judgement, so the
+    # reason for each declared bound goes in `notes`.
+    valid_min: float | None = None
+    valid_max: float | None = None
     horizon_primary: str
     horizons_eval: list[str] = Field(default_factory=list)
     exogenous: list[str] = Field(default_factory=list)
@@ -219,7 +225,10 @@ class Case(BaseModel):
         small gaps filled, `y_observed` mask) that the eval loops consume: it reads
         `data/curated/<id>.parquet` when present, else applies the gap policy on the
         fly. The default (`curated=False`) returns the raw series in
-        `data/processed/`, gaps and all, for EDA and case review.
+        `data/processed/`, gaps and all, for EDA and case review, with the target's sensor
+        faults masked to NaN (`curate.mask_sensor_faults`): flat runs longer than one
+        dominant cycle, and readings outside `valid_min`/`valid_max`. The Parquet keeps the
+        original values.
         """
         if curated:
             return self._load_curated(prefer_synth=prefer_synth)
@@ -227,7 +236,20 @@ class Case(BaseModel):
             return self.synth()
         df = pd.read_parquet(self.parquet_path)
         _validate_frame(self, df)
+        df, _ = self.mask_sensor_faults(df)
         return df
+
+    def mask_sensor_faults(self, df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
+        """`curate.mask_sensor_faults` with this case's rules. A non-seasonal case gets no
+        stuck check: without a cycle there is no length a working sensor must move within."""
+        from tsforecastbench.data.curate import mask_sensor_faults
+
+        return mask_sensor_faults(
+            df,
+            stuck_steps=self.dominant_seasonality if self.seasonalities else None,
+            valid_min=self.valid_min,
+            valid_max=self.valid_max,
+        )
 
     def _load_curated(self, prefer_synth: bool = False) -> pd.DataFrame:
         from tsforecastbench.data.curate import curate_frame

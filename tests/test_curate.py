@@ -199,3 +199,8 @@ def test_readings_at_or_beyond_the_valid_bounds_are_masked():
     masked, info = _faults([0.0, 0.3, 2.0, 0.4, -1.0], valid_min=0.0, valid_max=2.0)
     assert masked.tolist() == [True, False, True, False, True]
     assert info == {"n_stuck": 0, "n_out_of_range": 3}
+
+
+def test_no_stuck_limit_keeps_flat_runs():
+    masked, _ = _faults([5, 5, 5, 5, 5], stuck_steps=None)
+    assert not masked.any()

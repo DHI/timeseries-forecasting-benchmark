@@ -246,7 +246,7 @@ def _pick_segment(
 def mask_sensor_faults(
     df: pd.DataFrame,
     *,
-    stuck_steps: int,
+    stuck_steps: int | None,
     valid_min: float | None,
     valid_max: float | None,
 ) -> tuple[pd.DataFrame, dict]:
@@ -257,7 +257,7 @@ def mask_sensor_faults(
     - **Stuck:** a run of identical consecutive readings longer than `stuck_steps`. The
       caller passes the case's dominant seasonal period: within a full cycle a working
       sensor has to move, so an exactly flat run longer than that is a held or frozen
-      value.
+      value. None skips this check.
     - **Out of range:** a reading at or below `valid_min` or at or above `valid_max`, the
       physical bounds a case declares (None = no bound on that side).
 
@@ -269,7 +269,7 @@ def mask_sensor_faults(
 
     stuck = np.zeros(len(y), dtype=bool)
     idx = np.flatnonzero(observed)
-    if len(idx):
+    if stuck_steps is not None and len(idx):
         v = y[idx]
         new_run = np.r_[True, (v[1:] != v[:-1]) | (np.diff(idx) != 1)]
         starts = np.flatnonzero(new_run)
