@@ -20,6 +20,7 @@ def fitted_itransformer():
     mp = pytest.MonkeyPatch()
     mp.setattr(nf_models, "DL_VAL_CHECK_STEPS", 5)
     mp.setattr(nf_models, "DL_PATIENCE_CHECKS", 2)
+    mp.setattr(nf_models, "DL_PATIENCE_PASSES", 0)
     case = get_case("discharge_flashy_catskills")
     splits = case.split_frame(case.load(prefer_synth=True, curated=True))
     method = nf_models.ITransformerForecaster()

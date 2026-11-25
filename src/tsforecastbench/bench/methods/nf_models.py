@@ -20,7 +20,9 @@ import pandas as pd
 
 from tsforecastbench.bench.eval.budget import (
     DL_PATIENCE_CHECKS,
+    DL_PATIENCE_PASSES,
     DL_VAL_CHECK_STEPS,
+    dl_patience_checks,
     dl_step_ceiling,
     nf_val_size,
 )
@@ -54,7 +56,7 @@ def _restore_best_weights_callback():
 
     neuralforecast stops on Lightning's `EarlyStopping` with checkpointing turned off, and
     `EarlyStopping` never restores anything, so the fitted model would otherwise keep the
-    weights from `DL_PATIENCE_CHECKS` checks past its best -- the point where held-out loss
+    weights from the whole patience past its best -- the point where held-out loss
     has been getting worse. `torchdl` has always restored its best state; this gives the
     neuralforecast zoo the same rule.
 
@@ -230,7 +232,15 @@ class _NFBase(Forecaster):
             # constant (gh #101). It is the safety net for a fit that never converges.
             max_steps=dl_step_ceiling(train_windows, windows_per_step),
             val_check_steps=DL_VAL_CHECK_STEPS,
-            early_stop_patience_steps=DL_PATIENCE_CHECKS,
+            # Counted in checks, like `val_check_steps` above: two passes over the panel's
+            # windows without a new best (gh #153).
+            early_stop_patience_steps=dl_patience_checks(
+                train_windows,
+                windows_per_step,
+                check_every=DL_VAL_CHECK_STEPS,
+                min_checks=DL_PATIENCE_CHECKS,
+                passes=DL_PATIENCE_PASSES,
+            ),
             scaler_type="standard",
             # MSE for training and early stopping alike, as in `torchdl`. The library default
             # is MAE, which left the DL family split across two losses -- and two targets,
