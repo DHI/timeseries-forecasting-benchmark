@@ -26,7 +26,9 @@ import pandas as pd
 
 from tsforecastbench.bench.eval.budget import (
     DL_PATIENCE_CHECKS,
+    DL_PATIENCE_PASSES,
     DL_VAL_CHECK_STEPS,
+    dl_patience_checks,
     dl_step_ceiling,
 )
 from tsforecastbench.bench.methods.base import (
@@ -404,6 +406,15 @@ class _TorchDLBase(Forecaster):
         # more steps rather than thinner ones (gh #101). Early stopping below is what
         # normally ends the fit; this is only reached by one that never converges.
         max_steps = dl_step_ceiling(n, self.batch) if n_steps is None else n_steps
+        # Two passes over the windows without a new best, so a large record is not stopped
+        # before the model has drawn most of its windows once (gh #153).
+        patience = dl_patience_checks(
+            n,
+            self.batch,
+            check_every=DL_VAL_CHECK_STEPS,
+            min_checks=DL_PATIENCE_CHECKS,
+            passes=DL_PATIENCE_PASSES,
+        )
         for step in range(1, max_steps + 1):
             self._model.train()
             idx = torch.randint(0, n, (min(self.batch, n),))
@@ -425,7 +436,7 @@ class _TorchDLBase(Forecaster):
                 best_state = {k: v.detach().clone() for k, v in self._model.state_dict().items()}
             else:
                 stale += 1
-                if stale >= DL_PATIENCE_CHECKS:
+                if stale >= patience:
                     break
         if n_steps is not None:
             return

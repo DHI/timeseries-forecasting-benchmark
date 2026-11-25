@@ -475,6 +475,7 @@ def test_torch_dl_runs_if_installed(monkeypatch):
     # loss goes stale — so an impatient early stop is what keeps the test fast.
     monkeypatch.setattr(torchdl, "DL_VAL_CHECK_STEPS", 5)
     monkeypatch.setattr(torchdl, "DL_PATIENCE_CHECKS", 1)
+    monkeypatch.setattr(torchdl, "DL_PATIENCE_PASSES", 0)
     methods = [NHITSForecaster(), PatchTSTForecaster()]
     res = run_case(get_case("discharge_flashy_catskills"), methods, prefer_synth=True)
     assert (res["status"] == "ok").all(), res[res["status"] != "ok"]["status"].tolist()
