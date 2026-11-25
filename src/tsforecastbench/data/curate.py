@@ -243,6 +243,54 @@ def _pick_segment(
     return start, stop, "longest", shortfalls
 
 
+def mask_sensor_faults(
+    df: pd.DataFrame,
+    *,
+    stuck_steps: int,
+    valid_min: float | None,
+    valid_max: float | None,
+) -> tuple[pd.DataFrame, dict]:
+    """Set target readings a working sensor cannot produce to NaN (gh #151).
+
+    Two kinds are masked, so the gap policy treats them as missing like any other gap:
+
+    - **Stuck:** a run of identical consecutive readings longer than `stuck_steps`. The
+      caller passes the case's dominant seasonal period: within a full cycle a working
+      sensor has to move, so an exactly flat run longer than that is a held or frozen
+      value.
+    - **Out of range:** a reading at or below `valid_min` or at or above `valid_max`, the
+      physical bounds a case declares (None = no bound on that side).
+
+    Returns the masked copy and the count of each kind.
+    """
+    df = df.sort_values("ds").reset_index(drop=True)
+    y = pd.to_numeric(df["y"], errors="coerce").to_numpy(dtype=float)
+    observed = ~np.isnan(y)
+
+    stuck = np.zeros(len(y), dtype=bool)
+    idx = np.flatnonzero(observed)
+    if len(idx):
+        v = y[idx]
+        new_run = np.r_[True, (v[1:] != v[:-1]) | (np.diff(idx) != 1)]
+        starts = np.flatnonzero(new_run)
+        lengths = np.diff(np.r_[starts, len(v)])
+        for s, n in zip(starts, lengths, strict=True):
+            if n > stuck_steps:
+                stuck[idx[s : s + n]] = True
+
+    out_of_range = np.zeros(len(y), dtype=bool)
+    if valid_min is not None:
+        out_of_range |= observed & (y <= valid_min)
+    if valid_max is not None:
+        out_of_range |= observed & (y >= valid_max)
+
+    df["y"] = np.where(stuck | out_of_range, np.nan, y)
+    return df, {
+        "n_stuck": int(stuck.sum()),
+        "n_out_of_range": int((out_of_range & ~stuck).sum()),
+    }
+
+
 def curate_frame(
     df: pd.DataFrame,
     freq: str,

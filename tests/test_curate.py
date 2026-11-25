@@ -11,6 +11,7 @@ from tsforecastbench.data.curate import (
     fraction_split_dates,
     gap_cap,
     longest_segment_bounds,
+    mask_sensor_faults,
     split_fraction_for,
 )
 
@@ -166,3 +167,35 @@ def test_split_is_reported_for_the_kept_segment():
     curated, info = _curate(_frame(_smooth(2000)))
 
     assert info["split_fraction"] == split_fraction_for(curated["ds"], 24, "1h")
+
+
+def _faults(y, stuck_steps=3, valid_min=None, valid_max=None):
+    masked, info = mask_sensor_faults(
+        _frame(np.asarray(y, dtype=float)),
+        stuck_steps=stuck_steps,
+        valid_min=valid_min,
+        valid_max=valid_max,
+    )
+    return masked["y"].isna().to_numpy(), info
+
+
+def test_a_flat_run_longer_than_the_limit_is_masked_whole():
+    masked, info = _faults([1, 2, 5, 5, 5, 5, 3])
+    assert masked.tolist() == [False, False, True, True, True, True, False]
+    assert info == {"n_stuck": 4, "n_out_of_range": 0}
+
+
+def test_a_flat_run_at_the_limit_is_kept():
+    masked, _ = _faults([1, 5, 5, 5, 3])
+    assert not masked.any()
+
+
+def test_a_gap_ends_a_flat_run():
+    masked, _ = _faults([5, 5, np.nan, 5, 5])
+    assert masked.tolist() == [False, False, True, False, False]
+
+
+def test_readings_at_or_beyond_the_valid_bounds_are_masked():
+    masked, info = _faults([0.0, 0.3, 2.0, 0.4, -1.0], valid_min=0.0, valid_max=2.0)
+    assert masked.tolist() == [True, False, True, False, True]
+    assert info == {"n_stuck": 0, "n_out_of_range": 3}
