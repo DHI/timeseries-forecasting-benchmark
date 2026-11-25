@@ -59,16 +59,27 @@ TRAIN_POINT_CEILING = 5_000_000
 # steps at batch 256 and learning rate 1e-3 — the batch size and learning rate `torchdl`
 # already uses, but a flat step count is the shape this benchmark rejected.
 DL_MAX_EPOCHS = 150
-# Validation loss is checked this often, and training stops after this many consecutive
-# checks without improvement (250 steps of no progress at the defaults below).
+# Validation loss is checked every `DL_VAL_CHECK_STEPS` steps. Training stops once that many
+# steps times the patience from `dl_patience_checks` pass without a new best: two passes over
+# the training windows (gh #153), and never fewer than `DL_PATIENCE_CHECKS` checks.
+#
+# The patience used to be a flat 5 checks (250 steps), which is several passes on a small case
+# and a fraction of one on a large one. On the 340k-window `sewerlevel_bellinge` extended
+# history it stopped N-HiTS and PatchTST at 0.2-0.7 passes while validation loss kept falling
+# to 1.3-4.5 passes, 2.7-7.6% lower. Two passes reached that best on all six runs (two methods,
+# three seeds) and one pass on two of them: batches are drawn with replacement, so one pass
+# draws only ~63% of distinct windows, two ~86%. On the curated span the same runs stop where
+# they did. The flat 5 checks stays as the floor, since two passes of a 4,000-point daily case
+# are ~32 steps, shorter than a single check.
 DL_VAL_CHECK_STEPS = 50
 DL_PATIENCE_CHECKS = 5
+DL_PATIENCE_PASSES = 2
 
 # MLP's equivalent, kept separate because the two numbers are not comparable. scikit-learn's
 # `max_iter` counts epochs too ("the number of epochs ... not the number of gradient steps"),
-# but MLPRegressor stops after 10 epochs without improvement while `torchdl` stops after 250
-# gradient steps — a fraction of one epoch on a large case. So the same model needs far more
-# epochs under the first rule than the second, and a shared constant would bind on one of them.
+# but MLPRegressor stops after 10 epochs without improvement while `torchdl` stops after two
+# passes without improvement (`DL_PATIENCE_PASSES`). So the same model needs far more epochs under the first rule than
+# the second, and a shared constant would bind on one of them.
 #
 # This is a guard, not a budget: it sits above where every case actually converges. Measured by
 # lifting the cap and reading back `n_iter_`, the largest a per-horizon model needed is 586, on
@@ -105,6 +116,19 @@ def dl_step_ceiling(n_windows: int, windows_per_step: int) -> int:
     end, and `Forecaster.last_fit_steps` records which of the two a given cell hit.
     """
     return DL_MAX_EPOCHS * max(1, -(-n_windows // windows_per_step))
+
+
+def dl_patience_checks(
+    n_windows: int, windows_per_step: int, *, check_every: int, min_checks: int, passes: float
+) -> int:
+    """Validation checks without a new best after which a fit stops: `passes` passes over
+    `n_windows` windows, rounded up to whole checks, and at least `min_checks`.
+
+    The caller passes `DL_VAL_CHECK_STEPS`, `DL_PATIENCE_CHECKS` and `DL_PATIENCE_PASSES` as
+    its own module imports them, so a test that shrinks them on one module shrinks them here.
+    """
+    steps_per_pass = max(1, -(-n_windows // windows_per_step))
+    return max(min_checks, -(-int(passes * steps_per_pass) // check_every))
 
 
 def nf_val_size(
