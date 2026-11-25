@@ -6,6 +6,9 @@ entry and its commits. See `schema.md` for the format both files follow.
 
 <!-- Add new entries below this line, newest first, matching details.md. -->
 
+### 2026-11-25
+- 110 — Deep-learning patience counts passes over the data, and TFT trains on 256 windows a step
+
 ### 2026-11-18
 - 109 — Every method is fit once on train and val, and every forecast reads all history up to its start
 - 108 — Matrix scores get block-bootstrap intervals and a tie mark against the best method

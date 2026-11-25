@@ -1,4 +1,17 @@
 ---
+id: 110
+date: "2026-11-25"
+title: "Deep-learning patience counts passes over the data, and TFT trains on 256 windows a step"
+description: |
+  Deep-learning early stopping now waits two passes over the training windows without a new best validation loss, never fewer than the old 5 checks of 50 steps (gh #153). The flat 250 steps stopped N-HiTS and PatchTST on the 340k-window `sewerlevel_bellinge` extended history at 0.2-0.7 passes, while validation loss kept falling until 1.3-4.5 passes, leaving the kept weights 2.7-7.6% above that best. With two passes, all six test runs (two methods, three seeds) reached that best, and on the curated span they stop where they did; the neuralforecast models get the same rule without a curve test of their own. TFT now trains on 256 windows a step instead of the library's 1,024, which ran out of the L4's 24 GB on all six daily cases, whose 395-step windows need about 21 MB each in training (gh #109). Every DL column needs the re-run, and extended-history fits take longer: TimesNet on sewer extended goes from about 77 s to 17 min or more per seed.
+commits:
+  - 0643618: "Add a patience rule counted in passes over the training windows"
+  - 82bdfbb: "Stop the torch DL methods after two passes without a new best"
+  - 51be4ad: "Stop the neuralforecast models after two passes without a new best"
+  - ef6bc13: "Train TFT on 256 windows a step so the daily cases fit on the L4"
+  - 335032c: "Show the pass-based patience in the neuralforecast code snippets"
+  - 8d0a4b0: "Add a script that records the DL validation loss curve with early stopping off"
+---
 id: 109
 date: "2026-11-18"
 title: "Every method is fit once on train and val, and every forecast reads all history up to its start"
