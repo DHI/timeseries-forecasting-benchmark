@@ -109,8 +109,8 @@ def dl_step_ceiling(n_windows: int, windows_per_step: int) -> int:
 
     `windows_per_step` is how many training windows one optimisation step consumes — the
     batch size for the torch models, `windows_batch_size` for a neuralforecast one, which
-    that library sets per architecture (32 for iTransformer, 64 for TimesNet, 1,024 for TFT)
-    rather than globally. Reading it off the model is what keeps the epoch an epoch.
+    that library sets per architecture (32 for iTransformer, 64 for TimesNet) and TFT
+    overrides to 256 (gh #109). Reading it off the model is what keeps the epoch an epoch.
 
     Only a fit whose held-out loss never goes stale gets here; early stopping is the normal
     end, and `Forecaster.last_fit_steps` records which of the two a given cell hit.

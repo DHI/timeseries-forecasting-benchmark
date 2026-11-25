@@ -216,10 +216,14 @@ class _NFBase(Forecaster):
             for uid in keep
             if uid != self._target_uid
         )
-        # One neuralforecast step consumes `windows_batch_size` windows, and that default is
-        # per architecture (32 for iTransformer, 64 for TimesNet, 1,024 for TFT), so the
-        # epoch has to be measured against the model's own value rather than a shared one.
-        windows_per_step = inspect.signature(model_cls).parameters["windows_batch_size"].default
+        # One neuralforecast step consumes `windows_batch_size` windows: the library's own
+        # value per architecture (32 for iTransformer, 64 for TimesNet), or the one a class
+        # passes in `extra_kwargs` (256 for TFT). A pass has to be measured against the value
+        # the model trains with, or patience and the ceiling scale with the wrong batch.
+        windows_per_step = self.extra_kwargs.get(
+            "windows_batch_size",
+            inspect.signature(model_cls).parameters["windows_batch_size"].default,
+        )
         # Only passed when there are covariates: an architecture without a `futr_exog_list`
         # slot must keep working as the univariate column it already is.
         exo_kwargs = {"futr_exog_list": list(self._exo)} if self._exo else {}
@@ -384,12 +388,16 @@ class TFTForecaster(_NFBase):
 
     name = "TFT"
     model_name = "TFT"
+    # The library default of 1,024 windows a step runs out of the L4's 24 GB on the daily
+    # cases, whose 395-step windows (lookback 365) need ~21 MB each in training, ~22 GB at
+    # 1,024 (gh #109). 256 needs ~5 GB there and matches the torch models' batch.
+    extra_kwargs: ClassVar[dict] = {"windows_batch_size": 256}
     code_snippet = (
         "from neuralforecast import NeuralForecast\n"
         "from neuralforecast.losses.pytorch import MSE\n"
         "from neuralforecast.models import TFT\n\n"
         "model = TFT(h=horizon, input_size=lookback, loss=MSE(), valid_loss=MSE(),\n"
-        "            early_stop_patience_steps=5)\n"
+        "            windows_batch_size=256, early_stop_patience_steps=5)\n"
         "nf = NeuralForecast(models=[model], freq=case.freq)\n"
         "nf.fit(train_df, val_size=val_size)  # train_df: unique_id, ds, y\n"
         "# then a fresh model, max_steps=best_step, fit on train + val with val_size=0\n"

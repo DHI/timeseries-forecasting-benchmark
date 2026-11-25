@@ -74,3 +74,27 @@ def test_training_and_early_stopping_use_mse_like_torchdl(fitted):
 
     assert isinstance(fitted.loss, MSE)
     assert isinstance(fitted.valid_loss, MSE)
+
+
+def test_tft_trains_on_its_own_batch_and_counts_passes_with_it(monkeypatch):
+    """TFT overrides the library's 1,024-window batch (gh #109). The step ceiling and the
+    patience must be counted in that batch, or a pass is four times too short."""
+    pytest.importorskip("neuralforecast")
+    from neuralforecast import NeuralForecast
+
+    from tsforecastbench.bench.methods import nf_models
+
+    seen = []
+    monkeypatch.setattr(
+        nf_models, "dl_step_ceiling", lambda n, per_step: seen.append(per_step) or 2
+    )
+    monkeypatch.setattr(NeuralForecast, "fit", lambda self, df, val_size: None)
+    monkeypatch.setattr(nf_models._NFBase, "_record_steps", lambda self: None)
+    case = get_case("discharge_flashy_catskills")
+    splits = case.split_frame(case.load(prefer_synth=True, curated=True))
+    method = nf_models.TFTForecaster()
+    method.fit(case, splits["train"], splits["val"])
+
+    model = method._nf.models[0]
+    assert model.windows_batch_size == 256
+    assert seen == [256]
