@@ -24,7 +24,6 @@ from tsforecastbench.bench.eval.budget import (
     DL_VAL_CHECK_STEPS,
     dl_patience_checks,
     dl_step_ceiling,
-    nf_val_size,
 )
 from tsforecastbench.bench.methods.base import (
     Forecaster,
@@ -124,8 +123,9 @@ class _NFBase(Forecaster):
         "reason. Trains a fresh model per case with no hyperparameter tuning, using the same "
         "architecture defaults regardless of the series' scale or frequency. On an "
         "extended-history fit, where the record is a panel of gap-separated segments, "
-        "neuralforecast can only hold out an equal-length tail from every segment, so early "
-        "stopping there watches a shorter holdout than the case's full validation split."
+        "neuralforecast can only hold out an equal-length tail from every segment, so a "
+        "segment too short to give up the case's full validation split and still train is "
+        "left out of the fit."
     )
     # Shared by all three: window models that learn trend and several interacting periods
     # from the lookback. `exogenous` describes the architecture rather than a given column:
@@ -178,24 +178,30 @@ class _NFBase(Forecaster):
         # the last `val_size` steps of every series in the panel, so the target series is
         # handed its train rows plus that many val rows: the cut then lands exactly on val
         # and the series keeps every training window it has. The other series are whole
-        # history segments of train data, and each gives up its last `val_size` steps —
-        # `nf_val_size` picks the cut that leaves the most training windows overall.
+        # history segments of train data, and each gives up its last `val_size` steps.
+        #
+        # The cut is the whole declared val split, so a segment too short to give that up
+        # and still hold a training window is left out (gh #154). Shrinking the cut to keep
+        # such segments let one short segment set it for the whole panel: 441 of 5,623
+        # points on `sewerlevel_bellinge`, 104 of 1,744 on `waves_massachusetts`, and early
+        # stopping on so short a stretch picked noisy steps. No cut between the two helps:
+        # on every current case the segments it would keep need a cut under 75% of val.
         val_target = val[val["unique_id"] == self._target_uid]
+        val_size = len(val_target)
         lens = df.groupby("unique_id", sort=False).size()
         target_train = int(lens[self._target_uid])
-        other_lens = [int(n) for uid, n in lens.items() if uid != self._target_uid]
-        val_size = nf_val_size(other_lens, target_train, lookback, h, len(val_target))
-        if val_size < len(val_target):
-            print(
-                f"  [note] {self.name}: panel validation cut is {val_size:,} of the "
-                f"{len(val_target):,}-point val split, so every one of its "
-                f"{len(other_lens) + 1} segments trains; the rest of val goes unused."
-            )
         keep = [
             uid
             for uid, n in lens.items()
             if uid == self._target_uid or n >= lookback + h + val_size
         ]
+        if len(keep) < len(lens):
+            dropped = lens.drop(keep)
+            print(
+                f"  [note] {self.name}: {len(dropped)} of {len(lens)} segments are shorter "
+                f"than the {val_size:,}-point val split plus a training window, so "
+                f"{int(dropped.sum()):,} of {int(lens.sum()):,} train points go unused."
+            )
         df = df[df["unique_id"].isin(keep)]
         val_head = val_target.iloc[:val_size][["unique_id", "ds", "y", *self._exo]].copy()
         val_head["ds"] = _naive_ds(val_head["ds"]).to_numpy()
