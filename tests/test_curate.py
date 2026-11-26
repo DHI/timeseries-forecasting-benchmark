@@ -169,12 +169,13 @@ def test_split_is_reported_for_the_kept_segment():
     assert info["split_fraction"] == split_fraction_for(curated["ds"], 24, "1h")
 
 
-def _faults(y, stuck_steps=3, valid_min=None, valid_max=None):
+def _faults(y, stuck_steps=3, valid_min=None, valid_max=None, zero_is_missing=False):
     masked, info = mask_sensor_faults(
         _frame(np.asarray(y, dtype=float)),
         stuck_steps=stuck_steps,
         valid_min=valid_min,
         valid_max=valid_max,
+        zero_is_missing=zero_is_missing,
     )
     return masked["y"].isna().to_numpy(), info
 
@@ -182,7 +183,7 @@ def _faults(y, stuck_steps=3, valid_min=None, valid_max=None):
 def test_a_flat_run_longer_than_the_limit_is_masked_whole():
     masked, info = _faults([1, 2, 5, 5, 5, 5, 3])
     assert masked.tolist() == [False, False, True, True, True, True, False]
-    assert info == {"n_stuck": 4, "n_out_of_range": 0}
+    assert info == {"n_stuck": 4, "n_out_of_range": 0, "n_zero": 0}
 
 
 def test_a_flat_run_at_the_limit_is_kept():
@@ -198,9 +199,21 @@ def test_a_gap_ends_a_flat_run():
 def test_readings_at_or_beyond_the_valid_bounds_are_masked():
     masked, info = _faults([0.0, 0.3, 2.0, 0.4, -1.0], valid_min=0.0, valid_max=2.0)
     assert masked.tolist() == [True, False, True, False, True]
-    assert info == {"n_stuck": 0, "n_out_of_range": 3}
+    assert info == {"n_stuck": 0, "n_out_of_range": 3, "n_zero": 0}
 
 
 def test_no_stuck_limit_keeps_flat_runs():
     masked, _ = _faults([5, 5, 5, 5, 5], stuck_steps=None)
+    assert not masked.any()
+
+
+def test_exact_zeros_are_masked_when_the_case_says_zero_is_missing():
+    # A meter that logs 0 while offline: exact zeros go, small negatives stay.
+    masked, info = _faults([2.0, 0.0, 2.1, -0.1, 0.0, 1.9], zero_is_missing=True)
+    assert masked.tolist() == [False, True, False, False, True, False]
+    assert info == {"n_stuck": 0, "n_out_of_range": 0, "n_zero": 2}
+
+
+def test_exact_zeros_are_kept_by_default():
+    masked, _ = _faults([2.0, 0.0, 2.1])
     assert not masked.any()
