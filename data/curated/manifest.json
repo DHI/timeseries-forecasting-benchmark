@@ -246,21 +246,22 @@
     "cap": 4,
     "kept_frac": 0.1739626082991336,
     "n_big_gaps": 8,
-    "n_filled": 0,
-    "n_observed": 3052,
+    "n_filled": 8,
+    "n_observed": 3044,
     "n_out_of_range": 0,
     "n_stuck": 0,
+    "n_zero": 96,
     "orig_rows": 17544,
     "parquet": "data/curated/wwtp_influent_n2o_350k.parquet",
     "rows": 3052,
     "segment": "last",
-    "sha256": "495e90b21944e98cfc029abc1a2fb3569ea94600b53703a0ef43f1500586fa57",
+    "sha256": "b016dfe938e9c91a737dc261828412fa6c7b5a2633eb05e2915454803cc768c3",
     "span_end": "2024-06-11 21:00:00+00:00",
     "span_start": "2024-02-05 18:00:00+00:00",
     "split_fraction": [
       0.7,
       0.85
     ],
-    "val_end": "2024-05-23 19:21:00"
+    "val_end": "2024-05-23 15:33:00"
   }
 }

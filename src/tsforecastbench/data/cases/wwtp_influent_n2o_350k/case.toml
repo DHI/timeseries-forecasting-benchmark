@@ -4,6 +4,10 @@ notes = "Influent flow rate at a 350,000 PE WWTP (Mendeley N2O dataset, 2 yrs, 2
 
 target = "influent_flow"
 target_unit = "m3/h"
+# The flow meter logs exactly 0 while offline: 96 hourly readings, mostly single hours
+# between normal flows of ~2,000 m3/h. The 18 small negative readings (down to -288 m3/h,
+# at most 6 h in a row) are kept, as reverse flow during an overflow can produce them.
+zero_is_missing = true
 
 freq = "1h"
 seasonalities = [12,24]

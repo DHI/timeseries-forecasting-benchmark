@@ -144,15 +144,15 @@
   },
   "wwtp_influent_n2o_350k": {
     "cap": 4,
-    "cutoff": "2024-05-23 19:21:00",
+    "cutoff": "2024-05-23 15:33:00",
     "n_big_gaps": 7,
-    "n_filled": 15,
-    "n_observed": 14674,
-    "orig_rows": 17086,
+    "n_filled": 102,
+    "n_observed": 14579,
+    "orig_rows": 17082,
     "parquet": "data/curated_extended/wwtp_influent_n2o_350k.parquet",
-    "rows": 14866,
-    "sha256": "725ad3aede56aca1503b55a0ac8a01a25da4c910799b0956d6534750e0d0cd7a",
-    "span_end": "2024-05-23 19:00:00+00:00",
+    "rows": 14862,
+    "sha256": "90b252100410c0aee4b5a32265c1d7e3127355da33262337033cf9984eb8a322",
+    "span_end": "2024-05-23 15:00:00+00:00",
     "span_start": "2022-09-12 10:00:00+00:00"
   }
 }
