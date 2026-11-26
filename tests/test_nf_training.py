@@ -98,3 +98,37 @@ def test_tft_trains_on_its_own_batch_and_counts_passes_with_it(monkeypatch):
     model = method._nf.models[0]
     assert model.windows_batch_size == 256
     assert seen == [256]
+
+
+def test_a_segmented_panel_stops_on_the_whole_val_split(monkeypatch):
+    """Every series gives up the same validation cut, so a short history segment used to
+    shrink it for the whole panel (gh #154). The cut is now the declared val split, and a
+    segment too short to give that up is left out of training."""
+    pytest.importorskip("neuralforecast")
+    import pandas as pd
+    from neuralforecast import NeuralForecast
+
+    from tsforecastbench.bench.methods import nf_models
+
+    handed = {}
+    monkeypatch.setattr(nf_models, "dl_step_ceiling", lambda n, per_step: 2)
+    monkeypatch.setattr(
+        NeuralForecast, "fit", lambda self, df, val_size: handed.update(df=df, val_size=val_size)
+    )
+    monkeypatch.setattr(nf_models._NFBase, "_record_steps", lambda self: None)
+    case = get_case("discharge_flashy_catskills")
+    splits = case.split_frame(case.load(prefer_synth=True, curated=True))
+    train, val = splits["train"].copy(), splits["val"]
+    tail = train["unique_id"].iloc[-1]
+    # Two history segments ahead of the curated span: one long enough to give up the whole
+    # val split and still hold a training window, one far too short to.
+    long_seg = train.iloc[: len(val) + 1_000].assign(unique_id="long")
+    short_seg = train.iloc[:500].assign(unique_id="short")
+    long_seg["ds"] = pd.to_datetime(long_seg["ds"]) - pd.Timedelta(days=20_000)
+    short_seg["ds"] = pd.to_datetime(short_seg["ds"]) - pd.Timedelta(days=10_000)
+    panel = pd.concat([long_seg, short_seg, train], ignore_index=True)
+
+    nf_models.TFTForecaster().fit(case, panel, val)
+
+    assert handed["val_size"] == len(val)
+    assert set(handed["df"]["unique_id"]) == {"long", tail}
