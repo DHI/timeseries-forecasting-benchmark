@@ -7,6 +7,7 @@ entry and its commits. See `schema.md` for the format both files follow.
 <!-- Add new entries below this line, newest first, matching details.md. -->
 
 ### 2026-11-26
+- 113 — Exact-zero WWTP influent readings are masked as meter dropouts; small negative flows stay
 - 112 — Neuralforecast early stopping on extended history uses the full validation split
 
 ### 2026-11-25

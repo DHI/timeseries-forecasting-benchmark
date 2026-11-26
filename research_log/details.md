@@ -1,4 +1,13 @@
 ---
+id: 113
+date: "2026-11-26"
+title: "Exact-zero WWTP influent readings are masked as meter dropouts; small negative flows stay"
+description: |
+  `wwtp_influent_n2o_350k` holds 96 hourly influent readings of exactly 0 m3/h, mostly single hours between normal flows of about 2,000 m3/h, which reads as the meter logging 0 while offline. A new per-case `zero_is_missing` flag adds exact zeros to the sensor-fault mask from entry 111, set only on this case. Its 18 small negative readings (down to -288 m3/h against a 2,406 median, at most 6 hours in a row) are kept, as reverse flow during an overflow can produce them; a `valid_min` bound would have masked them too. The curated span is unchanged, with 8 zeros inside it now interpolated; the source paper (arXiv:2407.05959) documents neither, but ships per-signal quality flags that the download does not yet read.
+commits:
+  - ff5e454: "Mask exact-zero readings on cases that declare zero_is_missing"
+  - a82828c: "Treat exact-zero WWTP influent readings as missing, and re-curate"
+---
 id: 112
 date: "2026-11-26"
 title: "Neuralforecast early stopping on extended history uses the full validation split"
