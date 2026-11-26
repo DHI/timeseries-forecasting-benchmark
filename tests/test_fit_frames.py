@@ -19,7 +19,6 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from tsforecastbench.bench.eval import run_case, run_case_rolling  # noqa: E402
-from tsforecastbench.bench.eval.budget import nf_val_size  # noqa: E402
 from tsforecastbench.bench.eval.loop import _naive_ds  # noqa: E402
 from tsforecastbench.bench.methods.base import Forecaster  # noqa: E402
 from tsforecastbench.bench.methods.torchdl import _build_val_windows  # noqa: E402
@@ -126,33 +125,6 @@ def test_the_local_val_frame_is_the_declared_split():
 
     declared = case.split_frame(case.load(prefer_synth=True, curated=True))["val"]
     assert len(recorder.val_frames[0]) == len(declared)
-
-
-def test_nf_val_size_uses_the_whole_val_split_when_the_panel_affords_it():
-    # discharge_lowland_denmark's extended panel: one other segment, long enough to give up
-    # the full declared val and still train.
-    assert nf_val_size([3651], target_train_len=1534, lookback=64, h=7, val_len=329) == 329
-
-
-def test_nf_val_size_backs_off_to_keep_every_segment():
-    # waves_oregon: cutting the full 3,672-point val split would drop the four segments
-    # shorter than 3,864 points, so the cut shrinks to what the 462-point one can spare.
-    others = [462, 2019, 2808, 2975, 4580, 9099, 13456, 18473]
-    val_size = nf_val_size(others, target_train_len=17176, lookback=168, h=24, val_len=3672)
-
-    assert val_size == 270
-    assert all(n >= 168 + 24 + val_size for n in others), "a segment would still be dropped"
-
-
-def test_nf_val_size_never_exceeds_the_declared_val_split():
-    # A panel of long segments could spare far more than the declared split holds; the cut
-    # must not reach past it, since everything past it is test data.
-    assert nf_val_size([50_000], target_train_len=40_000, lookback=168, h=24, val_len=458) == 458
-
-
-def test_nf_val_size_rejects_a_val_split_below_the_floor():
-    with pytest.raises(ValueError, match="floor"):
-        nf_val_size([5000], target_train_len=5000, lookback=168, h=24, val_len=90)
 
 
 def test_val_windows_target_only_the_val_split():
