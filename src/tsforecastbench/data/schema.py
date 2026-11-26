@@ -103,6 +103,9 @@ class Case(BaseModel):
     # reason for each declared bound goes in `notes`.
     valid_min: float | None = None
     valid_max: float | None = None
+    # An exact 0 is a reading the meter logs while offline, masked to NaN like the bounds
+    # above. Only exact zeros, so a case can keep small real negatives (reverse flow).
+    zero_is_missing: bool = False
     horizon_primary: str
     horizons_eval: list[str] = Field(default_factory=list)
     exogenous: list[str] = Field(default_factory=list)
@@ -227,8 +230,8 @@ class Case(BaseModel):
         fly. The default (`curated=False`) returns the raw series in
         `data/processed/`, gaps and all, for EDA and case review, with the target's sensor
         faults masked to NaN (`curate.mask_sensor_faults`): flat runs longer than one
-        dominant cycle, and readings outside `valid_min`/`valid_max`. The Parquet keeps the
-        original values.
+        dominant cycle, readings outside `valid_min`/`valid_max`, and exact zeros where
+        `zero_is_missing`. The Parquet keeps the original values.
         """
         if curated:
             return self._load_curated(prefer_synth=prefer_synth)
@@ -249,6 +252,7 @@ class Case(BaseModel):
             stuck_steps=self.dominant_seasonality if self.seasonalities else None,
             valid_min=self.valid_min,
             valid_max=self.valid_max,
+            zero_is_missing=self.zero_is_missing,
         )
 
     def _load_curated(self, prefer_synth: bool = False) -> pd.DataFrame:

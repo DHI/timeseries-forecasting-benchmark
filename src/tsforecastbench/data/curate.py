@@ -249,10 +249,11 @@ def mask_sensor_faults(
     stuck_steps: int | None,
     valid_min: float | None,
     valid_max: float | None,
+    zero_is_missing: bool,
 ) -> tuple[pd.DataFrame, dict]:
     """Set target readings a working sensor cannot produce to NaN (gh #151).
 
-    Two kinds are masked, so the gap policy treats them as missing like any other gap:
+    Three kinds are masked, so the gap policy treats them as missing like any other gap:
 
     - **Stuck:** a run of identical consecutive readings longer than `stuck_steps`. The
       caller passes the case's dominant seasonal period: within a full cycle a working
@@ -260,6 +261,9 @@ def mask_sensor_faults(
       value. None skips this check.
     - **Out of range:** a reading at or below `valid_min` or at or above `valid_max`, the
       physical bounds a case declares (None = no bound on that side).
+    - **Zero:** a reading of exactly 0 when `zero_is_missing`, for a meter that logs 0
+      while offline. Only exact zeros: small negative readings can be real (reverse flow
+      during an overflow) and stay.
 
     Returns the masked copy and the count of each kind.
     """
@@ -284,10 +288,13 @@ def mask_sensor_faults(
     if valid_max is not None:
         out_of_range |= observed & (y >= valid_max)
 
-    df["y"] = np.where(stuck | out_of_range, np.nan, y)
+    zero = observed & (y == 0) if zero_is_missing else np.zeros(len(y), dtype=bool)
+
+    df["y"] = np.where(stuck | out_of_range | zero, np.nan, y)
     return df, {
         "n_stuck": int(stuck.sum()),
         "n_out_of_range": int((out_of_range & ~stuck).sum()),
+        "n_zero": int((zero & ~stuck & ~out_of_range).sum()),
     }
 
 

@@ -62,7 +62,7 @@ def main(argv: list[str] | None = None) -> int:
 
     hdr = (
         f"{'case':30s} {'cap':>4s} {'orig':>8s} {'kept':>8s} {'kept%':>6s} {'filled':>7s} "
-        f"{'bigg':>5s} {'ext_rows':>8s} {'stuck':>6s} {'range':>6s}"
+        f"{'bigg':>5s} {'ext_rows':>8s} {'stuck':>6s} {'range':>6s} {'zero':>5s}"
     )
     print(hdr)
     print("-" * len(hdr))
@@ -110,7 +110,7 @@ def main(argv: list[str] | None = None) -> int:
             print(
                 f"{cid:30s} {info['cap']:4d} {info['orig_rows']:8d} {info['rows']:8d} "
                 f"{100 * info['kept_frac']:6.1f} {info['n_filled']:7d} {info['n_big_gaps']:5d} "
-                f"{info_ext['rows']:8d} {faults['n_stuck']:6d} {faults['n_out_of_range']:6d}"
+                f"{info_ext['rows']:8d} {faults['n_stuck']:6d} {faults['n_out_of_range']:6d} {faults['n_zero']:5d}"
             )
         except Exception as exc:
             print(f"{cid:30s}  [error] {type(exc).__name__}: {exc}")
