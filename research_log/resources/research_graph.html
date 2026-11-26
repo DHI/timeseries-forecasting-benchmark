@@ -341,6 +341,20 @@
 <script type="application/json" id="graph-data">{
   "nodes": [
     {
+      "id": "2026-11-26-nf-full-val-cut",
+      "date": "2026-11-26",
+      "title": "Neuralforecast early stopping on extended history uses the full validation split",
+      "category": "methodology",
+      "summary": "TFT and TimesNet on extended history now stop on the whole validation split instead of a cut shrunk to fit the shortest history segment (as small as 6% of it). Segments too short for it are left out of training; Oregon loses 28% of its extra history.",
+      "detail": "On extended history, neuralforecast holds out the same validation tail from every history segment, and `nf_val_size` used to shrink that tail until even the shortest segment kept a training window. One short segment then set the cut for the whole panel: 441 of 5,623 validation points on `sewerlevel_bellinge` and 104 of 1,744 on `waves_massachusetts`, a likely source of the seed-to-seed spread in TFT and TimesNet extended runs. The cut is now always the full declared validation split, and segments too short to give it up are left out of training (gh #154). This costs 259-7,348 training points on four cases and 11,807 of 42,314 on `waves_oregon`; a looser rule such as keeping 90% of validation changes nothing, since the segments it would save need a cut below 75%. The TFT and TimesNet extended columns (and their +exo variants) on sewer, surge, both wave cases and wwtp need the re-run.",
+      "tags": [
+        "early-stopping",
+        "neuralforecast",
+        "extended-history",
+        "validation"
+      ]
+    },
+    {
       "id": "2026-11-25-sensor-fault-mask",
       "date": "2026-11-25",
       "title": "Stuck and out-of-range sensor readings are masked before curation, and the sewer nowcast column is dropped",
@@ -1884,6 +1898,21 @@
     }
   ],
   "edges": [
+    {
+      "source": "2026-11-26-nf-full-val-cut",
+      "target": "2026-08-13-val-split-becomes-real",
+      "type": "follows-from"
+    },
+    {
+      "source": "2026-11-26-nf-full-val-cut",
+      "target": "2026-11-25-dl-patience-in-passes",
+      "type": "relates-to"
+    },
+    {
+      "source": "2026-11-26-nf-full-val-cut",
+      "target": "2026-11-25-sensor-fault-mask",
+      "type": "relates-to"
+    },
     {
       "source": "2026-11-25-sensor-fault-mask",
       "target": "2026-11-17-data-prep-test-leaks",

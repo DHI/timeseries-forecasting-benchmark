@@ -1,4 +1,14 @@
 ---
+id: 112
+date: "2026-11-26"
+title: "Neuralforecast early stopping on extended history uses the full validation split"
+description: |
+  On extended history, neuralforecast holds out the same validation tail from every history segment, and `nf_val_size` used to shrink that tail until even the shortest segment kept a training window. One short segment then set the cut for the whole panel: 441 of 5,623 validation points on `sewerlevel_bellinge` and 104 of 1,744 on `waves_massachusetts`, a likely source of the seed-to-seed spread in TFT and TimesNet extended runs. The cut is now always the full declared validation split, and segments too short to give it up are left out of training (gh #154). This costs 259-7,348 training points on four cases and 11,807 of 42,314 on `waves_oregon`; a looser rule such as keeping 90% of validation changes nothing, since the segments it would save need a cut below 75%. The TFT and TimesNet extended columns (and their +exo variants) on sewer, surge, both wave cases and wwtp need the re-run.
+commits:
+  - 72001cc: "Test that a segmented neuralforecast panel stops on the whole val split"
+  - f35b964: "Stop neuralforecast panels on the whole val split and drop short segments"
+  - dc0e638: "Remove nf_val_size and its floor, which nothing calls now"
+---
 id: 111
 date: "2026-11-25"
 title: "Stuck and out-of-range sensor readings are masked before curation, and the sewer nowcast column is dropped"
